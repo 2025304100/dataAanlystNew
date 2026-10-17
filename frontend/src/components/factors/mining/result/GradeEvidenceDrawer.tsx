@@ -8,6 +8,7 @@ import MiningChart, {
 import { ADJUST_REASON_MIN, STAT_ROWS, isDegraded } from "./gradeEvidenceTypes";
 import type { Grade, GradeEvidence } from "./gradeEvidenceTypes";
 import type { EChartsOption } from "echarts";
+import { formatMiningDateTime, miningSourceLabel } from "../miningDisplay";
 
 /**
  * 因子详情证据抽屉（向导 §8.4.1 / §8.4.2 / §8.4.3）—— 回答「为什么是这个等级」。
@@ -55,6 +56,13 @@ const DIM_LABEL: Record<string, string> = {
   oos_stability: "miningEvidDimOos",
   complexity: "miningEvidDimComplexity",
   monotonicity: "miningEvidDimMonotonicity",
+  p_adj: "miningEvidDimAdjustedP",
+  p_raw: "miningEvidDimRawP",
+  ci_lower: "miningEvidDimCiLower",
+  perm_p: "miningEvidDimPermutationP",
+  correlation: "miningEvidDimCorrelation",
+  oos_icir_min: "miningEvidDimOosIcirMin",
+  oos_icir_max: "miningEvidDimOosIcirMax",
 };
 
 function dimLabel(key: string): string {
@@ -62,8 +70,8 @@ function dimLabel(key: string): string {
   return k ? t(k) : key;
 }
 
-function gradeClass(grade: Grade): string {
-  return `mining-evidence-grade-badge mining-grade mining-grade--${grade.toLowerCase()}`;
+function gradeClass(grade: Grade | null): string {
+  return grade ? `mining-evidence-grade-badge mining-grade mining-grade--${grade.toLowerCase()}` : "mining-chip mining-chip--muted";
 }
 
 export default function GradeEvidenceDrawer({
@@ -76,7 +84,7 @@ export default function GradeEvidenceDrawer({
 }: GradeEvidenceDrawerProps) {
   const [tab, setTab] = useState<TabKey>("grade");
   const [adjusting, setAdjusting] = useState(false);
-  const [targetGrade, setTargetGrade] = useState<Grade>(evidence.grade);
+  const [targetGrade, setTargetGrade] = useState<Grade>(evidence.grade ?? "C");
   const [reason, setReason] = useState("");
 
   const degraded = isDegraded(evidence);
@@ -100,15 +108,23 @@ export default function GradeEvidenceDrawer({
     }
   };
 
-  /** 判定阈值（后端未下发阈值时显示占位符，不臆造门槛） */
-  const STAT_THRESHOLD: Record<string, string> = {
-    t_test: "p<0.05",
-    bonferroni: "p<0.001",
-    fdr: "q<0.1",
-    bootstrap: "下限>0",
-    permutation: "p<0.001",
-    decay: "≥0.5",
-    walk_forward: "≥3/4",
+  const statOutcome = (key: string): "pass" | "fail" | "missing" | "reference" => {
+    const s = evidence.stats;
+    const values: Record<string, number | null | undefined> = {
+      t_test: s.t_test_p, bonferroni: s.bonferroni_p, fdr: s.fdr_q,
+      bootstrap: s.bootstrap_ci?.[0], permutation: s.permutation_p,
+      dsr: s.dsr_icir, decay: s.decay_ratio,
+      walk_forward: s.walk_forward?.windows && s.walk_forward?.same_direction != null
+        ? s.walk_forward.same_direction / s.walk_forward.windows : null,
+    };
+    const value = values[key];
+    if (value == null || !Number.isFinite(value)) return "missing";
+    const threshold = evidence.stat_thresholds?.[key];
+    if (!threshold || !Number.isFinite(threshold.value)) return "reference";
+    const passed = threshold.operator === "lt" ? value < threshold.value
+      : threshold.operator === "gt" ? value > threshold.value
+        : threshold.operator === "gte" ? value >= threshold.value : null;
+    return passed == null ? "reference" : passed ? "pass" : "fail";
   };
 
   const rowDisabled = (key: string) =>
@@ -166,7 +182,7 @@ export default function GradeEvidenceDrawer({
       {actionError && <p data-evidence-action-error role="alert" className="mining-run-op-error">{actionError}</p>}
 
       {/* 月频提示（pitfalls 第二条的另一半） */}
-      {degraded && (
+      {evidence.frequency === "monthly" && (
         <div className="mining-evidence-monthly" data-evidence-monthly-tip role="status">
           {t("miningEvidMonthlyTip")}
         </div>
@@ -256,7 +272,7 @@ export default function GradeEvidenceDrawer({
         <section data-evidence-panel="grade" className="mining-evidence-lineage">
           <div className="mining-evidence-grade-head">
             <span className={gradeClass(evidence.grade)} data-evidence-grade>
-              {evidence.grade}
+              {evidence.grade ?? t("miningResultUngraded")}
             </span>
             <span className="mining-evidence-reason" data-evidence-reason>
               {evidence.reason_zh}
@@ -295,8 +311,8 @@ export default function GradeEvidenceDrawer({
                   <td>{dimLabel(d.key)}</td>
                   <td>{String(d.current ?? "-")}</td>
                   <td>{String(d.threshold ?? "-")}</td>
-                  <td className={d.passed ? "is-pass" : "is-fail"}>
-                    {d.passed ? t("miningEvidPassed") : t("miningEvidFailed")}
+                  <td className={d.passed == null ? undefined : d.passed ? "is-pass" : "is-fail"}>
+                    {d.passed == null ? t("miningEvidNotComputed") : d.passed ? t("miningEvidPassed") : t("miningEvidFailed")}
                   </td>
                   <td>{String(d.gap ?? "-")}</td>
                 </tr>
@@ -320,6 +336,7 @@ export default function GradeEvidenceDrawer({
             <tbody>
               {STAT_ROWS.map((row) => {
                 const disabled = rowDisabled(row.key);
+                const outcome = statOutcome(row.key);
                 return (
                   <tr
                     key={row.key}
@@ -329,16 +346,16 @@ export default function GradeEvidenceDrawer({
                     <td>{t(row.labelKey)}</td>
                     <td className="mining-evidence-stat-value">{statValue(row.key)}</td>
                     <td className="mining-evidence-stat-value">
-                      {STAT_THRESHOLD[row.key] ?? t("miningEvidStatNoThreshold")}
+                      {evidence.stat_thresholds?.[row.key]?.label ?? t("miningEvidStatNoThreshold")}
                     </td>
                     <td>
                       {disabled ? (
                         <span className="mining-evidence-stat-note">
-                          {t("miningEvidStatNotComputed")}
+                          {t(evidence.frequency === "monthly" ? "miningEvidStatNotComputed" : "miningEvidNotComputed")}
                         </span>
                       ) : (
-                        <span className="mining-chip mining-chip--muted">
-                          {t("miningEvidStatPass")}
+                        <span className={`mining-chip ${outcome === "pass" ? "is-pass" : outcome === "fail" ? "is-fail" : "mining-chip--muted"}`}>
+                          {t(outcome === "pass" ? "miningEvidStatPass" : outcome === "fail" ? "miningEvidStatFail" : outcome === "missing" ? "miningEvidNotComputed" : "miningEvidStatReference")}
                         </span>
                       )}
                     </td>
@@ -403,7 +420,7 @@ export default function GradeEvidenceDrawer({
           </div>
           <div className="mining-evidence-lineage-row">
             <span>{t("miningEvidOperation")}</span>
-            <span>{evidence.lineage.operation ?? "-"}</span>
+            <span>{miningSourceLabel(evidence.lineage.operation)}</span>
           </div>
           {evidence.lineage.economic_logic && (
             <div className="mining-evidence-lineage-row">
@@ -424,8 +441,8 @@ export default function GradeEvidenceDrawer({
             data-evidence-history-item
           >
             <span>{h.grade}</span>
-            <span>{h.changed_at}</span>
-            <span>{t(TRIGGER_LABEL[h.trigger] ?? "miningEvidTriggerAuto")}</span>
+            <span title={h.changed_at}>{formatMiningDateTime(h.changed_at)}</span>
+            <span>{TRIGGER_LABEL[h.trigger] ? t(TRIGGER_LABEL[h.trigger]) : h.trigger || "-"}</span>
             <span>{h.reason ?? "-"}</span>
           </div>
         ))}

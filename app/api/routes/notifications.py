@@ -67,6 +67,7 @@ from app.services.notifications.channel_state import (
 )
 from app.services.notifications.registry import get_adapter
 from app.services.notifications.template_renderer import render_template
+from app.services.notifications.sources import list_sources, supported_source_choices
 from app.utils.secret_mask import decrypt_config, encrypt_config
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,12 @@ router = APIRouter()
 
 def _now_utc_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+@router.get("/notifications/capabilities")
+def notification_capabilities():
+    return {"sources": list_sources(), "delivery_modes": ["instant"],
+            "scope_types": ["all", "portfolio", "symbol"]}
 
 
 def _raise(
@@ -351,26 +358,39 @@ def update_channel(
         channel.name = payload.name
 
     # 配置更新
-    if payload.config is not None:
+    if payload.config is not None or payload.clear_config_keys:
         adapter = get_adapter(channel.channel_type)
-        errors = adapter.validate_config(payload.config) if adapter else []
+        current_config = _decrypt_channel_config(channel)
+        current_mask = adapter.mask_config(current_config) if adapter else {}
+        merged_config = dict(current_config)
+        for key, value in (payload.config or {}).items():
+            # A read response contains display masks, never replacement secrets.
+            # Keep PATCH partial and tolerate older clients round-tripping masks.
+            if key in current_config and value == current_mask.get(key):
+                continue
+            merged_config[key] = value
+        clearable = {"app_token", "secret", "access_token", "password", "webhook", "url", "auth_header"}
+        if set(payload.clear_config_keys) - clearable:
+            _raise("VALIDATION_ERROR", status_code=400, user_message="只能显式清除凭证字段")
+        for key in payload.clear_config_keys:
+            merged_config.pop(key, None)
+        errors = adapter.validate_config(merged_config) if adapter else []
         if errors:
             _raise(
                 "VALIDATION_ERROR",
                 status_code=400,
                 user_message="渠道配置校验失败：" + "；".join(errors),
             )
-        config_json = json.dumps(payload.config, ensure_ascii=False)
-        channel.config_encrypted_json = encrypt_config(config_json)
-        channel.config_mask_json = json.dumps(
-            adapter.mask_config(payload.config) if adapter else {}, ensure_ascii=False
-        )
-        # 第三方渠道改配置需重新测试
-        if channel.channel_type != CHANNEL_TYPE_IN_APP:
-            channel.status = CHANNEL_STATUS_PENDING_TEST
-            channel.verified_at = None
-            # 改配置后若处于 enabled，回退到 test_success 等待重新测试/启用
-            if channel.enabled:
+        if merged_config != current_config:
+            config_json = json.dumps(merged_config, ensure_ascii=False)
+            channel.config_encrypted_json = encrypt_config(config_json)
+            channel.config_mask_json = json.dumps(
+                adapter.mask_config(merged_config) if adapter else {}, ensure_ascii=False
+            )
+            if channel.channel_type != CHANNEL_TYPE_IN_APP:
+                channel.status = CHANNEL_STATUS_PENDING_TEST
+                channel.verified_at = None
+                channel.last_test_success = None
                 channel.enabled = False
 
     # 启用/禁用（状态机校验）
@@ -508,6 +528,9 @@ def test_channel(channel_id: int, db: Session = Depends(get_db)):
 
     # 更新 outbox（可追踪）
     outbox.status = "sent" if sr.success else "failed"
+    # 与 dispatcher 的 mark_sent 对齐：成功也计一次尝试（修复「0/N」显示口径）
+    if sr.success:
+        outbox.attempt_count = 1
     outbox.last_error_code = sr.error_code if not sr.success else None
     outbox.last_error_message = err_msg
     outbox.sent_at = now if sr.success else None
@@ -577,6 +600,8 @@ def create_policy(payload: PolicyCreate, db: Session = Depends(get_db)):
 
     渠道勾选受状态机约束：未配置/测试失败的第三方渠道不能被选中（WP-MSG.4）。
     """
+    _validate_source_choices(payload.source_types)
+    _validate_scope_objects(db, payload.scope_type, payload.scope_ids)
     # 校验渠道可被选中
     _validate_channel_ids_selectable(db, payload.channel_ids)
 
@@ -623,6 +648,21 @@ def update_policy(
             status_code=404,
             user_message=f"策略不存在：id={policy_id}",
         )
+    next_enabled = policy.enabled if payload.enabled is None else payload.enabled
+    next_mode = payload.delivery_mode or policy.delivery_mode
+    if next_enabled and next_mode != "instant":
+        _raise("VALIDATION_ERROR", status_code=400, user_message="摘要推送尚未接入调度，请先改为即时推送再启用")
+
+    next_scope = policy.scope_type if payload.scope_type is None else payload.scope_type
+    next_ids = (payload.scope_ids if payload.scope_ids is not None else
+                None if payload.scope_type and payload.scope_type != policy.scope_type else
+                json.loads(policy.scope_ids_json or "[]"))
+    disable_only = payload.enabled is False and payload.model_fields_set <= {"enabled", "name"}
+    if not disable_only:
+        _validate_scope_objects(db, next_scope, next_ids)
+        _validate_source_choices(payload.source_types if payload.source_types is not None else json.loads(policy.source_types_json or "[]"))
+    if next_scope == "all":
+        next_ids = None
 
     if payload.name is not None:
         policy.name = payload.name
@@ -638,17 +678,17 @@ def update_policy(
         policy.min_severity = payload.min_severity
     if payload.scope_type is not None:
         policy.scope_type = payload.scope_type
-    if payload.scope_ids is not None:
+    if payload.scope_ids is not None or payload.scope_type is not None:
         policy.scope_ids_json = (
-            json.dumps(payload.scope_ids, ensure_ascii=False)
-            if payload.scope_ids
+            json.dumps(next_ids, ensure_ascii=False)
+            if next_ids
             else None
         )
     if payload.delivery_mode is not None:
         policy.delivery_mode = payload.delivery_mode
     if payload.digest_schedule is not None:
         policy.digest_schedule = payload.digest_schedule
-    if payload.quiet_hours is not None:
+    if "quiet_hours" in payload.model_fields_set:
         policy.quiet_hours_json = (
             json.dumps(payload.quiet_hours, ensure_ascii=False)
             if payload.quiet_hours
@@ -658,7 +698,7 @@ def update_policy(
         policy.cooldown_minutes = payload.cooldown_minutes
     if payload.dedup_window_minutes is not None:
         policy.dedup_window_minutes = payload.dedup_window_minutes
-    if payload.template_id is not None:
+    if "template_id" in payload.model_fields_set:
         policy.template_id = payload.template_id
 
     if payload.channel_ids is not None:
@@ -684,6 +724,25 @@ def delete_policy(policy_id: int, db: Session = Depends(get_db)):
     db.delete(policy)
     db.commit()
     return {"ok": True, "id": policy_id}
+
+
+def _validate_scope_objects(db: Session, scope_type: str, scope_ids: list[int] | None) -> None:
+    from app.models.portfolio import Portfolio
+    from app.models.symbol import Symbol
+
+    if scope_type == "all":
+        return
+    entity = {"portfolio": Portfolio, "symbol": Symbol}.get(scope_type)
+    if entity is None or not scope_ids or any(value <= 0 for value in scope_ids):
+        _raise("VALIDATION_ERROR", status_code=422, user_message="限定通知范围必须选择真实的对象")
+    found = set(db.scalars(select(entity.id).where(entity.id.in_(scope_ids))).all())
+    if set(scope_ids) - found:
+        _raise("NOT_FOUND", status_code=404, user_message="部分通知范围对象已不存在，请刷新后重新选择")
+
+
+def _validate_source_choices(source_types: list[str]) -> None:
+    if set(source_types) - supported_source_choices():
+        _raise("VALIDATION_ERROR", status_code=400, user_message="部分消息来源尚未接入生产事件，请选择当前可用的来源")
 
 
 def _validate_channel_ids_selectable(db: Session, channel_ids: list[int]) -> None:

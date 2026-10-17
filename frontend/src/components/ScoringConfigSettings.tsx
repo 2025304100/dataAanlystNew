@@ -16,6 +16,7 @@ import {
 import { QuestionCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 import { t } from "../i18n";
 import { api } from "../api/client";
+import { useUnsupportedFeatures } from "./settings/UnsupportedFeaturesToggle";
 
 type AssetType = "stock" | "etf";
 
@@ -37,6 +38,7 @@ interface Dimension {
 }
 
 interface ScoringConfig {
+  direction_contract?: string;
   preset_key: string;
   name: string;
   asset_type: AssetType;
@@ -91,15 +93,25 @@ const OP_OPTIONS = [
 const DIRECTION_OPTIONS = [
   { value: "higher_better", label: () => t("scDirHigherBetter") },
   { value: "lower_better", label: () => t("scDirLowerBetter") },
-  { value: "range_better", label: () => t("scDirRangeBetter") },
-  { value: "lower_or_range_better", label: () => t("scDirLowerOrRangeBetter") },
+  { value: "range_better", label: () => t("scDirRangeBetter"), disabled: true },
+  { value: "lower_or_range_better", label: () => t("scDirLowerOrRangeBetter"), disabled: true },
 ];
 
 function deepClone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v));
 }
 
+function editableConfig(config: ScoringConfig): ScoringConfig {
+  const next = deepClone(config);
+  if (!next.direction_contract) {
+    next.dimensions.forEach((dim) => dim.factors.forEach((factor) => { factor.direction = "higher_better"; }));
+  }
+  next.direction_contract = "standard_score_v1";
+  return next;
+}
+
 export default function ScoringConfigSettings() {
+  const showUnsupported = useUnsupportedFeatures();
   const [assetType, setAssetType] = useState<AssetType>("stock");
   const [presets, setPresets] = useState<PresetRow[]>([]);
   const [activePreset, setActivePreset] = useState<PresetRow | null>(null);
@@ -199,7 +211,7 @@ export default function ScoringConfigSettings() {
   const handleEdit = (row: PresetRow) => {
     if (row.is_system === 1) return message.warning(t("scSystemPresetNoEdit"));
     setEditing(row);
-    setDraft(deepClone(row.config as ScoringConfig));
+    setDraft(editableConfig(row.config as ScoringConfig));
   };
 
   const handleCreateOpen = () => {
@@ -213,12 +225,13 @@ export default function ScoringConfigSettings() {
     // 以当前资产类型的均衡预设作为模板
     const template = presets.find((p) => p.preset_key === (assetType === "stock" ? "balanced_opportunity" : "etf_balanced"));
     const config = template?.config
-      ? deepClone(template.config)
+      ? editableConfig(template.config)
       : {
           preset_key: createModal.newKey.trim(),
           name: createModal.newName.trim(),
           asset_type: assetType,
           preset_source: "user",
+          direction_contract: "standard_score_v1",
           final_weights: { quality: 0.4, timing: 0.5, news: 0.1 },
           dimensions: [],
         };
@@ -396,6 +409,7 @@ export default function ScoringConfigSettings() {
       >
         {draft && (
           <div>
+            <p style={{ color: "var(--text-secondary)", marginBottom: 12 }}>{t("scStandardDirectionHelp")}</p>
             <div style={{ marginBottom: 12 }}>
               <label style={{ marginRight: 8 }}>{t("scPresetName")}</label>
               <Input value={draft.name} style={{ width: 260 }} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
@@ -485,7 +499,7 @@ export default function ScoringConfigSettings() {
                               size="small"
                               value={f.direction || "higher_better"}
                               style={{ width: 130 }}
-                              options={DIRECTION_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+                              options={DIRECTION_OPTIONS.filter((o) => showUnsupported || !("disabled" in o)).map((o) => ({ value: o.value, label: o.label(), disabled: "disabled" in o && o.disabled }))}
                               onChange={(val) => updateFactor(idx, fIdx, { direction: val })}
                             />
                           </Space>

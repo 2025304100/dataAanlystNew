@@ -527,15 +527,15 @@ class TestAiCapability:
         assert status.status == "degraded"
         assert status.reason_code == "ai_test_failed"
 
-    def test_ready(self, db_session, tmp_path, monkeypatch):
+    def test_recent_save_without_a_real_test_is_degraded(self, db_session, tmp_path, monkeypatch):
         recent_date = _utcnow_naive().isoformat()
         _setup_ai_config_file(
             tmp_path, monkeypatch,
             enabled=True, updated_at=recent_date,
         )
         status = check_ai_capability(db_session)
-        assert status.status == "ready"
-        assert status.reason_code is None
+        assert status.status == "degraded"
+        assert status.reason_code == "ai_test_failed"
         assert any(a.target == "/settings/ai" for a in status.recommended_actions)
 
 

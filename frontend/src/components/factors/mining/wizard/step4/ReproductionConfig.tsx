@@ -1,5 +1,6 @@
 import { t } from "../../../../../i18n";
 import { Checkbox, InputNumber } from "antd";
+import { PARAM_META } from "./evoTypes";
 
 /**
  * 繁殖与变异配置（§6.6.8；antd 控件版）。
@@ -59,8 +60,8 @@ export default function ReproductionConfig({
           ) : null}
           <div data-evo-rate-input={key}>
             <InputNumber
-              min={0}
-              max={1}
+              min={PARAM_META[`${key}_rate`].min / 100}
+              max={PARAM_META[`${key}_rate`].max / 100}
               step={0.05}
               disabled={adaptive}
               value={value}

@@ -10,8 +10,8 @@
 
 释放
 ----
-`release_lock(..., trigger_queue=True)` 会删掉锁行并返回**被拉起的队首 task_id**，
-由调用方（`task_runner`）去唤醒它。**不引入新调度器**。
+`release_lock` 是只做事务的底层原语；生产释放路径使用
+`release_lock_and_wake`，提交锁交接后启动队首 worker。**不引入新调度器**。
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ _ACQUIRE_MAX_RETRIES = 3
 #! 方言会静默忽略 FOR UPDATE，两个并发事务可以都读到旧队列然后互相覆盖，
 #! 导致排队任务静默丢失。加这把锁让单进程多线程（测试/单 worker 部署）
 #! 也确定正确；多进程部署仍靠 MySQL 的行锁兜底。
-_QUEUE_LOCK = threading.Lock()
+_QUEUE_LOCK = threading.RLock()
 
 
 def _utcnow() -> datetime:
@@ -82,6 +82,18 @@ class MiningDomainBusy(Exception):
         self.owner_run_id = owner_run_id
         self.owner_status = owner_status
         self.owner_generation = owner_generation
+
+
+class WriteSlotBusy(RuntimeError):
+    """A non-queueing writer lost the atomic slot acquisition."""
+
+    def __init__(self, *, owner_task_id: str, queue: list[str]) -> None:
+        self.owner_task_id = owner_task_id
+        super().__init__(json.dumps({
+            "error_code": "DUCKDB_WRITE_BUSY",
+            "owner_task_id": owner_task_id,
+            "queue": queue,
+        }, ensure_ascii=False))
 
 
 @dataclass
@@ -160,12 +172,15 @@ def acquire_mining_lock(db: Session, *, task_id: str, run_id: str) -> LockHandle
 
 
 def acquire_write_slot(
-    db: Session, *, task_id: str, run_id: str
+    db: Session, *, task_id: str, run_id: str, allow_queue: bool = True,
 ) -> tuple[LockHandle | None, int]:
     """获取 `duckdb_write`。空闲则立即持有；被占则**排队**。
 
     Returns:
         (handle, position)。position == 0 表示已持有；>0 表示排队位次（1-based）。
+
+    `allow_queue=False` gives mirrors atomic acquire-or-reject semantics:
+    a conflict raises WriteSlotBusy and never appends a queue item.
     """
     now = _utcnow()
     row = TaskLock(
@@ -191,9 +206,15 @@ def acquire_write_slot(
         ).scalar_one_or_none()
         if existing is None:
             # 锁刚被释放，重试一次
-            return acquire_write_slot(db, task_id=task_id, run_id=run_id)
+            return acquire_write_slot(db, task_id=task_id, run_id=run_id,
+                                      allow_queue=allow_queue)
 
         queue = _load_queue(existing)
+        if not allow_queue:
+            raise WriteSlotBusy(
+                owner_task_id=existing.owner_task_id,
+                queue=[item.get("task_id") for item in queue],
+            )
         if any(item.get("task_id") == task_id for item in queue):
             position = next(
                 i + 1 for i, item in enumerate(queue) if item.get("task_id") == task_id
@@ -287,6 +308,24 @@ def release_lock(
     return next_task_id
 
 
+def release_lock_and_wake(
+    db: Session, *, lock_key: str, task_id: str,
+    stage_runner: Any = None,
+) -> str | None:
+    """Release a shared writer and dispatch the promoted task after commit.
+
+    All production release paths use this entry point, including mirrors and
+    patrol. Keeping promotion and dispatch together prevents a queued task from
+    owning the write slot indefinitely without a worker.
+    """
+    next_task_id = release_lock(db, lock_key=lock_key, task_id=task_id)
+    if next_task_id:
+        from app.services.factors.mining.task_runner import wake_promoted_mining_task
+
+        wake_promoted_mining_task(next_task_id, stage_runner=stage_runner)
+    return next_task_id
+
+
 def promote_queue_head(db: Session, *, lock_key: str = LOCK_DUCKDB_WRITE) -> str | None:
     """把 `duckdb_write` 队列头部提升为持有者，返回其 task_id。
 
@@ -343,11 +382,17 @@ def expire_stale_locks(
     ).scalars().all()
 
     released: list[str] = []
+    from app.services.async_tasks import is_worker_running
+
     for row in rows:
+        if is_worker_running(row.owner_task_id):
+            # A delayed heartbeat must never allow a second writer to run while
+            # the original in-process worker is still using the warehouse.
+            continue
         released.append(row.owner_task_id)
         if row.lock_key == LOCK_DUCKDB_WRITE and _load_queue(row):
             # 有排队任务 → 复用 release_lock 的「删行+拉起」语义
-            next_task_id = release_lock(
+            next_task_id = release_lock_and_wake(
                 db, lock_key=row.lock_key, task_id=row.owner_task_id
             )
             if next_task_id:
@@ -428,11 +473,13 @@ __all__ = [
     "LOCK_DUCKDB_WRITE",
     "HEARTBEAT_TIMEOUT",
     "MiningDomainBusy",
+    "WriteSlotBusy",
     "LockHandle",
     "LockStatus",
     "acquire_mining_lock",
     "acquire_write_slot",
     "release_lock",
+    "release_lock_and_wake",
     "promote_queue_head",
     "heartbeat",
     "expire_stale_locks",

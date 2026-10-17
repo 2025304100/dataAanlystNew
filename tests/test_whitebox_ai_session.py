@@ -79,9 +79,10 @@ def test_ai_session_table_exists(db_session):
     assert "ai_action_audits" in table_names
 
 
-def test_init_db_creates_ai_session_tables(tmp_sqlite_url):
+def test_init_db_creates_ai_session_tables(tmp_sqlite_url, tmp_path, monkeypatch):
     """【WP-AI.1】init_db() 调用后三张表存在（端到端验证）。"""
     from app.db.manager import DatabaseManager
+    monkeypatch.setenv("AI_CONFIG_PATH", str(tmp_path / "absent-ai.json"))
 
     mgr = DatabaseManager.get()
     try:

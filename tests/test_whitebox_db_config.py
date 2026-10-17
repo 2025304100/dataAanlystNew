@@ -164,6 +164,7 @@ def test_update_db_config_masked_password_reads_from_disk(db_session):
         mock_mgr_instance = MockMgr.get.return_value
         mock_mgr_instance.db_type = "sqlite"
         mock_mgr_instance.is_mysql = False
+        mock_mgr_instance.session_factory = lambda: db_session
 
         result = update_db_config(payload)
 

@@ -155,17 +155,17 @@ def build_similar_signal_stats(
             "max_gain_20d": None,
             "max_drawdown_20d": None,
         }
-        if horizon3:
+        if len(horizon3) == 3:
             sample["return_3d"] = round((horizon3[-1].close - entry) / entry, 4)
             sample["max_gain_3d"] = round((max(item.high for item in horizon3) - entry) / entry, 4)
             sample["max_drawdown_3d"] = round((min(item.low for item in horizon3) - entry) / entry, 4)
-        if horizon5:
+        if len(horizon5) == 5:
             sample["return_5d"] = round((horizon5[-1].close - entry) / entry, 4)
-        if horizon10:
+        if len(horizon10) == 10:
             sample["return_10d"] = round((horizon10[-1].close - entry) / entry, 4)
             sample["max_gain_10d"] = round((max(item.high for item in horizon10) - entry) / entry, 4)
             sample["max_drawdown_10d"] = round((min(item.low for item in horizon10) - entry) / entry, 4)
-        if horizon20:
+        if len(horizon20) == 20:
             sample["return_20d"] = round((horizon20[-1].close - entry) / entry, 4)
             sample["max_gain_20d"] = round((max(item.high for item in horizon20) - entry) / entry, 4)
             sample["max_drawdown_20d"] = round((min(item.low for item in horizon20) - entry) / entry, 4)
@@ -183,7 +183,8 @@ def build_similar_signal_stats(
     max_drawdowns_20d = [item["max_drawdown_20d"] for item in samples if item["max_drawdown_20d"] is not None]
 
     return {
-        "sample_count": len(samples),
+        "sample_count": len(returns_3d),
+        "sample_counts": {"3d": len(returns_3d), "5d": len(returns_5d), "10d": len(returns_10d), "20d": len(returns_20d)},
         "matched_count": len(similar_rows),
         "scope": {
             "region": region_from_market(symbol.market),

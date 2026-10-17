@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 
 /**
  * U1 修复哨兵（2026-09-23）：「保存草稿」必须真的保存。
@@ -59,7 +59,7 @@ vi.mock("../../../api/client", () => ({
   requestJson: vi.fn(async () => ({})),
 }));
 
-vi.mock("./step1/poolApi", () => ({
+vi.mock("./wizard/step1/poolApi", () => ({
   MIN_POOL_SIZE: 50,
   previewPool: vi.fn(async () => ({
     universe_size: 5000, hits: 800, excluded_total: 4200, can_generate: true,
@@ -67,9 +67,13 @@ vi.mock("./step1/poolApi", () => ({
     field_coverage: {}, warnings: [],
   })),
   createPoolFromFilter: vi.fn(async () => ({ id: "pool-1", name: "p", member_count: 800 })),
+  // 归一化形状（真实 poolApi.normalizeSnapshot 输出）：业务侧统一读 id
   createSnapshot: vi.fn(async () => ({
-    snapshot_id: "snap-1", pool_id: "pool-1", analysis_status: "ready",
-    is_locked: true, data_cutoff_at: "2026-08-21", analysis: {}, pool: {},
+    id: "snap-1", pool_id: "pool-1", is_locked: true, data_cutoff_at: "2026-08-21",
+  })),
+  // 回退到已锁定步时 MiningPoolStep 重挂载会拉已存快照（归一化形状）
+  fetchSnapshot: vi.fn(async () => ({
+    id: "snap-1", pool_id: "pool-1", is_locked: true, data_cutoff_at: "2026-08-21",
   })),
   fetchLatestSnapshot: vi.fn(async () => null),
   deleteLatestSnapshot: vi.fn(async () => ({})),
@@ -85,8 +89,9 @@ vi.mock("./step1/poolApi", () => ({
 }));
 
 vi.mock("./wizard/step3/fieldApi", () => ({
-  createValidation: vi.fn(),
-  getValidation: vi.fn(),
+  createValidation: vi.fn(async () => ({ task_id: "validation-draft" })),
+  getValidation: vi.fn(async () => ({ task_id: "validation-draft", status: "passed", passed: true,
+    verdict: "pass", blocked: [], warnings: [], valid_until: "2099-01-01T00:00:00Z" })),
   normalizeValidation: vi.fn(),
 }));
 
@@ -95,16 +100,66 @@ import MiningShell from "./MiningShell";
 
 const saveDraft = factorMiningApi.saveDraft as unknown as ReturnType<typeof vi.fn>;
 
-function gotoEvolutionStep() {
-  const jump = document.querySelector("[data-mining-step-jump='evolution']") as HTMLElement;
-  expect(jump).toBeTruthy();
-  fireEvent.click(jump);
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.localStorage.clear();
+  vi.mocked(factorMiningApi.getRun).mockImplementation(async (id) => ({ id, status: "running", current_generation: 0 } as never));
+  vi.mocked(factorMiningApi.resumeRun).mockResolvedValue({} as never);
+  vi.mocked(factorMiningApi.listDrafts).mockResolvedValue([]);
+});
+
+/** antd DatePicker：data-* 落在容器/输入框上，需对内部 input 输入并回车提交。 */
+const setPickerDate = (attr: string, value: string) => {
+  const node = document.querySelector(`[${attr}]`) as HTMLElement;
+  const input = (node.tagName === "INPUT" ? node : node.querySelector("input")) as HTMLInputElement;
+  fireEvent.change(input, { target: { value } });
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+  fireEvent.blur(input);
+};
+
+/**
+ * 强引导门控（2026-10-14）后到达第 4 步的唯一正路：
+ * 逐步完成 step1（生成快照）→ step2（起止日期）→ step3（勾字段），
+ * 「下一步」随完成度逐个解锁（不能越步骤）。
+ */
+async function reachEvolutionStep(mount = true) {
+  if (mount) {
+    render(<MiningShell />);
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+  }
+  await waitFor(() => {
+    expect(document.querySelector("[data-pool-preview-stats]")).toBeTruthy();
+  });
+  fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
+  await waitFor(() => {
+    expect(document.querySelector("[data-pool-lock-banner]")).toBeTruthy();
+  });
+  fireEvent.click(document.querySelector("[data-mining-next]") as HTMLElement);
+  setPickerDate("data-time-start", "2025-01-01");
+  setPickerDate("data-time-end", "2025-06-30");
+  await waitFor(() => expect((document.querySelector("[data-mining-next]") as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(document.querySelector("[data-mining-next]") as HTMLElement);
+  await waitFor(() => {
+    expect(document.querySelector('[data-field-checkbox="close"]')).toBeTruthy();
+  });
+  fireEvent.click(document.querySelector('[data-field-checkbox="close"]') as HTMLElement);
+  fireEvent.click(document.querySelector("[data-field-start]") as HTMLElement);
+  await waitFor(() => expect(document.querySelector("[data-mining-next]")).toBeEnabled());
+  fireEvent.click(document.querySelector("[data-mining-next]") as HTMLElement);
+  await waitFor(() => {
+    expect(document.querySelector("[data-evo-save-draft]")).toBeTruthy();
+  });
 }
 
 function clickSaveDraft() {
   const btn = document.querySelector("[data-evo-save-draft]") as HTMLElement;
   expect(btn).toBeTruthy();
   fireEvent.click(btn);
+}
+
+function confirmSubmit() {
+  fireEvent.click(document.querySelector("[data-evo-submit]") as HTMLElement);
+  fireEvent.click(document.querySelector("[data-evo-confirm-submit]") as HTMLElement);
 }
 
 describe("保存草稿接线（U1）", () => {
@@ -114,8 +169,7 @@ describe("保存草稿接线（U1）", () => {
   });
 
   it("点击后真的调用后端草稿接口，并带上四个步骤", async () => {
-    render(<MiningShell />);
-    gotoEvolutionStep();
+    await reachEvolutionStep();
     clickSaveDraft();
 
     await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
@@ -128,8 +182,7 @@ describe("保存草稿接线（U1）", () => {
   });
 
   it("成功后给出可见反馈（含草稿短号）", async () => {
-    render(<MiningShell />);
-    gotoEvolutionStep();
+    await reachEvolutionStep();
     clickSaveDraft();
     await waitFor(() => {
       const note = document.querySelector("[data-mining-draft-note]");
@@ -138,8 +191,7 @@ describe("保存草稿接线（U1）", () => {
   });
 
   it("二次保存复用上次的 draft_id（更新而非新建）", async () => {
-    render(<MiningShell />);
-    gotoEvolutionStep();
+    await reachEvolutionStep();
     clickSaveDraft();
     await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
 
@@ -149,15 +201,68 @@ describe("保存草稿接线（U1）", () => {
     expect(second.draft_id).toBe("draft-abc12345");
   });
 
+  it("同一会话快速重复保存只产生一个进行中的保存请求", async () => {
+    let resolveSave!: (value: unknown) => void;
+    saveDraft.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    await reachEvolutionStep();
+    clickSaveDraft();
+    clickSaveDraft();
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveSave({ draft_id: "draft-once" }); });
+  });
+
+  it("旧会话保存迟到不会回写新草稿编号，也不阻止新会话独立保存", async () => {
+    let resolveOldSave!: (value: unknown) => void;
+    saveDraft
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOldSave = resolve; }))
+      .mockResolvedValueOnce({ draft_id: "draft-fresh" });
+    await reachEvolutionStep();
+    clickSaveDraft();
+    fireEvent.click(document.querySelector(".ant-drawer-close") as HTMLElement);
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+    await reachEvolutionStep(false);
+    clickSaveDraft();
+    await waitFor(() => expect(document.querySelector("[data-mining-draft-note]")?.textContent).toContain("draft-fr"));
+    await act(async () => { resolveOldSave({ draft_id: "draft-old-123" }); });
+    expect(document.querySelector("[data-mining-draft-note]")?.textContent).toContain("draft-fr");
+    clickSaveDraft();
+    await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(3));
+    expect(saveDraft.mock.calls[2][0].draft_id).toBe("draft-fresh");
+  });
+
   it("失败时显示失败提示，不静默", async () => {
     saveDraft.mockRejectedValueOnce(new Error("boom"));
-    render(<MiningShell />);
-    gotoEvolutionStep();
+    await reachEvolutionStep();
     clickSaveDraft();
     await waitFor(() => {
       const note = document.querySelector("[data-mining-draft-note]");
       expect(note?.textContent ?? "").toContain("失败");
     });
+  });
+
+  it("同一会话重复确认提交只创建一个挖掘任务", async () => {
+    let resolveCreate!: (value: unknown) => void;
+    const createRun = vi.mocked(factorMiningApi.createRun);
+    createRun.mockReset();
+    createRun.mockImplementation(() => new Promise((resolve) => { resolveCreate = resolve as (value: unknown) => void; }));
+    await reachEvolutionStep();
+    confirmSubmit();
+    confirmSubmit();
+    expect(createRun).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveCreate({ run_id: "run-created" }); });
+  });
+
+  it("提交后关闭并新建，旧创建结果不能劫持新向导或写入最近任务", async () => {
+    let resolveOldCreate!: (value: unknown) => void;
+    vi.mocked(factorMiningApi.createRun).mockImplementation(() => new Promise((resolve) => { resolveOldCreate = resolve as (value: unknown) => void; }));
+    await reachEvolutionStep();
+    confirmSubmit();
+    fireEvent.click(document.querySelector(".ant-drawer-close") as HTMLElement);
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+    await act(async () => { resolveOldCreate({ run_id: "run-old-created" }); });
+    expect(document.querySelector('[data-mining-step-panel="pool"]')).toBeTruthy();
+    expect(document.querySelector("[data-run-track]")).toBeNull();
+    expect(window.localStorage.getItem("mining_last_run_id")).toBeNull();
   });
 });
 
@@ -272,6 +377,46 @@ describe("DEF-10/DEF-5：草稿载入与删除（草稿不再只写不读）", (
     ).toBeTruthy();
   });
 
+  it("完整草稿先复核时间预算，通过后手动继续且保留原快照、字段和进化参数", async () => {
+    const completeDraft = {
+      ...DRAFTS[0],
+      current_step: 4,
+      steps: {
+        ...DRAFTS[0].steps,
+        step2: { ...DRAFTS[0].steps.step2, start_date: "2021-01-01", end_date: "2026-06-30", data_cutoff_at: "2026-08-21", rebalance_frequency: "daily" },
+        step3: { selected_fields: ["close"] },
+        step4: { evolution_params: { population_size: 100, max_generations: 10, ai_enabled: false } },
+      },
+    };
+    vi.mocked(factorMiningApi.listDrafts).mockResolvedValue([completeDraft]);
+    saveDraft.mockResolvedValue({ draft_id: completeDraft.draft_id });
+    render(<MiningShell />);
+    await waitFor(() => expect(document.querySelector("[data-mining-task-edit]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-mining-task-edit]") as HTMLElement);
+    await waitFor(() => expect(document.querySelector('[data-mining-step-panel="time-target"]')).toBeTruthy());
+    expect((document.querySelector("[data-time-start]") as HTMLInputElement).value).toBe("2021-01-01");
+    await waitFor(() => expect((document.querySelector("[data-mining-next]") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(document.querySelector("[data-mining-next]") as HTMLElement);
+    await waitFor(() => {
+      const field = document.querySelector('[data-field-checkbox="close"]') as HTMLElement;
+      const checkbox = field?.matches("input") ? field : field?.querySelector("input");
+      expect((checkbox as HTMLInputElement)?.checked).toBe(true);
+    });
+    expect(document.querySelector("[data-mining-next]")).toBeDisabled();
+    fireEvent.click(document.querySelector("[data-field-start]") as HTMLElement);
+    await waitFor(() => expect(document.querySelector("[data-mining-next]")).toBeEnabled());
+    fireEvent.click(document.querySelector("[data-mining-next]") as HTMLElement);
+    clickSaveDraft();
+    await waitFor(() => expect(saveDraft).toHaveBeenCalledTimes(1));
+    expect(saveDraft.mock.calls[0][0]).toMatchObject({
+      draft_id: completeDraft.draft_id,
+      candidate_pool_snapshot_id: "snap-draft-1",
+      steps: { step3: { selected_fields: ["close"] }, step4: { evolution_params: { population_size: 100, max_generations: 10, ai_enabled: false } } },
+    });
+    const { createSnapshot } = await import("./wizard/step1/poolApi");
+    expect(createSnapshot).not.toHaveBeenCalled();
+  });
+
   it("删除草稿 → 调删除接口并从列表移除", async () => {
     render(<MiningShell />);
     fireEvent.click(document.querySelector("[data-mining-draft-open]") as HTMLElement);
@@ -287,5 +432,21 @@ describe("DEF-10/DEF-5：草稿载入与删除（草稿不再只写不读）", (
         document.querySelector('[data-mining-draft-item="draft-abcdef123456"]'),
       ).toBeNull();
     });
+  });
+
+  it("旧会话加载草稿列表失败时不把错误写入新会话", async () => {
+    let rejectOldLoad!: (reason: unknown) => void;
+    vi.mocked(factorMiningApi.listDrafts).mockImplementation((params) => params?.limit === 20
+      ? new Promise((_, reject) => { rejectOldLoad = reject; })
+      : Promise.resolve([]));
+    render(<MiningShell />);
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+    fireEvent.click(document.querySelector("[data-mining-draft-open]") as HTMLElement);
+    expect(document.querySelector("[data-mining-draft-loading]")).toBeTruthy();
+    fireEvent.click(document.querySelector(".ant-drawer-close") as HTMLElement);
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+    await act(async () => { rejectOldLoad(new Error("旧列表失败")); });
+    expect(document.querySelector("[data-mining-draft-note]")).toBeNull();
+    expect(document.querySelector("[data-mining-draft-list]")).toBeNull();
   });
 });

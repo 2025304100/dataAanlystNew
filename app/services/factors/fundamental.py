@@ -129,11 +129,12 @@ def normalize_financial_analysis_frame(
         "report_period": ("REPORT_DATE", "报告期", "报告日期"),
         "announcement_date": ("NOTICE_DATE", "公告日期", "最新公告日期"),
         "roe_ttm": ("ROEJQ", "ROE", "净资产收益率"),
-        "net_profit": ("PARENT_NETPROFIT", "净利润"),
-        "revenue": ("TOTAL_OPERATE_INCOME", "营业总收入"),
-        "net_profit_yoy": ("PARENT_NETPROFIT_YOY", "净利润同比"),
+        "net_profit": ("PARENT_NETPROFIT", "PARENTNETPROFIT", "净利润"),
+        "revenue": ("TOTAL_OPERATE_INCOME", "TOTALOPERATEREVE", "营业总收入"),
+        "net_profit_yoy": ("PARENT_NETPROFIT_YOY", "PARENTNETPROFITTZ", "净利润同比"),
         "revenue_yoy": (
             "TOTAL_OPERATE_INCOME_YOY",
+            "TOTALOPERATEREVETZ",
             "营业总收入同比",
         ),
     }

@@ -10,6 +10,7 @@
   - OUTBOX_EVENT_DISPATCHED        : 事务内 Outbox 分发结果
   - DATA_SOURCE_FAILOVER           : 数据集主备源切换（保留尝试链和实际命中源）
   - DATA_QUALITY_QUARANTINE        : 脏数据分区隔离/解除
+  - MARKET_BAR_CORRECTION          : 有来源证据的行情行纠错（与修正同事务）
 
 写入规则：
   - 任何写审计事件的入口必须在**同一 DB 事务**内落库，业务失败则一起回滚。
@@ -21,7 +22,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from sqlalchemy import (
     JSON,
@@ -50,57 +51,33 @@ AuditAction = Literal[
     "DATA_QUALITY_QUARANTINE",
     "G6_ROLLOUT_STARTED",
     "G6_ROLLOUT_ROLLED_BACK",
+    "FACTOR_DRAFT_SUBMITTED",
+    "FACTOR_DRAFT_APPROVED",
+    "FACTOR_DRAFT_REJECTED",
+    "FACTOR_VERSION_PROMOTED",
+    "MARKET_BAR_CORRECTION",
     "UNKNOWN_AUDIT_ACTION",
 ]
 
 
-ALLOWED_AUDIT_ACTIONS: frozenset[str] = frozenset({
-    "PORTFOLIO_CANDIDATE_SCD2_CHANGE",
-    "BENCHMARK_SOURCE_FAILOVER",
-    "AUTO_SIMULATION_RESULT",
-    "RECONCILIATION_RESULT",
-    "ILLEGAL_STATE_TRANSITION",
-    "FACTOR_USAGE_APPLIED",
-    "OUTBOX_EVENT_DISPATCHED",
-    "DATA_BLOCK_RESOLUTION",
-    "DATA_SOURCE_FAILOVER",
-    "DATA_QUALITY_QUARANTINE",
-    "G6_ROLLOUT_STARTED",
-    "G6_ROLLOUT_ROLLED_BACK",
-    "UNKNOWN_AUDIT_ACTION",
-})
+# Keep the public type, runtime validation, and metadata-first DB constraint
+# on one contract. Existing databases still require the Alembic migration.
+ALLOWED_AUDIT_ACTIONS: frozenset[str] = frozenset(get_args(AuditAction))
+_AUDIT_ACTION_CHECK_SQL = "action IN ({})".format(
+    ",".join("'{}'".format(action) for action in get_args(AuditAction))
+)
 
 
 # ──────────────────────────────────────────────────────────── ORM 模型
 class DataGovernanceAuditEvent(Base):
     __tablename__ = "data_governance_audit_events"
     __table_args__ = (
-        # ❗本清单必须与下方 `write_audit_event` 的 `allowed` 集合逐项同步。
         # SQLite 会真的执行这条 CHECK（P2-G 当时只改了 Python 白名单，导致
         # FACTOR_DRAFT_* 审计写入在 SQLite 上全部 IntegrityError；best-effort
         # 包裹又会让事务进 need-rollback，反向把 promote-to-factor 等接口打成 500）。
         # MySQL 5.7 则直接忽略 CHECK（只有代码白名单生效），两库行为差异就靠这条约束对齐。
         CheckConstraint(
-            "action IN ("
-            "'PORTFOLIO_CANDIDATE_SCD2_CHANGE',"
-            "'BENCHMARK_SOURCE_FAILOVER',"
-            "'AUTO_SIMULATION_RESULT',"
-            "'RECONCILIATION_RESULT',"
-            "'ILLEGAL_STATE_TRANSITION',"
-            "'FACTOR_USAGE_APPLIED',"
-            "'OUTBOX_EVENT_DISPATCHED',"
-            "'DATA_BLOCK_RESOLUTION',"
-            "'DATA_SOURCE_FAILOVER',"
-            "'DATA_QUALITY_QUARANTINE',"
-            "'G6_ROLLOUT_STARTED',"
-            "'G6_ROLLOUT_ROLLED_BACK',"
-            # ── P2-G 因子治理闭环（与 write_audit_event.allowed 同步）──
-            "'FACTOR_DRAFT_SUBMITTED',"
-            "'FACTOR_DRAFT_APPROVED',"
-            "'FACTOR_DRAFT_REJECTED',"
-            "'FACTOR_VERSION_PROMOTED',"
-            "'UNKNOWN_AUDIT_ACTION'"
-            ")",
+            _AUDIT_ACTION_CHECK_SQL,
             name="ck_dg_audit_action_values",
         ),
         Index("ix_dg_audit_portfolio_action_time", "portfolio_id", "action", "occurred_at"),
@@ -163,22 +140,7 @@ def write_audit_event(
 
     返回 (event_id, action)；event_id 在 flush 后才是有效值。
     """
-    allowed = {
-        "PORTFOLIO_CANDIDATE_SCD2_CHANGE", "BENCHMARK_SOURCE_FAILOVER",
-        "AUTO_SIMULATION_RESULT", "RECONCILIATION_RESULT",
-        "ILLEGAL_STATE_TRANSITION", "FACTOR_USAGE_APPLIED",
-        "OUTBOX_EVENT_DISPATCHED", "DATA_BLOCK_RESOLUTION",
-        "DATA_SOURCE_FAILOVER", "DATA_QUALITY_QUARANTINE",
-        "G6_ROLLOUT_STARTED", "G6_ROLLOUT_ROLLED_BACK",
-        # ── P2-G 因子治理审批闭环 ────────────────────────────
-        "FACTOR_DRAFT_SUBMITTED",        # 草稿提交（含外部模块 custom_indicators）
-        "FACTOR_DRAFT_APPROVED",         # 草稿审批通过（含 promote 成功→applied）
-        "FACTOR_DRAFT_REJECTED",         # 草稿驳回（必须附原因）
-        # ── P2-G 因子因子入库 ────────────────────────────────
-        "FACTOR_VERSION_PROMOTED",       # custom_indicator → FactorVersion 新入库
-        "UNKNOWN_AUDIT_ACTION",
-    }
-    if action not in allowed:
+    if action not in ALLOWED_AUDIT_ACTIONS:
         # fail-soft：非法值映射为 UNKNOWN_AUDIT_ACTION，原始 action 放到 attributes.original_action
         effective_action: str = "UNKNOWN_AUDIT_ACTION"
         extra_attr = {"original_action": str(action)}

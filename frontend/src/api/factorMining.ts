@@ -165,8 +165,10 @@ export const factorMiningApi = {
 
   // ── 切分预算（P1-9：后端 POST /factor-mining/split-budget，Step2 展示用）────
   computeSplitBudget: (payload: {
+    candidate_pool_snapshot_id?: string;
     start_date: string;
     end_date: string;
+    data_cutoff_at?: string;
     frequency: string;
     target_horizon: number;
     train_ratio: number;

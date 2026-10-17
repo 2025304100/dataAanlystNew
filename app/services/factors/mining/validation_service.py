@@ -234,6 +234,14 @@ def _default_field_checker(shard: ValidationShard, ctx: Mapping[str, Any]) -> di
             out["physical_table"] = resolved["physical_table"]
         return out
 
+    config = ctx.get("config") or {}
+    scope_keys = ("candidate_pool_snapshot_id", "start_date", "end_date", "data_cutoff_at")
+    if any(config.get(key) is not None for key in scope_keys):
+        if not all(config.get(key) for key in scope_keys):
+            return {"verdict": VERDICT_BLOCK, "coverage": 0.0,
+                "reason_zh": "缺少冻结候选池或时间范围，请返回前两步补全后重新校验。"}
+        return _check_scoped_panel(shard, ctx, resolved)
+
     warehouse = ctx.get("warehouse") or pool_rules._default_warehouse(ctx.get("db"))
     table = str(resolved["physical_table"])
     col = str(resolved["physical_column"])
@@ -263,6 +271,76 @@ def _default_field_checker(shard: ValidationShard, ctx: Mapping[str, Any]) -> di
         "min_date": str(min_d) if min_d else None,
         "max_date": str(max_d) if max_d else None,
     }
+
+
+def _check_scoped_panel(shard, ctx, resolved):
+    import numpy as np
+    import pandas as pd
+    from app.core.config import Settings
+    from app.services.factors.factor_compiler import compile_formula
+    from app.services.factors.factor_executor import FactorExecutor
+    from app.services.factors.mining.data_scope import scoped_target_preview
+    from app.services.factors.store import FactorWarehouse
+
+    cfg = ctx["config"]
+    wh = ctx.get("warehouse") or FactorWarehouse(str(cfg.get("warehouse_path") or Settings().factor_warehouse_path))
+    if "scoped_targets" not in ctx:
+        ctx["scoped_targets"] = scoped_target_preview(ctx.get("db"), wh,
+            snapshot_id=cfg["candidate_pool_snapshot_id"], start_date=cfg["start_date"],
+            end_date=cfg["end_date"], data_cutoff_at=cfg["data_cutoff_at"],
+            target_horizon=int(cfg.get("target_horizon", 5)),
+            frequency=str(cfg.get("rebalance_frequency") or "daily"))
+    symbols, targets = ctx["scoped_targets"]
+    base = {"physical_table": resolved["physical_table"],
+        "physical_column": resolved["physical_column"], "derived_from": resolved.get("derived_from"),
+        "scope": "frozen_pool", "candidate_symbol_count": len(symbols)}
+    if targets.empty:
+        return {**base, "verdict": VERDICT_BLOCK, "coverage": 0.0,
+            "total_rows": 0, "non_null_rows": 0,
+            "reason_zh": "本候选池在冻结范围内没有可评价的成熟标签，请检查行情、持有期和时间范围。"}
+    compiled = compile_formula(formula=shard.field, params=None)
+    if not compiled.success or compiled.execution_plan is None:
+        return {**base, "verdict": VERDICT_BLOCK, "coverage": 0.0,
+            "reason_zh": "该字段无法作为公式输入，请重新选择字段。"}
+    outcome = FactorExecutor(wh).execute_panel(compiled.execution_plan,
+        start_date=min(targets["signal_date"]), end_date=max(targets["signal_date"]), symbols=symbols)
+    if outcome.read_errors:
+        return {**base, "verdict": VERDICT_BLOCK, "coverage": 0.0,
+            "reason_zh": "本候选池字段面板读取失败，请检查数据后重新校验。"}
+    required = pd.MultiIndex.from_frame(targets[["signal_date", "symbol"]])
+    frame = outcome.factors_long.copy()
+    if frame.empty:
+        values = pd.Series(index=required, dtype=float)
+    else:
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.date
+        values = frame.drop_duplicates(["trade_date", "symbol"]).set_index(["trade_date", "symbol"])["raw_value"].reindex(required)
+    finite = np.isfinite(pd.to_numeric(values, errors="coerce"))
+    total, nonnull = len(required), int(finite.sum())
+    coverage = nonnull / total if total else 0.0
+    dates = [idx[0] for idx, valid in zip(required, finite) if valid]
+    verdict = VERDICT_BLOCK if nonnull == 0 else (VERDICT_WARN if coverage < WARN_COVERAGE else VERDICT_PASS)
+    return {**base, "verdict": verdict, "coverage": round(coverage, 6),
+        "total_rows": total, "non_null_rows": nonnull,
+        "min_date": str(min(dates)) if dates else None, "max_date": str(max(dates)) if dates else None,
+        "reason_zh": ("冻结候选池与时间范围内该字段没有有效值，请重新选择字段或补齐数据。"
+            if nonnull == 0 else ("冻结范围内字段覆盖率低于 80%。" if coverage < WARN_COVERAGE else None))}
+
+
+def check_fields(db, *, config, fields, warehouse=None):
+    """Read-only field preflight shared by submission and asynchronous validation."""
+    ctx = {"db": db, "warehouse": warehouse, "config": config}
+    shards = build_shards(fields)
+    failures = []
+    for shard in shards:
+        try:
+            shard.result = _default_field_checker(shard, ctx)
+            shard.status = SHARD_DONE
+        except Exception as exc:
+            shard.status = SHARD_FAILED
+            shard.error = f"{type(exc).__name__}: {exc}"[:500]
+            failures.append(shard.key())
+    verdict, summary = _summarize(shards, failures)
+    return {"verdict": verdict, "summary_zh": summary, "shards": [s.to_dict() for s in shards]}
 
 
 # ══════════════════════════════════════════════════════════
@@ -307,6 +385,8 @@ def create_or_reuse_validation(
     if not fields:
         raise ValueError("fields 不能为空（至少勾选一个字段）。")
 
+    config = {**dict(config or {}), "selected_fields": sorted(
+        f if isinstance(f, str) else str(f.get("field")) for f in fields)}
     config_hash = compute_config_hash(config)
     shards = build_shards(fields)
 
@@ -387,7 +467,7 @@ def run_validation_worker(
         done_keys = {k for k, v in (recovery.get("shards") or {}).items()
                      if v.get("status") == SHARD_DONE}
 
-        ctx = {"db": db, "warehouse": warehouse}
+        ctx = {"db": db, "warehouse": warehouse, "config": payload.get("config") or {}}
         failures: list[str] = []
         for idx, shard in enumerate(shards):
             db.expire_all()

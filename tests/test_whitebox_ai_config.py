@@ -11,6 +11,12 @@ from app.api.routes import ai_config
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.fixture(autouse=True)
+def isolated_config_file(tmp_path, monkeypatch):
+    # Even pure provider helpers must never read a developer's saved secrets.
+    monkeypatch.setattr(ai_config, "AI_CONFIG_PATH", tmp_path / "ai_config.json")
+
+
 def test_ai_config_persists_masks_and_preserves_secret(tmp_path, monkeypatch):
     config_path = tmp_path / "ai_config.json"
     monkeypatch.setattr(ai_config, "AI_CONFIG_PATH", config_path)

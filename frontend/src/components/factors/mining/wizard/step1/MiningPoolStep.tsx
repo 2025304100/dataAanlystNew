@@ -88,6 +88,20 @@ export default function MiningPoolStep({
   const controlsLocked = locked || readOnly || Boolean(initialSnapshotId);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRequestRef = useRef(0);
+  const membersRequestRef = useRef(0);
+  const aliveRef = useRef(true);
+  const operationRef = useRef(0);
+  const contextRef = useRef({ poolId, initialSnapshotId, readOnly });
+  contextRef.current = { poolId, initialSnapshotId, readOnly };
+  const beginOperation = () => {
+    const request = ++operationRef.current;
+    const context = contextRef.current;
+    return (createdPoolId?: string) => aliveRef.current && request === operationRef.current &&
+      contextRef.current.initialSnapshotId === context.initialSnapshotId &&
+      contextRef.current.readOnly === context.readOnly &&
+      (contextRef.current.poolId === context.poolId || contextRef.current.poolId === createdPoolId);
+  };
   // P0-4：blocked 以 `can_generate` 为准（后端已综合命中/覆盖/范围冲突等全部阻断），
   // 并叠加 hits<50 兜底（系统硬下限，前端不得降低）。
   const blocked = Boolean(preview && (!preview.can_generate || preview.hits < MIN_POOL_SIZE));
@@ -101,47 +115,58 @@ export default function MiningPoolStep({
   // ── 防抖预览（仅展示，不落库）─────────────────────────────────────
   // DEF-4：loading 在**发起时刻**点亮；返回后保留上一次结果并标「待更新」，
   // 失败显式展示「加载失败·重试」而不是把统计区清空。
-  const requestPreview = useCallback((config: Record<string, unknown>) => {
+  const requestPreview = useCallback((config: Record<string, unknown>, delay = DEBOUNCE_MS) => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    const request = ++previewRequestRef.current;
+    // 条件一变就进入待更新态，防抖窗口内也不能拿旧预览放行生成。
+    setPreviewLoading(true);
+    setPreviewFailed(false);
     timerRef.current = setTimeout(() => {
-      setPreviewLoading(true);
       void previewPool(config)
         .then((result) => {
+          if (request !== previewRequestRef.current) return;
           setPreview(result);
           setPreviewFailed(false);
         })
-        .catch(() => setPreviewFailed(true))
-        .finally(() => setPreviewLoading(false));
-    }, DEBOUNCE_MS);
+        .catch(() => { if (request === previewRequestRef.current) setPreviewFailed(true); })
+        .finally(() => { if (request === previewRequestRef.current) setPreviewLoading(false); });
+    }, delay);
   }, []);
 
   const retryPreview = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setPreviewLoading(true);
-    void previewPool(filterConfig)
-      .then((result) => {
-        setPreview(result);
-        setPreviewFailed(false);
-      })
-      .catch(() => setPreviewFailed(true))
-      .finally(() => setPreviewLoading(false));
-  }, [filterConfig]);
+    requestPreview(filterConfig, 0);
+  }, [filterConfig, requestPreview]);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      operationRef.current += 1;
+      previewRequestRef.current += 1;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
   // DEF-4/VIS-2：进入筛选入口即自动触发**首次预览**（空条件 = 全市场命中
   // 基线）。此前预览只在条件变化后才有，「生成」按钮在首改条件前永远
   // 可点击 → 空条件静默创建全市场同名池；改成门控后又会让按钮永远置灰。
   // 自动首查让「生成可用性」与预览结果真正联动，且 300ms 后就有反馈。
-  const bootPreviewRef = useRef(false);
+  //
+  // ⚠️ StrictMode 兼容（2026-10-14 修复）：本 effect 曾用 `bootPreviewRef`
+  // 守卫「只首查一次」，但开发模式 StrictMode 双调 effect 时——首次调用
+  // 设好 300ms 定时器 → 模拟卸载的 cleanup 把定时器清掉 → 二次调用又被
+  // 守卫挡回 → **首查永远不发**（生产构建无 StrictMode 双调才正常）。
+  // 改为依赖 `initialSnapshotId/readOnly` 做天然守卫：快照锁定/只读回显时
+  // 条件已定型，不自动查；解锁后可改条件时再查，与产品意图一致。
   useEffect(() => {
-    if (bootPreviewRef.current) return;
-    if (initialSnapshotId || readOnly) return;
-    bootPreviewRef.current = true;
+    if (initialSnapshotId || readOnly) {
+      previewRequestRef.current += 1;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setPreviewLoading(false);
+      return;
+    }
     requestPreview(filterConfig);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时首查一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载/解锁态变化时首查
   }, [requestPreview, initialSnapshotId, readOnly]);
 
   useEffect(() => {
@@ -170,13 +195,18 @@ export default function MiningPoolStep({
   // ── 成员列表（池已存在时拉取；锁定态仍可查看，只是不能改）─────────
   useEffect(() => {
     if (!poolId || initialSnapshotId) return;
+    let alive = true;
+    const request = ++membersRequestRef.current;
     void fetchMembers(poolId, { page: 1, page_size: 20 })
-      .then((page) => setMembers(page?.items ?? []))
-      .catch(() => setMembers([]));
+      .then((page) => { if (alive && request === membersRequestRef.current) setMembers(page?.items ?? []); })
+      .catch(() => { if (alive && request === membersRequestRef.current) setMembers([]); });
+    return () => { alive = false; };
   }, [poolId, initialSnapshotId]);
 
   const onFilterChange = (next: Record<string, unknown>) => {
     if (controlsLocked) return;
+    operationRef.current += 1;
+    setGenerating(false);
     setFilterConfig(next);
     requestPreview(next);
   };
@@ -188,10 +218,20 @@ export default function MiningPoolStep({
   };
 
   const doSwitch = () => {
+    operationRef.current += 1;
+    setGenerating(false);
+    setImportBusy(false);
+    setImportFile(null);
+    setImportResult(null);
+    setImportError(null);
+    previewRequestRef.current += 1;
+    if (timerRef.current) clearTimeout(timerRef.current);
     if (pendingEntry) setEntry(pendingEntry);
     setPendingEntry(null);
     setFilterConfig({});
     setPreview(null);
+    setPreviewLoading(false);
+    setPreviewFailed(false);
     // DEF-4：切回筛选入口后自动重查（配置已清空 = 全市场基线），
     // 保证「生成」按钮的可用性始终有预览结果背书。
     if (pendingEntry === "filter") requestPreview({});
@@ -208,22 +248,27 @@ export default function MiningPoolStep({
       return;
     }
     if (readOnly) return;
+    const isCurrent = beginOperation();
     setGenerating(true);
+    let pid = poolId;
     try {
-      let pid = poolId;
       if (!pid) {
         const pool = await createPoolFromFilter({
           name: "因子挖掘候选池",
           filter_config: filterConfig,
         });
         pid = pool.id;
+        if (!isCurrent(pid)) return;
         onPoolCreated?.(pool.id);
       }
+      if (!isCurrent(pid)) return;
       const snap = await createSnapshot(pid, { analyze: true });
+      if (!isCurrent(pid)) return;
       setSnapshot(snap);
       setLocked(Boolean(snap?.is_locked));
       onSnapshot?.(snap);
     } catch (e) {
+      if (!isCurrent(pid)) return;
       // 结构化阻断（后端 4xx 带 detail.error_code/detail_zh）落到预览阻断区展示
       const detail = (e as { detail?: unknown })?.detail;
       const err =
@@ -248,12 +293,13 @@ export default function MiningPoolStep({
         );
       }
     } finally {
-      setGenerating(false);
+      if (isCurrent(pid)) setGenerating(false);
     }
   };
 
   const onReselectConfirmed = async () => {
     if (readOnly) return;
+    const isCurrent = beginOperation();
     if (initialSnapshotId) {
       // Detach this draft. Deleting the source snapshot would damage the
       // provenance of completed tasks that still reference it.
@@ -265,6 +311,7 @@ export default function MiningPoolStep({
     } else {
       await deleteLatestSnapshot(poolId).catch(() => undefined);
     }
+    if (!isCurrent()) return;
     setSnapshotError(null);
     setSnapshotLoading(false);
     setLocked(false);
@@ -275,9 +322,12 @@ export default function MiningPoolStep({
   };
 
   const onDeleteConfirmed = async () => {
+    if (controlsLocked) return;
+    const isCurrent = beginOperation();
     if (selected.length > 0) {
       await removeMembers(poolId, selected).catch(() => undefined);
     }
+    if (!isCurrent()) return;
     setSelected([]);
     setConfirmDelete(false);
   };
@@ -296,14 +346,18 @@ export default function MiningPoolStep({
   };
 
   const handleImportFile = async (file: File) => {
+    if (controlsLocked) return;
+    const isCurrent = beginOperation();
     setImportFile(file);
     setImportError(null);
     setImportResult(null);
     setImportBusy(true);
     try {
       const res = await previewImport(file);
+      if (!isCurrent()) return;
       setImportResult(res);
     } catch (e) {
+      if (!isCurrent()) return;
       const detail = (e as { detail?: unknown })?.detail;
       setImportError(
         detail != null && typeof detail === "object"
@@ -311,16 +365,17 @@ export default function MiningPoolStep({
           : t("miningPoolImportFailed"),
       );
     } finally {
-      setImportBusy(false);
+      if (isCurrent()) setImportBusy(false);
     }
   };
 
   const handleConfirmImport = async () => {
-    if (!importFile) return;
+    if (!importFile || controlsLocked || importBusy) return;
+    const isCurrent = beginOperation();
     setImportBusy(true);
     setImportError(null);
+    let pid = poolId;
     try {
-      let pid = poolId;
       if (!pid) {
         // 后端 create_pool 对 source_type=import 强制要求 import_batch_id（取预览结果）
         const pool = await createPool({
@@ -329,14 +384,19 @@ export default function MiningPoolStep({
           import_batch_id: importResult?.import_batch_id ?? null,
         });
         pid = pool.id;
+        if (!isCurrent(pid)) return;
         onPoolCreated?.(pool.id);
       }
+      if (!isCurrent(pid)) return;
       const res = await importPoolMembers(pid, importFile, importResult?.import_batch_id);
+      if (!isCurrent(pid)) return;
       setImportResult(res);
       // 入池成功后刷新成员（新池时 pid 在本组件内未更新，需主动拉一次）
+      const request = ++membersRequestRef.current;
       const page = await fetchMembers(pid, { page: 1, page_size: 20 }).catch(() => null);
-      if (page) setMembers(page?.items ?? []);
+      if (isCurrent(pid) && request === membersRequestRef.current && page) setMembers(page?.items ?? []);
     } catch (e) {
+      if (!isCurrent(pid)) return;
       const detail = (e as { detail?: unknown })?.detail;
       setImportError(
         detail != null && typeof detail === "object"
@@ -344,7 +404,7 @@ export default function MiningPoolStep({
           : t("miningPoolImportFailed"),
       );
     } finally {
-      setImportBusy(false);
+      if (isCurrent(pid)) setImportBusy(false);
     }
   };
 

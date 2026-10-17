@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Alert, Button, Tag } from "antd";
+import { Alert, Button, Tag, Tooltip } from "antd";
 import { ArrowLeftOutlined, DatabaseOutlined, ReloadOutlined } from "@ant-design/icons";
 import ExternalDataSync from "../ExternalDataSync";
+import { t } from "../../i18n";
 import "./FactorPipelinePrepareStep.css";
 
 const INPUT_DRAFT_STORAGE_KEY = "factor-pipeline:inputs:v1";
@@ -102,7 +103,7 @@ export default function FactorPipelinePrepareStep({
           {onCoverage && <Button size="small" type="link" disabled={!known || busy} onClick={onCoverage}>查看覆盖诊断</Button>}
         </div>
         <div className="factor-prepare-status-item">
-          <dt>最新交易日</dt>
+          <dt><Tooltip title={t("factorCoverageLatestRecordHelp")}>最新交易日</Tooltip></dt>
           <dd className="factor-prepare-metric">{known ? latestDate || "尚无交易日记录" : pendingLabel}</dd>
         </div>
       </dl>

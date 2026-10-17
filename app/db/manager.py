@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import contextmanager
 from typing import ClassVar
 
 from sqlalchemy import create_engine, event
@@ -27,6 +28,7 @@ class DatabaseManager:
         self._engine: Engine | None = None
         self._session_factory: sessionmaker | None = None
         self._db_type: str = "sqlite"  # "sqlite" | "mysql"
+        self._configuration_transaction = False
 
     @classmethod
     def get(cls) -> DatabaseManager:
@@ -52,7 +54,7 @@ class DatabaseManager:
         """
         with self._lock:
             # 关闭旧连接池
-            if self._engine is not None:
+            if self._engine is not None and not self._configuration_transaction:
                 try:
                     self._engine.dispose()
                 except Exception:
@@ -115,6 +117,30 @@ class DatabaseManager:
                 future=True,
             )
             self._db_type = db_type
+            from app.db.session import reset_control_plane_cache
+            reset_control_plane_cache()
+
+    @contextmanager
+    def configuration_transaction(self):
+        """Keep the previous database usable until schema and config commit succeed."""
+        with self._lock:
+            previous = (self._engine, self._session_factory, self._db_type)
+            self._configuration_transaction = True
+            try:
+                yield
+            except BaseException:
+                rejected_engine = self._engine
+                self._engine, self._session_factory, self._db_type = previous
+                from app.db.session import reset_control_plane_cache
+                reset_control_plane_cache()
+                if rejected_engine is not None and rejected_engine is not previous[0]:
+                    rejected_engine.dispose()
+                raise
+            else:
+                if previous[0] is not None and previous[0] is not self._engine:
+                    previous[0].dispose()
+            finally:
+                self._configuration_transaction = False
 
     # ── 属性 ──────────────────────────────────────────────
 

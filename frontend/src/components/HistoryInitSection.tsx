@@ -49,6 +49,7 @@ const HISTORY_STATUS_I18N: Record<string, string> = {
   idle: "histStatusIdle",
   running: "histStatusRunning",
   completed: "histStatusCompleted",
+  partial: "histStatusPartial",
   failed: "histStatusFailed",
   cancelled: "histStatusCancelled",
 };
@@ -57,6 +58,7 @@ const HISTORY_STATUS_COLORS: Record<string, string> = {
   idle: "default",
   running: "blue",
   completed: "green",
+  partial: "orange",
   failed: "red",
   cancelled: "orange",
 };
@@ -403,7 +405,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
 
   const recentRuns = historyTask?.recent_runs ?? [];
   const lastDuration = formatDuration(deriveDurationSeconds(latestRun));
-  const latestFailure = latestRun?.status === "failed" || latestRun?.status === "cancelled" ? latestRun.message : null;
+  const latestFailure = latestRun?.status === "failed" || latestRun?.status === "partial" || latestRun?.status === "cancelled" ? latestRun.message : null;
   const isRunning = historyTask?.status === "running";
   const scopedLookupKey = useMemo(() => {
     const ids = new Set<number>();
@@ -481,6 +483,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         <div className="history-init-stage__head">
           <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <strong>{stageLabel(stage.key)}</strong>
+            {(stage.status === "partial" || stage.status === "failed") && <Tag color={HISTORY_STATUS_COLORS[stage.status]}>{statusLabel(stage.status)}</Tag>}
             {isSkippedStage(stage) ? <Tag>{t("histStageSkipped")}</Tag> : null}
           </span>
           <span>
@@ -493,7 +496,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
                   : t("histStageWaiting")}
           </span>
         </div>
-        <Progress percent={percent} size="small" status={progressStatus as any} showInfo={false} />
+            <Progress percent={percent} size="small" status={progressStatus as any} strokeColor={stage.status === "partial" ? "#faad14" : undefined} showInfo={false} />
         {stage.message && <div className="history-init-stage__message">{stage.message}</div>}
       </div>
     );
@@ -567,8 +570,8 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           <span><Tag color={repairModeColor(run.repair_mode)}>{repairModeLabel(run.repair_mode)}</Tag></span>
           {runScopeLabel && <span>{template("histScopeCurrentSymbol", { symbol: runScopeLabel })}</span>}
         </div>
-        {run.message && (run.status === "failed" || run.status === "cancelled") && (
-          <div className="history-run-item__message" style={{ color: "#cf1322" }}>{run.message}</div>
+        {run.message && (run.status === "failed" || run.status === "partial" || run.status === "cancelled") && (
+          <div className="history-run-item__message" style={{ color: run.status === "partial" ? "#d48806" : "#cf1322" }}>{run.message}</div>
         )}
         {expanded && (
           <div className="history-run-item__details" style={{ marginTop: 12, padding: "12px 16px", background: "#fafafa", borderRadius: 6 }}>
@@ -801,7 +804,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         )}
 
         {latestFailure && (
-          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t("histLastFailed")} description={latestFailure} />
+          <Alert type={latestRun?.status === "partial" ? "warning" : "error"} showIcon style={{ marginBottom: 16 }} message={t(latestRun?.status === "partial" ? "histStatusPartial" : "histLastFailed")} description={latestFailure} />
         )}
 
         {historyTask && historyTask.status !== "idle" && (
@@ -813,7 +816,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
               </div>
               <span>{historyTask.progress_pct}%</span>
             </div>
-            <Progress percent={historyTask.progress_pct} status={historyTask.status === "failed" || historyTask.status === "cancelled" ? "exception" : historyTask.status === "completed" ? "success" : "active"} />
+            <Progress percent={historyTask.progress_pct} strokeColor={historyTask.status === "partial" ? "#faad14" : undefined} status={historyTask.status === "failed" || historyTask.status === "cancelled" ? "exception" : historyTask.status === "partial" ? "normal" : historyTask.status === "completed" ? "success" : "active"} />
             {historyTask.message && <div className="history-init-status-text">{historyTask.message}</div>}
             <div className="item-subline" style={{ marginTop: 6 }}>{repairModeHint(historyTask.repair_mode)}</div>
 

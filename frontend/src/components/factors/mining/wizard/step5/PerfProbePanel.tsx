@@ -143,7 +143,7 @@ export default function PerfProbePanel({ generations }: PerfProbePanelProps) {
                   ) : (
                     <span
                       className="mining-perf-cache-fail"
-                      title={`${t("miningProbeCacheFailed")} (max_diff=${g.cache_validation_max_diff ?? "-"})`}
+                      title={`${t("miningProbeCacheFailed")} (${t("miningProbeMaxDiff")}: ${g.cache_validation_max_diff ?? "-"})`}
                     >
                       ❌
                     </span>

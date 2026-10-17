@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AutoComplete, Button, Collapse, Form, Input, InputNumber, Select, Switch, Tag, Tooltip, message } from "antd";
 import { CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, RobotOutlined, SyncOutlined } from "@ant-design/icons";
 import { t } from "../i18n";
 import { api } from "../api/client";
-import type { AiConfigUpdate, AiModelInfo } from "../api/client";
+import type { AiConfigUpdate, AiConnectionTest, AiModelInfo } from "../api/client";
 
 const PROVIDER_PRESETS: Record<string, Partial<AiConfigUpdate>> = {
   openai_compatible: {
@@ -48,18 +48,39 @@ export default function AiConfigSection() {
   const [modelSearch, setModelSearch] = useState("");
   const [persisted, setPersisted] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [connectionTest, setConnectionTest] = useState<AiConnectionTest>({ status: "untested", tested_at: null });
+  const [dirty, setDirty] = useState(false);
+  const mounted = useRef(true);
+  const formRevision = useRef(0);
+  const loadRequest = useRef(0);
+  const testRequest = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; loadRequest.current += 1; testRequest.current += 1; };
+  }, []);
+  const markChanged = useCallback(() => {
+    formRevision.current += 1;
+    setDirty(true);
+    setTestResult(null);
+  }, []);
   const serviceUrl = Form.useWatch("service_url", form) || "";
   const watchedApiKey = Form.useWatch("api_key", form) || "";
-  const authType = Form.useWatch("auth_type", form) || "bearer";
+  const authType = Form.useWatch("auth_type", { form, preserve: true }) || "bearer";
   const canSubmit = Boolean(serviceUrl) && (authType === "none" || Boolean(watchedApiKey));
 
   const loadConfig = useCallback(async () => {
+    const request = ++loadRequest.current;
+    const revision = formRevision.current;
+    const isCurrent = () => mounted.current && request === loadRequest.current && revision === formRevision.current;
     setLoading(true);
     try {
       const cfg = await api.getAiConfig();
+      if (!isCurrent()) return;
       setEnabled(cfg.enabled);
       setPersisted(cfg.persisted);
       setUpdatedAt(cfg.updated_at || null);
+      setConnectionTest(cfg.connection_test ?? { status: "untested", tested_at: null });
+      setDirty(false);
       form.setFieldsValue({
         provider: cfg.provider,
         service_url: cfg.service_url,
@@ -87,9 +108,9 @@ export default function AiConfigSection() {
         });
       }
     } catch (error: any) {
-      message.error(error?.message || t("aiConfigLoadFailed"));
+      if (isCurrent()) message.error(error?.message || t("aiConfigLoadFailed"));
     } finally {
-      setLoading(false);
+      if (mounted.current && request === loadRequest.current) setLoading(false);
     }
   }, [form]);
 
@@ -115,10 +136,11 @@ export default function AiConfigSection() {
   }, [enabled, form]);
 
   const handleProviderChange = useCallback((provider: string) => {
+    markChanged();
     form.setFieldsValue({ provider, ...PROVIDER_PRESETS[provider] });
     setModels([]);
     setTestResult(null);
-  }, [form]);
+  }, [form, markChanged]);
 
   const fetchModels = useCallback(async () => {
     if (!canSubmit) {
@@ -142,37 +164,47 @@ export default function AiConfigSection() {
   }, [buildPayload, canSubmit]);
 
   const handleSave = async () => {
+    const revision = formRevision.current;
+    const isCurrent = () => mounted.current && revision === formRevision.current;
     try {
       await form.validateFields();
       const values = buildPayload();
       setSaving(true);
       setTestResult(null);
       await api.updateAiConfig(values);
-      await loadConfig();
-      message.success(t("aiConfigSaved"));
+      if (isCurrent()) {
+        await loadConfig();
+        if (isCurrent()) message.success(t("aiConfigSaved"));
+      }
     } catch (error: any) {
-      message.error(error?.message || t("aiConfigSaveFailed"));
+      if (isCurrent()) message.error(error?.message || t("aiConfigSaveFailed"));
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   };
 
   const handleTest = async () => {
+    const request = ++testRequest.current;
+    const revision = formRevision.current;
+    const isCurrent = () => mounted.current && request === testRequest.current && revision === formRevision.current;
     try {
       setTesting(true);
       setTestResult(null);
       const result = await api.testAiConnection(buildPayload());
+      if (!isCurrent()) return;
       setTestResult(result);
+      setConnectionTest(result.connection_test ?? { status: "untested", tested_at: null });
       if (result.success) {
         message.success(t("aiTestSuccess"));
       } else {
         message.warning(result.message);
       }
     } catch (error: any) {
+      if (!isCurrent()) return;
       setTestResult({ success: false, message: error?.message || t("aiTestFailed") });
       message.error(error?.message || t("aiTestFailed"));
     } finally {
-      setTesting(false);
+      if (mounted.current && request === testRequest.current) setTesting(false);
     }
   };
 
@@ -180,6 +212,9 @@ export default function AiConfigSection() {
     label: m.owned_by ? `${m.id} (${m.owned_by})` : m.id,
     value: m.id,
   }));
+  const testStatusKey = dirty
+    ? testResult?.success && connectionTest.status === "passed" ? "aiConnectionTestUnsavedPassed" : "aiConnectionTestChanged"
+    : ({ passed: "aiConnectionTestPassed", failed: "aiConnectionTestFailed", expired: "aiConnectionTestExpired", untested: "aiConnectionTestUntested" }[connectionTest.status] || "aiConnectionTestUntested");
 
   return (
     <div className="settings-db-section">
@@ -210,7 +245,11 @@ export default function AiConfigSection() {
           />
         )}
 
-        <Form layout="vertical" form={form}>
+        <Alert type={!dirty && connectionTest.status === "passed" ? "success" : "warning"} showIcon
+          message={t(testStatusKey)} description={connectionTest.tested_at ? `${t("aiConnectionTestAt")}: ${new Date(connectionTest.tested_at).toLocaleString()}` : undefined}
+          style={{ marginBottom: 20 }} />
+
+        <Form layout="vertical" form={form} onValuesChange={markChanged}>
           <Form.Item label={t("aiProvider")} name="provider" initialValue="openai_compatible">
             <Select
               onChange={handleProviderChange}
@@ -310,14 +349,14 @@ export default function AiConfigSection() {
 
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 14 }}>{t("aiEnableSwitch")}:</span>
-            <Switch checked={enabled} onChange={setEnabled} />
+            <Switch checked={enabled} onChange={(value) => { markChanged(); setEnabled(value); }} />
             <span style={{ fontSize: 13, color: enabled ? "#0f766e" : "#9ca3af" }}>
               {enabled ? t("aiEnabled") : t("aiDisabled")}
             </span>
           </div>
 
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 20 }}>
-            <Button type="default" loading={testing} onClick={handleTest} icon={<SyncOutlined />}>
+            <Button type="default" disabled={!canSubmit || loading || saving} loading={testing} onClick={handleTest} icon={<SyncOutlined />}>
               {t("aiTestConn")}
             </Button>
             {testResult && (

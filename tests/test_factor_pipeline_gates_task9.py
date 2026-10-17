@@ -98,10 +98,10 @@ def _seed_factor_set(
         fv = FactorVersion(
             factor_id=int(factor.id),
             version=1,
-            formula_expr=f"1 as {factor_code}",
+            formula_expr="close",
             params_json="{}",
             direction="higher_better",
-            source_mapping_json="{}",
+            source_mapping_json='{"table":"raw_daily_bars","field":"close"}',
             is_latest=1,
             validation_status=version_status,
             created_by="t9_fixture",

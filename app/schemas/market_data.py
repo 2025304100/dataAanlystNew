@@ -66,8 +66,8 @@ class MarketDataBatchRepairRequest(BaseModel):
 
 
 HistoryInitializationPreset = Literal["1m", "1q", "1y", "3y"]
-HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
-HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed", "cancelled"]
+HistoryInitializationStageStatus = Literal["pending", "running", "completed", "partial", "failed", "cancelled"]
+HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "partial", "failed", "cancelled"]
 HistoryInitializationRepairMode = Literal["both", "bars", "scores"]
 HistoryInitializationSymbolSource = Literal[
     "all",          # 全部 is_active=1（默认）

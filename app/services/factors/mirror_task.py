@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 #: 异步任务类型
 TASK_TYPE = "data_mirror"
 
+# A single yearly chunk can exceed the task/lock expiry thresholds. Keep both
+# heartbeats alive independently of supplier progress callbacks.
+TASK_HEARTBEAT_SECONDS = 15.0
+
 #: 范围预设（向导 §10.1）
 RANGE_PRESETS: dict[str, dict[str, Any]] = {
     "5y": {"label_zh": "5 年（默认）", "start": date(2021, 1, 1)},
@@ -232,7 +236,8 @@ def create_mirror_task(
 
         # 持有 duckdb_write（peek 后仍可能被抢 → 竞态兜底：标 failed 留痕）
         try:
-            TL.acquire_write_slot(db, task_id=task.id, run_id=task.id)
+            TL.acquire_write_slot(db, task_id=task.id, run_id=task.id,
+                                  allow_queue=False)
         except Exception as exc:
             _set_task(db, task.id, status="failed", stage="rejected",
                       message=f"DUCKDB_WRITE_BUSY(race): {exc}",
@@ -279,6 +284,7 @@ def run_mirror_worker(task_id: str, *, mirror_func: MirrorFunc | None = None) ->
 
     db = get_session_local()()
     stop_event = threading.Event()
+    heartbeat_thread: threading.Thread | None = None
     try:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status in ("cancelled", "done"):
@@ -292,6 +298,8 @@ def run_mirror_worker(task_id: str, *, mirror_func: MirrorFunc | None = None) ->
         TSM.transition(task_id, "running", db=db)
         _set_task(db, task_id, status="running", stage="mirroring",
                   message=f"0/{len(chunks)} chunks", started_at=_now())
+        _heartbeat_mirror(task_id)
+        heartbeat_thread = _start_heartbeat_pump(task_id, stop_event)
 
         recovery = json.loads(task.batch_recovery_json) if task.batch_recovery_json else {}
         done_chunks = {tuple(c) for c in (recovery.get("completed_chunks") or [])}
@@ -389,12 +397,39 @@ def run_mirror_worker(task_id: str, *, mirror_func: MirrorFunc | None = None) ->
         )
     finally:
         stop_event.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=5)
         # 🚨 镜像持有 duckdb_write（任务卡硬规则）—— 任何出口都必须释放
         try:
             _release_write_lock(task_id)
         except Exception:  # noqa: BLE001 - 释放失败只记日志，不掩盖主流程
             logger.exception("release duckdb_write failed for %s", task_id)
         db.close()
+
+
+def _heartbeat_mirror(task_id: str) -> None:
+    from app.db.session import get_session_local
+
+    with get_session_local()() as db:
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is not None and task.status == "running":
+            TSM.update_heartbeat(task_id, db=db)
+            TL.heartbeat(db, lock_key=TL.LOCK_DUCKDB_WRITE, task_id=task_id)
+
+
+def _start_heartbeat_pump(
+    task_id: str, stop_event: threading.Event,
+) -> threading.Thread:
+    def beat() -> None:
+        while not stop_event.wait(TASK_HEARTBEAT_SECONDS):
+            try:
+                _heartbeat_mirror(task_id)
+            except Exception:
+                logger.warning("mirror heartbeat failed for %s", task_id, exc_info=True)
+
+    thread = threading.Thread(target=beat, name=f"mirror-hb-{task_id[:8]}", daemon=True)
+    thread.start()
+    return thread
 
 
 _progress_lock_obj = threading.Lock()
@@ -411,8 +446,8 @@ def _release_write_lock(task_id: str) -> str | None:
     try:
         status = TL.get_lock_status(db)
         if status.duckdb_write.get("taskId") == task_id:
-            return TL.release_lock(db, lock_key=TL.LOCK_DUCKDB_WRITE,
-                                   task_id=task_id)
+            return TL.release_lock_and_wake(db, lock_key=TL.LOCK_DUCKDB_WRITE,
+                                            task_id=task_id)
         return None
     finally:
         db.close()
@@ -541,6 +576,13 @@ def resume_mirror_task(
         old = db.get(AsyncTaskRecord, task_id)
         if old is None or old.task_type != TASK_TYPE:
             raise ValueError(f"镜像任务不存在: {task_id}")
+        busy = _peek_duckdb_write_busy(db)
+        if busy:
+            raise RuntimeError(json.dumps({
+                "error_code": "DUCKDB_WRITE_BUSY",
+                "owner_task_id": busy.get("taskId"),
+                "queue": busy.get("queue") or [],
+            }, ensure_ascii=False))
         payload = json.loads(old.payload_json) if old.payload_json else {}
         # 🚨 断点续跑的核心：把旧任务的**分块进度**带到新任务。
         #    T14 第一版漏了这步，续跑从零开始、重复执行已完成块 ——
@@ -567,7 +609,8 @@ def resume_mirror_task(
     db = get_session_local()()
     try:
         try:
-            TL.acquire_write_slot(db, task_id=task.id, run_id=task.id)
+            TL.acquire_write_slot(db, task_id=task.id, run_id=task.id,
+                                  allow_queue=False)
         except Exception as exc:
             _set_task(db, task.id, status="failed", stage="rejected",
                       message=f"DUCKDB_WRITE_BUSY(race): {exc}",
@@ -587,6 +630,7 @@ def resume_mirror_task(
 
 __all__ = [
     "TASK_TYPE",
+    "TASK_HEARTBEAT_SECONDS",
     "RANGE_PRESETS",
     "VALID_PRESETS",
     "ESTIMATED_ROWS_PER_SECOND",

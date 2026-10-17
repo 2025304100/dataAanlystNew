@@ -47,6 +47,7 @@ interface AppState {
   activeSubTab: string;
   activeSymbolId: number | null;
   workbench: DashboardWorkbench | null;
+  workbenchError: string | null;
   detail: SymbolDetail | null;
   detailFocusRequest: number;
   detailCache: Record<number, SymbolDetail>;
@@ -128,8 +129,8 @@ export interface AppContextValue extends AppState {
     benchmark_code?: string;
   }) => Promise<Portfolio | null>;
   deletePortfolio: (portfolioId: number) => Promise<boolean>;
-  loadWorkbench: () => Promise<void>;
-  loadSymbolDetail: (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }) => Promise<SymbolDetail | undefined>;
+  loadWorkbench: (options?: { background?: boolean }) => Promise<void>;
+  loadSymbolDetail: (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number; isCurrent?: () => boolean }) => Promise<SymbolDetail | undefined>;
   loadSignalRuleConfig: () => Promise<void>;
   updateSignalRule: (partial: Partial<SignalRule>) => void;
   saveSignalRule: () => Promise<void>;
@@ -195,6 +196,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeSubTab: "overview",
     activeSymbolId: null,
     workbench: null,
+    workbenchError: null,
     detail: null,
     detailFocusRequest: 0,
     detailCache: {},
@@ -242,8 +244,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   /** toast 去重记录：key=`type::文案` → 上次提示时间戳 */
   const toastDedupeRef = useRef<Map<string, number>>(new Map());
   const detailFocusRequestRef = useRef(0);
+  // Provider survives page navigation; a completed request still belongs to
+  // the page/portfolio/market that started it, including leave-and-return.
+  const viewContextRef = useRef({ activeTab: "decision", marketGroup: "all", portfolioId: null as number | null });
+  const workbenchRequestRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const update = useCallback((partial: Partial<AppState>) => {
+    const view = viewContextRef.current;
+    if ((partial.activeTab !== undefined && partial.activeTab !== view.activeTab)
+      || (partial.marketGroup !== undefined && partial.marketGroup !== view.marketGroup)
+      || (partial.portfolioId !== undefined && partial.portfolioId !== view.portfolioId)) {
+      viewContextRef.current = { activeTab: partial.activeTab ?? view.activeTab, marketGroup: partial.marketGroup ?? view.marketGroup,
+        portfolioId: partial.portfolioId === undefined ? view.portfolioId : partial.portfolioId };
+    }
     setState((prev) => ({ ...prev, ...partial }));
     if (partial.portfolioId !== undefined) portfolioIdRef.current = partial.portfolioId;
     if (partial.detailCache !== undefined) detailCacheRef.current = partial.detailCache;
@@ -317,7 +331,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return state.marketGroup === "all" ? response : response.filter((item) => item.region === state.marketGroup);
   }, [state.marketGroup, update]);
 
-  const fetchWatchlistItems = useCallback(async (watchlistId: number): Promise<WatchlistItem[]> => {
+  const fetchWatchlistItems = useCallback(async (watchlistId: number, isCurrent: () => boolean = () => true): Promise<WatchlistItem[]> => {
+    if (!isCurrent()) return [];
     if (state.watchlistItems[watchlistId]) return state.watchlistItems[watchlistId];
     const [items, directory] = await Promise.all([
       api.getWatchlistItems(watchlistId),
@@ -325,27 +340,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (Object.keys(state.symbolDirectory).length) return state.symbolDirectory;
         const symbols = await api.getAllSymbols();
         const dir = Object.fromEntries(symbols.map((item) => [item.id, item]));
-        update({ symbolDirectory: dir });
+        if (isCurrent()) update({ symbolDirectory: dir });
         return dir;
       })(),
     ]);
     const mapped = items.map((item: any) => ({ ...item, symbol: directory[item.symbol_id] ?? null }));
-    update({ watchlistItems: { ...state.watchlistItems, [watchlistId]: mapped } });
+    if (isCurrent()) update({ watchlistItems: { ...state.watchlistItems, [watchlistId]: mapped } });
     return mapped;
   }, [state.watchlistItems, state.symbolDirectory, update]);
 
-  const refreshPrimaryWatchlistMembership = useCallback(async () => {
-    const lists = state.workbench?.watchlists ?? [];
+  const refreshPrimaryWatchlistMembership = useCallback(async (options?: { workbench?: DashboardWorkbench; isCurrent?: () => boolean }) => {
+    const isCurrent = options?.isCurrent ?? (() => true);
+    if (!isCurrent()) return;
+    const lists = (options?.workbench ?? state.workbench)?.watchlists ?? [];
     const watchlist = lists.find((item) => item.list_type === "watch") ?? lists[0] ?? null;
     if (!watchlist) {
       update({ primaryWatchlistSymbolIds: new Set() });
       return;
     }
-    const items = await fetchWatchlistItems(watchlist.id);
-    update({ primaryWatchlistSymbolIds: new Set(items.map((item) => Number(item.symbol_id))) });
+    const items = await fetchWatchlistItems(watchlist.id, isCurrent);
+    if (isCurrent()) update({ primaryWatchlistSymbolIds: new Set(items.map((item) => Number(item.symbol_id))) });
   }, [state.workbench, fetchWatchlistItems, update]);
 
-  const loadLatestNewsSnapshot = useCallback(async (data: DashboardWorkbench) => {
+  const loadLatestNewsSnapshot = useCallback(async (data: DashboardWorkbench, isCurrent: () => boolean = () => true) => {
+    if (!isCurrent()) return;
     const symbolIds = [
       ...new Set([
         ...data.candidates.map((item) => item.symbol_id),
@@ -360,37 +378,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const pid = portfolioIdRef.current;
       if (!pid) return;
       const response = await api.getLatestNews(pid, symbolIds);
-      update({ newsSnapshot: response.symbols_total || response.macro ? response : null });
+      if (isCurrent()) update({ newsSnapshot: response.symbols_total || response.macro ? response : null });
     } catch (err) {
+      if (!isCurrent()) return;
       console.warn("loadLatestNewsSnapshot failed", err);
       update({ newsSnapshot: null });
     }
   }, [update]);
 
-  const loadWorkbench = useCallback(async () => {
+  const loadWorkbench = useCallback(async (options?: { background?: boolean }) => {
     const pid = portfolioIdRef.current;
     if (!pid) return;
+    const view = viewContextRef.current;
+    const requestId = ++workbenchRequestRef.current;
+    const isCurrent = () => mountedRef.current && requestId === workbenchRequestRef.current
+      && view === viewContextRef.current && pid === portfolioIdRef.current;
     try {
       await loadDiscoveryScopeStatsInternal();
-      const data = await api.getWorkbench(pid, state.marketGroup);
+      if (!isCurrent()) return;
+      const data = await api.getWorkbench(pid, view.marketGroup);
+      if (!isCurrent()) return;
       setCurrency(data.portfolio?.currency || "CNY");
-      update({ workbench: data });
-      await refreshPrimaryWatchlistMembership();
-      await loadLatestNewsSnapshot(data);
+      update({ workbench: data, workbenchError: null });
+      await refreshPrimaryWatchlistMembership({ workbench: data, isCurrent });
+      if (!isCurrent()) return;
+      await loadLatestNewsSnapshot(data, isCurrent);
+      if (!isCurrent()) return;
 
       const visibleSymbolIds = new Set([
         ...data.candidates.map((item: { symbol_id: number }) => item.symbol_id),
         ...data.latest_scores.map((item: { symbol_id: number }) => item.symbol_id),
       ]);
       if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && detailCacheRef.current[state.activeSymbolId]) {
-        await loadSymbolDetail(state.activeSymbolId, { force: true });
+        await loadSymbolDetail(state.activeSymbolId, { force: true, isCurrent });
       }
     } catch (error: any) {
-      showToast("error", error?.message || t("loadFailed"));
+      if (!isCurrent()) return;
+      const reason = error?.message || t("loadFailed");
+      update({ workbenchError: reason });
+      if (!options?.background || view.activeTab === "decision") showToast("error", reason);
     }
   }, [state.marketGroup, state.activeSymbolId, update, showToast]);
 
-  const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }): Promise<SymbolDetail | undefined> => {
+  const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number; isCurrent?: () => boolean }): Promise<SymbolDetail | undefined> => {
+    const isCurrent = options?.isCurrent ?? (() => true);
+    if (!isCurrent()) return;
     const initialUpdates: Partial<AppState> = { chartRange: null, chartWindowSize: DEFAULT_CHART_WINDOW };
     if (state.activeSymbolId !== symbolId) {
       initialUpdates.activeSymbolId = symbolId;
@@ -412,6 +444,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!pid) return;
     try {
       const detail = await api.getSymbolDetail(pid, symbolId, state.signalSampleLimit ?? undefined, options?.barLimit);
+      if (!isCurrent()) return;
       // Remember detail
       const newCache = { ...detailCacheRef.current, [symbolId]: detail };
       const newOrder = [symbolId, ...state.detailOrder.filter((item) => item !== symbolId)].slice(0, 4);
@@ -425,7 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       scheduleSignalRulePreviewInternal();
       return detail;
     } catch (error: any) {
-      showToast("error", error?.message || t("loadFailed"));
+      if (isCurrent()) showToast("error", error?.message || t("loadFailed"));
     }
   }, [state.activeSymbolId, state.detailOrder, state.signalSampleLimit, update, syncOrderForm, showToast]);
 
@@ -1074,7 +1107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await loadPortfolios();
       await loadSignalRuleConfig();
       const activeTask = await fetchDiscoveryTasks();
-      await loadWorkbench();
+      await loadWorkbench({ background: true });
       await loadCapabilities(); // WP-S-FIX.1: 启动时加载能力状态
       if (activeTask && ["queued", "running"].includes(activeTask.status)) {
         startDiscoveryPolling();
@@ -1085,7 +1118,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Cleanup polling on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      workbenchRequestRef.current += 1;
       if (discoveryPollRef.current) clearInterval(discoveryPollRef.current);
       stopSyncPolling();
       if (signalRulePreviewTimer.current) clearTimeout(signalRulePreviewTimer.current);

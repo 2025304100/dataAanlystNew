@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import SettingsNav from "./settings/SettingsNav";
+import UnsupportedFeaturesToggle from "./settings/UnsupportedFeaturesToggle";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
 import { CalendarOutlined, DatabaseOutlined, ExperimentOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, ApiOutlined, RobotOutlined, NotificationOutlined, AppstoreOutlined } from "@ant-design/icons";
@@ -75,10 +76,16 @@ export default function Settings() {
 
   useEffect(() => {
     const handleSettingsNavigate = (event: Event) => {
-      const target = (event as CustomEvent<string>).detail;
-      const section = target === "api-management" ? "api-mgmt" : target;
-      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt", "tasks"].includes(section)) {
+      // detail 兼容字符串（旧调用方）与 { section, subtab }（消息通知「查看全部」用）
+      const detail = (event as CustomEvent<string | { section: string; subtab?: string }>).detail;
+      const raw = typeof detail === "string" ? detail : detail?.section;
+      const subtab = typeof detail === "object" && detail ? detail.subtab : undefined;
+      const section = raw === "api-management" ? "api-mgmt" : raw;
+      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt", "tasks", "alerts", "notifications"].includes(section)) {
         setActiveSection(section as typeof activeSection);
+        if (section === "notifications" && subtab === "deliveries") {
+          setActiveNotificationTab("deliveries");
+        }
       }
     };
     window.addEventListener("settings:navigate", handleSettingsNavigate);
@@ -208,6 +215,7 @@ export default function Settings() {
       <div className="settings-layout">
         <SettingsNav active={activeSection} onSelect={setActiveSection} />
         <div className="settings-content">
+          <UnsupportedFeaturesToggle />
           {activeSection === "rules" && (
           <div className="settings-tab-container" data-settings-content="settings-rules">
             <section className="band rule-config-band">
@@ -330,7 +338,7 @@ export default function Settings() {
                       </label>
                     </div>
                     <div className="detail-actions">
-                      <Button type="primary" className="ghost-button detail-action" disabled={!rule || saving} loading={saving}>
+                      <Button type="primary" htmlType="submit" className="ghost-button detail-action" disabled={!rule || saving} loading={saving}>
                         {t("saveRule")}
                       </Button>
                     </div>

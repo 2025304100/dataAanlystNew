@@ -5,7 +5,7 @@
 覆盖 T13 需求列表（与 T4/T5/T9/T10/T11/T12 不重复）：
   1. 集合复制门禁（clone_scoring_factor_set）：复制 frozen 源集合 → 新集合 status=draft
      且 member_count 与源相等（克隆后需重新冻结，保证不可直接用 frozen copy 训练）。
-  2. 训练 gate coverage<0.70 → 抛出 TRAIN_GATE_COVERAGE_LOW（7 要素）。
+  2. coverage<0.70 的门禁报告失败；旧演示训练在调用任何模拟门禁前明确拒绝。
   3. 训练 gate lookback<30 天时 gate_factor_coverage 注册
      `lookback_days` 参数实际参与 SQL 窗口（此处通过 short-window = 无观测 →
      NOT_PASSED 间接证明 short lookback 会阻断训练门禁，等价 lookback<30 失败）。
@@ -159,8 +159,8 @@ class TestT13_02_TrainGateCoverageLow:
         # 原因里包含阈值信息
         assert any("0.7" in r for r in result.reasons), f"reasons={result.reasons}"
 
-    def test_train_scoring_model_monkeypatch_coverage_low_raises(self, db_session, monkeypatch):
-        """Facade train_scoring_model → gate coverage fail → ValueError 含 TRAIN_GATE_COVERAGE_LOW。"""
+    def test_demo_training_is_disabled_before_coverage_gates(self, db_session, monkeypatch):
+        """Legacy demo mode is rejected before mocked gates and creates no model."""
         f1, v1 = _make_factor(db_session, "T13_C", 91010, 1)
         spec = [(91010, "T13_C", 1, int(v1.id))]
         _make_set(db_session, "FS-T13-COV", "Cov Low FS", frozen=True, members_spec=spec)
@@ -168,31 +168,19 @@ class TestT13_02_TrainGateCoverageLow:
 
         from app.services.factors import __facade__ as facade
 
-        def _low_cov_gate(codes, threshold=0.70, lookback_days=30):  # noqa: ARG001
-            return facade.GovernanceGateResultDTO(
-                gate_name="factor_coverage", passed=False,
-                score=0.50, threshold_min=0.70, threshold_max=1.0,
-                reasons=["T13_C:coverage=0.50<0.70"], detail={},
-            )
+        called = []
 
-        def _ok_ic(*a, **k):  # noqa: ARG001
-            return facade.GovernanceGateResultDTO(
-                gate_name="factor_ic_range", passed=True,
-                score=0.0, threshold_min=0.01, threshold_max=0.10,
-                reasons=[], detail={},
-            )
+        def _gate_must_not_run(*args, **kwargs):
+            called.append(True)
+            raise AssertionError("Disabled demo training must not reach fake gates")
 
-        monkeypatch.setattr(facade, "gate_factor_coverage", _low_cov_gate)
-        monkeypatch.setattr(facade, "gate_factor_ic", _ok_ic)
-
-        with pytest.raises(ValueError) as ei:
+        monkeypatch.setattr(facade, "gate_factor_coverage", _gate_must_not_run)
+        monkeypatch.setattr(facade, "gate_factor_ic", _gate_must_not_run)
+        model_ids_before = list(db_session.scalars(select(FactorModelRun.id)))
+        with pytest.raises(ValueError, match="DEMO_TRAINING_DISABLED"):
             facade.train_scoring_model("FS-T13-COV", mode="offline_minimal", actor="t13")
-
-        msg = str(ei.value)
-        # 训练门禁里 coverage 失败 → 7 要素错误 code = TRAIN_GATE_COVERAGE_LOW
-        assert "TRAIN_GATE_COVERAGE_LOW" in msg or "factor_coverage" in msg, (
-            f"未命中 coverage 失败 code；msg={msg[:400]}"
-        )
+        assert not called
+        assert list(db_session.scalars(select(FactorModelRun.id))) == model_ids_before
 
 
 # ══════════════════════════════════════════════════════════════════════

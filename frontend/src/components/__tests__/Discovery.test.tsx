@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // 使用 vi.hoisted 提升 mock，使其可在 vi.mock factory 内引用
@@ -492,5 +492,66 @@ describe("Discovery 交互测试", () => {
       // handleRowClick 调用 loadSymbolDetail(id, { focus: true, barLimit: 500 })
       expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(105, { focus: true, barLimit: 500 });
     });
+  });
+
+  it("keeps the current indicator when an earlier evaluation resolves last", async () => {
+    let resolveA!: (rows: any[]) => void;
+    let resolveB!: (rows: any[]) => void;
+    const first = new Promise<any[]>((resolve) => { resolveA = resolve; });
+    const second = new Promise<any[]>((resolve) => { resolveB = resolve; });
+    mockApi.getLatestDiscoveryCandidates.mockResolvedValue([makeCandidate()]);
+    mockApi.getCustomIndicators.mockResolvedValue([
+      { id: 1, key: "a", name: "Indicator A", value_type: "number", enabled: true },
+      { id: 2, key: "b", name: "Indicator B", value_type: "number", enabled: true },
+    ]);
+    mockApi.evaluateDiscoveryIndicators.mockImplementationOnce(() => first).mockImplementationOnce(() => second);
+    render(<Discovery />);
+    await waitFor(() => expect(mockApi.evaluateDiscoveryIndicators).toHaveBeenCalledTimes(1));
+    const ruleLabel = screen.getByText("dpRuleN").closest("label")!;
+    fireEvent.mouseDown(ruleLabel.querySelector(".ant-select-selector")!);
+    fireEvent.click(await screen.findByText("Indicator B"));
+    await waitFor(() => expect(mockApi.evaluateDiscoveryIndicators).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveB([{ scan_result_id: 100, symbol_id: 1, values: { b: 20 } }]); });
+    await waitFor(() => expect(screen.getByText("Indicator B: 20.00")).toBeInTheDocument());
+    await act(async () => { resolveA([{ scan_result_id: 100, symbol_id: 1, values: { a: 10 } }]); });
+    expect(screen.getByText("Indicator B: 20.00")).toBeInTheDocument();
+  });
+
+  it("shows each uncomputed reason and never matches null against neq", async () => {
+    localStorage.setItem("discovery_indicator_draft_v1", JSON.stringify({ name: "Errors", logic: "AND", pool_tab: "all", filters: [{ id: "one", indicator_key: "condition", operator: "neq", boolean_value: true, number_value: 0 }] }));
+    mockApi.getLatestDiscoveryCandidates.mockResolvedValue([
+      makeCandidate({ symbol_id: 1, symbol: "600001", name: "Unavailable", scan_result_id: 100 }),
+      makeCandidate({ symbol_id: 2, symbol: "600002", name: "Real false", scan_result_id: 101 }),
+    ]);
+    mockApi.getCustomIndicators.mockResolvedValue([{ id: 1, key: "condition", name: "Condition", value_type: "boolean", enabled: true }]);
+    mockApi.evaluateDiscoveryIndicators.mockResolvedValue([
+      { scan_result_id: 100, symbol_id: 1, values: { condition: null }, errors: { condition: "Formula requires 20 local bars" } },
+      { scan_result_id: 101, symbol_id: 2, values: { condition: false }, errors: {} },
+    ]);
+    const { container } = render(<Discovery />);
+    await waitFor(() => expect(screen.getByText("Formula requires 20 local bars")).toBeInTheDocument());
+    const table = container.querySelector(".ant-table-tbody")!;
+    expect(table.textContent).not.toContain("600001");
+    expect(table.textContent).toContain("600002");
+    expect(table.textContent).toContain("Condition: false");
+  });
+
+  it("keeps the new scope candidates when the old scope resolves last", async () => {
+    let resolveOld!: (rows: any[]) => void;
+    let resolveCurrent!: (rows: any[]) => void;
+    const oldScope = new Promise<any[]>((resolve) => { resolveOld = resolve; });
+    const newScope = new Promise<any[]>((resolve) => { resolveCurrent = resolve; });
+    mockApi.getLatestDiscoveryCandidates.mockImplementationOnce(() => oldScope).mockImplementationOnce(() => newScope);
+    const { container } = render(<Discovery />);
+    await waitFor(() => expect(mockApi.getLatestDiscoveryCandidates).toHaveBeenCalledTimes(1));
+    const scopeControl = screen.getAllByText("discoveryScope").find((item) => item.closest("label"))!.closest("label")!;
+    fireEvent.mouseDown(scopeControl.querySelector(".ant-select-selector")!);
+    fireEvent.click(await screen.findByText("discoveryScopeUsStock"));
+    await waitFor(() => expect(mockApi.getLatestDiscoveryCandidates).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveCurrent([makeCandidate({ symbol: "CURRENT", name: "Current scope", scan_result_id: 200 })]); });
+    await waitFor(() => expect(screen.getByText("CURRENT")).toBeInTheDocument());
+    await act(async () => { resolveOld([makeCandidate({ symbol: "OLD", name: "Old scope" })]); });
+    expect(container.querySelector(".ant-table-tbody")?.textContent).toContain("CURRENT");
+    expect(container.querySelector(".ant-table-tbody")?.textContent).not.toContain("OLD");
   });
 });

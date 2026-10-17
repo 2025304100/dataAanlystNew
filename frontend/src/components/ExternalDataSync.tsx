@@ -1113,6 +1113,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
 
   return (
     <section className="external-data-sync-section" style={{ width: "100%" }}>
+      <VerifiedInputReplay />
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 18 }}>
         <div>
           <Space size={8}>
@@ -1430,3 +1431,4 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     </section>
   );
 }
+import VerifiedInputReplay from "./VerifiedInputReplay";

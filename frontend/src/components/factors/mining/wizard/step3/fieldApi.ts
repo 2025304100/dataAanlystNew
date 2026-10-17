@@ -164,9 +164,11 @@ export function normalizeValidation(raw: RawValidationProgress): ValidationStatu
   if (backendStatus === "done") {
     if (verdict === "block" || blocked.length > 0) {
       status = "blocked";
-    } else {
+    } else if (verdict === "pass" || verdict === "warn") {
       status = "passed";
-      passed = verdict === "pass" || verdict === "";
+      passed = verdict === "pass";
+    } else {
+      status = "failed";
     }
   } else if (backendStatus === "failed" || backendStatus === "cancelled") {
     status = "failed";

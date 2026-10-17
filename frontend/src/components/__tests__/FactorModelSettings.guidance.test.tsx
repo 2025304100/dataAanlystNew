@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { mockApi, mockNavigate, showToast } = vi.hoisted(() => ({
   showToast: vi.fn(),
@@ -19,6 +19,7 @@ const { mockApi, mockNavigate, showToast } = vi.hoisted(() => ({
     scoringInitializeWarehouse: vi.fn(),
     scoringFallbackToManual: vi.fn(),
     scoringGetModelRelations: vi.fn(),
+    getFactorModel: vi.fn(),
     getWatchlists: vi.fn(),
     getExternalDataOverview: vi.fn(),
     getExternalDataCoverage: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../../utils/navigate", async (importOriginal) => {
 });
 
 import FactorModelSettings from "../FactorModelSettings";
+import { setLocale } from "../../i18n";
 
 const overview = {
   feature_enabled: true,
@@ -92,8 +94,10 @@ function expectNoSubmittedChanges() {
 }
 
 describe("FactorModelSettings — guided user actions", () => {
+  afterEach(() => setLocale("zh-CN"));
   beforeEach(() => {
     vi.resetAllMocks();
+    mockApi.getFactorModel.mockImplementation(async (id: string) => ({ id, hyperparameters: {} }));
     window.localStorage.clear();
     mockApi.scoringGetOverviewAsFactor.mockResolvedValue(overview);
     mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [] });
@@ -135,6 +139,66 @@ describe("FactorModelSettings — guided user actions", () => {
     expect(screen.getByTestId("factor-set-select")).toBeInTheDocument();
     await goPage(4);
     expect(screen.getByText("任务：old-inputs").closest(".factor-task-strip")).toHaveTextContent("评分未生成");
+    expectNoSubmittedChanges();
+  });
+
+  it.each([
+    { locale: "zh-CN" as const, headings: ["因子代码", "因子版本 ID", "系数", "归一化权重", "单因子验证 IC", "训练覆盖率"], hint: /原始 Ridge 系数/ },
+    { locale: "en-US" as const, headings: ["Factor Code", "Factor Version ID", "Coefficient", "Normalized Weight", "Factor Validation IC", "Training Coverage"], hint: /raw Ridge coefficient/ },
+  ])("localizes factor evidence headers and explains coefficients without changing values ($locale)", async ({ locale, headings, hint }) => {
+    setLocale(locale);
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [candidate("readable-model", "fs-B")] });
+    mockApi.scoringGetModelRelations.mockResolvedValue({ model_id: "readable-model", factor_set_id: "fs-B", factor_set_name: "价值集合", n_members: 1, unbound_reason: null,
+      factors: [{ factor_code: "turnover_z20", factor_version_id: 100073, coef_raw: -0.25, weight_norm: -0.5, validation_ic: 0.0123, coverage: 0.98 }] });
+    render(<FactorModelSettings />);
+    await goPage(3);
+    fireEvent.click(await screen.findByTestId("view-relations-readable-model"));
+    const table = await screen.findByTestId("relations-details-table");
+    for (const heading of headings) expect(within(table).getByRole("columnheader", { name: new RegExp(heading) })).toBeInTheDocument();
+    expect(within(table).getByText("-0.250000")).toBeInTheDocument();
+    expect(within(table).getByText("-0.500000")).toBeInTheDocument();
+    expect(within(table).getByText("0.0123")).toBeInTheDocument();
+    expect(within(table).getByText("98.0%")).toBeInTheDocument();
+    fireEvent.mouseEnter(within(table).getByText(headings[2]));
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+    expectNoSubmittedChanges();
+  });
+
+  it("shows sample cutoff separately from the later frozen-input availability time", async () => {
+    const model = { ...candidate("cutoff-model", "fs-B"), data_cutoff_at: "2026-10-15T16:26:21" };
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [model] });
+    mockApi.getFactorModel.mockResolvedValue({ ...model, hyperparameters: { factor_set_id: "fs-B", data_cutoff_date: "2026-10-14" } });
+    render(<FactorModelSettings />);
+    await goPage(3);
+    fireEvent.click(await screen.findByTestId("view-relations-cutoff-model"));
+    const drawer = await screen.findByTestId("relations-drawer");
+    expect(within(drawer).getByText("样本截止日")).toBeInTheDocument();
+    expect(await within(drawer).findByText("2026-10-14")).toBeInTheDocument();
+    const inputAvailableAt = within(drawer).getByText("输入可用时间");
+    expect(inputAvailableAt).toBeInTheDocument();
+    // Availability keeps the existing timezone formatter; the sample date is
+    // independently sourced from the frozen model parameter, not this clock.
+    const availabilityValue = inputAvailableAt.closest("div")?.querySelector("dd");
+    expect(availabilityValue).toHaveTextContent(/2026-10-\d{2} \d{2}:26:21/);
+    expect(availabilityValue).not.toHaveTextContent("2026-10-14");
+    expectNoSubmittedChanges();
+  });
+
+  it("explains known model validation rejection while retaining the original rejection and technical evidence", async () => {
+    const technical = "FactorModelRun ridge-4afc1347543b6ccdff057c6f status=rejected; expected validated";
+    const rejection = "validation_ic_below_threshold";
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [{ ...candidate("rejected-readability", "fs-B"), status: "rejected", production_eligible: false, readiness_code: "MODEL_NOT_VALIDATED", readiness_message: technical, rejection_reason: rejection, metrics: { validation_ic: -0.0024479 }, sample_count: 1348059 }] });
+    render(<FactorModelSettings />);
+    await goPage(3);
+    const message = await screen.findByText("未通过模型验证");
+    expect(screen.queryByText(technical)).not.toBeInTheDocument();
+    fireEvent.mouseEnter(message);
+    const evidence = await screen.findByRole("tooltip");
+    expect(evidence).toHaveTextContent(rejection);
+    expect(evidence).toHaveTextContent(technical);
+    expect(screen.getByRole("button", { name: /正式启用/ })).toBeDisabled();
+    fireEvent.click(screen.getByTestId("view-relations-rejected-readability"));
+    expect(within(await screen.findByTestId("relations-drawer")).getByText("未通过模型验证")).toBeInTheDocument();
     expectNoSubmittedChanges();
   });
 

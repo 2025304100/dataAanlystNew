@@ -289,4 +289,20 @@ describe("ScoringConfigSettings 交互测试", () => {
       expect(screen.getByText("scEditTitle")).toBeInTheDocument();
     });
   });
+
+  it("preserves legacy standard scores when saving an unrelated edit", async () => {
+    const rows = await mockApi.listScoringConfigs();
+    const legacy = rows[0];
+    mockApi.listScoringConfigs.mockResolvedValueOnce([{ ...legacy, id: 9, is_system: 0, config: { ...legacy.config, dimensions: [{ ...legacy.config.dimensions[0], factors: [{ key: "volatility_score", source: "builtin", weight: 1, direction: "lower_better" }] }] } }] as any);
+    render(<ScoringConfigSettings />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "scBtnEdit" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "scBtnEdit" }));
+    await waitFor(() => expect(screen.getByText("scStandardDirectionHelp")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "scBtnSave" }));
+    await waitFor(() => expect(mockApi.updateScoringConfig).toHaveBeenCalled());
+    const calls = mockApi.updateScoringConfig.mock.calls as unknown as Array<[number, any]>;
+    const payload = calls[calls.length - 1][1];
+    expect(payload.config.direction_contract).toBe("standard_score_v1");
+    expect(payload.config.dimensions[0].factors[0].direction).toBe("higher_better");
+  });
 });

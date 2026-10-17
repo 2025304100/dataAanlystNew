@@ -52,15 +52,14 @@ def _wait(client, db, run_id, predicate, *, timeout=40):
     pytest.fail(f"Mining run did not reach expected state: {last}")
 
 
-def test_real_worker_failure_is_visible_on_batch_list(mining_env, tmp_path):
+def test_empty_warehouse_is_rejected_before_worker_or_batch_creation(mining_env, tmp_path):
     db = mining_env
     _seed(db)
     client = _client(db)
     created = client.post("/factor-mining/runs", json=_inputs(str(tmp_path / "empty.duckdb")))
-    assert created.status_code == 201, created.text
-    run_id = created.json()["run_id"]
-    detail = _wait(client, db, run_id, lambda run: run["status"] == "failed", timeout=6)
-    assert detail["error_code"]
+    assert created.status_code == 422, created.text
+    assert created.json()["detail"]["error_code"] == "MINING_PREFLIGHT_BUDGET_BLOCKED"
+    assert client.get("/factor-mining/runs").json()["total"] == 0
     assert client.get("/factor-mining/locks/status").json()["miningDomain"]["busy"] is False
 
 

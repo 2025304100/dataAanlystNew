@@ -11,6 +11,26 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
+from app.services.market_history_contract import resolve_cn_prefixed_symbol, tencent_quantity_to_shares_multiplier
+
+
+def attach_cn_stock_history_contract(frame: pd.DataFrame, provider: str) -> pd.DataFrame:
+    """Label adapter units, without claiming raw-response or adjustment proof."""
+    endpoints = {
+        "eastmoney": "stock_zh_a_hist",
+        "sina": "stock_zh_a_daily",
+        "tencent": "stock_zh_a_hist_tx",
+    }
+    normalized = frame.copy()
+    normalized.attrs["history_contract"] = {
+        "provider": provider,
+        "endpoint": endpoints[provider],
+        "version": "cn-stock-shares-v1",
+        "volume_unit": "share",
+        "amount_unit": "CNY",
+        "turnover_unit": "percentage_point",
+    }
+    return normalized
 
 
 def standard_history_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -20,7 +40,9 @@ def standard_history_frame(frame: pd.DataFrame) -> pd.DataFrame:
         frame: 原始 DataFrame(已重命名列名)
 
     Returns:
-        标准化后的 DataFrame,列:trade_date, open, high, low, close, volume, amount, turnover_rate
+        标准化后的 DataFrame,列:trade_date, open, high, low, close, volume, amount, turnover_rate。
+        turnover_rate 使用百分数（percentage points）：2.0 表示 2%，
+        各源的比例到百分数转换由其 adapter 明确完成。
     """
     expected = ["trade_date", "open", "high", "low", "close", "volume", "amount", "turnover_rate"]
     normalized = frame.copy()
@@ -53,6 +75,14 @@ def normalize_cn_em_history(frame: pd.DataFrame) -> pd.DataFrame:
     return standard_history_frame(normalized)
 
 
+def normalize_cn_stock_em_history(frame: pd.DataFrame) -> pd.DataFrame:
+    """A-share EM quantity is lots: convert to shares; ETF keeps its own path."""
+    normalized = normalize_cn_em_history(frame).copy()
+    if not normalized.empty:
+        normalized["volume"] = normalized["volume"] * 100.0
+    return attach_cn_stock_history_contract(normalized, "eastmoney")
+
+
 def normalize_us_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
     """标准化美股返回的 DataFrame,并按日期过滤。"""
     if frame.empty:
@@ -77,9 +107,9 @@ def normalize_us_history(frame: pd.DataFrame, start_date: date, end_date: date) 
 
 
 def normalize_cn_stock_sina_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
-    """标准化新浪(stock_zh_a_daily)返回的 DataFrame。"""
+    """标准化新浪 stock_zh_a_daily；turnover 的比例转为百分数。"""
     if frame.empty:
-        return frame
+        return attach_cn_stock_history_contract(frame, "sina")
     normalized = frame.rename(
         columns={
             "date": "trade_date",
@@ -96,13 +126,25 @@ def normalize_cn_stock_sina_history(frame: pd.DataFrame, start_date: date, end_d
     normalized = normalized[
         (normalized["trade_date"] >= pd.Timestamp(start_date)) & (normalized["trade_date"] <= pd.Timestamp(end_date))
     ]
-    return standard_history_frame(normalized)
+    # Sina computes volume / outstanding_share (0.02 means 2%); Eastmoney's
+    # 换手率 already uses percentage points. Never infer units from magnitude.
+    if "turnover_rate" in normalized:
+        normalized["turnover_rate"] = pd.to_numeric(
+            normalized["turnover_rate"], errors="coerce"
+        ) * 100.0
+    return attach_cn_stock_history_contract(standard_history_frame(normalized), "sina")
 
 
 def normalize_cn_stock_tx_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
-    """标准化腾讯(stock_zh_a_hist_tx)返回的 DataFrame。"""
+    """腾讯第六字段为数量：688为股，其余已核实板块为手；成交额未知。"""
+    # Only the verified legacy SDK schema uses "amount" for lots. Newer SDK
+    # schemas expose volume/turnover and may use "amount" for actual CNY.
+    # Reject structural changes before interpreting a field's numeric value.
+    legacy_columns = {"date", "open", "close", "high", "low", "amount"}
+    if not frame.columns.is_unique or not set(frame.columns).issubset(legacy_columns):
+        raise ValueError("unsupported Tencent history schema")
     if frame.empty:
-        return frame
+        return attach_cn_stock_history_contract(frame, "tencent")
     normalized = frame.rename(
         columns={
             "date": "trade_date",
@@ -117,9 +159,14 @@ def normalize_cn_stock_tx_history(frame: pd.DataFrame, start_date: date, end_dat
     normalized = normalized[
         (normalized["trade_date"] >= pd.Timestamp(start_date)) & (normalized["trade_date"] <= pd.Timestamp(end_date))
     ]
-    normalized["volume"] = None
+    # The legacy field alias is "amount", but its wire unit is symbol-bound:
+    # sh688 uses shares; verified main/ChiNext families use 100-share lots.
+    # Never select a conversion by numeric magnitude or invent cash
+    # turnover from quantity or price. Missing/invalid quantity remains unknown.
+    normalized["volume"] = pd.to_numeric(normalized.get("amount"), errors="coerce") * tencent_quantity_to_shares_multiplier(frame)
+    normalized["amount"] = None
     normalized["turnover_rate"] = None
-    return standard_history_frame(normalized)
+    return attach_cn_stock_history_contract(standard_history_frame(normalized), "tencent")
 
 
 def normalize_cn_etf_sina_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
@@ -146,24 +193,5 @@ def normalize_cn_etf_sina_history(frame: pd.DataFrame, start_date: date, end_dat
 
 
 def cn_prefixed_symbol(symbol) -> str:
-    """Symbol 模型转 akshare 新浪/腾讯需要的前缀代码。
-
-    代码前缀规则:
-        6/5/9 开头(非 920) → sh(上交所)
-        920 开头            → bj(北交所,新浪源需要)
-        其他                → sz(深交所)
-
-    注意:920 开头是北交所代码,但数据库中 market 字段可能标记为 'sh'(历史脏数据),
-    此处按 symbol 代码前缀判断更可靠。
-
-    Examples:
-        Symbol(symbol="000001", market="SZ") → "sz000001"
-        Symbol(symbol="600000", market="SH") → "sh600000"
-        Symbol(symbol="920072", market="SH") → "bj920072"  (北交所,market 字段可能标错)
-    """
-    market = (symbol.market or "").lower()
-    # 920 开头是北交所,优先按代码前缀判断(数据库 market 字段可能标错)
-    if symbol.symbol.startswith("920"):
-        return f"bj{symbol.symbol}"
-    prefix = "sh" if market in {"sh", "cn"} or symbol.symbol.startswith(("5", "6", "9")) else "sz"
-    return f"{prefix}{symbol.symbol}"
+    """明确sh/sz/bj优先；泛CN只按已知股票/ETF代码族推断，未知拒绝。"""
+    return resolve_cn_prefixed_symbol(symbol.symbol, symbol.market, getattr(symbol, "asset_type", "stock"))

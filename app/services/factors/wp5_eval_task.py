@@ -34,6 +34,7 @@ from app.core.db_numeric import clean_json_tree
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
 from app.models.factor_evaluation import EvaluationRun
+from app.models.factor_model import FactorVersion
 from app.services.async_tasks import (
     _now,
     _set_task,
@@ -813,6 +814,10 @@ def preflight_factor_evaluation(
     from app.db.session import SessionLocal
     from app.services.factors.factor_registry import get_factor_by_code
 
+    if universe not in {"ashare_all", "all_a_shares"}:
+        raise ValueError("evaluation_universe_not_supported:指数成分过滤尚未接通，仅支持本地A股镜像样本")
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValueError("evaluation_date_range_invalid")
     db = SessionLocal()
     items: list[dict] = []
     try:
@@ -829,14 +834,21 @@ def preflight_factor_evaluation(
                     specific = db.scalar(
                         select(FactorVersion).where(FactorVersion.id == fid_int)
                     )
-                    if specific is not None:
-                        version = specific
-                except (ValueError, TypeError):
-                    pass
+                    if specific is None or specific.factor_id != factor.id:
+                        raise ValueError("factor_version_mismatch")
+                    version = specific
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("factor_version_mismatch") from exc
+        if factor is None:
+            raise ValueError("factor_not_found")
+        if version is None:
+            raise ValueError("factor_version_not_found")
+        from app.services.factors.config import get_factor_system_config
+        warehouse_path = get_factor_system_config(db).warehouse_path
     finally:
         db.close()
 
-    warehouse = FactorWarehouse()
+    warehouse = FactorWarehouse(warehouse_path)
 
     # ─────────────────────────────────────────────────────────
     # ① formula_compile
@@ -912,20 +924,23 @@ def preflight_factor_evaluation(
     # ② data_dependencies
     # ─────────────────────────────────────────────────────────
     plan = compile_result.execution_plan if compile_result.is_valid else None
-    deps = plan.data_dependencies if plan is not None else {}
+    dependency_plan = plan
+    if dependency_plan is None:
+        # Diagnose known source fields through the same dialect/AST pipeline.
+        # Unknown legacy names belong to the compile blocker above; they are
+        # not warehouse columns that users can repair by synchronizing data.
+        # This relaxed plan is diagnostic only and must never reach execution.
+        dependency_result = compiler.compile(
+            formula=formula,
+            params=params,
+            direction=direction_from_db,
+            postprocess=None,
+            strict_fields=False,
+        )
+        if dependency_result.is_valid:
+            dependency_plan = dependency_result.execution_plan
+    deps = dependency_plan.data_dependencies if dependency_plan is not None else {}
     needed_fields: list[str] = sorted({str(f) for f in (deps.get("fields") or [])})
-    # The compiler treats a bare column expression (for example ``close``)
-    # as an already-normalized execution node and may omit it from fields.
-    # Preserve the dependency gate for that common case so missing columns
-    # cannot incorrectly produce an overall pass.
-    if not needed_fields and isinstance(formula, str):
-        import re as _re
-        tokens = _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", formula)
-        ignored = {
-            "and", "or", "not", "if", "else", "True", "False", "None",
-            "abs", "log", "sqrt", "rank", "zscore", "mean", "std", "min", "max",
-        }
-        needed_fields = sorted({t for t in tokens if t not in ignored})
     source_tables: list[str] = list(deps.get("source_tables") or [])
     if not source_tables:
         source_tables = ["raw_daily_bars"]
@@ -1428,6 +1443,30 @@ def create_evaluation_task(
     2. 若已存在同 fingerprint 且 status ∈ {queued, running, done, warn} → 返回旧任务
     3. EvaluationRun 本身的幂等由 create_evaluation_run 保证（config_hash + cutoff）
     """
+    # Bind the task identity to the actual immutable version before dispatch.
+    # An invalid explicit id must never silently evaluate today's latest row.
+    if universe not in {"ashare_all", "all_a_shares"}:
+        raise ValueError("evaluation_universe_not_supported:指数成分过滤尚未接通，仅支持本地A股镜像样本")
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValueError("evaluation_date_range_invalid")
+    factory = get_session_local()
+    with factory() as validation_db:
+        factor = get_factor_by_code(validation_db, factor_code)
+        if factor is None:
+            raise ValueError("factor_not_found")
+        if factor_version_id is not None:
+            version = validation_db.get(FactorVersion, factor_version_id)
+            if version is None or version.factor_id != factor.id:
+                raise ValueError("factor_version_mismatch")
+        else:
+            version = get_latest_version(validation_db, factor.id)
+        if version is None:
+            raise ValueError("factor_version_not_found")
+        if factor_kind != (factor.factor_kind or "continuous"):
+            raise ValueError("factor_kind_mismatch")
+        if direction is not None and direction != (version.direction or factor.direction or "higher_better"):
+            raise ValueError("factor_direction_mismatch")
+        factor_version_id = version.id
     payload = {
         "factor_code": factor_code,
         "factor_kind": factor_kind,
@@ -1622,7 +1661,7 @@ def _run_evaluation_worker(task_id: str) -> None:
                 )
             except (ValueError, TypeError):
                 version = None
-        if version is None:
+        if version is None and factor_version_id_from_payload is None:
             version = get_latest_version(db, factor.id)
         if version is None:
             blockers = [
@@ -1717,7 +1756,8 @@ def _run_evaluation_worker(task_id: str) -> None:
             return
         _set_task(db, task_id, stage="reading", percent=35,
                   message="选择评价区间并计算因子面板")
-        warehouse = FactorWarehouse()
+        from app.services.factors.config import get_factor_system_config
+        warehouse = FactorWarehouse(get_factor_system_config(db).warehouse_path)
         executor = FactorExecutor(warehouse)
         read_errors: list[dict[str, Any]] = []
         blockers: list[dict] = []
@@ -2451,18 +2491,31 @@ def _run_evaluation_worker(task_id: str) -> None:
         if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=1.0)
         db.close()
+        # Every cooperative early return must finish the cancellation. Close
+        # the worker transaction first, so SQLite/MySQL writes held by a
+        # partially evaluated run cannot block the final task-state update.
+        try:
+            if _cancelled(task_id):
+                _finalize_cancelled(task_id)
+        except Exception:
+            logger.exception("could not finalize evaluation cancellation: %s", task_id)
 
 
 def get_evaluation_task(task_id: str) -> dict | None:
     """获取评估任务状态。"""
     from app.services.async_tasks import get_async_task
     task = get_async_task(task_id, use_control_plane=True)
-    return _inject_fingerprint(task.model_dump()) if task else None
+    return _inject_fingerprint(task.model_dump()) if task and task.task_type == TASK_TYPE else None
 
 
 def get_evaluation_task_heartbeat(task_id: str) -> dict | None:
     """Read-only lightweight status for long-running task heartbeats."""
     from app.services.async_tasks import get_async_task_heartbeat
+    from app.db.session import get_control_session_local
+    with get_control_session_local()() as db:
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is None or task.task_type != TASK_TYPE:
+            return None
     return get_async_task_heartbeat(task_id)
 
 
@@ -2475,6 +2528,8 @@ def list_evaluation_tasks(limit: int = 20) -> list[dict]:
 def cancel_evaluation_task(task_id: str) -> dict:
     """取消评估任务。"""
     from app.services.async_tasks import cancel_async_task
+    if get_evaluation_task_heartbeat(task_id) is None:
+        raise ValueError("evaluation_task_not_found")
     task = cancel_async_task(task_id)
     return _inject_fingerprint(task.model_dump())
 

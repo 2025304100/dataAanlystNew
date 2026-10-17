@@ -9,7 +9,7 @@ which expose richer internal details (weights, audit logs, versions, …).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Path as PathParam
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import Literal
@@ -41,6 +41,8 @@ from app.services.factors.__facade__ import (
     get_factor_draft,
     get_factor_usage,
     get_model_detail,
+    get_research_retrain_plan,
+    find_research_retrain_request,
     get_score_runtime_overview,
     get_scoring_task,
     get_scoring_factor_set_readiness,
@@ -65,6 +67,118 @@ from app.services.factors.__facade__ import (
 
 
 router = APIRouter()
+
+
+class InputReplayRequest(BaseModel):
+    bundle_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
+    manifest_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    model_id: str = Field(min_length=1,max_length=64)
+    request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+
+
+class ProductionAdmissionFreezeRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    bundle_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
+    expected_identity_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class ProductionCandidateRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    bundle_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
+    portfolio_id: int = Field(gt=0, strict=True)
+    expected_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+@router.get('/scoring/models/{model_id}/production-candidate/review')
+def api_review_production_candidate(model_id: str,
+        bundle_id: str = Query(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'),
+        portfolio_id: int = Query(gt=0), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import review_production_candidate
+    try:
+        return review_production_candidate(db, model_id, bundle_id=bundle_id, portfolio_id=portfolio_id)
+    except FileNotFoundError:
+        raise HTTPException(404, detail='production_execution_evidence_not_found')
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+
+@router.post('/scoring/models/{model_id}/production-candidate', status_code=202)
+def api_submit_production_candidate(model_id: str, payload: ProductionCandidateRequest,
+                                   db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import submit_production_candidate
+    try:
+        return submit_production_candidate(db, model_id, **payload.model_dump())
+    except FileNotFoundError:
+        raise HTTPException(404, detail='production_execution_evidence_not_found')
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+
+@router.get('/scoring/production-candidates/{plan_id}')
+def api_production_candidate_task(plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'),
+                                  db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import get_production_candidate_task
+    result = get_production_candidate_task(db, plan_id)
+    if result is None:
+        raise HTTPException(404, detail='production_execution_task_not_found')
+    return result
+
+
+@router.get('/scoring/models/{model_id}/production-admission')
+def api_production_admission(model_id: str,bundle_id: str=Query(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'),db: Session=Depends(get_db)):
+    from app.services.factors.__facade__ import inspect_model_production_admission
+    try:return inspect_model_production_admission(db,model_id,bundle_id=bundle_id)
+    except FileNotFoundError:raise HTTPException(404,detail='production_admission_evidence_not_found')
+    except ValueError as exc:raise HTTPException(409,detail=str(exc))
+
+
+@router.post('/scoring/models/{model_id}/production-admission/freeze')
+def api_freeze_production_admission(model_id: str,payload: ProductionAdmissionFreezeRequest,db: Session=Depends(get_db)):
+    from app.services.factors.__facade__ import freeze_model_production_admission
+    try:return freeze_model_production_admission(db,model_id,**payload.model_dump())
+    except FileNotFoundError:raise HTTPException(404,detail='production_admission_evidence_not_found')
+    except ValueError as exc:raise HTTPException(409,detail=str(exc))
+
+
+@router.get('/scoring/input-bundles')
+def api_list_input_bundles():
+    from app.services.factors.__facade__ import list_verified_input_bundles
+    return list_verified_input_bundles()
+
+
+@router.get('/scoring/input-bundles/{bundle_id}/business-status')
+def api_input_business_status(bundle_id: str = PathParam(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'),db: Session=Depends(get_db)):
+    from app.services.factors.__facade__ import get_verified_input_business_status
+    try:return get_verified_input_business_status(db,bundle_id)
+    except FileNotFoundError:raise HTTPException(404,detail='verified_import_bundle_not_found')
+    except ValueError:raise HTTPException(409,detail='verified_import_input_integrity_failed')
+
+
+@router.post('/scoring/input-replays',status_code=202)
+def api_create_input_replay(payload: InputReplayRequest, db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import create_verified_input_replay
+    try:
+        return create_verified_input_replay(db,**payload.model_dump())
+    except FileNotFoundError:
+        raise HTTPException(404,detail='input_replay_bundle_not_found')
+    except ValueError as exc:
+        raise HTTPException(409,detail=str(exc))
+
+
+@router.get('/scoring/input-replays/{request_id}')
+def api_get_input_replay(request_id: str = PathParam(pattern=r'^[a-f0-9]{32}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import get_verified_input_replay_task
+    task=get_verified_input_replay_task(db,request_id)
+    if task is None:raise HTTPException(404,detail='input_replay_not_found')
+    return task
+
+
+@router.get('/scoring/input-replays/{request_id}/report')
+def api_input_replay_report(request_id: str = PathParam(pattern=r'^[a-f0-9]{32}$')):
+    from app.services.factors.__facade__ import read_verified_input_replay_report
+    try:return read_verified_input_replay_report(request_id)
+    except FileNotFoundError:raise HTTPException(404,detail='input_replay_report_not_ready')
+    except ValueError:raise HTTPException(409,detail='input_replay_report_integrity_failed')
 
 
 class ExternalFactorDraftRequest(BaseModel):
@@ -106,6 +220,10 @@ class CreateScoringTaskRequest(BaseModel):
     actor: str = "external:data_sync"
     source_hint: str = "external_data_sync"
     factor_set_id: str | None = Field(default=None, max_length=64)
+    trusted_history_dataset_id: str | None = Field(
+        default=None, min_length=1, max_length=80,
+        pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$',
+    )
     window_days: int | None = Field(default=None, ge=1, le=10000)
     validation_days: int | None = Field(default=None, ge=0, le=10000)
     batch_size: int = Field(default=50000, ge=1, le=10_000_000)
@@ -279,6 +397,7 @@ def api_create_scoring_task(req: CreateScoringTaskRequest) -> dict:
             actor=req.actor,
             source_hint=req.source_hint,
             factor_set_id=req.factor_set_id,
+            trusted_history_dataset_id=req.trusted_history_dataset_id,
             window_days=req.window_days,
             validation_days=req.validation_days,
             batch_size=int(req.batch_size),
@@ -384,6 +503,63 @@ def api_get_model_detail(model_id: str) -> dict:
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Model run {model_id} not found")
     return _dc2dict(detail)
+
+
+class ResearchRetrainRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    manifest_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    note: str = Field(default='', max_length=300)
+
+
+@router.get('/scoring/models/{model_id}/research-retrain', response_model=dict)
+def api_research_retrain_plan(model_id: str) -> dict:
+    try:
+        return get_research_retrain_plan(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post('/scoring/models/{model_id}/research-retrain', response_model=dict)
+def api_research_retrain(model_id: str, req: ResearchRetrainRequest) -> dict:
+    try:
+        existing = find_research_retrain_request(model_id, req.request_id,
+            manifest_sha256=req.manifest_sha256, note=req.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if existing is not None:
+        return existing
+    plan = api_research_retrain_plan(model_id)
+    if req.manifest_sha256 != plan['manifest_sha256']:
+        raise HTTPException(status_code=409, detail='research_retrain_reviewed_manifest_changed')
+    return api_create_scoring_task(CreateScoringTaskRequest(
+        factor_set_id=plan['factor_set_id'], trusted_history_dataset_id=plan['dataset_id'],
+        start_date=plan['start_date'], end_date=plan['end_date'],
+        data_cutoff_date=plan['end_date'], train_model=True, materialize_scores=False,
+        mirror_only=False, window_days=250, validation_days=50,
+        actor='factor_center:research_retrain', source_hint='factor_center:research_retrain',
+        hyperparameters={
+            'factor_set_id': plan['factor_set_id'], 'fit_policy': plan['fit_policy'],
+            'alphas': plan['alphas'], 'note': req.note.strip(), 'source_model_id': model_id,
+            'expected_trusted_history_manifest_sha256': plan['manifest_sha256'],
+            'research_retrain_request_id': req.request_id,
+        },
+        factor_scope={'factor_set_id': plan['factor_set_id'], 'asset_type': 'stock'},
+    ))
+
+
+@router.get('/scoring/models/{model_id}/research-retrain/requests/{request_id}', response_model=dict)
+def api_recover_research_retrain(model_id: str,
+        request_id: str = PathParam(pattern=r'^[a-f0-9]{32}$')) -> dict:
+    import json
+    try:
+        task = find_research_retrain_request(model_id, request_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    hp = json.loads(task['payload_json'])['hyperparameters_json'] if task is not None else {}
+    return {'model_id': model_id, 'request_id': request_id,
+            'manifest_sha256': hp.get('expected_trusted_history_manifest_sha256'), 'note': hp.get('note'),
+            'state': 'found' if task is not None else 'not_found', 'task': task}
 
 
 @router.get("/scoring/models/{model_id}/relations", response_model=dict)

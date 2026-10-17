@@ -305,7 +305,7 @@ def test_failover_to_ollama(db_session):
     ollama = _make_profile(
         db_session, name="local-ollama", priority=10,
         provider=PROVIDER_OLLAMA,
-        base_url="http://127.0.0.1:11434",
+        base_url="http://127.0.0.1:11434/v1",
     )
     db_session.commit()
 

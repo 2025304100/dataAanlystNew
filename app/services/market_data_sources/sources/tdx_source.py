@@ -65,14 +65,16 @@ class TDXHistorySource:
             symbol: Symbol 模型实例
             start_date: 起始日期(含)
             end_date: 结束日期(含)
-            adjust: 复权方式(通达信不支持复权,忽略此参数,返回不复权价)
+            adjust: 仅接受空字符串(不复权)，其余方式拒绝。
 
         Returns:
             标准化 DataFrame
 
         Raises:
-            SourceUnavailable: 文件不存在 / 解析失败
+            SourceUnavailable: 复权方式不支持 / 文件不存在 / 解析失败
         """
+        if adjust != "":
+            raise SourceUnavailable(f"TDX does not support adjustment {adjust!r} for {symbol.symbol}")
         if not self.available():
             raise SourceUnavailable(f"TDX path not detected for {symbol.symbol}")
         try:

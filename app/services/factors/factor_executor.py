@@ -21,7 +21,7 @@ import ast
 import math
 import operator
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 import uuid as _uuid
@@ -548,10 +548,10 @@ def _zscore(series: pd.Series, ddof: int = 0) -> pd.Series:
     """横截面 z-score。"""
     valid = series.dropna()
     if len(valid) < 2:
-        return pd.Series(0.0, index=series.index)
+        return pd.Series(0.0, index=series.index).where(series.notna())
     std = valid.std(ddof=ddof)
     if std == 0 or math.isnan(std):
-        return pd.Series(0.0, index=series.index)
+        return pd.Series(0.0, index=series.index).where(series.notna())
     mean = valid.mean()
     return (series - mean) / std
 
@@ -722,6 +722,44 @@ class FactorExecutor:
         return expressions
 
     @staticmethod
+    def _daily_bar_history_sql(
+        select_fields: list[str], *, range_start: date, range_end: date,
+        anchor_date: date, history_observations: int,
+    ) -> str:
+        """Keep the market window and fill each symbol's missing warmup rows.
+
+        Suspensions need older observations, not fabricated market-day rows.
+        Only real qfq bars before the requested window can fill the deficit;
+        the SQL returns at most history_observations older rows per symbol.
+        Null values count as observations and are never skipped/backfilled.
+        """
+        projection = ", ".join(["symbol", "trade_date", *select_fields])
+        count = max(1, int(history_observations))
+        return f"""
+            WITH window_bars AS (
+                SELECT * FROM raw_daily_bars
+                WHERE adjust = 'qfq'
+                  AND trade_date >= '{range_start}' AND trade_date <= '{range_end}'
+            ), history_needs AS (
+                SELECT symbol, GREATEST(0, {count} - COUNT(*) FILTER (
+                    WHERE trade_date <= '{anchor_date}'
+                )) AS needed
+                FROM window_bars GROUP BY symbol
+            ), older_bars AS (
+                SELECT b.* FROM raw_daily_bars b
+                JOIN history_needs n USING (symbol)
+                WHERE b.adjust = 'qfq' AND b.trade_date < '{range_start}'
+                  AND n.needed > 0
+                QUALIFY ROW_NUMBER() OVER (
+                    PARTITION BY b.symbol ORDER BY b.trade_date DESC
+                ) <= n.needed
+            ), bounded_bars AS (
+                SELECT * FROM window_bars UNION ALL SELECT * FROM older_bars
+            )
+            SELECT {projection} FROM bounded_bars
+        """
+
+    @staticmethod
     def _merge_financial_asof(
         spine: pd.DataFrame,
         financial: pd.DataFrame,
@@ -815,7 +853,7 @@ class FactorExecutor:
         """冻结批次读取源数据（read_only 连接）。
 
         根据 plan.data_dependencies 读取所需字段，返回按 (symbol, trade_date) 排序的 DataFrame。
-        如果指定 trade_date，则只读取该日期及之前 lookback_days + max_lookback 天的数据。
+        指定 trade_date 时按仓库真实交易日预热，与面板执行的滚动窗口口径一致。
 
         Returns:
             (DataFrame, structured_errors)
@@ -843,9 +881,20 @@ class FactorExecutor:
         range_start: date | pd.Timestamp | None = None
         range_end: date | None = trade_date
         if trade_date is not None:
-            # 读足够多的历史数据用于滚动计算
-            history_days = max(lookback_days, max_lookback + 10)
-            range_start = trade_date - pd.Timedelta(days=history_days)
+            # A fixed calendar span can contain fewer than 20 observations
+            # around long exchange holidays. Count actual warehouse dates,
+            # retaining the panel executor's extra rolling warmup; output
+            # limits are applied only after the complete history is evaluated.
+            history_dates = max(lookback_days, max_lookback + 30)
+            available_dates = sorted(
+                day for day in self.warehouse.list_trade_dates()
+                if day <= trade_date
+            )
+            range_start = (
+                available_dates[max(0, len(available_dates) - history_dates)]
+                if available_dates
+                else trade_date - timedelta(days=history_dates)
+            )
             date_clause = (
                 f"trade_date >= '{range_start}' AND trade_date <= '{trade_date}'"
             )
@@ -930,6 +979,10 @@ class FactorExecutor:
                         f"SELECT symbol, trade_date, {', '.join(select_fields)} "
                         f"FROM {table_name} {where_sql}"
                     )
+                    if table_name == "raw_daily_bars" and range_start is not None:
+                        sql = self._daily_bar_history_sql(select_fields,
+                            range_start=range_start, range_end=trade_date,
+                            anchor_date=trade_date, history_observations=history_dates)
                     try:
                         df = conn.execute(sql).fetchdf()
                         if not df.empty:
@@ -953,6 +1006,10 @@ class FactorExecutor:
                         "SELECT symbol, trade_date FROM raw_daily_bars "
                         f"WHERE {' AND '.join(spine_conditions)}"
                     )
+                    if range_start is not None:
+                        spine_sql = self._daily_bar_history_sql([], range_start=range_start,
+                            range_end=trade_date, anchor_date=trade_date,
+                            history_observations=history_dates)
                     try:
                         spine = conn.execute(spine_sql).fetchdf()
                         if not spine.empty:
@@ -1309,8 +1366,13 @@ class FactorExecutor:
         *,
         start_date: date,
         end_date: date,
+        warmup_anchor: date | None = None,
+        warmup_observations: int = 0,
     ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-        """读取 [start_date, end_date] 全量源数据（不分日、不设 limit）。
+        """读取日期窗口及每标的缺少的有界日线预热行。
+
+        warmup_anchor 指向正式窗口首日，避免后续密集日线掩盖首日缺少的历史。
+        追加的是原始观察行；不会跳过缺值或把停牌日补成日线。
 
         Returns:
             (DataFrame 按 symbol, trade_date 排序, structured_errors)
@@ -1391,6 +1453,10 @@ class FactorExecutor:
                         f"SELECT symbol, trade_date, {', '.join(select_fields)} "
                         f"FROM {table_name} {where_sql}"
                     )
+                    if table_name == "raw_daily_bars" and warmup_anchor is not None:
+                        sql = self._daily_bar_history_sql(select_fields,
+                            range_start=start_date, range_end=end_date,
+                            anchor_date=warmup_anchor, history_observations=warmup_observations)
                     try:
                         df = conn.execute(sql).fetchdf()
                         if not df.empty:
@@ -1411,6 +1477,10 @@ class FactorExecutor:
                         "SELECT symbol, trade_date FROM raw_daily_bars "
                         "WHERE adjust = 'qfq' AND " + date_clause
                     )
+                    if warmup_anchor is not None:
+                        spine_sql = self._daily_bar_history_sql([], range_start=start_date,
+                            range_end=end_date, anchor_date=warmup_anchor,
+                            history_observations=warmup_observations)
                     try:
                         spine = conn.execute(spine_sql).fetchdf()
                         if not spine.empty:
@@ -1464,7 +1534,7 @@ class FactorExecutor:
 
         流程：
         1. 计算预热窗口：warmup_days = max_lookback + 30
-        2. 读取 [warmup_start, end_date] 全量源数据
+        2. 读取 [warmup_start, end_date]，日线按标的补足有界的历史观察行
         3. AST evaluate 在完整历史上执行（滚动函数在每个 symbol 的完整时间序列上正确运算）
         4. 横截面后处理按 trade_date 分组独立执行
         5. 截取 [start_date, end_date] 作为正式信号日
@@ -1500,7 +1570,8 @@ class FactorExecutor:
         # 2. 读取完整历史源数据 [warmup_start, end_date]
         try:
             source_data, read_errors = self._read_source_data_panel(
-                plan, start_date=warmup_start, end_date=end_date
+                plan, start_date=warmup_start, end_date=end_date,
+                warmup_anchor=start_date, warmup_observations=warmup_days,
             )
         except Exception as exc:
             return PanelExecutionOutcome(

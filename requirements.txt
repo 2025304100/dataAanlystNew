@@ -26,6 +26,7 @@ akshare==1.18.30
 
 # --- Data processing ---
 pandas==2.3.3
+pyarrow==22.0.0        # immutable factor inputs and verified history Parquet artifacts
 numpy>=1.26,<3
 duckdb>=1.2,<2          # factor warehouse columnar store
 vectorbt==0.28.5

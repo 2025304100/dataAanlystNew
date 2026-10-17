@@ -36,7 +36,7 @@ def _stock_config(*, preset_key: str = "test_preset", external: bool = False) ->
                         "key": "pe_score",
                         "source": "fundamental",
                         "weight": 1.0,
-                        "direction": "lower_or_range_better",
+                        "direction": "higher_better",  # pe_score is already normalized
                     }
                 ],
             }

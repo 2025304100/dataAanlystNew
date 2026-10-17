@@ -31,6 +31,9 @@ import { useApp } from "../context/AppContext";
 import { t, template } from "../i18n";
 import { navigateToResearch } from "../utils/sourceContext";
 import type { AlertRule, AlertEvent as AlertEventType } from "../types";
+import { useUnsupportedFeatures } from "./settings/UnsupportedFeaturesToggle";
+
+const EXECUTABLE_ALERT_TYPES = new Set(["score_drop", "data_stale", "task_failed"]);
 
 const SEVERITY_COLORS: Record<string, string> = {
   info: "#1570ef",
@@ -89,6 +92,7 @@ const DEFAULT_FORM: RuleFormData = {
 };
 
 export default function AlertCenter() {
+  const showUnsupported = useUnsupportedFeatures();
   const ctx = useApp();
   const { showToast } = ctx;
   const [activeTab, setActiveTab] = useState<"events" | "rules">("events");
@@ -190,7 +194,7 @@ export default function AlertCenter() {
       name: rule.name,
       alert_type: rule.alert_type,
       severity: rule.severity,
-      enabled: !!rule.enabled,
+      enabled: EXECUTABLE_ALERT_TYPES.has(rule.alert_type) && !!rule.enabled,
       cooldown_minutes: rule.cooldown_minutes,
       threshold: config.threshold ?? 40,
       stale_days: config.stale_days ?? 7,
@@ -236,6 +240,7 @@ export default function AlertCenter() {
 
   return (
     <div className="alert-center-container">
+      <Alert type="info" showIcon message={t("settingsAlertManualMode")} style={{ marginBottom: 12 }} />
       {/* Header */}
       <div className="alert-center-header">
         <div className="alert-center-header-left">
@@ -373,7 +378,12 @@ export default function AlertCenter() {
                       <div className="alert-rule-item-info">
                         <Tag color={SEVERITY_COLORS[rule.severity]}>{alertTypeLabel(rule.alert_type)}</Tag>
                         <span className="alert-rule-item-name">{rule.name}</span>
-                        <Switch size="small" checked={!!rule.enabled} onChange={() => handleToggleRule(rule)} />
+                        {EXECUTABLE_ALERT_TYPES.has(rule.alert_type)
+                          ? <Switch size="small" checked={!!rule.enabled} onChange={() => handleToggleRule(rule)} />
+                          : <>
+                            <Tag color="warning">{t("settingsUnsupportedReason")}</Tag>
+                            {!!rule.enabled && <Button size="small" onClick={() => handleToggleRule(rule)}>{t("disable")}</Button>}
+                          </>}
                       </div>
                       <Space>
                         <Button size="small" icon={<EditOutlined />} onClick={() => openEditRule(rule)} />
@@ -405,13 +415,16 @@ export default function AlertCenter() {
         cancelText={t("cancel") || "Cancel"}
       >
         <div className="alert-rule-form">
+          <Alert type="info" showIcon message={t("settingsAlertManualMode")} />
           <label className="alert-form-field">
             <span>{t("alertRuleName")}</span>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </label>
           <label className="alert-form-field">
             <span>{t("alertType")}</span>
-            <Select value={form.alert_type} onChange={(v) => setForm({ ...form, alert_type: v })} options={ALERT_TYPE_OPTIONS} style={{ width: "100%" }} />
+            <Select value={form.alert_type} disabled={!!editingRule} onChange={(v) => setForm({ ...form, alert_type: v })}
+              options={ALERT_TYPE_OPTIONS.filter((option) => showUnsupported || EXECUTABLE_ALERT_TYPES.has(option.value) || option.value === editingRule?.alert_type)
+                .map((option) => ({ ...option, disabled: !EXECUTABLE_ALERT_TYPES.has(option.value) }))} style={{ width: "100%" }} />
           </label>
           <label className="alert-form-field">
             <span>{t("alertSeverity")}</span>

@@ -45,8 +45,8 @@ def emit_alert_event(
         severity=severity,
         title=title,
         body=body,
-        scope_type="portfolio" if portfolio_id else None,
-        scope_id=portfolio_id,
+        scope_type="portfolio" if portfolio_id else "symbol" if symbol_id else None,
+        scope_id=portfolio_id or symbol_id,
         template_variables={
             "alert_type": alert_type,
             "symbol": str(symbol_id) if symbol_id else "",
@@ -155,6 +155,8 @@ def emit_discovery_new(
         source_id=candidate_id,
         event_type="discovery_new",
         severity="info",
+        scope_type="symbol",
+        scope_id=symbol_id,
         title=f"新候选: {symbol}",
         body=f"标的={symbol}, 评分={score:.2f}" + (f", 原因={reason}" if reason else ""),
         template_variables={

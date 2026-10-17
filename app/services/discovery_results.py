@@ -11,7 +11,7 @@ from app.models.symbol import Symbol
 from app.models.custom_indicator import CustomIndicator
 from app.models.score import Score
 from app.schemas.discovery import DiscoveryIndicatorEvaluateRequest
-from app.services.backtest import _resolve_formula_expr
+from app.services.backtest import FormulaEvaluationError, _resolve_formula_expr
 from app.schemas.discovery import DiscoveryResultUpdate
 from app.services.analysis import calculate_symbol_score
 from app.services.factors.__facade__ import get_active_score_scope  # Public ACL entrypoint
@@ -118,8 +118,6 @@ def evaluate_discovery_indicators(db: Session, payload: DiscoveryIndicatorEvalua
         )
     ).scalars().all()
     indicator_map = {row.key: row for row in indicator_rows}
-    if not indicator_map:
-        return []
 
     rows = db.execute(
         select(ScanResult, Symbol)
@@ -183,6 +181,7 @@ def evaluate_discovery_indicators(db: Session, payload: DiscoveryIndicatorEvalua
     for scan_result, symbol in rows:
         latest_bar = latest_bar_map.get(symbol.id)
         values: dict[str, bool | float | None] = {}
+        errors: dict[str, str] = {}
         if latest_bar is not None:
             history_bars = history_bars_map.get(symbol.id, [])
             prev_bar = history_bars[-1] if history_bars else None
@@ -191,8 +190,14 @@ def evaluate_discovery_indicators(db: Session, payload: DiscoveryIndicatorEvalua
                 indicator = indicator_map.get(key)
                 if indicator is None:
                     values[key] = None
+                    errors[key] = "Formula indicator is missing or disabled"
                     continue
-                result = _resolve_formula_expr(score, latest_bar, prev_bar, history_bars, indicator.formula)
+                try:
+                    result = _resolve_formula_expr(score, latest_bar, prev_bar, history_bars, indicator.formula)
+                except FormulaEvaluationError as exc:
+                    values[key] = None
+                    errors[key] = str(exc)
+                    continue
                 if indicator.value_type == "number":
                     try:
                         values[key] = float(result)
@@ -203,11 +208,13 @@ def evaluate_discovery_indicators(db: Session, payload: DiscoveryIndicatorEvalua
         else:
             for key in indicator_keys:
                 values[key] = None
+                errors[key] = "Formula has no local daily bar data"
 
         response.append({
             "scan_result_id": scan_result.id,
             "symbol_id": symbol.id,
             "values": values,
+            "errors": errors,
         })
     return response
 

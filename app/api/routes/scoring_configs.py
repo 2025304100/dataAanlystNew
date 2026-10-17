@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.scoring_config import ScoringConfig
+from app.services.scoring_direction import prepare_scoring_config
 from app.schemas.scoring_config import (
     ScoringConfigCreate,
     ScoringConfigDuplicate,
@@ -25,6 +26,8 @@ router = APIRouter()
 def _to_parsed(cfg: ScoringConfig) -> ScoringConfigParsed:
     try:
         parsed = json.loads(cfg.config_json) if cfg.config_json else None
+        if parsed is not None:
+            parsed = prepare_scoring_config(parsed, legacy=True)
     except (json.JSONDecodeError, TypeError):
         parsed = None
     return ScoringConfigParsed(
@@ -182,6 +185,10 @@ def activate_scoring_config(config_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="scoring config not found")
     if cfg.is_latest != 1:
         raise HTTPException(status_code=400, detail="only the latest version of a preset can be activated")
+    try:
+        prepare_scoring_config(json.loads(cfg.config_json), legacy=True)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid scoring config: {exc}") from exc
     # 停用同 asset_type 其他预设
     db.execute(
         update(ScoringConfig)
@@ -214,7 +221,7 @@ def duplicate_scoring_config(config_id: int, payload: ScoringConfigDuplicate, db
     if existing is not None:
         raise HTTPException(status_code=400, detail="new_preset_key already exists under this asset_type")
     try:
-        new_config_json = json.loads(src.config_json) if src.config_json else {}
+        new_config_json = prepare_scoring_config(json.loads(src.config_json) if src.config_json else {}, legacy=True)
     except (json.JSONDecodeError, TypeError):
         new_config_json = {}
     if isinstance(new_config_json, dict):

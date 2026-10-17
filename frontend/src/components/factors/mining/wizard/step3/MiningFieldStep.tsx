@@ -18,7 +18,7 @@ import type { FieldGroup, MiningField, ValidationStatus } from "./fieldTypes";
  * - 阻断处理只给两个出口（重新选择字段 / 去修复数据），不提供逐字段自动修复。
  *
  * 字段列表由 `fields` 注入：P0-2 起 MiningShell 挂载本步时调候选池
- * `filter-fields` 映射注入（真实目录）；组标题优先 `category_label_zh`。
+ * `filter-fields` 映射注入（真实目录）；固定组用本地翻译，未知组保留后端标题。
  *
  * 界面上每行是「字段卡」：中文名 + 代码 + 来源表 / 数据模式 / 最新日期 /
  * 可用区间 / 覆盖率进度条，缺项一律显示 "-"（不臆造）。
@@ -30,7 +30,9 @@ export interface MiningFieldStepProps {
   onChange?: (selected: string[]) => void;
   onReselectFields?: () => void;
   onRepairData?: () => void;
-  onValidated?: (status: ValidationStatus) => void;
+  onValidated?: (status: ValidationStatus | null) => void;
+  validationConfig?: Record<string, unknown>;
+  validationStatus?: ValidationStatus | null;
 }
 
 const GROUP_ORDER: FieldGroup[] = ["quote", "valuation", "financial", "flow", "event"];
@@ -84,14 +86,19 @@ export default function MiningFieldStep({
   onReselectFields,
   onRepairData,
   onValidated,
+  validationConfig,
+  validationStatus,
 }: MiningFieldStepProps) {
   const [internal, setInternal] = useState<string[]>([]);
   const current = selected ?? internal;
-  const [status, setStatus] = useState<ValidationStatus | null>(null);
+  const [internalStatus, setStatus] = useState<ValidationStatus | null>(null);
+  const status = validationStatus === undefined ? internalStatus : validationStatus;
   const [starting, setStarting] = useState(false);
   /** 发起校验失败时的可读原因（**失败必须有回显**，不允许静默无响应） */
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const requestRef = useRef(0);
+  const scopeKey = JSON.stringify([validationConfig, [...current].sort()]);
 
   /** 只保留可进入挖掘公式的字段（筛掉候选池筛选条件类，见 NON_FORMULA_GROUPS） */
   const formulaFields = useMemo(
@@ -115,7 +122,15 @@ export default function MiningFieldStep({
     }
   }, []);
 
-  useEffect(() => stopPolling, [stopPolling]);
+  useEffect(() => {
+    setStatus(null);
+    setError(null);
+    setStarting(false);
+    return () => {
+      requestRef.current += 1;
+      stopPolling();
+    };
+  }, [scopeKey, stopPolling]);
 
   const toggle = (code: string) => {
     const next = current.includes(code)
@@ -123,6 +138,7 @@ export default function MiningFieldStep({
       : [...current, code];
     setInternal(next);
     onChange?.(next);
+    onValidated?.(null);
   };
 
   /**
@@ -156,34 +172,45 @@ export default function MiningFieldStep({
 
   const startValidation = async () => {
     if (current.length === 0) return;
+    const request = ++requestRef.current;
+    stopPolling();
+    setStatus(null);
+    onValidated?.(null);
     setStarting(true);
     setError(null);
     try {
-      const created = await createValidation({ selected_fields: current });
+      const created = await createValidation({ selected_fields: current,
+        ...(validationConfig ? { config: { ...validationConfig, selected_fields: [...current].sort() } } : {}) });
+      if (request !== requestRef.current) return;
       const taskId = String(created?.task_id ?? "");
       if (!taskId) throw new Error(t("miningFieldStartFailedNoTask"));
       const first = await getValidation(taskId);
+      if (request !== requestRef.current) return;
       setStatus(first);
       onValidated?.(first);
       stopPolling();
-      timerRef.current = setInterval(async () => {
+      if (!(TERMINAL_STATUSES as readonly string[]).includes(first.status)) timerRef.current = setInterval(async () => {
         try {
           const next = await getValidation(taskId);
+          if (request !== requestRef.current) return;
           setStatus(next);
           onValidated?.(next);
           if ((TERMINAL_STATUSES as readonly string[]).includes(next?.status)) {
             stopPolling();
           }
         } catch (e) {
+          if (request !== requestRef.current) return;
           stopPolling();
           setError(describeError(e));
+          onValidated?.(null);
         }
       }, POLL_INTERVAL_MS);
     } catch (e) {
+      if (request !== requestRef.current) return;
       stopPolling();
       setError(describeError(e));
     } finally {
-      setStarting(false);
+      if (request === requestRef.current) setStarting(false);
     }
   };
 
@@ -226,7 +253,7 @@ export default function MiningFieldStep({
         return (
           <div key={group} className="mining-field-group" data-field-group={group}>
             <div className="mining-field-group-title">
-              <span>{items[0]?.category_label_zh ?? t(GROUP_LABEL[group] ?? group)}</span>
+              <span>{GROUP_LABEL[group] ? t(GROUP_LABEL[group]) : items[0]?.category_label_zh ?? group}</span>
               <span className="mining-chip mining-chip--brand">
                 {t("miningFieldGroupSelected").replace("{n}", String(groupSelected))}
               </span>

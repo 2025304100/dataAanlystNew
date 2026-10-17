@@ -65,7 +65,7 @@ describe("FactorLibrary", () => {
     });
 
     expect(await screen.findByText("4")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("factorCenterLibraryResearchCount")).toBeInTheDocument();
+    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(3);
   });
 });

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Input, Select } from "antd";
-import { t } from "../../../../i18n";
+import { getLocale, t } from "../../../../i18n";
 import { factorTemplatesApi } from "../../../../api/factorTemplates";
 import type { FactorTemplate } from "../../../../api/factorTemplates";
 import { ALL_CATEGORIES, categoryLabel } from "../factorCategory";
+import { formatMiningDateTime } from "../miningDisplay";
+import { templateEconomy, templateName, templateScope } from "./templateLabels";
 
 /**
  * 因子模板配置页（C2 / B4，设计 §6.3.11）。
@@ -30,7 +32,6 @@ import { ALL_CATEGORIES, categoryLabel } from "../factorCategory";
  *   (system|personal) 与 `owner`，无法区分"AI生成保存"与"手动创建"；
  * - 个人模板的编辑 / 删除 / 调优先级——契约只有 create / copy / enabled，
  *   无 update / delete 路由。
- * `scope` 原值照常展示（测试与审计都按原值核对），译名只在详情里给出。
  */
 export interface TemplateConfigPageProps {
   /** 页签激活时才拉取（与 F1ExperiencePage 同款门控） */
@@ -71,6 +72,7 @@ function fieldsText(fields?: string[]): string {
 }
 
 export default function TemplateConfigPage({ active = true }: TemplateConfigPageProps) {
+  const locale = getLocale();
   const [items, setItems] = useState<FactorTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -160,7 +162,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
       const cat = String(i.rule_config?.category ?? "");
       if (catFilter && cat !== catFilter) return false;
       if (!q) return true;
-      const hay = `${i.name ?? ""} ${i.rule_config?.formula ?? ""}`.toLowerCase();
+      const hay = `${templateName(i)} ${i.name ?? ""} ${i.rule_config?.formula ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
 
@@ -171,20 +173,20 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
         const pb = Number(b.rule_config?.priority ?? PRIORITY_FALLBACK);
         if (pa !== pb) return (pa - pb) * dir;
         // 优先级并列时按名称稳定排序，避免顺序抖动
-        return String(a.name ?? "").localeCompare(String(b.name ?? ""));
+        return templateName(a).localeCompare(templateName(b), locale);
       }
       if (sortKey === "created") {
         const d = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
         if (d !== 0) return d * dir;
-        return String(a.name ?? "").localeCompare(String(b.name ?? ""));
+        return templateName(a).localeCompare(templateName(b), locale);
       }
-      return String(a.name ?? "").localeCompare(String(b.name ?? "")) * dir;
+      return templateName(a).localeCompare(templateName(b), locale) * dir;
     });
-  }, [items, query, catFilter, sortKey, sortAsc]);
+  }, [items, query, catFilter, sortKey, sortAsc, locale]);
 
   const enabledCount = items.filter((i) => Boolean(i.enabled)).length;
   const systemCount = items.filter((i) => String(i.scope ?? "") === "system").length;
-  const personalCount = items.length - systemCount;
+  const personalCount = items.filter((i) => i.scope === "personal").length;
   const filtering = Boolean(query.trim()) || Boolean(catFilter);
 
   return (
@@ -316,7 +318,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
               {view.map((item, idx) => (
                 <tr key={item.template_id}>
                   <td className="mining-cell-idx">{idx + 1}</td>
-                  <td>{item.name}</td>
+                  <td>{templateName(item)}</td>
                   <td data-tpl-cell="category">
                     <span className="mining-chip mining-chip--brand">
                       {categoryLabel(item.rule_config?.category, t)}
@@ -336,7 +338,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
                           : "mining-chip mining-chip--brand"
                       }
                     >
-                      {item.scope ?? "-"}
+                      {templateScope(item.scope)}
                     </span>
                   </td>
                   <td>
@@ -352,7 +354,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
                   </td>
                   <td className="mining-cell-muted">{item.version ?? "-"}</td>
                   <td className="mining-cell-muted" data-tpl-cell="created">
-                    {item.created_at ?? "-"}
+                    {formatMiningDateTime(item.created_at)}
                   </td>
                   <td>
                     <button
@@ -396,7 +398,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
             <header className="mining-pool-modal-head">
               <h3>
                 {t("factorTplDetailTitle")}
-                <span className="mining-cell-muted"> · {detail.name}</span>
+                <span className="mining-cell-muted"> · {templateName(detail)}</span>
               </h3>
               <button
                 type="button"
@@ -423,7 +425,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
                   {t("factorTplDetailEconomy")}
                 </span>
                 <span data-tpl-detail-economy>
-                  {detail.rule_config?.economy_logic_zh ?? detail.description ?? "-"}
+                  {templateEconomy(detail)}
                 </span>
               </div>
               <div className="mining-tpl-detail-row">
@@ -459,17 +461,15 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
                   {t("factorTplDetailScope")}
                 </span>
                 <span>
-                  {String(detail.scope ?? "") === "system"
-                    ? t("factorTplScopeSystem")
-                    : t("factorTplScopePersonal")}
-                  <span className="mining-cell-muted"> ({detail.scope ?? "-"})</span>
+                  {templateScope(detail.scope)}
                 </span>
               </div>
               <div className="mining-tpl-detail-row">
                 <span className="mining-tpl-detail-label">
                   {t("factorTplDetailOwner")}
                 </span>
-                <span>{detail.owner ?? "-"}</span>
+                <span>{detail.scope === "system" && detail.owner === "system"
+                  ? t("factorTplOwnerSystem") : detail.owner ?? "-"}</span>
               </div>
               <div className="mining-tpl-detail-row">
                 <span className="mining-tpl-detail-label">
@@ -481,7 +481,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
                 <span className="mining-tpl-detail-label">
                   {t("factorTplColCreated")}
                 </span>
-                <span>{detail.created_at ?? "-"}</span>
+                <span>{formatMiningDateTime(detail.created_at)}</span>
               </div>
             </div>
 

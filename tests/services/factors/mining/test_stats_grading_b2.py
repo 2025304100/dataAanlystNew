@@ -259,7 +259,7 @@ class TestGradingAfterFinalize:
                                config, created_by="local_user", **kw):  # noqa: ARG001
             return _Outcome(run_id=f"eval-{factor_version_id}",
                             gate_result="passed", rejection_reasons=[],
-                            metrics={"ic": {"icir": 0.02}},
+                            metrics={"ic": {"icir": 0.02}, "correlation": 0.2},
                             time_split=None, coverage=_Cov())
 
         ctx = _split_ctx(db_session, run)

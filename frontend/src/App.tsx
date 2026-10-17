@@ -36,6 +36,20 @@ export default function App() {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // 消息通知「查看全部 / 点击通知」跳转设置页指定分区：
+  // Settings 仅在 settings tab 挂载，故先切 tab，再经 effect 派发 settings:navigate 事件
+  const [settingsNavRequest, setSettingsNavRequest] = useState<
+    { section: string; subtab?: string; nonce: number } | null
+  >(null);
+  useEffect(() => {
+    if (!settingsNavRequest || ctx.activeTab !== "settings") return;
+    window.dispatchEvent(
+      new CustomEvent("settings:navigate", {
+        detail: { section: settingsNavRequest.section, subtab: settingsNavRequest.subtab },
+      })
+    );
+  }, [settingsNavRequest, ctx.activeTab]);
+
   // WP0.4：应用启动时读取 URL 中的 ?tab=... 并解析为有效 tab（旧深链接兼容）
   // 仅在挂载时执行一次，不修改用户后续手动切换 tab 的行为
   useEffect(() => {
@@ -103,7 +117,7 @@ export default function App() {
           外层 sticky 容器接管原 .view-tabs 的 sticky 行为，使整个顶部栏（含右侧）固定置顶。
           .pt-theme-scope 包裹右侧通知/帮助，使 --pt-* 变量在该容器内生效（变量定义在组合交易 Tab scoped 主题内）。 */}
       <div className="app-global-nav" style={{ position: "sticky", top: 0, zIndex: 50, display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <nav className="view-tabs" aria-label={t("ariaMainViews")} style={{ flex: 1, minWidth: 0, position: "static" }}>
+        <nav className="view-tabs" aria-label={t("ariaMainViews")} style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
           <button
             className={`view-tab${ctx.activeTab === "decision" ? " active" : ""}`}
             onClick={() => ctx.setActiveTab("decision")}
@@ -151,31 +165,47 @@ export default function App() {
           >
             {t("tabSettings")}
           </button>
+
+          {/* SubTask 12.5：消息通知 / 帮助入口。
+              2026-10-17 用户要求：从右上角独立工具区并入一级菜单（设置之后），
+              米白浅色贴合主体（.nav-tools-light 作用域，不走组合交易域深色 pt-theme-scope）。
+              互斥逻辑不变：打开一个时主动关闭另一个。 */}
+          <div
+            className="nav-tools-light"
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}
+          >
+            <NotificationDropdown
+              forceClose={helpOpen}
+              onNavigate={(target) => {
+                ctx.setActiveTab(target.tab as typeof ctx.activeTab);
+                if (target.section) {
+                  setSettingsNavRequest({
+                    section: target.section,
+                    subtab: target.subtab,
+                    nonce: Date.now(),
+                  });
+                }
+              }}
+              onViewAll={() => {
+                ctx.setActiveTab("settings");
+                setSettingsNavRequest({ section: "notifications", subtab: "deliveries", nonce: Date.now() });
+              }}
+              onOpenChange={(open) => {
+                setNotificationOpen(open);
+                if (open) setHelpOpen(false);
+              }}
+            />
+            <HelpDropdown
+              forceClose={notificationOpen}
+              onOpenChange={(open) => {
+                setHelpOpen(open);
+                if (open) setNotificationOpen(false);
+              }}
+            />
+          </div>
         </nav>
 
-        {/* SubTask 12.5：顶部栏右侧通知/帮助（全局功能，所有 Tab 下均显示）
-            互斥逻辑：打开一个时主动关闭另一个，避免 forceClose 持续 true 阻止打开 */}
-        <div className="pt-theme-scope global-nav-tools" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 6 }}>
-          <NotificationDropdown
-            forceClose={helpOpen}
-            onViewAll={() => {
-              window.localStorage.setItem("settings_active_section", "notifications");
-              window.localStorage.setItem("settings_notification_subtab", "deliveries");
-              ctx.setActiveTab("settings");
-            }}
-            onOpenChange={(open) => {
-              setNotificationOpen(open);
-              if (open) setHelpOpen(false);
-            }}
-          />
-          <HelpDropdown
-            forceClose={notificationOpen}
-            onOpenChange={(open) => {
-              setHelpOpen(open);
-              if (open) setNotificationOpen(false);
-            }}
-          />
-        </div>
+        {/* 原右上角独立工具区已移除（2026-10-17 并入一级菜单，见 nav 内 .nav-tools-light） */}
       </div>
 
       <main className="layout">

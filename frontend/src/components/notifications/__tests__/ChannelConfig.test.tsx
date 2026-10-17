@@ -259,7 +259,7 @@ describe("ChannelConfig 组件测试", () => {
     const appTokenInput = screen.getByLabelText("channelConfigAppToken") as HTMLInputElement;
     await user.type(appTokenInput, "token-value");
     const uidInput = screen.getByLabelText("channelConfigUid") as HTMLInputElement;
-    await user.type(uidInput, "uid-value");
+    await user.type(uidInput, "uid-value{Enter}");
 
     // 点击弹窗 OK 按钮
     mockRequestJson
@@ -283,7 +283,7 @@ describe("ChannelConfig 组件测试", () => {
       expect(body.name).toBe("新渠道");
       expect(body.channel_type).toBe("wxpusher");
       expect(body.config).toHaveProperty("app_token", "token-value");
-      expect(body.config).toHaveProperty("uid", "uid-value");
+      expect(body.config).toHaveProperty("uids", ["uid-value"]);
     });
   });
 

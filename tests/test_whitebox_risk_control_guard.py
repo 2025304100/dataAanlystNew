@@ -693,29 +693,9 @@ class TestNPlusOneOptimization:
         # 不应再有循环内 db.get(Symbol, symbol_id)
         assert "db.get(Symbol, symbol_id)" not in source
 
-    def test_sim_accounts_summary_uses_batch_latest_price(self):
-        """build_sim_account_summary 应批量预加载最新 bar，不再循环内 latest_price_for_symbol。"""
-        import inspect
-        from app.services import sim_accounts
-
-        source = inspect.getsource(sim_accounts.build_sim_account_summary)
-        # 应有 latest_price_map 批量预加载
-        assert "latest_price_map" in source, \
-            "build_sim_account_summary 应批量预加载 latest_price_map 避免 N+1"
-        # 应有子查询 max(DailyBar.id)
-        assert "func.max(DailyBar.id)" in source or "max(DailyBar.id)" in source
-
-    def test_dashboard_workbench_uses_batch_latest_bar(self):
-        """dashboard workbench 应批量预加载最新 bar，不再循环内 select(DailyBar)。"""
-        import inspect
-        from app.api.routes import dashboard
-
-        source = inspect.getsource(dashboard.get_dashboard_workbench)
-        # 应有 latest_close_map 批量预加载
-        assert "latest_close_map" in source, \
-            "dashboard workbench 应批量预加载 latest_close_map 避免 N+1"
-        # 应有子查询 max(DailyBar.id)
-        assert "max(DailyBar.id)" in source
+    # Account/dashboard quote batching is exercised against real SQL in
+    # test_dashboard_readonly_and_price_dates.py. Checking for MAX(id) in source
+    # previously preserved a date-ordering bug instead of guarding query count.
 
     def test_market_data_import_uses_batch_existing_dates(self):
         """import_daily_bars 应批量预加载已存在的 trade_date，不再循环内查存在性。"""

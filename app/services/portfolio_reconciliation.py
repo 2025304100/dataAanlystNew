@@ -33,6 +33,7 @@ from app.models.backtest import BacktestTrade  # 作为 legacy fallback 订单/�
 from app.models.decision_engine import DecisionRun as DecisionRunORM, DecisionEvidence
 from app.models.portfolio import Portfolio, Position
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
+from app.services.cash_ledger_diagnosis import diagnose_cash_ledger
 
 from app.services.data_governance_audit import (
     AuditWriteResult,
@@ -71,6 +72,7 @@ class ReconciliationReport:
     actual_cash: float | None = None
     differences: list[ReconciliationDiff] = field(default_factory=list)
     audit: AuditWriteResult | None = None
+    cash_audit: dict[str, Any] | None = None
 
     @property
     def has_any_diff(self) -> bool:
@@ -197,6 +199,7 @@ def reconcile_trade_date(
     # 撮合明细（回测路径兼容），真实自动仿真需接 SimulationOrder。
     trades_provider=None,  # Callable[[Session, int, date], list[BacktestTradeLike]]
     positions_provider=None,  # Callable[[Session, int, date | None], dict[int, int]]
+    persist: bool = True,
 ) -> ReconciliationReport:
     """对 T 日决策 → T+1 最终持仓做对账。返回差异明细 + 推进 last_reconciled_trade_date。"""
     p = db.get(Portfolio, portfolio_id)
@@ -220,6 +223,35 @@ def reconcile_trade_date(
         status="PASSED",
     )
 
+    def finish() -> None:
+        if persist:
+            _finalize_report(db, p, report, operator_id, correlation_id)
+        else:
+            report.status = "BLOCKED" if report.has_any_diff else "PASSED"
+
+    # Cash arithmetic is meaningful even when today's automatic execution
+    # evidence is missing. Its absence must not hide an existing book gap.
+    if "cash_ledger" in inspect(db.get_bind()).get_table_names():
+        rows = db.execute(select(CashLedger.id, CashLedger.entry_type,
+            CashLedger.amount, CashLedger.balance_after, CashLedger.ref_type, CashLedger.ref_id)
+            .where(CashLedger.portfolio_id == portfolio_id)
+            .order_by(CashLedger.id)).mappings().all()
+        fills = None
+        if 'sim_trades' in inspect(db.get_bind()).get_table_names():
+            fills = [dict(row) for row in db.execute(select(SimTrade.order_id,
+                SimTrade.side, SimTrade.amount, SimTrade.fee)
+                .where(SimTrade.portfolio_id == portfolio_id)).mappings()]
+        report.cash_audit = diagnose_cash_ledger([dict(row) for row in rows], fills)
+        if report.cash_audit.get('expected_cash') is not None:
+            report.expected_cash = report.cash_audit['expected_cash']
+            report.actual_cash = report.cash_audit['actual_cash']
+        if report.cash_audit['status'] == 'BROKEN':
+            report.differences.append(ReconciliationDiff(
+                symbol_id=None, kind='NAV_BROKEN',
+                expected={"cash": report.expected_cash}, actual={"cash": report.actual_cash},
+                detail='完整现金账本的收支累计与记录余额不一致；需核对历史流水，未经确认不调整账本。',
+            ))
+
     if dr is None:
         report.differences.append(ReconciliationDiff(
             symbol_id=None,
@@ -229,7 +261,7 @@ def reconcile_trade_date(
                 "无 SUCCEEDED auto_simulation DecisionRun（未接管/当日仍未执行）"
             ),
         ))
-        _finalize_report(db, p, report, operator_id, correlation_id)
+        finish()
         return report
 
     # 2. 决策侧预期（只关心 BUY/SELL/HOLD）
@@ -310,52 +342,6 @@ def reconcile_trade_date(
         if sign != 0:
             actual_filled_delta[sid] = actual_filled_delta.get(sid, 0) + sign * qty
 
-    # R4 cash seam: when the simulation has a CashLedger, reconcile the exact
-    # cash effects of the evidence-linked SimTrade rows, including fees. Older
-    # imported portfolios may have no ledger yet; retain NOT_CHECKED semantics
-    # for those rows instead of inventing a balance.
-    table_names = set(inspect(db.get_bind()).get_table_names())
-    cash_balance_row = None
-    if "cash_ledger" in table_names:
-        cash_balance_row = db.execute(
-            select(CashLedger.balance_after)
-            .where(CashLedger.portfolio_id == portfolio_id)
-            .order_by(CashLedger.id.desc())
-            .limit(1)
-        ).scalar_one_or_none()
-    if cash_balance_row is not None and order_evidence_ids:
-        linked_cash_rows = db.execute(
-            select(SimTrade.side, SimTrade.amount, SimTrade.fee)
-            .join(SimOrder, SimOrder.id == SimTrade.order_id)
-            .where(
-                SimTrade.portfolio_id == portfolio_id,
-                SimOrder.decision_evidence_id.in_(order_evidence_ids),
-            )
-            .order_by(SimTrade.id)
-        ).all()
-        expected_cash = float(getattr(p, "total_capital", 0.0) or 0.0)
-        for side, amount, fee in linked_cash_rows:
-            gross = abs(float(amount or 0.0))
-            total_fee = abs(float(fee or 0.0))
-            if str(side or "").lower() == "buy":
-                expected_cash -= gross + total_fee
-            elif str(side or "").lower() == "sell":
-                expected_cash += gross - total_fee
-        report.expected_cash = round(expected_cash, 8)
-        report.actual_cash = round(float(cash_balance_row), 8)
-        cash_tolerance = max(0.01, abs(expected_cash) * 1e-6)
-        if abs(expected_cash - float(cash_balance_row)) > cash_tolerance:
-            report.differences.append(ReconciliationDiff(
-                symbol_id=None,
-                kind="NAV_BROKEN",
-                expected={"cash": report.expected_cash},
-                actual={"cash": report.actual_cash},
-                detail=(
-                    "CashLedger balance does not equal initial capital plus "
-                    "evidence-linked fills and fees."
-                ),
-            ))
-
     # R1: 有 BUY/SELL 决策但无对应撮合变化且无订单计划（简化：缺订单记录即 MISSING）
     for sid, delta in expected_qty_delta.items():
         if delta == 0:
@@ -425,7 +411,7 @@ def reconcile_trade_date(
                 ),
             ))
 
-    _finalize_report(db, p, report, operator_id, correlation_id)
+    finish()
     return report
 
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import { t, template, factorLabel, factorCategoryLabel, factorDirectionLabel } from "../../i18n";
 import { navigate } from "../../utils/navigate";
@@ -35,6 +35,7 @@ import {
   Typography,
   Statistic,
   Badge,
+  Alert,
 } from "antd";
 import {
   PlusOutlined,
@@ -54,6 +55,7 @@ type FactorLibraryProps = {
   onViewDetail: (code: string) => void;
   onEditFactor: (code: string) => void;
   onNewFactor: () => void;
+  refreshKey?: number;
 };
 
 type FactorStats = {
@@ -78,7 +80,7 @@ const INITIAL_STATS: FactorStats = {
   shadowGatePassRate: null,
 };
 
-export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor }: FactorLibraryProps) {
+export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor, refreshKey = 0 }: FactorLibraryProps) {
   const ctx = useApp();
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
@@ -87,11 +89,24 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [kindFilter, setKindFilter] = useState<string | undefined>(undefined);
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
+  const [originFilter, setOriginFilter] = useState<string | undefined>(undefined);
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [stats, setStats] = useState<FactorStats>(INITIAL_STATS);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [serviceUpdatePending, setServiceUpdatePending] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const listRequest = useRef(0);
+  const statsRequest = useRef(0);
+  const draftRequest = useRef(0);
+  const drawerRequest = useRef(0);
+  const [activePane, setActivePane] = useState("library");
+  const [listReload, setListReload] = useState(0);
 
   // ═══════════════════════════════════════════════════════
   // P1.3 因子→因子集/模型 使用情况（抽屉 + 懒加载缓存）
@@ -102,8 +117,10 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
   const [usageLoading, setUsageLoading] = useState(false);
   /** code -> digest；命中直接使用 */
   const [usageCache, setUsageCache] = useState<Record<string, ScoringFactorUsage>>({});
-  /** Set of codes currently loading (dedup). */
-  const usageLoadingSetRef = useState<Set<string>>(new Set())[0];
+  const usageCacheRef = useRef<Record<string, ScoringFactorUsage>>({});
+  const usageRequests = useRef(new Map<string, Promise<ScoringFactorUsage | null>>());
+  const usageGeneration = useRef(0);
+  const [usageError, setUsageError] = useState(false);
 
   // ── P2.2d 草稿治理 Tab 状态 ─────────────────────────────────────────────
   const [drafts, setDrafts] = useState<ScoringFactorDraft[]>([]);
@@ -134,35 +151,29 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
   /** 预取单条 usage（幂等 + 去重）。 */
   const prefetchUsage = useCallback(
     async (code: string): Promise<ScoringFactorUsage | null> => {
-      if (usageCache[code]) return usageCache[code];
-      if (usageLoadingSetRef.has(code)) {
-        // 等待已在进行中的请求
-        for (let i = 0; i < 40; i += 1) {
-          await new Promise((r) => setTimeout(r, 100));
-          if (usageCache[code]) return usageCache[code];
-          if (!usageLoadingSetRef.has(code)) break;
+      if (usageCacheRef.current[code]) return usageCacheRef.current[code];
+      const pending = usageRequests.current.get(code);
+      if (pending) return pending;
+      const generation = usageGeneration.current;
+      const request = api.scoringGetFactorUsage(code).then((data) => {
+        if (generation === usageGeneration.current) {
+          usageCacheRef.current = { ...usageCacheRef.current, [code]: data };
+          setUsageCache(usageCacheRef.current);
         }
-        return usageCache[code] ?? null;
-      }
-      usageLoadingSetRef.add(code);
-      try {
-        const data = await api.scoringGetFactorUsage(code);
-        setUsageCache((c) => ({ ...c, [code]: data }));
         return data;
-      } catch {
-        // 静默：单个 factor 获取失败不影响全局
-        return null;
-      } finally {
-        usageLoadingSetRef.delete(code);
-      }
+      }).catch(() => null).finally(() => {
+        if (usageRequests.current.get(code) === request) usageRequests.current.delete(code);
+      });
+      usageRequests.current.set(code, request);
+      return request;
     },
-    [usageCache, usageLoadingSetRef]
+    []
   );
 
   /** 批量预取当前页的 usage（并发控制 3）。 */
   const prefetchPageUsages = useCallback(
     async (codes: string[]) => {
-      const missing = codes.filter((c) => !usageCache[c] && !usageLoadingSetRef.has(c));
+      const missing = codes.filter((c) => !usageCacheRef.current[c]);
       if (!missing.length) return;
       const worker = async (queue: string[]) => {
         while (queue.length) {
@@ -175,31 +186,35 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
       missing.forEach((c, i) => queues[i % concurrency].push(c));
       await Promise.all(queues.map((q) => worker(q)));
     },
-    [prefetchUsage, usageCache, usageLoadingSetRef]
+    [prefetchUsage]
   );
 
   /** 打开 usage 抽屉（若未命中 cache 则拉取）。 */
   const openUsageDrawer = useCallback(
     async (code: string) => {
+      const request = ++drawerRequest.current;
       setUsageDrawerCode(code);
       setUsageDrawerOpen(true);
       setUsageLoading(true);
+      setUsageError(false);
+      if (serviceUpdatePending) { setUsageLoading(false); return; }
       try {
-        await prefetchUsage(code);
-      } catch (err) {
-        message.error("加载因子使用信息失败：" + String(err));
+        const data = await prefetchUsage(code);
+        if (request === drawerRequest.current) setUsageError(!data);
       } finally {
-        setUsageLoading(false);
+        if (request === drawerRequest.current) setUsageLoading(false);
       }
     },
-    [prefetchUsage, message]
+    [prefetchUsage, serviceUpdatePending]
   );
 
   const isZh = ctx.locale.startsWith("zh");
 
   // 计算统计数据
   const loadStats = useCallback(async () => {
+    const request = ++statsRequest.current;
     setStatsLoading(true);
+    setStatsError(false);
     try {
       const pageSize = 100;
       // Factor-domain internal - DO NOT USE outside factor center
@@ -223,13 +238,13 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
         return new Date(f.updated_at) >= weekAgo;
       }).length;
 
-      const evaluable = allItems.filter((f) =>
-        f.lifecycle_status === "candidate" || f.lifecycle_status === "testing" || f.lifecycle_status === "shadow" || f.lifecycle_status === "active"
-      ).length;
+      const evaluable = allItems.filter((f) => f.lifecycle_status === "candidate" || f.lifecycle_status === "testing").length;
 
       const shadowCount = allItems.filter((f) => f.lifecycle_status === "shadow").length;
       const activeCount = allItems.filter((f) => f.lifecycle_status === "active").length;
 
+      if (request !== statsRequest.current) return;
+      setCategories(Array.from(new Set(allItems.map((f) => f.category).filter(Boolean))));
       setStats({
         total: expectedTotal,
         evaluable,
@@ -242,46 +257,63 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
         shadowGatePassRate: null,
       });
     } catch {
-      // 静默失败，不影响主列表
+      if (request === statsRequest.current) setStatsError(true);
     } finally {
-      setStatsLoading(false);
+      if (request === statsRequest.current) setStatsLoading(false);
     }
   }, []);
 
   const loadFactors = useCallback(async () => {
+    const request = ++listRequest.current;
     setLoading(true);
+    setListError(null);
+    setItems([]);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
       const resp = await api.scoringListFactorDefinitions({
-        search: search || undefined,
+        search: appliedSearch || undefined,
         lifecycle_status: statusFilter,
         factor_kind: kindFilter,
         category: categoryFilter || undefined,
+        origin: originFilter,
         page,
         page_size: pageSize,
       });
+      if (request !== listRequest.current) return;
+      setServiceUpdatePending((resp.items || []).some((item:FactorDefinition) => !Object.prototype.hasOwnProperty.call(item, "latest_version_id")));
       setItems(resp.items || []);
       setTotal(resp.total || 0);
     } catch (err: any) {
-      message.error(err?.message || t("factorLibraryLoadFailed"));
+      if (request === listRequest.current) setListError(err?.message || t("factorLibraryLoadFailed"));
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
-  }, [search, statusFilter, kindFilter, categoryFilter, page, pageSize, message]);
+  }, [appliedSearch, statusFilter, kindFilter, categoryFilter, originFilter, page, pageSize]);
 
   useEffect(() => {
     loadFactors();
-    loadStats();
-  }, [loadFactors, loadStats]);
+    return () => { listRequest.current += 1; };
+  }, [loadFactors, refreshKey, listReload]);
+
+  useEffect(() => { void loadStats(); return () => { statsRequest.current += 1; }; }, [loadStats, refreshKey]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setAppliedSearch(search.trim()); setPage(1); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  useEffect(() => {
+    usageGeneration.current += 1;
+    usageCacheRef.current = {};
+    usageRequests.current.clear();
+    setUsageCache({});
+  }, [refreshKey]);
+  useEffect(() => () => { drawerRequest.current += 1; usageGeneration.current += 1; }, []);
 
   // P1.3.1：items 更新后自动预取当前页所有因子的 usage，用于摘要行/胶囊展示。
   useEffect(() => {
-    if (!items.length) return;
+    if (!items.length || serviceUpdatePending) return;
     const codes = items.map((f) => f.code).filter(Boolean);
     void prefetchPageUsages(codes);
-    // 仅在列表内容刷新时预取；deps 故意不包含 prefetchPageUsages，避免循环触发
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [items, serviceUpdatePending, prefetchPageUsages]);
 
   // 生命周期状态颜色映射
   const statusColor = (status: string | null): string => {
@@ -320,6 +352,14 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
     return `${month}-${day} ${hours}:${minutes}`;
   };
 
+  const draftSourceLabel = (source: string | null | undefined): string => {
+    const keys: Record<string, string> = {
+      custom_indicators: "factorLabDraftSourceCustomIndicators",
+      ai_assisted: "factorLabDraftSourceAiAssisted",
+    };
+    return source && keys[source] ? t(keys[source]) : source || "-";
+  };
+
   // 数据覆盖率：取自因子用量统计的 30 日覆盖率（coverage_30d）。
   // VIZ-0930-25：此前这里是 `mockRates[代码字符哈希 % 8]` —— 一列看起来很像真实监控的
   // 百分比完全是伪造的，且与同卡展开块的「覆盖率」（读同一个 coverage_30d）互相矛盾。
@@ -330,31 +370,23 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
     return `${(cov * 100).toFixed(1)}%`;
   };
 
-  // 模拟评价结论
   const getEvaluationResult = (record: FactorDefinition): { label: string; color: string } => {
-    const status = record.lifecycle_status;
-    if (status === "active" || status === "shadow") {
-      return { label: isZh ? "通过" : "Pass", color: "green" };
-    }
-    if (status === "testing") {
-      return { label: isZh ? "复核" : "Review", color: "gold" };
-    }
-    if (status === "rejected" || status === "quarantined") {
-      return { label: isZh ? "阻断" : "Blocked", color: "red" };
-    }
-    if (status === "candidate") {
-      return { label: isZh ? "待评价" : "Pending", color: "default" };
-    }
-    return { label: isZh ? "待评价" : "Pending", color: "default" };
+    if (!Object.prototype.hasOwnProperty.call(record, "latest_evaluation")) return {label:t("factorCenterLibraryServicePending"),color:"gold"};
+    const evidence = record.latest_evaluation;
+    if (!evidence || evidence.factor_version_id !== record.latest_version_id) return {label:t("factorCenterLibraryNoEvaluation"), color:"default"};
+    const result = evidence.gate_result;
+    const label = t(["passed", "rejected", "warn"].includes(result) ? `factorCenterLibraryGate_${result}` : "factorCenterLibraryNoEvaluation");
+    if (!evidence.production_fidelity) return {label:`${t("factorCenterLibraryExploratory")} · ${label}`,color:result === "rejected" ? "red" : "gold"};
+    return {label, color:result === "passed" ? "green" : result === "rejected" ? "red" : "gold"};
   };
 
   // 获取分类列表（用于筛选）
   const categoryOptions = Array.from(
-    new Set(items.map((f) => f.category).filter(Boolean) as string[])
+    new Set([...categories, ...(categoryFilter ? [categoryFilter] : [])])
   ).map((cat) => ({ value: cat, label: factorCategoryLabel(cat) }));
 
   /** 根据缓存直接读取 usage（用于表格渲染）；没有则返回 null。 */
-  const peekUsage = (code: string): ScoringFactorUsage | null => usageCache[code] ?? null;
+  const peekUsage = (code: string): ScoringFactorUsage | null => serviceUpdatePending ? null : usageCache[code] ?? null;
 
   const columns = [
     {
@@ -368,52 +400,53 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
         const modelCount = u?.in_models?.length ?? 0;
         const ic = u?.ic_mean_30d;
         const cov = u?.coverage_30d;
-        const prodDays = u?.days_in_production;
+        const prodDays = record.lifecycle_status === "active" ? u?.days_in_production : null;
         return (
           <div>
-            <div
-              className="factor-name-cell"
+            <button
+              className="factor-name-cell factor-center-name-button"
+              type="button"
               style={{ fontWeight: 600, fontSize: 16, color: "#0f766e", cursor: "pointer" }}
               onClick={() => onViewDetail(record.code)}
             >
               {factorLabel(record.code, record.name)}
-            </div>
+            </button>
             <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{record.code}</div>
 
             {/* P1.3.1 两行：参与情况 + 质量指标 */}
             <div style={{ marginTop: 6, fontSize: 12, color: "#475569" }}>
-              <span
-                style={{ cursor: "pointer", color: "#0891b2", textDecoration: "underline dotted" }}
+              <Button type="link" size="small" icon={<LinkOutlined />} data-testid={`btn-usage-${record.code}`}
+                style={{ padding: 0, fontSize: 12 }}
                 onClick={() => openUsageDrawer(record.code)}
               >
-                参与 {setCount} 个因子集 · {modelCount} 个模型
-              </span>
+                {u ? template("factorCenterLibraryUsageCounts", {sets:setCount, models:modelCount}) : t("factorCenterLibraryUsageLoading")}
+              </Button>
             </div>
-            <div style={{ marginTop: 3, display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {moreFiltersOpen && <div style={{ marginTop: 3, display: "flex", flexWrap: "wrap", gap: 6 }}>
               {u ? (
                 <>
-                  <Tag
+                  <Tooltip title={t("factorCenterLibraryICHelp")}><Tag
                     color={ic != null && ic >= 0.015 ? "green" : ic != null && ic >= 0 ? "default" : "orange"}
                     style={{ marginInlineEnd: 0, fontSize: 11 }}
                   >
                     IC {ic != null && Number.isFinite(ic) ? (ic * 100).toFixed(2) + "%" : "-"}
-                  </Tag>
-                  <Tag
+                  </Tag></Tooltip>
+                  <Tooltip title={t("factorCenterLibraryCoverageHelp")}><Tag
                     color={cov != null && cov >= 0.7 ? "green" : cov != null && cov >= 0.5 ? "gold" : "red"}
                     style={{ marginInlineEnd: 0, fontSize: 11 }}
                   >
-                    覆盖率 {cov != null && Number.isFinite(cov) ? (cov * 100).toFixed(0) + "%" : "-"}
-                  </Tag>
-                  <Tag style={{ marginInlineEnd: 0, fontSize: 11 }} color="blue">
-                    生产 {prodDays != null && Number.isFinite(prodDays) ? prodDays + " 天" : "-"}
-                  </Tag>
+                    {t("factorColDataCoverage")} {cov != null && Number.isFinite(cov) ? (cov * 100).toFixed(0) + "%" : "—"}
+                  </Tag></Tooltip>
+                  {prodDays != null && Number.isFinite(prodDays) && <Tooltip title={t("factorCenterLibraryProductionHelp")}><Tag style={{ marginInlineEnd: 0, fontSize: 11 }} color="blue">
+                    {template("factorCenterLibraryProductionDays", {days:prodDays})}
+                  </Tag></Tooltip>}
                 </>
               ) : (
                 <Tag style={{ marginInlineEnd: 0, fontSize: 11, color: "#94a3b8" }}>
-                  点击右侧 🔗 查看使用详情
+                  {t("factorCenterLibraryUsageHint")}
                 </Tag>
               )}
-            </div>
+            </div>}
           </div>
         );
       },
@@ -426,27 +459,26 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
       render: (kind: string | null) => kindLabel(kind),
     },
     {
-      title: t("factorColCurrentVersion"),
+      title: <Tooltip title={t("factorCenterLibraryVersionHelp")}>{t("factorCenterLibraryLatestVersion")} <InfoCircleOutlined /></Tooltip>,
       key: "version",
       width: 100,
       render: (_: unknown, record: FactorDefinition) => {
-        const versionId = record.active_version_id ?? record.shadow_version_id;
-        return versionId ? `v${versionId}` : "-";
+        return record.latest_version_no != null ? `v${record.latest_version_no}` : "—";
       },
     },
     {
-      title: t("factorColDataCoverage"),
+      title: <Tooltip title={t("factorCenterLibraryCoverageHelp")}>{t("factorColDataCoverage")} <InfoCircleOutlined /></Tooltip>,
       key: "coverage",
       width: 110,
       render: (_: unknown, record: FactorDefinition) => getDataCoverage(record),
     },
     {
-      title: t("factorColEvaluationResult"),
+      title: <Tooltip title={t("factorCenterLibraryEvaluationHelp")}>{t("factorColEvaluationResult")} <InfoCircleOutlined /></Tooltip>,
       key: "evaluation",
       width: 100,
       render: (_: unknown, record: FactorDefinition) => {
         const result = getEvaluationResult(record);
-        return <Tag color={result.color}>{result.label}</Tag>;
+        return <Tooltip title={record.latest_evaluation ? formatTime(record.latest_evaluation.created_at) : t("factorCenterLibraryEvaluationHelp")}><Tag color={result.color}>{result.label}</Tag></Tooltip>;
       },
     },
     {
@@ -473,38 +505,16 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
       render: (value: string | null) => formatTime(value),
     },
     {
-      title: "关联",
-      key: "usage",
-      width: 110,
-      render: (_: unknown, record: FactorDefinition) => {
-        const u = peekUsage(record.code);
-        const setCount = u?.in_factor_sets?.length ?? 0;
-        const modelCount = u?.in_models?.length ?? 0;
-        return (
-          <Tooltip title={setCount + modelCount > 0 ? `已在 ${setCount} 个因子集 / ${modelCount} 个模型中使用，点击查看详情` : "查看该因子参与的因子集与模型"}>
-            <Button
-              type="link"
-              size="small"
-              icon={<LinkOutlined />}
-              onClick={() => openUsageDrawer(record.code)}
-              style={{ paddingInline: 4 }}
-              data-testid={`btn-usage-${record.code}`}
-            >
-              {setCount + modelCount > 0 ? `${setCount}集·${modelCount}模` : "查看"}
-            </Button>
-          </Tooltip>
-        );
-      },
-    },
-    {
       title: t("factorColActions"),
       key: "actions",
       width: 140,
       fixed: "right" as const,
       render: (_: unknown, record: FactorDefinition) => (
         <Space size="small">
-          <Button type="link" size="small" onClick={() => onViewDetail(record.code)}>
-            {t("factorActionView")}
+          <Button type="link" size="small" disabled={!record.latest_version_id} onClick={() => {
+            window.dispatchEvent(new CustomEvent("factor-center:navigate", {detail:{target:"evaluation",factor_code:record.code,version_id:record.latest_version_id}}));
+          }}>
+            {t("factorCenterLibraryEvaluate")}
           </Button>
           <Button type="link" size="small" onClick={() => onEditFactor(record.code)}>
             {t("factorActionEdit")}
@@ -534,12 +544,12 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
           </Space>
         }
         open={usageDrawerOpen}
-        onClose={() => { setUsageDrawerOpen(false); setUsageDrawerCode(null); }}
+        onClose={() => { drawerRequest.current += 1; setUsageDrawerOpen(false); setUsageDrawerCode(null); }}
         width={780}
         destroyOnHidden
       >
         <Spin spinning={usageLoading}>
-          {!u && !usageLoading ? (
+          {serviceUpdatePending ? <Alert type="warning" showIcon message={t("factorCenterLibraryServicePending")} description={t("factorCenterLibraryServicePendingDesc")} /> : usageError ? <Alert type="error" showIcon message={t("factorCenterLibraryUsageFailed")} action={<Button onClick={() => openUsageDrawer(usageDrawerCode)}>{t("factorCenterLibraryRetry")}</Button>} /> : !u && !usageLoading ? (
             <Empty description={isZh ? "暂无使用数据" : "No usage data"} />
           ) : u ? (
             <>
@@ -579,8 +589,8 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                 <Col span={6}>
                   <Card size="small">
                     <Statistic
-                      title={isZh ? "30天覆盖率" : "Coverage (30d)"}
-                      value={u.coverage_30d != null && Number.isFinite(u.coverage_30d) ? (u.coverage_30d * 100).toFixed(0) : 0}
+                      title={<Tooltip title={t("factorCenterLibraryCoverageHelp")}>{isZh ? "覆盖率（最多30个交易日）" : "Coverage (up to 30 sessions)"}</Tooltip>}
+                      value={u.coverage_30d != null && Number.isFinite(u.coverage_30d) ? (u.coverage_30d * 100).toFixed(0) : "—"}
                       valueStyle={{ color: coverageColor(coveragePct(u.coverage_30d)) }}
                       suffix="%"
                     />
@@ -597,13 +607,17 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                   <Descriptions.Item label={isZh ? "分类" : "Category"}>
                     {u.category ? factorCategoryLabel(u.category) : "-"}
                   </Descriptions.Item>
-                  <Descriptions.Item label={isZh ? "来源" : "Origin"}>{u.origin || "-"}</Descriptions.Item>
+                  <Descriptions.Item label={isZh ? "来源" : "Origin"}>{u.origin ? t(`factorOrigin_${u.origin}`) : "-"}</Descriptions.Item>
                   <Descriptions.Item label={isZh ? "当前版本" : "Active Version"}>
                     {u.active_version != null ? `v${u.active_version}` : "-"}
                   </Descriptions.Item>
-                  <Descriptions.Item label={isZh ? "生产天数" : "Days in Prod."} span={2}>
-                    {u.days_in_production != null && Number.isFinite(u.days_in_production)
-                      ? `${u.days_in_production} 天`
+                  <Descriptions.Item label={isZh ? "覆盖统计窗口" : "Coverage window"}>
+                    {u.coverage_window_days != null ? `${u.coverage_window_days} ${isZh ? "个镜像交易日" : "mirrored trading days"}` : "—"}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={isZh ? "覆盖截止日" : "Coverage cutoff"}>{u.coverage_as_of || "—"}</Descriptions.Item>
+                  <Descriptions.Item label={<Tooltip title={t("factorCenterLibraryProductionHelp")}>{isZh ? "上线天数" : "Days active"}</Tooltip>} span={2}>
+                    {u.lifecycle_status === "active" && u.days_in_production != null && Number.isFinite(u.days_in_production)
+                      ? template("factorCenterLibraryProductionDays", {days:u.days_in_production})
                       : "-"}
                   </Descriptions.Item>
                   {u.description && (
@@ -615,7 +629,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
               </Card>
 
               {/* Task 6 (5): 使用情况 Usage Tab — 两个子 Tab：所属集合 / 关联模型 */}
-              <div
+            <div
                 className="usage-sub-tabs"
                 data-testid="usage-sub-tabs-wrapper"
                 style={{ marginTop: 4 }}
@@ -779,36 +793,49 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
 
   // ── P2.2d 草稿 Tab: 加载 + 审批/驳回 + payload 抽屉 ───────────────────
   const loadDrafts = useCallback(async () => {
+    const request = ++draftRequest.current;
     setDraftsLoading(true);
     try {
       const rows = await api.scoringListFactorDrafts({
-        status: draftStatus,
-        sourceModule: draftSource,
+        status: "any",
         limit: 200,
       });
-      setDrafts(rows ?? []);
+      if (request === draftRequest.current) setDrafts(rows ?? []);
     } catch (err: any) {
-      message.error(
+      if (request === draftRequest.current) message.error(
         `加载草稿失败: ${err?.message ?? err}`
       );
     } finally {
-      setDraftsLoading(false);
+      if (request === draftRequest.current) setDraftsLoading(false);
     }
-  }, [draftStatus, draftSource, message]);
+  }, [message]);
 
   useEffect(() => {
-    loadDrafts();
-  }, [loadDrafts]);
+    void loadDrafts();
+    return () => { draftRequest.current += 1; };
+  }, [loadDrafts, refreshKey]);
 
   const pendingCount = drafts.filter((d) => d.review_status === "submitted").length;
+  const filteredDrafts = drafts.filter((d) => (draftStatus === "any" || d.review_status === draftStatus) && (!draftSource || d.source_module === draftSource));
 
   const onApproveDraft = async (row: ScoringFactorDraft) => {
     const reviewer = ctx?.currentUser?.name ?? "superuser";
     try {
       setReviewBusy(row.draft_no);
-      await api.scoringApproveFactorDraft(row.draft_no, { reviewer });
-      message.success(`草稿 ${row.draft_no} 审批通过`);
-      loadDrafts();
+      const result = await api.scoringApproveFactorDraft(row.draft_no, { reviewer });
+      if (result.review_status === "applied" || result.review_status === "approved") {
+        message.success(t("factorCenterLibraryDraftApproved"));
+        usageGeneration.current += 1;
+        usageCacheRef.current = {};
+        usageRequests.current.clear();
+        setUsageCache({});
+        void loadFactors();
+        void loadStats();
+      } else {
+        const changed = result.review_msg?.includes("upstream_indicator_");
+        message.warning(changed ? t("factorCenterLibraryUpstreamChanged") : result.review_msg || t("factorCenterLibraryDraftNotApplied"));
+      }
+      void loadDrafts();
     } catch (err: any) {
       message.error(
         `审批失败: ${err?.detail ?? err?.message ?? err}`
@@ -819,13 +846,13 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
   };
 
   const onRejectConfirm = async () => {
-    if (!rejectRow) return;
+    if (!rejectRow || !rejectMsg.trim() || reviewBusy) return;
     const reviewer = ctx?.currentUser?.name ?? "superuser";
     try {
       setReviewBusy(rejectRow.draft_no);
       await api.scoringRejectFactorDraft(rejectRow.draft_no, {
         reviewer,
-        reviewMsg: rejectMsg,
+        reviewMsg: rejectMsg.trim(),
       });
       message.success(`草稿 ${rejectRow.draft_no} 已驳回`);
       setRejectOpen(false);
@@ -848,7 +875,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
       case "approved":
         return <Tag color="cyan">已批准</Tag>;
       case "applied":
-        return <Tag color="green">已生产</Tag>;
+        return <Tag color="green">{t("factorCenterLibraryDraftApplied")}</Tag>;
       case "rejected":
         return <Tag color="red">已驳回</Tag>;
       case "deleted":
@@ -881,7 +908,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
               {draftPayloadRow.draft_no}
             </Descriptions.Item>
             <Descriptions.Item label="来源模块">
-              <Tag>{draftPayloadRow.source_module}</Tag>
+              <Tag>{draftSourceLabel(draftPayloadRow.source_module)}</Tag>
               {draftPayloadRow.source_ref_id ? (
                 <Tag color="geekblue">ref: {draftPayloadRow.source_ref_id}</Tag>
               ) : null}
@@ -906,23 +933,23 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
               <List size="small">
                 {draftPayloadRow.submitted_at ? (
                   <List.Item>
-                    <Text type="secondary">Submitted</Text>
+                    <Text type="secondary">{isZh ? "提交" : "Submitted"}</Text>
                     &nbsp;&nbsp;
-                    {draftPayloadRow.submitted_at}
+                    {formatTime(draftPayloadRow.submitted_at)}
                   </List.Item>
                 ) : null}
                 {draftPayloadRow.reviewed_at ? (
                   <List.Item>
-                    <Text type="secondary">Reviewed</Text>
+                    <Text type="secondary">{isZh ? "审批" : "Reviewed"}</Text>
                     &nbsp;&nbsp;
-                    {draftPayloadRow.reviewed_at}
+                    {formatTime(draftPayloadRow.reviewed_at)}
                   </List.Item>
                 ) : null}
                 {draftPayloadRow.applied_at ? (
                   <List.Item>
-                    <Text type="secondary">Applied</Text>
+                    <Text type="secondary">{t("factorCenterLibraryDraftApplied")}</Text>
                     &nbsp;&nbsp;
-                    {draftPayloadRow.applied_at}
+                    {formatTime(draftPayloadRow.applied_at)}
                   </List.Item>
                 ) : null}
               </List>
@@ -935,14 +962,14 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
               </Descriptions.Item>
             ) : null}
             {draftPayloadRow.promoted_factor_id ? (
-              <Descriptions.Item label="生产因子信息">
+              <Descriptions.Item label={t("factorLabDraftStoredFactorInfo")}>
                 <div>factor_id = {draftPayloadRow.promoted_factor_id}</div>
                 <div>version = v{draftPayloadRow.promoted_factor_version}</div>
-                {/* P2.2c.2: 正式因子 code 可复制 + 跳转因子库 */}
+                {/* 入库因子代码可复制并跳转详情；入库不代表上线。 */}
                 {draftPayloadRow.promoted_factor_code ? (
                   <Space size={6} style={{ marginTop: 4 }}>
                     <Tag color="green" style={{ marginInlineEnd: 0 }}>
-                      正式 code
+                      {t("factorLabDraftStoredCode")}
                     </Tag>
                     <Text copyable strong>
                       {draftPayloadRow.promoted_factor_code}
@@ -954,7 +981,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                       onClick={() => {
                         window.dispatchEvent(
                           new CustomEvent("factor-center:navigate", {
-                            detail: { code: draftPayloadRow.promoted_factor_code!, tab: "library" },
+                            detail: { factor_code: draftPayloadRow.promoted_factor_code!, target: "detail" },
                           })
                         );
                       }}
@@ -994,11 +1021,12 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
     <Modal
       title={`驳回草稿 ${rejectRow?.draft_no ?? ""}`}
       open={rejectOpen}
-      onCancel={() => { setRejectOpen(false); setRejectRow(null); setRejectMsg(""); }}
+      onCancel={() => { if (!reviewBusy) { setRejectOpen(false); setRejectRow(null); setRejectMsg(""); } }}
       onOk={onRejectConfirm}
       okText="确认驳回"
       cancelText="取消"
       confirmLoading={rejectRow ? reviewBusy === rejectRow.draft_no : false}
+      okButtonProps={{disabled:!rejectMsg.trim() || !!reviewBusy}}
     >
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
         <div>
@@ -1033,8 +1061,15 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
         </Space>
       </div>
 
+      <div className="factor-center-workspace-guide">
+        <div><strong>{t("factorCenterLibraryGuideTitle")}</strong><p>{t("factorCenterLibraryGuideDesc")}</p></div>
+        <ol><li>{t("factorCenterLibraryGuideCreate")}</li><li>{t("factorCenterLibraryGuideEvaluate")}</li><li>{t("factorCenterLibraryGuideModel")}</li></ol>
+      </div>
+      {serviceUpdatePending && <Alert type="warning" showIcon message={t("factorCenterLibraryServicePending")} description={t("factorCenterLibraryServicePendingDesc")} />}
+
       <Tabs
-        defaultActiveKey="library"
+        activeKey={activePane}
+        onChange={setActivePane}
         size="large"
         className="factor-library-tabs"
         items={[
@@ -1051,8 +1086,13 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                       <Input.Search
                         placeholder={t("factorLibrarySearchPlaceholder")}
                         value={search}
-                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                        onSearch={() => { setPage(1); loadFactors(); }}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSearch(value);
+                          if (value.trim() !== appliedSearch) { listRequest.current += 1; setLoading(true); setItems([]); }
+                          else if (search.trim() !== appliedSearch) void loadFactors();
+                        }}
+                        onSearch={(value) => { setPage(1); if (value.trim() === appliedSearch) void loadFactors(); else setAppliedSearch(value.trim()); }}
                         allowClear
                         enterButton
                       />
@@ -1060,6 +1100,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                     <Col xs={12} sm={6} md={4} lg={4}>
                       <div className="filter-label">{t("factorLibraryFilterKind")}</div>
                       <Select
+                        aria-label={t("factorLibraryFilterKind")}
                         value={kindFilter}
                         onChange={(v) => { setKindFilter(v); setPage(1); }}
                         allowClear
@@ -1075,6 +1116,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                     <Col xs={12} sm={6} md={4} lg={4}>
                       <div className="filter-label">{t("factorLibraryFilterCategory")}</div>
                       <Select
+                        aria-label={t("factorLibraryFilterCategory")}
                         value={categoryFilter}
                         onChange={(v) => { setCategoryFilter(v); setPage(1); }}
                         allowClear
@@ -1086,6 +1128,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                     <Col xs={12} sm={6} md={4} lg={4}>
                       <div className="filter-label">{t("factorLibraryFilterStatus")}</div>
                       <Select
+                        aria-label={t("factorLibraryFilterStatus")}
                         value={statusFilter}
                         onChange={(v) => { setStatusFilter(v); setPage(1); }}
                         allowClear
@@ -1097,6 +1140,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                           { value: "testing", label: t("factorStatus_testing") },
                           { value: "shadow", label: t("factorStatus_shadow") },
                           { value: "active", label: t("factorStatus_active") },
+                          { value: "quarantined", label: t("factorStatus_quarantined") },
                           { value: "deprecated", label: t("factorStatus_deprecated") },
                           { value: "rejected", label: t("factorStatus_rejected") },
                         ]}
@@ -1104,11 +1148,26 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                     </Col>
                     <Col xs={12} sm={6} md={4} lg={3}>
                       <div className="filter-label">&nbsp;</div>
-                      <Button icon={<FilterOutlined />} style={{ width: "100%" }}>
-                        {t("factorLibraryMoreFilters")}
+                      <Button icon={<FilterOutlined />} style={{ width: "100%" }} onClick={() => setMoreFiltersOpen((value) => !value)} aria-expanded={moreFiltersOpen}>
+                        {t(moreFiltersOpen ? "factorCenterLibraryLessFilters" : "factorLibraryMoreFilters")}{originFilter ? " · 1" : ""}
+                      </Button>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={3}>
+                      <div className="filter-label">&nbsp;</div>
+                      <Button style={{width:"100%"}} disabled={!search && !kindFilter && !categoryFilter && !statusFilter && !originFilter}
+                        onClick={()=>{ setSearch(""); setAppliedSearch(""); setKindFilter(undefined); setCategoryFilter(undefined); setStatusFilter(undefined); setOriginFilter(undefined); setPage(1); setListReload(value=>value+1); }}>
+                        {t("factorCenterLibraryResetFilters")}
                       </Button>
                     </Col>
                   </Row>
+                  {moreFiltersOpen && <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
+                    <Col xs={24} sm={12} md={8}>
+                      <div className="filter-label">{t("factorCenterLibraryOriginFilter")}</div>
+                      <Select aria-label={t("factorCenterLibraryOriginFilter")} value={originFilter} allowClear
+                        onChange={(value) => { setOriginFilter(value); setPage(1); }} style={{ width: "100%" }}
+                        placeholder={t("factorCenterLibraryAllOrigins")} options={["system", "user", "ai_assisted", "imported"].map((value) => ({value, label:t(`factorOrigin_${value}`)}))} />
+                    </Col>
+                  </Row>}
                 </Card>
 
                 {/* 统计卡片 */}
@@ -1116,7 +1175,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                   <Col xs={12} sm={12} md={6}>
                     <Card size="small" className="stat-card">
                       <div className="stat-label">{t("factorStatTotal")}</div>
-                      <div className="stat-value">{stats.total}</div>
+                      <div className="stat-value">{statsLoading || statsError ? "—" : stats.total}</div>
                       <div className="stat-sub">
                         {template("factorStatUpdatedThisWeek", { count: stats.updatedThisWeek })}
                       </div>
@@ -1124,15 +1183,15 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                   </Col>
                   <Col xs={12} sm={12} md={6}>
                     <Card size="small" className="stat-card">
-                      <div className="stat-label">{t("factorStatEvaluable")}</div>
-                      <div className="stat-value">{stats.evaluable}</div>
-                      <div className="stat-sub">{t("factorStatEvaluableDesc")}</div>
+                      <div className="stat-label">{t("factorCenterLibraryResearchCount")}</div>
+                      <div className="stat-value">{statsLoading || statsError ? "—" : stats.evaluable}</div>
+                      <div className="stat-sub">{t("factorCenterLibraryResearchDesc")}</div>
                     </Card>
                   </Col>
                   <Col xs={12} sm={12} md={6}>
                     <Card size="small" className="stat-card">
                       <div className="stat-label">{t("factorStatInShadow")}</div>
-                      <div className="stat-value">{stats.shadow}</div>
+                      <div className="stat-value">{statsLoading || statsError ? "—" : stats.shadow}</div>
                       <div className="stat-sub warning">
                         {stats.shadowDriftWarning == null
                           ? t("factorStatNoDriftSource")
@@ -1143,7 +1202,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                   <Col xs={12} sm={12} md={6}>
                     <Card size="small" className="stat-card">
                       <div className="stat-label">{t("factorStatActive")}</div>
-                      <div className="stat-value">{stats.active}</div>
+                      <div className="stat-value">{statsLoading || statsError ? "—" : stats.active}</div>
                       <div className="stat-sub">
                         {stats.shadowGatePassRate == null
                           ? t("factorStatNoGateSource")
@@ -1152,19 +1211,21 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                     </Card>
                   </Col>
                 </Row>
+                {statsError && <Alert type="warning" showIcon message={t("factorCenterLibraryStatsFailed")} action={<Button onClick={loadStats}>{t("factorCenterLibraryRetry")}</Button>} />}
 
                 {/* 因子列表表格 */}
                 <Card className="factor-library-table-card" size="small">
+                  {listError && <Alert type="error" showIcon message={listError} action={<Button onClick={loadFactors}>{t("factorCenterLibraryRetry")}</Button>} />}
                   <Spin spinning={loading}>
                     {items.length === 0 && !loading ? (
                       <Empty description={t("factorLibraryEmpty")} />
                     ) : (
                       <Table
-                        columns={columns}
+                        columns={columns.filter((column) => moreFiltersOpen || column.key !== "owner")}
                         dataSource={items}
                         rowKey="id"
                         size="middle"
-                        scroll={{ x: 1340 }}
+                        scroll={{ x: moreFiltersOpen ? 1250 : 1100 }}
                         pagination={{
                           current: page,
                           pageSize: pageSize,
@@ -1204,7 +1265,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                           { value: "any", label: "全部" },
                           { value: "submitted", label: "待审批" },
                           { value: "approved", label: "已批准" },
-                          { value: "applied", label: "已生产" },
+                          { value: "applied", label: t("factorCenterLibraryDraftApplied") },
                           { value: "rejected", label: "已驳回" },
                         ]}
                       />
@@ -1218,8 +1279,8 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                         style={{ width: "100%" }}
                         placeholder="全部模块"
                         options={[
-                          { value: "custom_indicators", label: "自定义指标（promote）" },
-                          { value: "ai_assisted", label: "AI 辅助草稿" },
+                          { value: "custom_indicators", label: draftSourceLabel("custom_indicators") },
+                          { value: "ai_assisted", label: draftSourceLabel("ai_assisted") },
                         ]}
                       />
                     </Col>
@@ -1233,14 +1294,15 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                 </Card>
                 <Card className="factor-library-table-card" size="small">
                   <Spin spinning={draftsLoading}>
-                    {drafts.length === 0 && !draftsLoading ? (
+                    <Typography.Paragraph type="secondary">{t("factorCenterLibraryDraftScope")}</Typography.Paragraph>
+                    {filteredDrafts.length === 0 && !draftsLoading ? (
                       <Empty description="暂无草稿。可从「自定义指标 → 提升为因子」提交草稿后在此审批。" />
                     ) : (
                       <Table<ScoringFactorDraft>
                         rowKey="draft_no"
                         size="middle"
                         scroll={{ x: 1300 }}
-                        dataSource={drafts}
+                        dataSource={filteredDrafts}
                         columns={[
                           {
                             title: "草稿号",
@@ -1262,11 +1324,11 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                                     </Text>
                                   ) : null}
                                 </Space>
-                                {/* P2.2c.2：已生产 → 显示正式 factor code，可复制 + 跳转因子库 */}
+                                {/* 已入库因子代码可复制并跳转因子库。 */}
                                 {r.review_status === "applied" && r.promoted_factor_code ? (
                                   <Space size={4}>
                                     <Tag color="green" style={{ marginInlineEnd: 0 }}>
-                                      正式 code
+                                      {t("factorLabDraftStoredCode")}
                                     </Tag>
                                     <Text copyable style={{ fontSize: 12 }}>
                                       {r.promoted_factor_code}
@@ -1294,7 +1356,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                             width: 180,
                             render: (_, r) => (
                               <Space direction="vertical" size={2}>
-                                <Tag>{r.source_module}</Tag>
+                                <Tag>{draftSourceLabel(r.source_module)}</Tag>
                                 {r.source_ref_id ? (
                                   <Text type="secondary" className="fs-s-12">
                                     ref id: {r.source_ref_id}
@@ -1332,17 +1394,17 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                               <Space direction="vertical" size={2}>
                                 <div>
                                   <Text type="secondary" className="fs-s-12">提交：</Text>
-                                  {r.submitted_at?.slice(0, 16) ?? "-"}
+                                  {formatTime(r.submitted_at)}
                                 </div>
                                 {r.applied_at ? (
                                   <div>
-                                    <Text type="secondary" className="fs-s-12">生产：</Text>
-                                    {r.applied_at.slice(0, 16)}
+                                    <Text type="secondary" className="fs-s-12">{t("factorLabDraftStoredAt")}</Text>
+                                    {formatTime(r.applied_at)}
                                   </div>
                                 ) : r.reviewed_at ? (
                                   <div>
                                     <Text type="secondary" className="fs-s-12">审阅：</Text>
-                                    {r.reviewed_at.slice(0, 16)}
+                                    {formatTime(r.reviewed_at)}
                                   </div>
                                 ) : null}
                               </Space>
@@ -1387,7 +1449,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                                     size="small"
                                     type="primary"
                                     icon={<CheckOutlined />}
-                                    disabled={!canReview || isFinal}
+                                    disabled={!canReview || isFinal || !!reviewBusy}
                                     loading={busy}
                                     onClick={() => onApproveDraft(r)}
                                   >
@@ -1397,7 +1459,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                                     size="small"
                                     danger
                                     icon={<CloseOutlined />}
-                                    disabled={!canReview || isFinal}
+                                    disabled={!canReview || isFinal || !!reviewBusy}
                                     loading={busy}
                                     onClick={() => {
                                       setRejectRow(r);

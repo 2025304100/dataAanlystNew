@@ -6,7 +6,7 @@ import logging
 import operator
 from collections import Counter
 from datetime import date, datetime, timezone
-from math import floor, sqrt
+from math import floor, isfinite, sqrt
 from typing import Any
 
 from sqlalchemy import func, select
@@ -1532,6 +1532,14 @@ _UNARY_OPS = {ast.USub: operator.neg, ast.Not: operator.not_}
 _COMPARE_OPS = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
 
 
+class FormulaEvaluationError(ValueError):
+    """A formula is invalid or could not be computed; never a trading signal."""
+
+
+class FormulaDataUnavailable(FormulaEvaluationError):
+    """Local history or a referenced score is insufficient for this formula."""
+
+
 def _eval_sandboxed(tree, variables, functions):
     """Doc."""
     # Evaluate a parsed expression tree against the sandboxed allow-list.
@@ -1557,56 +1565,64 @@ def _eval_sandboxed(tree, variables, functions):
             left, right = _ev(node.left), _ev(node.right)
             op = _BIN_OPS.get(type(node.op))
             if op is None or None in (left, right):
-                return None
+                raise FormulaDataUnavailable("Formula input is unavailable")
             try:
                 return op(left, right)
-            except (TypeError, ZeroDivisionError, ValueError, OverflowError):
-                return None
+            except (TypeError, ZeroDivisionError, ValueError, OverflowError) as exc:
+                raise FormulaEvaluationError(f"Formula arithmetic failed: {exc}") from exc
         if isinstance(node, ast.UnaryOp):
             operand = _ev(node.operand)
             op = _UNARY_OPS.get(type(node.op))
             if op is None or operand is None:
-                return None
+                raise FormulaDataUnavailable("Formula input is unavailable")
             try:
                 return op(operand)
-            except (TypeError, ValueError):
-                return None
+            except (TypeError, ValueError) as exc:
+                raise FormulaEvaluationError(f"Formula unary operation failed: {exc}") from exc
         if isinstance(node, ast.Compare):
             left = _ev(node.left)
             if left is None:
-                return False
+                raise FormulaDataUnavailable("Formula comparison input is unavailable")
             for op_node, comparator in zip(node.ops, node.comparators):
                 right = _ev(comparator)
                 if right is None:
-                    return False
+                    raise FormulaDataUnavailable("Formula comparison input is unavailable")
                 op = _COMPARE_OPS.get(type(op_node))
                 if op is None:
                     return False
                 try:
                     if not op(left, right):
                         return False
-                except TypeError:
-                    return False
+                except TypeError as exc:
+                    raise FormulaEvaluationError(f"Formula comparison failed: {exc}") from exc
                 left = right
             return True
         if isinstance(node, ast.Call):
             args = [_ev(a) for a in node.args]
             if any(a is None for a in args):
-                return None
+                raise FormulaDataUnavailable("Formula function input is unavailable")
             kwargs = {kw.arg: _ev(kw.value) for kw in node.keywords}
             func = functions.get(node.func.id)
             if func is None:
-                return None
+                raise FormulaEvaluationError(f"Unknown formula function: {node.func.id}")
             try:
-                return func(*args, **kwargs)
-            except (TypeError, ValueError, ZeroDivisionError, OverflowError):
-                return None
+                result = func(*args, **kwargs)
+            except FormulaEvaluationError:
+                raise
+            except (TypeError, ValueError, ZeroDivisionError, OverflowError) as exc:
+                raise FormulaEvaluationError(f"Formula function {node.func.id} failed: {exc}") from exc
+            if result is None:
+                raise FormulaDataUnavailable(f"Formula {node.func.id}: insufficient local history")
+            return result
         if isinstance(node, ast.Name):
             if node.id == "True":
                 return True
             if node.id == "False":
                 return False
-            return variables.get(node.id)
+            value = variables.get(node.id)
+            if value is None:
+                raise FormulaDataUnavailable(f"Formula input {node.id} is unavailable")
+            return value
         if isinstance(node, ast.Constant):
             return node.value
         return None
@@ -1644,9 +1660,11 @@ def _value_from_token(token, bars: list[DailyBar], offset: int = 0):
 def _resolve_formula_expr(score, bar, prev_bar, history_bars, expr: str) -> bool | float:
     expr = str(expr or "").strip()
     if not expr or len(expr) > 500:
-        return False
+        raise FormulaEvaluationError("Formula must contain 1 to 500 characters")
     bars = _history_with_current(history_bars, bar)
-    variables = {"open": float(bar.open), "high": float(bar.high), "low": float(bar.low), "close": float(bar.close), "volume": float(bar.volume or 0), "amount": float(bar.amount or 0), "turnover_rate": float(bar.turnover_rate or 0), "prev_close": float(prev_bar.close) if prev_bar else 0.0, "quality_score": float(_score_attr(score, "quality_score", 0.0) or 0.0), "timing_score": float(_score_attr(score, "timing_score", 0.0) or 0.0), "trend_score": float(_score_attr(score, "trend_score", 0.0) or 0.0), "momentum_score": float(_score_attr(score, "momentum_score", 0.0) or 0.0)}
+    variables = {key: getattr(bar, key, None) for key in ("open", "high", "low", "close", "volume", "amount", "turnover_rate")}
+    variables["prev_close"] = float(prev_bar.close) if prev_bar else None
+    variables.update({key: _score_attr(score, key, None) for key in ("quality_score", "timing_score", "trend_score", "momentum_score")})
     def sma(period=20, field="close"):
         return _sma_value(_bar_series(history_bars, bar, str(field)), int(period))
     def ema(period=20, field="close"):
@@ -1689,38 +1707,54 @@ def _resolve_formula_expr(score, bar, prev_bar, history_bars, expr: str) -> bool
         return _volume_ratio(bars, int(period))
     def cross_over(left, right):
         lp, rp, ln, rn = _value_from_token(left, bars, 1), _value_from_token(right, bars, 1), _value_from_token(left, bars, 0), _value_from_token(right, bars, 0)
-        return False if None in {lp, rp, ln, rn} else lp <= rp and ln > rn
+        if None in {lp, rp, ln, rn}:
+            raise FormulaDataUnavailable("Formula cross_over: insufficient local history")
+        return lp <= rp and ln > rn
     def cross_under(left, right):
         lp, rp, ln, rn = _value_from_token(left, bars, 1), _value_from_token(right, bars, 1), _value_from_token(left, bars, 0), _value_from_token(right, bars, 0)
-        return False if None in {lp, rp, ln, rn} else lp >= rp and ln < rn
+        if None in {lp, rp, ln, rn}:
+            raise FormulaDataUnavailable("Formula cross_under: insufficient local history")
+        return lp >= rp and ln < rn
     functions = {"sma": sma, "ema": ema, "rsi": rsi, "macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist, "boll_upper": boll_upper, "boll_mid": boll_mid, "boll_lower": boll_lower, "atr": atr, "kdj_k": kdj_k, "kdj_d": kdj_d, "kdj_j": kdj_j, "highest": highest, "lowest": lowest, "ref": ref, "pct_change": pct_change, "volume_ratio": volume_ratio, "cross_over": cross_over, "cross_under": cross_under, "abs": abs, "min": min, "max": max, "round": round}
     allowed_names = set(variables) | set(functions) | {"True", "False"}
     try:
         tree = ast.parse(expr, mode="eval")
         for node in ast.walk(tree):
             if not isinstance(node, _ALLOWED_EXPR_NODES):
-                return False
+                raise FormulaEvaluationError(f"Formula syntax is unsupported: {type(node).__name__}")
             if isinstance(node, ast.Name) and node.id not in allowed_names:
-                return False
+                raise FormulaEvaluationError(f"Unknown formula name: {node.id}")
             if isinstance(node, ast.Call) and not isinstance(node.func, ast.Name):
-                return False
+                raise FormulaEvaluationError("Formula only supports direct function calls")
             if isinstance(node, ast.Call) and node.func.id not in functions:
-                return False
+                raise FormulaEvaluationError(f"Unknown formula function: {node.func.id}")
         result = _eval_sandboxed(tree, variables, functions)
-        return False if result is None else result
-    except Exception:
-        return False
+        if result is None:
+            raise FormulaDataUnavailable("Formula result is unavailable")
+        if not isinstance(result, (bool, int, float)) or not isfinite(float(result)):
+            raise FormulaEvaluationError("Formula must return a finite number or boolean")
+        return result
+    except FormulaEvaluationError:
+        raise
+    except Exception as exc:
+        raise FormulaEvaluationError(f"Formula calculation failed: {exc}") from exc
 
 
 def _resolve_custom_expr(score, bar, prev_bar, history_bars, params) -> bool | float:
-    return _resolve_formula_expr(score, bar, prev_bar, history_bars, str((params or {}).get("expr", "")))
+    try:
+        return _resolve_formula_expr(score, bar, prev_bar, history_bars, str((params or {}).get("expr", "")))
+    except FormulaDataUnavailable:
+        return None
 
 
 def _resolve_custom_indicator(score, bar, prev_bar, history_bars, params) -> bool | float:
     indicator = (params or {}).get("indicator")
     if not isinstance(indicator, dict):
-        return False
-    return _resolve_formula_expr(score, bar, prev_bar, history_bars, str(indicator.get("formula", "")))
+        raise FormulaEvaluationError("Formula indicator snapshot is missing")
+    try:
+        return _resolve_formula_expr(score, bar, prev_bar, history_bars, str(indicator.get("formula", "")))
+    except FormulaDataUnavailable:
+        return None
 
 
 def _resolve_daily_change(score, bar, prev_bar, history_bars, params) -> float:
@@ -1872,6 +1906,8 @@ FIELD_RESOLVERS = {
 
 def _compare(actual, operator: str, expected) -> bool:
     """Doc."""
+    if actual is None:
+        return False
     try:
         if operator == "gt":
             return float(actual) > float(expected)

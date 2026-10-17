@@ -1,0 +1,33 @@
+.factor-center .factor-center-workspaces {display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;margin-bottom:20px}
+.factor-center .factor-center-workspaces button.sub-tab {
+  display:flex !important;flex-direction:column;align-items:flex-start;gap:5px;flex:1;min-width:168px;
+  padding:14px 18px !important;border-radius:12px !important;white-space:normal;text-align:left;
+  background:#ffffff !important;color:var(--ink);border:1px solid var(--line);
+  box-shadow:var(--shadow-sm);transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease;
+}
+.factor-center .factor-center-workspaces button.sub-tab:hover {
+  border-color:var(--line-strong);box-shadow:var(--shadow-md);transform:translateY(-1px);color:var(--ink);
+}
+.factor-center .factor-center-workspaces button.sub-tab.active {
+  border-color:rgba(15,118,110,0.32);background:linear-gradient(160deg,#f2f9f7 0%,#eef6f4 100%) !important;color:var(--accent);
+}
+.factor-center > .sub-tab-container,.factor-center .factor-library-page,.factor-center .factor-library-tabs,.factor-center .ant-tabs-content-holder,.factor-center .ant-tabs-content,.factor-center .ant-tabs-tabpane {min-width:0;max-width:100%}
+.factor-center > .sub-tab-container {width:100%}
+.factor-center-workspaces .sub-tab {font-size:13.5px;font-weight:600;line-height:1.3}
+.factor-center-workspaces .sub-tab span {font-size:12px;font-weight:400;color:var(--muted);opacity:1;white-space:normal;text-align:left;line-height:1.5}
+.factor-center-workspaces .sub-tab.active span {color:rgba(15,118,110,0.75)}
+.factor-center-workspace-guide {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px;padding:15px 20px;margin-bottom:20px;border:1px solid rgba(15,118,110,0.18);border-radius:12px;background:linear-gradient(110deg,#f1f8f6 0%,#f8fbfa 100%);color:var(--ink)}
+.factor-center-workspace-guide > div {flex:1 1 320px;min-width:0}
+.factor-center-workspace-guide strong {font-size:14px;font-weight:600;color:#0c625c}
+.factor-center-workspace-guide p {font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.factor-center-workspace-guide ol {display:flex;gap:12px 26px;flex:1 1 360px;flex-wrap:wrap;list-style:none;margin:0;padding:0;font-size:12.5px;font-weight:500;color:#0c625c;counter-reset:guide-step}
+.factor-center-workspace-guide ol li {counter-increment:guide-step}
+.factor-center-workspace-guide ol li::before {content:counter(guide-step);display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:7px;border-radius:999px;background:rgba(15,118,110,0.12);font-size:11px;font-weight:600;color:var(--accent);vertical-align:-1px}
+.factor-center-name-button {border:0;background:transparent;padding:0;text-align:left;color:var(--accent);font-weight:600}
+.factor-center-name-button:hover {color:var(--accent-hover);text-decoration:underline}
+.factor-center-name-button:focus-visible {outline:2px solid #0f766e;outline-offset:4px;border-radius:2px}
+.factor-center .factor-library-page .ant-alert {margin-bottom:12px}
+.factor-center .factor-library-stats {margin:16px 0}
+.factor-center .factor-library-header {margin-bottom:16px}
+.factor-center-detail-guide {margin-bottom:16px}
+@media(max-width:900px){.factor-center-workspace-guide{align-items:flex-start;flex-direction:column}.factor-center-workspace-guide > div,.factor-center-workspace-guide ol{flex-basis:auto}.factor-center-workspace-guide ol{gap:10px;flex-direction:column}.factor-center .factor-center-workspaces button.sub-tab{min-width:40%;padding:12px !important}}

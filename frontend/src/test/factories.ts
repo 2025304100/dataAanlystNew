@@ -222,6 +222,7 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     activeSubTab: "portfolio-workbench",
     activeSymbolId: null,
     workbench: null,
+    workbenchError: null,
     detail: null,
     detailCache: {},
     detailOrder: [],

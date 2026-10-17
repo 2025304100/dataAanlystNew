@@ -34,6 +34,14 @@ import {
 import type { Dayjs } from "dayjs";
 import { requestJson } from "../../api/client";
 import { t } from "../../i18n";
+import {
+  DELIVERY_STATUS_TONE,
+  NOTIF,
+  NOTIF_LAYOUT,
+  OUTBOX_STATUS_TONE,
+  semanticTagStyle,
+  type OutboxTone,
+} from "./notificationTheme";
 
 const { RangePicker } = DatePicker;
 
@@ -81,22 +89,22 @@ interface ChannelFilterOption {
   name: string;
 }
 
-// Outbox 状态展示配置
-const OUTBOX_STATUS_CONFIG: Record<string, { color: string; labelKey: string }> = {
-  pending: { color: "default", labelKey: "outboxStatusPending" },
-  sending: { color: "processing", labelKey: "outboxStatusSending" },
-  sent: { color: "green", labelKey: "outboxStatusSent" },
-  failed: { color: "red", labelKey: "outboxStatusFailed" },
-  dead_letter: { color: "magenta", labelKey: "outboxStatusDeadLetter" },
+// Outbox 状态展示配置（色板统一走 notificationTheme，禁 antd 预设杂色）
+const OUTBOX_STATUS_CONFIG: Record<string, { tone: OutboxTone; labelKey: string }> = {
+  pending: { tone: "neutral", labelKey: "outboxStatusPending" },
+  sending: { tone: "info", labelKey: "outboxStatusSending" },
+  sent: { tone: "success", labelKey: "outboxStatusSent" },
+  failed: { tone: "error", labelKey: "outboxStatusFailed" },
+  dead_letter: { tone: "critical", labelKey: "outboxStatusDeadLetter" },
 };
 
-// Delivery 状态展示配置
-const DELIVERY_STATUS_CONFIG: Record<string, { color: string; labelKey: string }> = {
-  success: { color: "green", labelKey: "deliveryStatusSuccess" },
-  failed: { color: "red", labelKey: "deliveryStatusFailed" },
-  timeout: { color: "orange", labelKey: "deliveryStatusTimeout" },
-  auth_failed: { color: "magenta", labelKey: "deliveryStatusAuthFailed" },
-  rate_limited: { color: "gold", labelKey: "deliveryStatusRateLimited" },
+// Delivery 状态展示配置（同上）
+const DELIVERY_STATUS_CONFIG: Record<string, { tone: OutboxTone; labelKey: string }> = {
+  success: { tone: "success", labelKey: "deliveryStatusSuccess" },
+  failed: { tone: "error", labelKey: "deliveryStatusFailed" },
+  timeout: { tone: "warning", labelKey: "deliveryStatusTimeout" },
+  auth_failed: { tone: "critical", labelKey: "deliveryStatusAuthFailed" },
+  rate_limited: { tone: "warning", labelKey: "deliveryStatusRateLimited" },
 };
 
 // 来源类型选项（对齐 app.services.notifications.sources.MESSAGE_SOURCES）
@@ -249,8 +257,8 @@ export const DeliveryLog: React.FC = () => {
       key: "status",
       width: 110,
       render: (status: string) => {
-        const cfg = OUTBOX_STATUS_CONFIG[status] || { color: "default", labelKey: "outboxStatusUnknown" };
-        return <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag>;
+        const cfg = OUTBOX_STATUS_CONFIG[status] || { tone: "neutral" as OutboxTone, labelKey: "outboxStatusUnknown" };
+        return <Tag style={semanticTagStyle(cfg.tone)}>{t(cfg.labelKey)}</Tag>;
       },
     },
     {
@@ -300,36 +308,36 @@ export const DeliveryLog: React.FC = () => {
     },
   ];
 
-  // Delivery 详情表格列
+  // Delivery 详情表格列（tableLayout=fixed：固定列收窄，摘要/错误两列吃剩余宽度，禁横向溢出）
   const deliveryColumns: ColumnsType<DeliveryItem> = [
     {
       title: t("deliveryAttemptNumber"),
       dataIndex: "attempt_number",
       key: "attempt_number",
-      width: 80,
+      width: 72,
     },
     {
       title: t("deliveryStatus"),
       dataIndex: "status",
       key: "status",
-      width: 100,
+      width: 92,
       render: (status: string) => {
-        const cfg = DELIVERY_STATUS_CONFIG[status] || { color: "default", labelKey: "deliveryStatusUnknown" };
-        return <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag>;
+        const cfg = DELIVERY_STATUS_CONFIG[status] || { tone: "neutral" as OutboxTone, labelKey: "deliveryStatusUnknown" };
+        return <Tag style={semanticTagStyle(cfg.tone)}>{t(cfg.labelKey)}</Tag>;
       },
     },
     {
       title: t("deliveryStatusCode"),
       dataIndex: "status_code",
       key: "status_code",
-      width: 100,
+      width: 84,
       render: (code: number | null) => (code != null ? code : "-"),
     },
     {
       title: t("deliveryDuration"),
       dataIndex: "duration_ms",
       key: "duration_ms",
-      width: 110,
+      width: 76,
       render: (ms: number | null) => (ms != null ? `${ms}ms` : "-"),
     },
     {
@@ -345,7 +353,7 @@ export const DeliveryLog: React.FC = () => {
       ellipsis: true,
       render: (_v: unknown, record: DeliveryItem) =>
         record.error_message ? (
-          <span style={{ color: "var(--danger, #ff4d4f)", fontSize: 12 }}>
+          <span style={{ color: "#dc2626", fontSize: 12 }}>
             {record.error_message}
           </span>
         ) : (
@@ -356,7 +364,7 @@ export const DeliveryLog: React.FC = () => {
       title: t("deliverySentAt"),
       dataIndex: "sent_at",
       key: "sent_at",
-      width: 160,
+      width: 152,
       render: (date: string | null) =>
         date ? (
           <span style={{ fontSize: 12 }}>{new Date(date).toLocaleString()}</span>
@@ -474,45 +482,60 @@ export const DeliveryLog: React.FC = () => {
           setDetailOutbox(null);
           setDeliveries([]);
         }}
-        width={900}
+        width={1080}
       >
         {detailOutbox && (
           <div>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 500, marginBottom: 8 }}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...NOTIF_LAYOUT.sectionTitle, marginBottom: 10 }}>
                 {t("deliveryOutboxInfo")}
               </div>
-              <Space direction="vertical" size={4}>
+              {/* 信息区两列网格：原 5 行竖排占满垂直空间，改 grid 后一屏可看全 */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px 24px",
+                  padding: "14px 16px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 8,
+                }}
+              >
                 <div>
-                  <span style={{ color: "var(--muted)" }}>{t("deliveryEventType")}:</span>{" "}
-                  {detailOutbox.event_type}
+                  <span style={NOTIF_LAYOUT.labelText}>{t("deliveryEventType")}:</span>{" "}
+                  <span style={{ fontSize: 13 }}>{detailOutbox.event_type}</span>
                 </div>
                 <div>
-                  <span style={{ color: "var(--muted)" }}>{t("deliverySourceType")}:</span>{" "}
-                  {detailOutbox.source_type}
+                  <span style={NOTIF_LAYOUT.labelText}>{t("deliverySourceType")}:</span>{" "}
+                  <span style={{ fontSize: 13 }}>{detailOutbox.source_type}</span>
                 </div>
                 <div>
-                  <span style={{ color: "var(--muted)" }}>{t("deliveryStatus")}:</span>{" "}
-                  <Tag color={OUTBOX_STATUS_CONFIG[detailOutbox.status]?.color || "default"}>
+                  <span style={NOTIF_LAYOUT.labelText}>{t("deliveryStatus")}:</span>{" "}
+                  <Tag style={semanticTagStyle(OUTBOX_STATUS_TONE[detailOutbox.status] || "neutral")}>
                     {t(OUTBOX_STATUS_CONFIG[detailOutbox.status]?.labelKey || "outboxStatusUnknown")}
                   </Tag>
                 </div>
                 <div>
-                  <span style={{ color: "var(--muted)" }}>{t("deliveryAttemptCount")}:</span>{" "}
-                  {detailOutbox.attempt_count}/{detailOutbox.max_attempts}
+                  <span style={NOTIF_LAYOUT.labelText}>{t("deliveryAttemptCount")}:</span>{" "}
+                  <span style={{ fontSize: 13 }}>{detailOutbox.attempt_count}/{detailOutbox.max_attempts}</span>
                 </div>
-                {detailOutbox.last_error_message && (
+                {detailOutbox.sent_at && (
                   <div>
-                    <span style={{ color: "var(--muted)" }}>{t("deliveryLastError")}:</span>{" "}
-                    <span style={{ color: "var(--danger, #ff4d4f)" }}>
-                      {detailOutbox.last_error_message}
-                    </span>
+                    <span style={NOTIF_LAYOUT.labelText}>{t("deliverySentAt")}:</span>{" "}
+                    <span style={{ fontSize: 13 }}>{new Date(detailOutbox.sent_at).toLocaleString()}</span>
                   </div>
                 )}
-              </Space>
+                {detailOutbox.last_error_message && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <span style={NOTIF_LAYOUT.labelText}>{t("deliveryLastError")}:</span>{" "}
+                    <span style={{ color: NOTIF.error, fontSize: 13 }}>{detailOutbox.last_error_message}</span>
+                  </div>
+                )}
+              </div>
             </div>
             <div>
-              <div style={{ fontWeight: 500, marginBottom: 8 }}>
+              <div style={{ ...NOTIF_LAYOUT.sectionTitle, marginBottom: 10 }}>
                 {t("deliveryAttemptsTitle")}
               </div>
               <Spin spinning={deliveriesLoading}>
@@ -522,7 +545,7 @@ export const DeliveryLog: React.FC = () => {
                   columns={deliveryColumns}
                   size="small"
                   pagination={false}
-                  scroll={{ x: "max-content" }}
+                  tableLayout="fixed"
                   locale={{
                     emptyText: <Empty description={t("deliveryAttemptsEmpty")} />,
                   }}

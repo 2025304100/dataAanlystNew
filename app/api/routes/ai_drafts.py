@@ -205,8 +205,17 @@ def confirm_draft(
     """
     audit = _load_audit(db, audit_id)
 
-    # 已执行（有 final_result 且 user_confirmed）不可重新确认
-    if audit.user_confirmed and audit.final_result:
+    # A factor draft with an explicitly failed outcome has no successful
+    # artifact to protect. Allow correction/reconfirmation; successful and
+    # unrecognized outcomes retain the existing immutable-confirmation guard.
+    retryable_factor_failure = False
+    if audit.action_type == "draft_factor" and audit.final_result:
+        try:
+            prior = json.loads(audit.final_result)
+            retryable_factor_failure = isinstance(prior, dict) and prior.get("success") is False
+        except (TypeError, ValueError):
+            pass
+    if audit.user_confirmed and audit.final_result and not retryable_factor_failure:
         raise HTTPException(
             status_code=409,
             detail={
@@ -230,7 +239,7 @@ def confirm_draft(
                     existing_preview = {}
             except (ValueError, TypeError):
                 existing_preview = {}
-        existing_preview["original_suggested_payload"] = original_payload
+        existing_preview.setdefault("original_suggested_payload", original_payload)
         audit.preview_result = json.dumps(existing_preview, ensure_ascii=False)
         audit.suggested_payload = json.dumps(modified_payload, ensure_ascii=False)
 

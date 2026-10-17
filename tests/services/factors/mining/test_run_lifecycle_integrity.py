@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import pytest
 
 from test_factor_mining_routes import _client, _seed_run, _seed_snapshot
+from test_m1_closure import warehouse_path
 
 pytestmark = pytest.mark.whitebox
 
@@ -16,11 +17,11 @@ class Submitted:
     queue_position: int = 0
 
 
-def _request(snapshot="snapshot-integrity"):
+def _request(snapshot="snapshot-integrity", path="isolated.duckdb"):
     return {
         "candidate_pool_snapshot_id": snapshot,
         "data_cutoff_at": "2026-10-14T00:00:00",
-        "start_date": "2025-01-01T00:00:00",
+        "start_date": "2026-01-05T00:00:00",
         "end_date": "2026-09-30T00:00:00",
         "rebalance_frequency": "daily",
         "target_horizon": 5,
@@ -30,17 +31,17 @@ def _request(snapshot="snapshot-integrity"):
         "finalize_top_k": 3,
         "evolution_params": {"population_size": 8, "max_generations": 4},
         "filter_config": {"selected_fields": ["close", "volume"],
-                          "warehouse_path": "isolated.duckdb"},
+                          "warehouse_path": path},
     }
 
 
-def test_created_batch_detail_retains_original_experiment_configuration(db_session, monkeypatch):
+def test_created_batch_detail_retains_original_experiment_configuration(db_session, monkeypatch, warehouse_path):
     from app.api.routes.factor_mining import mining_runner
 
     _seed_snapshot(db_session, "snapshot-integrity")
     monkeypatch.setattr(mining_runner, "submit_mining_run", lambda *a, **kw: Submitted())
     client = _client(db_session)
-    created = client.post("/factor-mining/runs", json=_request())
+    created = client.post("/factor-mining/runs", json=_request(path=warehouse_path))
     assert created.status_code == 201, created.text
     detail = client.get(f"/factor-mining/runs/{created.json()['run_id']}").json()
     assert detail["evolution_params"]["population_size"] == 8
@@ -63,12 +64,12 @@ def test_legacy_batch_without_checkpoint_is_not_silently_restarted(db_session, m
 
 
 @pytest.mark.parametrize("action", ["cancel", "pause", "stop", "discard"])
-def test_cancelled_queued_batch_releases_mining_domain_without_touching_other_writer(db_session, action):
+def test_cancelled_queued_batch_releases_mining_domain_without_touching_other_writer(db_session, action, warehouse_path):
     from app.services.factors.mining.task_lock import acquire_write_slot
     _seed_snapshot(db_session, "snapshot-integrity")
     acquire_write_slot(db_session, task_id="other-writer", run_id="other-run")
     client = _client(db_session)
-    created = client.post("/factor-mining/runs", json=_request())
+    created = client.post("/factor-mining/runs", json=_request(path=warehouse_path))
     assert created.status_code == 201, created.text
     assert created.json()["queue_position"] == 1
     run_id = created.json()["run_id"]

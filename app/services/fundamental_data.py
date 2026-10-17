@@ -399,7 +399,12 @@ def calc_pe_score(
     return max(20.0, min(95.0, score))
 
 
-def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None = None) -> StockValuation | None:
+def sync_symbol_valuation(
+    db: Session, symbol: Symbol, trade_date: date | None = None, *,
+    skip_market_snapshot: bool = False,
+    refresh_industry: bool = True,
+    history_start_date: date | None = None,
+) -> StockValuation | None:
     """同步单个 symbol 的估值数据。
 
     主数据源：stock_zh_a_spot_em（全市场快照，含 PE/PB/市值）。
@@ -417,7 +422,7 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
     if target_date > date.today():
         return None
     # An undated live quote must never be relabelled as a past observation.
-    spot_data = _fetch_spot_valuation(db, symbol) if target_date == date.today() else {}
+    spot_data = _fetch_spot_valuation(db, symbol) if target_date == date.today() and not skip_market_snapshot else {}
     fallback_data = {}
     if (
         spot_data.get("pe_ttm") is None
@@ -425,8 +430,15 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
         and spot_data.get("total_market_cap") is None
     ):
         fallback_data = _fetch_value_history(db, symbol, target_date)
+        if history_start_date is not None:
+            actual_date = fallback_data.get("trade_date")
+            if not isinstance(actual_date, date) or actual_date < history_start_date:
+                return None
         spot_data = fallback_data
-    info_data = _fetch_individual_info(db, symbol)
+    # A failed task-wide market snapshot must not cause every symbol to
+    # download it again, or refresh unrelated industry metadata. Dedicated
+    # single-symbol callers retain their existing behavior by default.
+    info_data = _fetch_individual_info(db, symbol) if refresh_industry else {}
 
     pe_ttm = spot_data.get("pe_ttm")
     pb = spot_data.get("pb")

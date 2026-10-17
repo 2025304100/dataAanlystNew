@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, CircleCheck, TriangleAlert, CircleX, Info } from "lucide-react";
 import { message } from "antd";
 import { t } from "../../i18n";
 import { api } from "../../api/client";
+import NavIconButton from "./NavIconButton";
 
 /**
  * NotificationDropdown — 顶部栏右侧消息提醒下拉
@@ -30,6 +32,27 @@ interface NotificationItem {
   time: string;
   read: boolean;
   created_at?: string | null;
+  source_type?: string | null;
+  event_type?: string | null;
+}
+
+/** 点击通知的跳转目标：事件类型优先，来源分组兜底；无映射则不跳转（仅标记已读） */
+const NOTIFICATION_NAV: Record<string, { tab: string; section?: string; subtab?: string }> = {
+  trade_executed: { tab: "portfolio" },
+  discovery_new: { tab: "opportunity" },
+  task_failed: { tab: "settings", section: "tasks" },
+  data_stale: { tab: "settings", section: "alerts" },
+  score_drop: { tab: "settings", section: "alerts" },
+};
+const SOURCE_TAB_FALLBACK: Record<string, { tab: string }> = {
+  portfolio: { tab: "portfolio" },
+  opportunity: { tab: "opportunity" },
+};
+
+export interface NotificationNavigateTarget {
+  tab: string;
+  section?: string;
+  subtab?: string;
 }
 
 interface NotificationDropdownProps {
@@ -39,45 +62,37 @@ interface NotificationDropdownProps {
   forceClose?: boolean;
   /** Open the unified notification delivery log in Settings. */
   onViewAll?: () => void;
+  /** 点击单条通知跳转对应页面（无映射的目标由调用方忽略） */
+  onNavigate?: (target: NotificationNavigateTarget) => void;
 }
 
-/** 通知类型 → 图标 + 颜色映射（对齐原型图 notif-icon 内联色） */
+/** 通知类型 → 图标映射（对齐原型图 notif-icon 内联色） */
 const NOTIF_ICON_MAP: Record<
   NotificationType,
-  { Icon: React.ElementType; color: string; dim: string }
+  { Icon: React.ElementType; color: string }
 > = {
-  success: {
-    Icon: CircleCheck,
-    color: "var(--pt-state-success)",
-    dim: "var(--pt-state-success-dim)",
-  },
-  warning: {
-    Icon: TriangleAlert,
-    color: "var(--pt-state-warning)",
-    dim: "var(--pt-state-warning-dim)",
-  },
-  error: {
-    Icon: CircleX,
-    color: "var(--pt-state-error)",
-    dim: "var(--pt-state-error-dim)",
-  },
-  info: {
-    Icon: Info,
-    color: "var(--pt-state-info)",
-    dim: "var(--pt-state-info-dim)",
-  },
+  success: { Icon: CircleCheck, color: "var(--pt-state-success)" },
+  warning: { Icon: TriangleAlert, color: "var(--pt-state-warning)" },
+  error: { Icon: CircleX, color: "var(--pt-state-error)" },
+  info: { Icon: Info, color: "var(--pt-state-info)" },
 };
 
 const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   onOpenChange,
   forceClose,
   onViewAll,
+  onNavigate,
 }) => {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // 面板 portal 到 body + fixed 定位：一级菜单 nav 有 overflow-x:auto，
+  // absolute 面板会被裁掉；fixed 相对视口不受裁剪（bell 在 sticky header 内，垂直位置恒定）
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number } | null>(null);
 
   const hasUnread = notifications.some((n) => !n.read);
 
@@ -106,6 +121,8 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             time: String(r.time ?? r.created_at ?? ""),
             read: !!r.read,
             created_at: r.created_at ?? null,
+            source_type: r.source_type ?? null,
+            event_type: r.event_type ?? null,
           }));
       setNotifications(normalized);
     } catch (err: any) {
@@ -128,14 +145,37 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     return () => window.clearInterval(timer);
   }, [fetchNotifications]);
 
-  /** 切换下拉展开/收起；打开时拉取 API 数据 */
+  /** 切换下拉展开/收起；打开时拉取 API 数据 + 计算面板 fixed 坐标 */
   const handleToggle = useCallback(() => {
     const next = !open;
     updateOpen(next);
     if (next) {
+      const rect = bellRef.current?.getBoundingClientRect();
+      if (rect) {
+        setPanelPos({
+          top: rect.bottom + 8,
+          right: Math.max(8, window.innerWidth - rect.right),
+        });
+      }
       fetchNotifications().catch(() => {});
     }
   }, [open, updateOpen, fetchNotifications]);
+
+  // 打开时监听 resize：bell 水平位置随布局变化，重算面板坐标
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => {
+      const rect = bellRef.current?.getBoundingClientRect();
+      if (rect) {
+        setPanelPos({
+          top: rect.bottom + 8,
+          right: Math.max(8, window.innerWidth - rect.right),
+        });
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
 
   /** forceClose 由父组件控制：true 时关闭本下拉 */
   useEffect(() => {
@@ -144,13 +184,15 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     }
   }, [forceClose]);
 
-  /** 点击外部关闭（仅 open 时绑定监听） */
+  /** 点击外部关闭（仅 open 时绑定监听）；bell 与 portal 面板内部不算外部 */
   useEffect(() => {
     if (!open) return;
     function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node;
       if (
         wrapperRef.current &&
-        !wrapperRef.current.contains(e.target as Node)
+        !wrapperRef.current.contains(target) &&
+        !(panelRef.current && panelRef.current.contains(target))
       ) {
         updateOpen(false);
       }
@@ -159,29 +201,37 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [open, updateOpen]);
 
-  /** P2-FIX: 点击单条通知 → 调 API 标记已读 + 关闭下拉 + toast */
+  /** 点击单条通知 → 标记已读 + 跳转对应页面 + toast */
   const handleClickItem = useCallback(
-    async (item: NotificationItem) => {
+    (item: NotificationItem) => {
       // 先乐观更新 UI（避免慢网络导致看不到已读效果）
       setNotifications((prev) =>
         prev.map((n) => (n.id === item.id ? { ...n, read: true } : n)),
       );
       updateOpen(false);
-      try {
-        await api.markInboxItemRead(item.id);
-        message.success(
-          t("portfolioTrading.notification.viewed").replace("{title}", item.title),
-        );
-      } catch (err: any) {
-        // eslint-disable-next-line no-console
-        console.warn("[notifications] mark read failed:", err?.message ?? err);
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === item.id ? { ...n, read: item.read } : n)),
-        );
-        message.error(err?.message ?? "标记通知已读失败");
+      // 跳转对应页面（事件类型优先，来源分组兜底；无映射不跳）
+      if (onNavigate) {
+        const target =
+          NOTIFICATION_NAV[item.event_type ?? ""] ??
+          SOURCE_TAB_FALLBACK[item.source_type ?? ""];
+        if (target) onNavigate(target);
       }
+      api.markInboxItemRead(item.id)
+        .then(() => {
+          message.success(
+            t("portfolioTrading.notification.viewed").replace("{title}", item.title),
+          );
+        })
+        .catch((err: any) => {
+          // eslint-disable-next-line no-console
+          console.warn("[notifications] mark read failed:", err?.message ?? err);
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === item.id ? { ...n, read: item.read } : n)),
+          );
+          message.error(err?.message ?? "标记通知已读失败");
+        });
     },
-    [updateOpen],
+    [onNavigate, updateOpen],
   );
 
   /** P2-FIX: 全部已读 → 调 API；成功后根据 count 提示，失败保留本地已读态 */
@@ -217,62 +267,30 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
   return (
     <div ref={wrapperRef} style={{ position: "relative" }}>
-      {/* ========== 通知按钮（bell） ========== */}
-      <button
-        type="button"
+      {/* ========== 通知按钮（bell，与帮助按钮共用 NavIconButton 保证风格统一） ========== */}
+      <NavIconButton
+        ref={bellRef}
         title={t("portfolioTrading.notification.title")}
         onClick={handleToggle}
-        style={{
-          width: 32,
-          height: 32,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 6,
-          background: "transparent",
-          border: "none",
-          color: "var(--pt-muted-foreground)",
-          cursor: "pointer",
-          position: "relative",
-          transition: "background 0.15s ease, color 0.15s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--pt-surface-3)";
-          e.currentTarget.style.color = "var(--pt-foreground)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = "var(--pt-muted-foreground)";
-        }}
+        badge={hasUnread}
       >
         <Bell size={20} />
-        {/* 未读红点 */}
-        {hasUnread && (
-          <span
-            style={{
-              position: "absolute",
-              top: -2,
-              right: -2,
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: "var(--pt-state-error)",
-              border: "2px solid var(--pt-surface-2)",
-            }}
-          />
-        )}
-      </button>
+      </NavIconButton>
 
-      {/* ========== 通知下拉面板 ========== */}
-      {open && (
+      {/* ========== 通知下拉面板（portal 到 body + fixed，避开 nav 的 overflow 裁剪；
+          外层 nav-tools-light 保持米白变量作用域随面板一起 portal） ========== */}
+      {open && panelPos && createPortal(
+        <div className="nav-tools-light">
         <div
+          ref={panelRef}
           className="pt-dropdown"
           style={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            right: 0,
+            position: "fixed",
+            top: panelPos.top,
+            right: panelPos.right,
             zIndex: 100,
-            minWidth: 340,
+            width: 380,
+            minWidth: 380,
             padding: 0,
             background: "var(--pt-popover)",
             border: "1px solid var(--pt-border)",
@@ -357,7 +375,7 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             {notifications.map((item) => {
               const mapEntry =
                 NOTIF_ICON_MAP[item.type] ?? NOTIF_ICON_MAP.info;
-              const { Icon, color, dim } = mapEntry;
+              const { Icon, color } = mapEntry;
               return (
                 <div
                   key={item.id}
@@ -368,18 +386,14 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                     gap: 12,
                     padding: "12px 16px",
                     cursor: loading ? "progress" : "pointer",
-                    background: item.read
-                      ? "transparent"
-                      : "rgba(6, 182, 212, 0.08)",
+                    background: "transparent",
                     transition: "background 0.15s ease",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = "var(--pt-surface-3)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = item.read
-                      ? "transparent"
-                      : "rgba(6, 182, 212, 0.08)";
+                    e.currentTarget.style.background = "transparent";
                   }}
                 >
                   {/* 未读左侧 3px 青色竖条 */}
@@ -396,13 +410,13 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                       }}
                     />
                   )}
-                  {/* 彩色图标容器 */}
+                  {/* 图标容器：中性底圆形，语义色只留在 16px 图标上，避免整片色块 */}
                   <div
                     style={{
                       width: 32,
                       height: 32,
-                      borderRadius: "var(--pt-radius-md)",
-                      background: dim,
+                      borderRadius: "50%",
+                      background: "var(--pt-surface-3)",
                       color,
                       display: "flex",
                       alignItems: "center",
@@ -412,17 +426,38 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                   >
                     <Icon size={16} />
                   </div>
-                  {/* 内容：标题 + 描述（2 行截断）+ 时间 */}
+                  {/* 内容：标题 + 时间同行（减少堆行），描述 2 行截断 */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: "var(--pt-foreground)",
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 8,
                         marginBottom: 2,
                       }}
                     >
-                      {item.title}
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: "var(--pt-foreground)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--pt-muted-foreground)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {item.time}
+                      </div>
                     </div>
                     <div
                       style={
@@ -430,7 +465,6 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                           fontSize: 12,
                           color: "var(--pt-muted-foreground)",
                           lineHeight: 1.5,
-                          marginBottom: 4,
                           display: "-webkit-box",
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: "vertical",
@@ -439,14 +473,6 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                       }
                     >
                       {item.description}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--pt-slate-500)",
-                      }}
-                    >
-                      {item.time}
                     </div>
                   </div>
                 </div>
@@ -482,6 +508,9 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             {t("portfolioTrading.notification.viewAll")}
           </button>
         </div>
+        </div>
+        ,
+        document.body
       )}
     </div>
   );

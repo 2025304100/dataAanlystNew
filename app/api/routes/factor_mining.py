@@ -87,6 +87,8 @@ class MiningRunCreate(BaseModel):
             raise ValueError("结束日期不能晚于数据截止日期。")
         if self.train_ratio + self.validation_ratio > 0.9:
             raise ValueError("训练与验证比例之和不能超过 0.9，为测试段至少保留 10% 样本。")
+        from app.services.factors.mining.evolution_config import validated_evolution_rates
+        validated_evolution_rates(self.evolution_params)
         return self
 
 
@@ -262,6 +264,16 @@ def create_factor_mining_run(payload: MiningRunCreate,
         "close", "open", "high", "low", "volume", "amount", "turnover_rate"])
     # DEF-2：快照存在性/锁定态校验前置（拒绝时不建 run 行、不建任务、不占锁）
     _validate_snapshot_for_run(db, payload.candidate_pool_snapshot_id)
+    try:
+        preflight = mining_service.validate_run_preflight(db,
+            snapshot_id=payload.candidate_pool_snapshot_id,
+            selected_fields=filter_config["selected_fields"], start_date=payload.start_date,
+            end_date=payload.end_date, data_cutoff_at=payload.data_cutoff_at,
+            frequency=payload.rebalance_frequency, target_horizon=payload.target_horizon,
+            train_ratio=payload.train_ratio, validation_ratio=payload.validation_ratio,
+            warehouse_path=filter_config.get("warehouse_path"))
+    except FactorSevenError as exc:
+        raise HTTPException(status_code=422, detail=exc.to_dict()) from exc
     mining_service.create_run(
         db,
         run_id=run_id,
@@ -311,6 +323,7 @@ def create_factor_mining_run(payload: MiningRunCreate,
         task_id=result.task_id,
         queue_position=result.queue_position,
         eta_seconds=None,
+        split_budget=preflight["split_budget"],
     ).model_dump()
 
 
@@ -603,8 +616,10 @@ def list_mining_fields() -> dict[str, Any]:
 
 
 class SplitBudgetRequest(BaseModel):
+    candidate_pool_snapshot_id: str | None = Field(default=None, min_length=1)
     start_date: datetime
     end_date: datetime
+    data_cutoff_at: datetime | None = None
     frequency: Literal["daily", "weekly", "monthly"] = "daily"
     target_horizon: int = Field(default=5, ge=1, le=20)
     train_ratio: float = Field(default=0.6, gt=0, lt=1)
@@ -619,6 +634,13 @@ class SplitBudgetRequest(BaseModel):
         available=true。ratio 层面无法预知交易日点数，这里按保守口径：
         test 段至少保留 10%，超出直接 422（中文 detail 由错误信封透出）。
         """
+        if self.candidate_pool_snapshot_id:
+            if self.start_date.date() >= self.end_date.date():
+                raise ValueError("开始日期必须早于结束日期。")
+            if self.data_cutoff_at is None:
+                raise ValueError("冻结候选池预检需要数据截止日。")
+            if self.end_date.date() > self.data_cutoff_at.date():
+                raise ValueError("结束日期不能晚于数据截止日期。")
         total = self.train_ratio + self.validation_ratio
         if total > 0.9:
             raise ValueError(
@@ -642,11 +664,16 @@ def get_split_budget(payload: SplitBudgetRequest,
         return mining_service.compute_split_budget_preview(
             start_date=payload.start_date,
             end_date=payload.end_date,
+            data_cutoff_at=payload.data_cutoff_at,
             frequency=payload.frequency,
             target_horizon=payload.target_horizon,
             train_ratio=payload.train_ratio,
             validation_ratio=payload.validation_ratio,
+            candidate_pool_snapshot_id=payload.candidate_pool_snapshot_id,
+            db=db,
         )
+    except FactorSevenError as exc:
+        raise _factor_seven_http(exc) from exc
     except Exception as exc:  # noqa: BLE001 - 数仓忙降级为 available=False（非 500）
         import duckdb as _duckdb
 

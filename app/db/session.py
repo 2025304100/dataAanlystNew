@@ -42,16 +42,14 @@ _cp_engine = None
 _cp_factory = None
 
 
-def _make_control_plane_factory():
+def _make_control_plane_factory(main_engine, db_type):
     """基于 DatabaseManager 中当前生效的 DB URL / connect_args
     重新造一个独立的 NullPool engine + session factory。"""
     from sqlalchemy.pool import NullPool
 
     global _cp_engine, _cp_factory
-    dm = DatabaseManager.get()
-    main_engine = dm.engine
+    previous_engine = _cp_engine
     url = main_engine.url
-    db_type = dm.db_type
     kwargs: dict = {"poolclass": NullPool}
 
     if db_type == "mysql":
@@ -100,16 +98,20 @@ def _make_control_plane_factory():
         autocommit=False,
         future=True,
     )
+    if previous_engine is not None and previous_engine is not _cp_engine:
+        previous_engine.dispose()
 
 
 def get_control_session_local():
     """获取控制平面 SessionLocal 工厂（NullPool，每次新开连接）。"""
     global _cp_factory
-    if _cp_factory is None:
-        with _cp_lock:
-            if _cp_factory is None:
-                _make_control_plane_factory()
-    return _cp_factory
+    # Read the manager before taking the cache lock: switching holds the manager
+    # lock while invalidating this cache, so the opposite order can deadlock.
+    main_engine = DatabaseManager.get().engine
+    with _cp_lock:
+        if _cp_factory is None or _cp_engine.url != main_engine.url:
+            _make_control_plane_factory(main_engine, main_engine.dialect.name)
+        return _cp_factory
 
 
 def reset_control_plane_cache():

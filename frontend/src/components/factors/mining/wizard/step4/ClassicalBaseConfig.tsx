@@ -14,6 +14,7 @@ export interface ClassicalBaseConfigProps {
   availableCategories?: string[];
   categoryLimits?: Record<string, number>;
   coverageStrategy?: "keep" | "drop" | "reselect";
+  readOnly?: boolean;
   onChange?: (patch: Record<string, unknown>) => void;
 }
 
@@ -28,6 +29,7 @@ export default function ClassicalBaseConfig({
   availableCategories = [...ALL_CATEGORIES],
   categoryLimits = {},
   coverageStrategy = "keep",
+  readOnly = false,
   onChange,
 }: ClassicalBaseConfigProps) {
   return (
@@ -39,6 +41,7 @@ export default function ClassicalBaseConfig({
         <span className="mining-evo-field-label">{t("miningEvoCoverageStrategy")}</span>
         <Radio.Group
           data-evo-coverage-strategy
+          disabled={readOnly}
           value={coverageStrategy}
           onChange={(e) => onChange?.({ coverage_strategy: e.target.value })}
           options={[
@@ -53,14 +56,14 @@ export default function ClassicalBaseConfig({
         const needKey = CATEGORY_NEED_FIELD[cat];
         const row = (
           <div className={`mining-evo-row ${disabled ? "is-disabled" : ""}`} key={cat}>
-            <Checkbox checked={!disabled} disabled={disabled}>
+            <Checkbox checked={!disabled} disabled={disabled || readOnly}>
               {t(CATEGORY_LABEL_KEY[cat] ?? cat)}
             </Checkbox>
             <InputNumber
               data-evo-category-limit={cat}
               min={0}
               max={60}
-              disabled={disabled}
+              disabled={disabled || readOnly}
               value={categoryLimits[cat] ?? 0}
               onChange={(v) =>
                 onChange?.({ category_limits: { [cat]: typeof v === "number" ? v : 0 } })

@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
@@ -28,6 +29,7 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error, r2_score
 from sqlalchemy import select
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from app.core.db_numeric import clean_json_tree
@@ -43,6 +45,13 @@ from app.models.factor_runtime import FactorRuntimeState  # P2.3b active model I
 from app.services.factors.definitions import FACTOR_BY_CODE, FACTOR_DEFINITIONS
 from app.services.factors.store import FactorWarehouse
 from app.services.factors.target_engine import TARGET_CODE
+from app.services.factors.fit_policy import (
+    CROSS_SECTIONAL_RANK_DEFINITION,
+    CROSS_SECTIONAL_RANK_POLICY,
+    CROSS_SECTIONAL_RANK_PROTOCOL,
+    prepare_fit_target,
+    resolve_fit_policy,
+)
 # P2.3a/b：门禁（facade 函数 + 阈值从 FactorSystemConfig 读取）
 from app.services.factors.__facade__ import (  # noqa: E402
     run_training_eligibility_gates,
@@ -56,6 +65,31 @@ from app.services.factors.__facade__ import (  # noqa: E402
 FEATURE_CODES = tuple(
     item.code for item in FACTOR_DEFINITIONS if item.model_enabled
 )
+
+# A protocol change creates a new immutable candidate instead of reusing a
+# pre-holdout run that selected alpha on its final acceptance labels.
+PROTOCOL_VERSION = "ridge-temporal-holdout-v2"
+INNER_TUNING_POLICY = {
+    "fraction": 0.2,
+    "basis": "outer_purged_training_dates",
+    "rounding": "floor_at_least_one",
+    "selection_metric": "mean_squared_error",
+}
+
+
+@dataclass(frozen=True)
+class _TrainingSetMember:
+    """Plain immutable metadata; no ORM reload after the warehouse/fit phase."""
+
+    factor_id: int
+    factor_version_id: int
+    factor_code: str
+    factor_version: int
+    role: str
+    display_order: int
+    weight_constraint: str | None
+    missing_policy: str | None
+    direction: str | None
 
 
 def _load_features_from_factor_set(
@@ -306,6 +340,7 @@ class RidgeTrainingResult:
     normalized_weights: dict[str, float] = field(default_factory=dict)
     rejection_reasons: list[str] = field(default_factory=list)
     reused: bool = False
+    research_model_gate_status: str | None = None
 
 
 def _safe_correlation(
@@ -525,6 +560,10 @@ def _load_samples(
     result = merged[
         ["symbol", "trade_date", *feature_codes, "target", "exit_date"]
     ].dropna(subset=[*feature_codes, "target"])
+    # Legacy warehouse rows predate the target/factor finite-value contracts.
+    # A previously marked-tradable Infinity must never reach sklearn or the
+    # immutable training snapshot merely because dropna does not remove it.
+    result = result.loc[np.isfinite(result[[*feature_codes, "target"]].to_numpy(dtype=float)).all(axis=1)].copy()
     available = [pd.to_datetime(factors.data_cutoff_at, errors="coerce").max(),
                  pd.to_datetime(targets.target_created_at, errors="coerce").max()]
     available = [stamp.to_pydatetime().replace(tzinfo=None) for stamp in available if pd.notna(stamp)]
@@ -541,7 +580,7 @@ def _run_id(payload: dict) -> str:
 
 
 def _training_batch_evidence(warehouse, samples, *, factor_calc_batch_id,
-                             feature_versions, window_days):
+                             feature_versions, window_days, expected_symbol_count=None):
     """Compute gate observations from the exact immutable training inputs."""
     days = sorted(samples.trade_date.unique())[-window_days:] if not samples.empty else []
     with warehouse.connection(read_only=True) as conn:
@@ -556,7 +595,8 @@ def _training_batch_evidence(warehouse, samples, *, factor_calc_batch_id,
     fallback_totals = samples.groupby('trade_date').symbol.nunique().to_dict() if not samples.empty else {}
     result = {}
     for code, version in feature_versions.items():
-        coverage = [observed.get((day, code, version), 0) / max(totals.get(day, fallback_totals.get(day, 0)), 1)
+        coverage = [observed.get((day, code, version), 0) / max(
+                    totals.get(day, fallback_totals.get(day, 0)) if expected_symbol_count is None else expected_symbol_count, 1)
                     for day in days]
         daily_ics = []
         for day, group in samples.loc[samples.trade_date.isin(days)].groupby('trade_date'):
@@ -568,6 +608,9 @@ def _training_batch_evidence(warehouse, samples, *, factor_calc_batch_id,
             'coverage': float(np.mean(coverage)) if coverage else 0.0,
             'ic_mean': float(np.mean(daily_ics)) if daily_ics else None,
             'n_rows': len(samples), 'factor_calc_batch_id': factor_calc_batch_id,
+            'start_date': str(days[0]) if days else None,
+            'end_date': str(days[-1]) if days else None,
+            'sample_scope': 'outer_training_purged',
         }
     return result
 
@@ -601,6 +644,7 @@ def _result_from_model(db: Session, model: FactorModelRun) -> RidgeTrainingResul
             else []
         ),
         reused=True,
+        research_model_gate_status=hyperparameters.get('research_model_gate_status'),
     )
 
 
@@ -619,6 +663,9 @@ def train_rolling_ridge(
     model_run_id: str | None = None,
     allowed_trade_dates: tuple[date, ...] | None = None,
     hyperparameters: dict | None = None,
+    fit_policy: str | None = None,
+    trusted_history_identity: dict | None = None,
+    production_protocol_identity: dict | None = None,
 ) -> RidgeTrainingResult:
     """Train an immutable candidate model; never activate it automatically.
 
@@ -628,6 +675,31 @@ def train_rolling_ridge(
     - factor_set_id 记入 identity 用于模型幂等和追溯
     - 特征版本从 FactorSetMember.factor_version 读取（而非 FACTOR_DEFINITIONS）
     """
+    resolved_fit_policy = resolve_fit_policy(hyperparameters, fit_policy)
+    rank_fit = resolved_fit_policy == CROSS_SECTIONAL_RANK_POLICY
+    protocol_version = CROSS_SECTIONAL_RANK_PROTOCOL if rank_fit else PROTOCOL_VERSION
+    fit_identity = ({"fit_policy": resolved_fit_policy,
+                     "fit_target_policy": dict(CROSS_SECTIONAL_RANK_DEFINITION)} if rank_fit else {})
+    research_identity = {}
+    if trusted_history_identity is not None:
+        if (not isinstance(trusted_history_identity, dict)
+                or trusted_history_identity.get('research_only') is not True
+                or not trusted_history_identity.get('dataset_id')
+                or len(str(trusted_history_identity.get('manifest_sha256', ''))) != 64
+                or not isinstance(trusted_history_identity.get('cohort_symbols'), list)
+                or not trusted_history_identity['cohort_symbols']):
+            raise ValueError('trusted_history_invalid_training_identity')
+        if window_days != 250 or validation_days != 50 or not rank_fit:
+            raise ValueError('trusted_history_requires_fixed_250_50_rank_protocol')
+        research_identity = {'trusted_history_dataset': json.loads(json.dumps(
+            trusted_history_identity, sort_keys=True, allow_nan=False)),
+            'trusted_training_policy': {
+                'minimum_joint_cohort_coverage': .70,
+                'coverage_denominator': 'full_frozen_cohort',
+                'joint_sample': 'finite_frozen_features_and_tradable_mature_T_plus_5',
+                'date_selection': 'last_250_quality_qualified_signal_dates',
+                'performance_based_date_selection': False,
+            }}
     if window_days < 2:
         raise ValueError("window_days must be at least 2")
     if validation_days < 1 or validation_days >= window_days:
@@ -636,11 +708,37 @@ def train_rolling_ridge(
         raise ValueError("alphas must contain positive values")
     active_gate = gate or ModelGate()
     cutoff = data_cutoff_date or date.today()
+    production_identity = {}
+    production_contract = None
+    if production_protocol_identity is None and 'production_admission' in (hyperparameters or {}):
+        raise ValueError('production_execution_reserved_metadata')
+    if production_protocol_identity is not None:
+        if research_identity:
+            raise ValueError('production_execution_conflicting_research_identity')
+        from app.services.factors.production_execution import validate_training_identity
+        production_contract = validate_training_identity(production_protocol_identity,
+            cutoff=cutoff, window_days=window_days, validation_days=validation_days,
+            alphas=alphas, factor_set_id=factor_set_id, fit_policy=resolved_fit_policy,
+            gate=asdict(active_gate))
+        production_identity = {'production_admission': dict(production_protocol_identity)}
+    cohort_symbols = (production_contract['protocol']['symbols'] if production_contract else
+                      trusted_history_identity['cohort_symbols'] if research_identity else None)
+
+    # End only the read transaction this function starts. A caller may have
+    # already flushed writes (so new/dirty are empty); its existing transaction
+    # or an externally managed Connection must remain entirely caller-owned.
+    bind = db.get_bind()
+    owns_metadata_transaction = (
+        not db.in_transaction()
+        and not (db.new or db.dirty or db.deleted)
+        and not (isinstance(bind, Connection) and bind.in_transaction())
+    )
 
     # WP7-03: 动态加载特征列表
     # P2-G：同时捕获 factor_set_version + 完整成员详情（用于快照）
     factor_set_version: int = 0
-    _fs_member_rows: list = []
+    factor_set_content_hash: str | None = None
+    _fs_member_rows: list[_TrainingSetMember] = []
     if factor_set_id is not None:
         from app.models.factor_evaluation import FactorSet as _FactorSet
         feature_codes, feature_versions, _missing_policies = (
@@ -649,7 +747,17 @@ def train_rolling_ridge(
         _fs = db.get(_FactorSet, factor_set_id)
         if _fs is not None:
             factor_set_version = int(getattr(_fs, "version", 0) or 0)
-            _fs_member_rows = list(getattr(_fs, "members", []) or [])
+            factor_set_content_hash = _fs.content_hash
+            _fs_member_rows = [
+                _TrainingSetMember(
+                    factor_id=m.factor_id, factor_version_id=m.factor_version_id,
+                    factor_code=m.factor_code, factor_version=m.factor_version,
+                    role=m.role, display_order=m.display_order,
+                    weight_constraint=m.weight_constraint,
+                    missing_policy=m.missing_policy, direction=getattr(m, "direction", None),
+                )
+                for m in _fs.members
+            ]
     else:
         # Legacy 回退路径：使用静态 FEATURE_CODES
         feature_codes = FEATURE_CODES
@@ -660,6 +768,13 @@ def train_rolling_ridge(
         }
 
     identity = {
+        "protocol_version": protocol_version,
+        **fit_identity,
+        **research_identity,
+        **production_identity,
+        "coefficient_storage_dtype": "float32",
+        "coefficient_readback_significant_digits": 6,
+        "inner_tuning_policy": INNER_TUNING_POLICY,
         "mode": "warehouse",
         "train_mode": "warehouse",
         "factor_calc_batch_id": factor_calc_batch_id,
@@ -671,24 +786,133 @@ def train_rolling_ridge(
         "alphas": alphas,
         "features": feature_codes,
     }
-    run_id = model_run_id or _run_id(identity)
-    existing = db.get(FactorModelRun, run_id)
-    if existing is not None:
-        return _result_from_model(db, existing)
-
     # ── P2.3a 训练前置 2 道准入：覆盖率 + IC 区间 ────────────────────────────
     #   失败仍然**创建** FactorModelRun（前端列表可见），但 status=rejected
     #   这样既保证门禁有效，又不会让"点击训练"的结果看不到。
-    gate_cfg = _load_gate_config_from_db(db_supplied=db)
+    gate_cfg = (production_contract['protocol']['governance_gate_config'] if production_contract
+                else _load_gate_config_from_db(db_supplied=db))
+    # Release thresholds are part of the immutable decision. A caller raising
+    # either baseline or governance gates must receive a newly evaluated
+    # candidate, never an earlier validation result under weaker settings.
+    identity["model_gate"] = asdict(active_gate)
+    identity["governance_gate_config"] = dict(gate_cfg)
+    if owns_metadata_transaction and not (db.new or db.dirty or db.deleted):
+        # Sample joins, batch statistics and Ridge fit can outlast MySQL's
+        # wait_timeout. Return this read lease before that work, then acquire a
+        # fresh connection for the post-fit gates and atomic artifact write.
+        db.rollback()
     batch_samples = _load_samples(
         warehouse, factor_calc_batch_id=factor_calc_batch_id,
         target_calc_batch_id=target_calc_batch_id, data_cutoff_date=cutoff,
         feature_codes=feature_codes, feature_versions=feature_versions,
         allowed_trade_dates=allowed_trade_dates,
     )
+    joint_quality = None
+    if cohort_symbols:
+        if not set(batch_samples.symbol).issubset(cohort_symbols):
+            raise ValueError('production_execution_sample_cohort_conflict')
+        expected_symbols = len(cohort_symbols)
+        counts = batch_samples.groupby('trade_date').symbol.nunique() if not batch_samples.empty else pd.Series(dtype=int)
+        minimum = (.90 if production_contract else
+                   research_identity['trusted_training_policy']['minimum_joint_cohort_coverage'])
+        accepted = [day for day, count in counts.items() if count / expected_symbols >= minimum]
+        joint_quality = {
+            'expected_symbols': expected_symbols, 'minimum_coverage': minimum,
+            'qualified_date_count': len(accepted),
+            'skipped_dates': [{'trade_date': str(day), 'observed_symbols': int(count),
+                               'coverage': float(count / expected_symbols)}
+                              for day, count in counts.items() if count / expected_symbols < minimum],
+        }
+        batch_samples = batch_samples.loc[batch_samples.trade_date.isin(accepted)].copy()
+    all_dates = sorted(batch_samples["trade_date"].unique()) if not batch_samples.empty else []
+    window_dates = all_dates[-window_days:]
+    if cohort_symbols and len(window_dates) != window_days:
+        raise ValueError(f'trusted_history_insufficient_mature_signal_dates:{len(window_dates)}<{window_days}')
+    samples = batch_samples[batch_samples["trade_date"].isin(window_dates)].copy()
+    from app.services.factors.training_input_snapshot import fingerprint_training_inputs
+    identity["input_fingerprint"] = (
+        fingerprint_training_inputs(samples, feature_versions) if not samples.empty else
+        hashlib.sha256(json.dumps({"empty_samples": True, "feature_versions": feature_versions},
+                                  sort_keys=True).encode()).hexdigest()
+    )
+    identity["feature_versions"] = feature_versions
+    identity["factor_set_content_hash"] = factor_set_content_hash
+    run_id = model_run_id or _run_id(identity)
+    existing = db.get(FactorModelRun, run_id)
+    if existing is not None:
+        existing_hp = _json_object(existing.hyperparameters_json)
+        if existing_hp.get("protocol_version") != protocol_version:
+            raise ValueError("model_run_protocol_conflict: use a new immutable model run ID")
+        if existing_hp.get("input_fingerprint") != identity["input_fingerprint"]:
+            raise ValueError("model_run_input_conflict: immutable model run has different training inputs")
+        if any(existing_hp.get(key) != json.loads(json.dumps(value, default=str)) for key, value in identity.items()):
+            raise ValueError("model_run_identity_conflict: immutable model run has a different training configuration")
+        result = _result_from_model(db, existing)
+        snapshot = existing_hp.get("input_snapshot")
+        fitted = bool(result.coefficients) or existing_hp.get("selected_alpha") is not None or existing.status == "validated"
+        if snapshot is not None or existing.artifact_path is not None or fitted:
+            from app.services.factors.training_input_snapshot import load_training_input_snapshot
+            try:
+                if not isinstance(snapshot, dict) or not existing.artifact_path or not result.coefficients:
+                    raise ValueError("missing fitted model snapshot or members")
+                artifact_path = Path(existing.artifact_path).resolve()
+                frame, manifest = load_training_input_snapshot(artifact_path)
+                expected = {
+                    "model_run_id": existing.id, "protocol_version": protocol_version,
+                    "feature_versions": feature_versions,
+                    "input_fingerprint": identity["input_fingerprint"],
+                    "row_count": existing.sample_count,
+                }
+                if any(manifest.get(key) != value for key, value in expected.items()):
+                    raise ValueError("snapshot identity mismatch")
+                if (Path(snapshot["artifact_path"]).resolve() != artifact_path
+                    or Path(snapshot["samples_path"]).resolve() != artifact_path.parent / "inputs.parquet"
+                    or any(snapshot.get(key) != manifest.get(key) for key in
+                           ("sha256", "input_fingerprint", "row_count", "schema_version"))
+                    or len(frame) != existing.sample_count
+                    or manifest.get("split_metadata") != {
+                        "coefficient_stage": existing_hp.get("coefficient_stage"),
+                        "inner_tuning_policy": existing_hp.get("inner_tuning_policy"),
+                        **fit_identity,
+                        **research_identity,
+                        **production_identity,
+                        "metrics": _json_object(existing.metrics_json),
+                    }):
+                    raise ValueError("snapshot metadata mismatch")
+            except (ValueError, OSError, TypeError, KeyError) as exc:
+                raise ValueError(f"model_run_snapshot_invalid:{existing.id}") from exc
+        return result
+    if owns_metadata_transaction and not (db.new or db.dirty or db.deleted):
+        # The fingerprint requires the exact values, including mutable shared
+        # label batches. Return this second read lease before fitting as well.
+        db.rollback()
+    validation_dates = window_dates[-validation_days:]
+    training_dates = window_dates[:-validation_days]
+    train = samples[samples["trade_date"].isin(training_dates)].copy()
+    validation = samples[samples["trade_date"].isin(validation_dates)].copy()
+    # Equality is a crossing label: the training outcome must be known strictly
+    # before the first holdout signal, for both nested time boundaries.
+    purged_train_count = 0
+    if validation_dates and not train.empty:
+        purged_train_count = int((train["exit_date"] >= validation_dates[0]).sum())
+        train = train.loc[train["exit_date"] < validation_dates[0]].copy()
+    training_dates = sorted(train.trade_date.unique())
+    tuning_date_count = max(1, int(len(training_dates) * 0.2)) if len(training_dates) >= 2 else 0
+    tuning_dates = training_dates[-tuning_date_count:] if tuning_date_count else []
+    inner_dates = training_dates[:-tuning_date_count] if tuning_date_count else []
+    inner_train = train.loc[train.trade_date.isin(inner_dates)].copy()
+    tuning = train.loc[train.trade_date.isin(tuning_dates)].copy()
+    inner_purged_count = 0
+    if tuning_dates and not inner_train.empty:
+        inner_purged_count = int((inner_train.exit_date >= tuning_dates[0]).sum())
+        inner_train = inner_train.loc[inner_train.exit_date < tuning_dates[0]].copy()
+    inner_dates = sorted(inner_train.trade_date.unique())
+    # Admission is part of model fitting. Neither its IC nor its coverage may
+    # inspect the outer holdout; n_rows and day bounds describe this exact fit.
     batch_evidence = _training_batch_evidence(
-        warehouse, batch_samples, factor_calc_batch_id=factor_calc_batch_id,
+        warehouse, train, factor_calc_batch_id=factor_calc_batch_id,
         feature_versions=feature_versions, window_days=window_days,
+        **({'expected_symbol_count': len(cohort_symbols)} if cohort_symbols else {}),
     )
     pre_gate_reasons: list[str] = []
     try:
@@ -714,150 +938,109 @@ def train_rolling_ridge(
     has_hard_pre_fail = bool(pre_gate_reasons) or any(
         not getattr(g, "passed", False) for g in pre_gate_results
     )
-    if has_hard_pre_fail:
-        # 初始化后续变量：保证构造 FactorModelRun 时字段齐全
-        all_dates: list = []
-        window_dates: list = []
-        validation_dates: list = []
-        training_dates: list = []
-        sample_count = 0
-        symbol_count = 0
-        trade_date_count = 0
-        coefficients: dict[str, float] = {}
-        normalized_weights: dict[str, float] = {}
-        selected_alpha = None
-        validation_ic = None
-        validation_icir: float | None = None
-        weight_drift: float | None = None
-        cluster_exposure: float | None = None
-        factor_set_healthy: bool | None = None
-        metrics: dict[str, float | int | None] = {
-            "validation_ic": None,
-            "validation_mse": None,
-            "validation_r2": None,
-            "train_ic": None,
-            "sample_count": 0,
-            "validation_sample_count": 0,
-            "validation_date_count": 0,
-            "validation_icir": None,
-            "weight_drift": None,
-            "cluster_exposure": None,
-            "factor_set_healthy": None,
-        }
-        final_intercept: float | None = None
-        samples = pd.DataFrame(
-            columns=["symbol", "trade_date", *feature_codes, "target"]
-        )
-        train = samples
-        validation = samples
-    else:
-        samples = batch_samples
-        all_dates = sorted(samples["trade_date"].unique()) if not samples.empty else []
-        window_dates = all_dates[-window_days:]
-        samples = samples[samples["trade_date"].isin(window_dates)].copy()
-        validation_dates = window_dates[-validation_days:]
-        training_dates = window_dates[:-validation_days]
-        train = samples[samples["trade_date"].isin(training_dates)]
-        validation = samples[samples["trade_date"].isin(validation_dates)]
-        # Training labels must be fully observed before the first validation
-        # signal. Purge T+5 labels crossing that boundary, including equality.
-        purged_train_count = 0
-        if validation_dates and not train.empty:
-            purged_train_count = int((train["exit_date"] >= validation_dates[0]).sum())
-            train = train.loc[train["exit_date"] < validation_dates[0]].copy()
-            training_dates = sorted(train.trade_date.unique())
-        sample_count = len(samples)
-        symbol_count = int(samples["symbol"].nunique()) if not samples.empty else 0
-        trade_date_count = len(window_dates)
-
-        coefficients: dict[str, float] = {}
-        normalized_weights: dict[str, float] = {}
-        selected_alpha = None
-        validation_ic = None
-        # WP7-04 增强门禁指标（默认 None，训练成功后计算）
-        validation_icir: float | None = None
-        weight_drift: float | None = None
-        cluster_exposure: float | None = None
-        factor_set_healthy: bool | None = None
-        metrics: dict[str, float | int | None] = {
-            "validation_ic": None,
-            "validation_mse": None,
-            "validation_r2": None,
-            "train_ic": None,
-            "sample_count": sample_count,
-            "validation_sample_count": len(validation),
-            "validation_date_count": len(validation_dates),
-            "purged_training_sample_count": purged_train_count,
-            # WP7-04 增强门禁指标
-            "validation_icir": None,
-            "weight_drift": None,
-            "cluster_exposure": None,
-            "factor_set_healthy": None,
-        }
-        final_intercept: float | None = None
-        if training_dates and validation_dates and not train.empty and not validation.empty:
-            feature_list = list(feature_codes)
-            x_train = train[feature_list].to_numpy(dtype=float)
-            y_train = train["target"].to_numpy(dtype=float)
-            x_validation = validation[feature_list].to_numpy(dtype=float)
-            y_validation = validation["target"].to_numpy(dtype=float)
-            candidates = []
-            for alpha in alphas:
-                candidate = Ridge(alpha=float(alpha), fit_intercept=True)
-                candidate.fit(x_train, y_train)
-                prediction = candidate.predict(x_validation)
-                candidates.append(
-                    (
-                        float(mean_squared_error(y_validation, prediction)),
-                        float(alpha),
-                        candidate,
-                        prediction,
-                    )
-                )
-            validation_mse, selected_alpha, selected, validation_prediction = min(
-                candidates, key=lambda item: (item[0], item[1])
-            )
-            validation_ic = _safe_correlation(
-                pd.Series(validation_prediction), validation["target"].reset_index(drop=True)
-            )
-            train_prediction = selected.predict(x_train)
-            train_ic = _safe_correlation(
-                pd.Series(train_prediction), train["target"].reset_index(drop=True)
-            )
-            validation_r2 = (
-                float(r2_score(y_validation, validation_prediction))
-                if len(validation) >= 2
-                else None
-            )
-            final_model = Ridge(alpha=selected_alpha, fit_intercept=True)
-            final_model.fit(
-                samples[feature_list].to_numpy(dtype=float),
-                samples["target"].to_numpy(dtype=float),
-            )
-            final_intercept = float(final_model.intercept_)
-            coefficients = {
-                code: float(value)
-                for code, value in zip(feature_codes, final_model.coef_)
-            }
-            absolute_sum = sum(abs(value) for value in coefficients.values())
-            if absolute_sum > 1e-12:
-                normalized_weights = {
-                    code: value / absolute_sum
-                    for code, value in coefficients.items()
-                }
-            metrics.update(
-                {
-                    "validation_ic": validation_ic,
-                    "validation_mse": validation_mse,
-                    "validation_r2": validation_r2,
-                    "train_ic": train_ic,
-                }
-            )
-            # WP7-04: 验证期 ICIR（基于每日 IC 序列）
-            validation_icir = _compute_validation_icir(
-                validation, feature_list, selected
-            )
-            metrics["validation_icir"] = validation_icir
+    sample_count = len(samples)
+    symbol_count = int(samples["symbol"].nunique()) if not samples.empty else 0
+    trade_date_count = len(window_dates)
+    coefficients: dict[str, float] = {}
+    normalized_weights: dict[str, float] = {}
+    selected_alpha = None
+    validation_ic = None
+    validation_icir: float | None = None
+    weight_drift: float | None = None
+    cluster_exposure: float | None = None
+    factor_set_healthy: bool | None = None
+    final_intercept: float | None = None
+    metrics = {
+        "validation_ic": None, "validation_mse": None, "validation_r2": None,
+        "train_ic": None, "sample_count": sample_count, "total_sample_count": sample_count,
+        "training_sample_count": len(train), "inner_training_sample_count": len(inner_train),
+        "tuning_sample_count": len(tuning), "validation_sample_count": len(validation),
+        "validation_date_count": len(validation_dates),
+        "training_date_count": len(training_dates), "inner_training_date_count": len(inner_dates),
+        "tuning_date_count": len(tuning_dates),
+        "purged_training_sample_count": purged_train_count,
+        "outer_purged_sample_count": purged_train_count,
+        "inner_purged_sample_count": inner_purged_count,
+        "validation_ic_method": "pooled_spearman",
+        "validation_icir_method": "daily_spearman_mean_over_sample_std_ddof1",
+        "validation_daily_ic_mean": None, "validation_daily_ic_count": 0,
+        "validation_icir": None, "weight_drift": None, "cluster_exposure": None,
+        "factor_set_healthy": None,
+        "inner_training_start_date": str(inner_dates[0]) if inner_dates else None,
+        "inner_training_end_date": str(inner_dates[-1]) if inner_dates else None,
+        "tuning_start_date": str(tuning_dates[0]) if tuning_dates else None,
+        "tuning_end_date": str(tuning_dates[-1]) if tuning_dates else None,
+        "training_start_date": str(training_dates[0]) if training_dates else None,
+        "training_end_date": str(training_dates[-1]) if training_dates else None,
+        "validation_start_date": str(validation_dates[0]) if validation_dates else None,
+        "validation_end_date": str(validation_dates[-1]) if validation_dates else None,
+        "training_max_exit_date": str(train.exit_date.max()) if not train.empty else None,
+        "inner_training_max_exit_date": str(inner_train.exit_date.max()) if not inner_train.empty else None,
+    }
+    if joint_quality is not None:
+        metrics['trusted_joint_sample_quality'] = joint_quality
+    if not has_hard_pre_fail and not inner_train.empty and not tuning.empty and not validation.empty:
+        feature_list = list(feature_codes)
+        x_inner = inner_train[feature_list].to_numpy(dtype=float)
+        inner_fit_target = prepare_fit_target(inner_train, resolved_fit_policy)
+        y_inner = inner_fit_target.target
+        x_tuning = tuning[feature_list].to_numpy(dtype=float)
+        tuning_fit_target = prepare_fit_target(tuning, resolved_fit_policy)
+        y_tuning = tuning_fit_target.target
+        candidates = []
+        for alpha in alphas:
+            candidate = Ridge(alpha=float(alpha), fit_intercept=True)
+            fit_kwargs = {"sample_weight": inner_fit_target.sample_weight} if rank_fit else {}
+            candidate.fit(x_inner, y_inner, **fit_kwargs)
+            candidates.append((float(mean_squared_error(y_tuning, candidate.predict(x_tuning),
+                sample_weight=tuning_fit_target.sample_weight)), float(alpha)))
+        tuning_mse, selected_alpha = min(candidates, key=lambda item: (item[0], item[1]))
+        # The selected artifact is fit once on the purged outer training set.
+        # Reserved acceptance labels are never included in a post-check refit.
+        selected = Ridge(alpha=selected_alpha, fit_intercept=True)
+        x_train = train[feature_list].to_numpy(dtype=float)
+        outer_fit_target = prepare_fit_target(train, resolved_fit_policy)
+        y_train = outer_fit_target.target
+        fit_kwargs = {"sample_weight": outer_fit_target.sample_weight} if rank_fit else {}
+        selected.fit(x_train, y_train, **fit_kwargs)
+        final_intercept = float(selected.intercept_)
+        # MySQL FLOAT stores binary32, but the production PyMySQL text protocol
+        # exposes six significant digits to ORM/scoring reads. Gate that same
+        # public scalar, not the binary32-as-double value exposed by SQL +0e0.
+        # SQLite fixtures retain these readback scalars unchanged as doubles.
+        selected.coef_ = np.asarray([
+            float(format(float(np.float32(value)), ".6g")) for value in selected.coef_
+        ], dtype=float)
+        coefficients = {code: float(value) for code, value in zip(feature_codes, selected.coef_)}
+        absolute_sum = sum(abs(value) for value in coefficients.values())
+        if absolute_sum > 1e-12:
+            normalized_weights = {code: float(np.float32(value / absolute_sum))
+                                  for code, value in coefficients.items()}
+        x_validation = validation[feature_list].to_numpy(dtype=float)
+        y_validation = validation["target"].to_numpy(dtype=float)
+        validation_prediction = selected.predict(x_validation)
+        validation_ic = _safe_correlation(pd.Series(validation_prediction), validation["target"].reset_index(drop=True))
+        train_ic = _safe_correlation(pd.Series(selected.predict(x_train)), train["target"].reset_index(drop=True))
+        validation_icir = _compute_validation_icir(validation, feature_list, selected)
+        daily_ics = []
+        for _, group in validation.groupby("trade_date"):
+            ic = _safe_correlation(pd.Series(selected.predict(group[feature_list].to_numpy(dtype=float))),
+                                   group["target"].reset_index(drop=True))
+            if ic is not None:
+                daily_ics.append(ic)
+        metrics.update({
+            "tuning_mse": tuning_mse, "validation_ic": validation_ic,
+            "validation_mse": float(mean_squared_error(y_validation, validation_prediction)),
+            "validation_r2": float(r2_score(y_validation, validation_prediction)) if len(validation) >= 2 else None,
+            "train_ic": train_ic, "validation_icir": validation_icir,
+            "validation_daily_ic_mean": float(np.mean(daily_ics)) if daily_ics else None,
+            "validation_daily_ic_count": len(daily_ics),
+        })
+        if rank_fit:
+            metrics.update({"fit_target_method": resolved_fit_policy,
+                "tuning_mse_target": "cross_sectional_rank",
+                "tuning_mse_weighting": "equal_trade_date",
+                "validation_mse_target": "original_untransformed_target_5d_return"})
 
     # WP7-04: 权重漂移、簇暴露、FactorSet 健康状态（仅在有权重时计算）
     if normalized_weights:
@@ -869,7 +1052,7 @@ def train_rolling_ridge(
     metrics["factor_set_healthy"] = factor_set_healthy
 
     rejection_reasons = evaluate_model_gate(
-        sample_count=sample_count,
+        sample_count=len(train),
         symbol_count=symbol_count,
         trade_date_count=trade_date_count,
         validation_date_count=len(validation_dates),
@@ -896,9 +1079,9 @@ def train_rolling_ridge(
     post_gate_reasons: list[str] = []
     # 门禁 1：样本量 ≥ min_sample_count（治理硬门槛，叠加 legacy 的 minimum_samples）
     _min_samples_p2 = int(gate_cfg.get("min_sample_count", 10000))
-    if sample_count < _min_samples_p2:
+    if len(train) < _min_samples_p2:
         post_gate_reasons.append(
-            f"[P2-G Post] sample_count:{sample_count}<{_min_samples_p2}(治理硬门槛)"
+            f"[P2-G Post] sample_count:{len(train)}<{_min_samples_p2}(治理硬门槛)"
         )
     # 门禁 2：与当前 active 模型 IC 差 ≤ ±max_active_ic_delta_pct（默认 50%）
     _max_ic_delta = float(gate_cfg.get("max_active_ic_delta_pct", 0.50))
@@ -959,7 +1142,8 @@ def train_rolling_ridge(
                 after={
                     "post_gate_reasons": list(post_gate_reasons),
                     "final_status": _final_status_hint,
-                    "sample_count": sample_count,
+                    "sample_count": len(train),
+                    "total_sample_count": sample_count,
                     "new_validation_ic": _new_ic,
                     "active_validation_ic": _active_ic,
                     "p2_gate_cfg": {
@@ -987,7 +1171,37 @@ def train_rolling_ridge(
                 _audit_err,
             )
 
+    research_model_gate_status = ("rejected" if rejection_reasons else "validated") if research_identity else None
+    if research_identity:
+        # Keep old HTTP workers safe too: they already reject this persisted
+        # status even before the newer research-aware readiness code is loaded.
+        # The mathematical gate outcome is preserved separately, without
+        # claiming a small retrospective cohort qualifies for production.
+        rejection_reasons.append('research_only:independent_validation_required')
+        metrics['research_model_gate_status'] = research_model_gate_status
+        metrics['research_only'] = True
     status = "rejected" if rejection_reasons else "validated"
+    if production_contract:
+        metrics['production_model_gate_status'] = status
+        metrics['independent_qualification_pending'] = True
+        # Persist a distinct state so even an older worker cannot activate it
+        # merely because the retrospective mathematical gate passed.
+        if status == 'validated':
+            status = 'pending_validation'
+    input_snapshot = None
+    if coefficients and not samples.empty:
+        from app.services.factors.training_input_snapshot import write_training_input_snapshot
+        input_snapshot = write_training_input_snapshot(
+            artifact_root=warehouse.path.parent / "factor_model_inputs",
+            model_run_id=run_id, protocol_version=protocol_version,
+            samples=samples, feature_versions=feature_versions,
+            split_metadata={"coefficient_stage": "outer_training_purged",
+                            "inner_tuning_policy": INNER_TUNING_POLICY,
+                            **fit_identity,
+                            **research_identity,
+                            **production_identity,
+                            "metrics": clean_json_tree(metrics)},
+        )
     model = FactorModelRun(
         id=run_id,
         model_type="ridge",
@@ -1010,8 +1224,12 @@ def train_rolling_ridge(
                 **(hyperparameters or {}),
                 **identity,
                 "selected_alpha": selected_alpha,
+                "coefficient_stage": "outer_training_purged",
+                "coefficient_storage_dtype": "float32",
                 "final_intercept": final_intercept,
                 "training_gate_evidence": batch_evidence,
+                "input_snapshot": input_snapshot,
+                **({'research_model_gate_status': research_model_gate_status} if research_identity else {}),
             },
             sort_keys=True,
             default=str,
@@ -1019,6 +1237,7 @@ def train_rolling_ridge(
         # TD3：NaN/±Inf → null + allow_nan=False fail-fast 双保险
         metrics_json=json.dumps(clean_json_tree(metrics), sort_keys=True, allow_nan=False),
         sample_count=sample_count,
+        artifact_path=input_snapshot["artifact_path"] if input_snapshot else None,
         symbol_count=symbol_count,
         trade_date_count=trade_date_count,
         status=status,
@@ -1127,7 +1346,7 @@ def train_rolling_ridge(
                     coverage=_cov,
                     side=_side,
                 ))
-            if status == "validated":
+            if status == "validated" or (production_contract and status == 'pending_validation'):
                 from app.models.factor_weight_snapshot import FactorWeightSnapshot
                 sorted_members = sorted(
                     _fs_member_rows,
@@ -1136,7 +1355,7 @@ def train_rolling_ridge(
                 db.add(FactorWeightSnapshot(
                     model_id=run_id,
                     factor_set_id=factor_set_id or "legacy-builtins",
-                    factor_set_content_hash=getattr(_fs, "content_hash", None) if factor_set_id else None,
+                    factor_set_content_hash=factor_set_content_hash,
                     factor_ids_json=json.dumps([m.factor_id for m in sorted_members]),
                     factor_version_ids_json=json.dumps([m.factor_version_id for m in sorted_members]),
                     roles_json=json.dumps([m.role for m in sorted_members]),
@@ -1174,6 +1393,7 @@ def train_rolling_ridge(
         coefficients=coefficients,
         normalized_weights=normalized_weights,
         rejection_reasons=rejection_reasons,
+        research_model_gate_status=research_model_gate_status,
     )
     return result
 

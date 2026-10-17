@@ -16,7 +16,7 @@
 // - mock AppContext，提供 zh-CN locale
 // - i18n mock：t(key) 返回 key，便于按 key 断言
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 
 // 使用 vi.hoisted 提升 mock，使其可在 vi.mock factory 内引用
 const { mockContext, mockApi, mockMessage } = vi.hoisted(() => ({
@@ -34,6 +34,7 @@ const { mockContext, mockApi, mockMessage } = vi.hoisted(() => ({
   mockApi: {
     listFactorDefinitions: vi.fn(),
     scoringListFactorDefinitions: vi.fn(),
+    listFactorVersions: vi.fn(),
     preflightFactorEvaluation: vi.fn(),
     listEvaluationTasks: vi.fn(),
     getEvaluationTaskHeartbeat: vi.fn(async () => ({})),
@@ -217,8 +218,9 @@ describe("FactorEvaluationLab", () => {
       items: [{ code: "turnover_z20", name: "换手率因子" }],
     });
     mockApi.scoringListFactorDefinitions.mockResolvedValue({
-      items: [{ code: "turnover_z20", name: "换手率因子" }],
+      items: [{ id: 1, code: "turnover_z20", name: "换手率因子", factor_kind: "continuous", direction: "higher_better" }],
     });
+    mockApi.listFactorVersions.mockResolvedValue([{ id: 1, factor_id: 1, version: 1, is_latest: true, direction: "higher_better" }]);
     mockApi.listEvaluationTasks.mockResolvedValue([]);
     mockApi.listEvaluationRuns.mockResolvedValue([]);
     mockApi.preflightFactorEvaluation.mockResolvedValue({
@@ -279,6 +281,144 @@ describe("FactorEvaluationLab", () => {
     expect(mockApi.createEvaluationTask).not.toHaveBeenCalled();
   });
 
+  it("scopes history to the selected version and never presents another factor's completed task as its report", async () => {
+    const otherRun = makeRun({ id: "other-factor-report", factor_version_id: 999 });
+    mockApi.listEvaluationTasks.mockResolvedValue([makeTask({ status: "completed", result: { run_id: otherRun.id, factor_code: "other_factor" } })]);
+    mockApi.getEvaluationRun.mockResolvedValue(otherRun);
+    mockApi.listEvaluationRuns.mockImplementation(async (query: {factorVersionId?:number}) => query.factorVersionId === 1 ? [] : [otherRun]);
+    render(<FactorEvaluationLab initialFactorCode="turnover_z20" initialVersionId={1} />);
+    await waitFor(() => expect(mockApi.listEvaluationRuns).toHaveBeenCalledWith(expect.objectContaining({ factorVersionId: 1 })));
+    expect(screen.queryByText("other-factor-report")).not.toBeInTheDocument();
+    expect(screen.getByText("evalLabNoMetrics")).toBeVisible();
+    await openRunsTab();
+    expect(screen.getByText("evalLabEmptyRuns")).toBeVisible();
+  });
+
+  it("marks unfiltered browsing as global history and identifies an explicitly opened historical report", async () => {
+    const run = makeRun({ id: "other-version-report", factor_version_id: 999 });
+    run.config.factor_code = "other_factor";
+    mockApi.listEvaluationRuns.mockResolvedValue([run]);
+    mockApi.getEvaluationRun.mockResolvedValue(run);
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    fireEvent.click((await screen.findAllByRole("button", { name: /solution/ }))[0]);
+    expect((await screen.findAllByText("other_factor")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("factorLabGlobalHistory").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("factorLabReportVersionId").length).toBeGreaterThan(0);
+  });
+
+  it("clears a selected report and ignores its late detail response when the factor changes", async () => {
+    const firstRun = makeRun({ id: "first-factor-report" });
+    let resolveReport!: (run: any) => void;
+    mockApi.listFactorVersions.mockImplementation(async (code: string) => [{ id: code === "turnover_z20" ? 1 : 2, version: 1, is_latest: true }]);
+    mockApi.listEvaluationRuns.mockImplementation(async (query: { factorVersionId?: number }) => query.factorVersionId === 1 ? [firstRun] : []);
+    mockApi.getEvaluationRun.mockResolvedValueOnce(firstRun).mockImplementationOnce(() => new Promise(resolve => { resolveReport = resolve; }));
+    const view = render(<FactorEvaluationLab initialFactorCode="turnover_z20" initialVersionId={1} />);
+    await openRunsTab();
+    fireEvent.click((await screen.findAllByRole("button", { name: /solution/ }))[0]);
+    const main = screen.getByRole("region", { name: "factorLabResultRegion" });
+    await waitFor(() => expect(within(main).getByRole("region", { name: /evalLabSectionReport · first-factor-report/, hidden: true })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /solution/ })[0]);
+    await waitFor(() => expect(mockApi.getEvaluationRun).toHaveBeenCalledTimes(2));
+    view.rerender(<FactorEvaluationLab initialFactorCode="other_factor" initialVersionId={2} />);
+    await waitFor(() => expect(mockApi.listEvaluationRuns).toHaveBeenCalledWith(expect.objectContaining({ factorVersionId: 2 })));
+    await act(async () => { resolveReport(firstRun); });
+    expect(within(main).queryByRole("region", { name: /evalLabSectionReport · first-factor-report/, hidden: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(within(main).getByText("evalLabEmptyRuns")).toBeVisible();
+  });
+
+  it("allows explicit viewing of another task's historical report without replacing the selected version result", async () => {
+    const firstRun = makeRun({ id: "selected-factor-report" });
+    const otherRun = makeRun({ id: "other-task-report", factor_version_id: 999, task_id: "other-task" });
+    const otherTask = makeTask({ id: "other-task", status: "completed", result: { run_id: otherRun.id }, payload_json: JSON.stringify({ factor_code: "other_factor" }) });
+    mockApi.listEvaluationTasks.mockResolvedValue([otherTask]);
+    mockApi.getEvaluationTask.mockResolvedValue(otherTask);
+    mockApi.listEvaluationRuns.mockResolvedValue([firstRun]);
+    mockApi.getEvaluationRun.mockImplementation(async (id: string) => id === firstRun.id ? firstRun : otherRun);
+    render(<FactorEvaluationLab initialFactorCode="turnover_z20" initialVersionId={1} />);
+    await openRunsTab();
+    fireEvent.click((await screen.findAllByRole("button", { name: /solution/ }))[0]);
+    const main = screen.getByRole("region", { name: "factorLabResultRegion" });
+    await waitFor(() => expect(within(main).getByRole("region", { name: /evalLabSectionReport · selected-factor-report/, hidden: true })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+    const drawer = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(drawer).getByRole("region", { name: /evalLabSectionReport · other-task-report/ })).toBeVisible());
+    const historicalReport = within(drawer).getByRole("region", { name: /evalLabSectionReport · other-task-report/ });
+    expect(within(historicalReport).getByText("other_factor")).toBeVisible();
+    expect(within(historicalReport).getByText("factorLabHistoricalReport")).toBeVisible();
+    expect(within(main).queryByRole("region", { name: /evalLabSectionReport · other-task-report/, hidden: true })).not.toBeInTheDocument();
+    expect(within(main).getByRole("region", { name: /evalLabSectionReport · selected-factor-report/, hidden: true })).toBeInTheDocument();
+  });
+
+  it("invalidates a passed readiness check as soon as the target horizon changes", async () => {
+    render(<FactorEvaluationLab />);
+    fireEvent.mouseDown(screen.getAllByRole("combobox")[0]);
+    fireEvent.click(await screen.findByText("换手率因子 (turnover_z20)"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "evalLabSubmit" })).toBeEnabled());
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "evalWorkbenchTarget" }));
+    fireEvent.click(await screen.findByText("T+1 开盘 → T+10 收盘"));
+    expect(screen.getByRole("button", { name: "evalLabSubmit" })).toBeDisabled();
+    expect(mockApi.createEvaluationTask).not.toHaveBeenCalled();
+  });
+
+  it("opens methodology guidance from the help button", async () => {
+    render(<FactorEvaluationLab />);
+    fireEvent.click(screen.getByRole("button", { name: /evalLabMethodology/ }));
+    await waitFor(() => expect(screen.getByText("factorLabMethodologyData")).toBeVisible());
+    expect(screen.getByText("factorLabMethodologyNext")).toBeVisible();
+  });
+
+  it("keeps a newer blocked check when an older passed check finishes late", async () => {
+    let resolveOld!: (value: any) => void;
+    mockApi.preflightFactorEvaluation.mockImplementation((params: any) => params.targetHorizon === 5
+      ? new Promise(resolve => { resolveOld = resolve; })
+      : Promise.resolve({ overall: { passed: false, blocking_count: 1 }, items: [] }));
+    render(<FactorEvaluationLab initialFactorCode="turnover_z20" initialVersionId={1} />);
+    await waitFor(() => expect(mockApi.preflightFactorEvaluation).toHaveBeenCalledWith(expect.objectContaining({ targetHorizon: 5 })));
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "evalWorkbenchTarget" }));
+    fireEvent.click(await screen.findByText("T+1 开盘 → T+10 收盘"));
+    await waitFor(() => expect(mockApi.preflightFactorEvaluation).toHaveBeenCalledWith(expect.objectContaining({ targetHorizon: 10 })));
+    await act(async () => { resolveOld({ overall: { passed: true, blocking_count: 0 }, items: [] }); });
+    expect(screen.getByRole("button", { name: "evalLabSubmit" })).toBeDisabled();
+    expect(screen.getByText("factorLabResolveBlockers")).toBeVisible();
+  });
+
+  it("does not offer unimplemented constituent universes by default", async () => {
+    render(<FactorEvaluationLab />);
+    fireEvent.mouseDown(screen.getAllByRole("combobox")[2]);
+    expect(await screen.findByText("factorLabLocalUniverse", { selector: ".ant-select-item-option-content" })).toBeInTheDocument();
+    expect(screen.queryByText("evalUniverseHS300")).not.toBeInTheDocument();
+  });
+
+  it("does not reopen or replace a closed evaluation detail when its request finishes", async () => {
+    let resolveRun!: (run: any) => void;
+    mockApi.listEvaluationRuns.mockResolvedValue([makeRun()]);
+    mockApi.getEvaluationRun.mockImplementation(() => new Promise(resolve => { resolveRun = resolve; }));
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    const view = await screen.findAllByRole("button", { name: /查看运行/ });
+    fireEvent.click(view[0]);
+    await waitFor(() => expect(mockApi.getEvaluationRun).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await act(async () => { resolveRun(makeRun({ id: "late-closed-run" })); });
+    expect(screen.queryByText("late-closed-run")).not.toBeInTheDocument();
+  });
+
+  it("restores editable advanced evaluation parameters with the reset action", async () => {
+    render(<FactorEvaluationLab />);
+    fireEvent.click(screen.getByRole("button", { name: /evalAdvancedParams/ }));
+    const groups = await screen.findAllByRole("spinbutton");
+    fireEvent.change(groups[0], { target: { value: "8" } });
+    fireEvent.change(groups[1], { target: { value: "0.005" } });
+    fireEvent.click(screen.getByRole("button", { name: "evalAdvancedReset" }));
+    expect(groups[0]).toHaveValue("5");
+    expect(Number((groups[1] as HTMLInputElement).value)).toBe(0.001);
+  });
+
   // TODO(P1.1 镜像适配层)：本用例写在组件旧实现下，镜像层改造后已脱节（该文件 12 项与共享 helper mockLoadSuccess 联动，需整文件重写）；见 docs/前端既有红定性报告.md §9/§10 与 PROGRESS.debt.TD-FE-RED-2。
 
   it("submits evaluation task with form values", async () => {
@@ -309,10 +449,11 @@ describe("FactorEvaluationLab", () => {
         n_groups: 5,
         cost_rate: 0.001,
         universe: "ashare_all",
-        direction: "higher_better",
+        factor_version_id: 1,
         created_by: "local_user",
       }));
     });
+    expect(mockApi.createEvaluationTask.mock.calls[0][0]).not.toHaveProperty("direction");
     expect(mockMessage.success).toHaveBeenCalledWith("evalLabCreateSuccess");
 
     // 创建成功后仍保留当前因子，并立即显示异步任务进度。
@@ -525,6 +666,59 @@ describe("FactorEvaluationLab", () => {
     });
   });
 
+  it("does not invent filtering or fidelity evidence absent from the real turnover report contract", async () => {
+    // The completed turnover API response contains model metrics and a rejected
+    // gate, but no filter_config, excluded_symbol_days or production_fidelity.
+    const run = makeRun({
+      id: "eval-100073-303aba28-20261014", factor_version_id: 100073,
+      gate_result: "rejected", rejection_reasons: ["rank_ic_non_positive"],
+      config: { evaluator_version: "wp5-1.0.0", factor_kind: "continuous", target_horizon: 5, universe: "all_a_shares" },
+      metrics: { ic: { rank_ic_mean: -0.015456724357457673, icir: -0.17330729228453323, positive_ic_ratio: 0.5 }, coverage: { coverage: 0.9808095758464397 }, effective_samples: 425434 },
+    });
+    mockApi.listEvaluationRuns.mockResolvedValue([run]);
+    mockApi.getEvaluationRun.mockResolvedValue(run);
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    expect(await screen.findByText("factorLabFidelityUnknown")).toBeVisible();
+    fireEvent.click(screen.getAllByRole("button", { name: /solution/ })[0]);
+    const drawer = await screen.findByRole("dialog");
+    const report = await within(drawer).findByRole("region", { name: `evalLabSectionReport · ${run.id}` });
+    await waitFor(() => expect(within(report).getByText("-0.0155")).toBeVisible());
+    expect(report).not.toHaveTextContent("✓");
+    expect(report).not.toHaveTextContent("非保真实验");
+    expect(within(report).queryAllByText("0")).toHaveLength(0);
+    expect(within(report).getByText("factorLabGovernanceEvidenceMissing")).toBeVisible();
+    expect(within(report).queryByRole("region", { name: "factorLabFilterRulesEvidence" })).not.toBeInTheDocument();
+    expect(within(report).queryByRole("region", { name: "factorLabExclusionCounts" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { fidelity: true, history: "factorLabFidelityConfirmed", report: "factorLabProductionFidelity：✓" },
+    { fidelity: false, history: "factorLabFidelityNonProduction", report: "factorLabProductionFidelity：✗ factorLabFidelityNonProduction" },
+    { fidelity: 0, history: "factorLabFidelityNonProduction", report: "factorLabProductionFidelity：✗ factorLabFidelityNonProduction" },
+    { fidelity: undefined, history: "factorLabFidelityUnknown", report: "factorLabProductionFidelity：factorLabEvidenceNotProvided" },
+  ])("preserves explicit audit flags and zero counts, with missing partial fields unknown (fidelity $fidelity)", async ({ fidelity, history, report: fidelityText }) => {
+    const run = makeRun({ id: "partial-audit-report", filter_config: { filter_new_listing: true, filter_st: false, filter_suspended: null }, excluded_symbol_days: { new_listing: 0, st: 7 }, production_fidelity: fidelity });
+    mockApi.listEvaluationRuns.mockResolvedValue([run]);
+    mockApi.getEvaluationRun.mockResolvedValue(run);
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    expect(await screen.findByText(history)).toBeVisible();
+    fireEvent.click(screen.getAllByRole("button", { name: /solution/ })[0]);
+    const drawer = await screen.findByRole("dialog");
+    const report = await within(drawer).findByRole("region", { name: `evalLabSectionReport · ${run.id}` });
+    const rules = within(report).getByRole("region", { name: "factorLabFilterRulesEvidence" });
+    await waitFor(() => expect(within(rules).getByText("次新股过滤 ✓")).toBeVisible());
+    expect(within(rules).getByText("ST 过滤 ✗ 关")).toBeVisible();
+    expect(within(rules).getByText("停牌过滤 factorLabEvidenceNotProvided")).toBeVisible();
+    expect(within(rules).getByText("退市整理期过滤 factorLabEvidenceNotProvided")).toBeVisible();
+    expect(within(rules).getByText(fidelityText)).toBeVisible();
+    const counts = within(report).getByRole("region", { name: "factorLabExclusionCounts" });
+    expect(within(counts).getByText("0")).toBeVisible();
+    expect(within(counts).getByText("7")).toBeVisible();
+    expect(within(counts).getAllByText("—")).toHaveLength(7);
+  });
+
   // TODO(P1.1 镜像适配层)：本用例写在组件旧实现下，镜像层改造后已脱节（该文件 12 项与共享 helper mockLoadSuccess 联动，需整文件重写）；见 docs/前端既有红定性报告.md §9/§10 与 PROGRESS.debt.TD-FE-RED-2。
 
   it("displays complete trade day evidence", async () => {
@@ -584,6 +778,19 @@ describe("FactorEvaluationLab", () => {
     expect(screen.getAllByText("window").length).toBeGreaterThan(0);
     // 总体结论 stable
     expect(screen.getAllByText("evalLabStressVerdictStable").length).toBeGreaterThan(0);
+  });
+
+  it("localizes insufficient stress evidence without treating it as a passing verdict", async () => {
+    const run = makeRun();
+    run.metrics.stress_test.time_result.verdict = "insufficient";
+    mockApi.listEvaluationRuns.mockResolvedValue([run]);
+    mockApi.getEvaluationRun.mockResolvedValue(run);
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    fireEvent.click((await screen.findAllByRole("button", { name: /solution/ }))[0]);
+    const verdicts = await screen.findAllByText("factorLabStressInsufficient");
+    expect(screen.queryByText("insufficient")).not.toBeInTheDocument();
+    for (const verdict of verdicts) expect(verdict.closest(".ant-tag")).not.toHaveClass("ant-tag-green");
   });
   it("auto-selects run when active task transitions to done", async () => {
     // 活跃任务已到终态 done，result.run_id 指向对应运行

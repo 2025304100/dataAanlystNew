@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Progress, Select, Space, Spin, Tag, message } from "antd";
 import { ReloadOutlined, ToolOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
@@ -55,7 +55,12 @@ function coverageColor(pct: number): string {
 
 export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onOpenHistoryInit }: DataDiagnosticPanelProps) {
   const ctx = useApp();
-  const [symbolId, setSymbolId] = useState<number | null>(propSymbolId ?? ctx.activeSymbolId);
+  const [selectedSymbolId, setSymbolId] = useState<number | null>(propSymbolId ?? ctx.activeSymbolId);
+  const symbolId = propSymbolId ?? selectedSymbolId;
+  const currentTarget = useRef(symbolId);
+  currentTarget.current = symbolId;
+  const diagnosticRequest = useRef(0);
+  const mounted = useRef(true);
   const [symbolOptions, setSymbolOptions] = useState<Symbol[]>([]);
   const [data, setData] = useState<DiagnosticData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,27 +77,28 @@ export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onO
   };
 
   const loadDiagnostic = async (sid: number) => {
+    const requestId = ++diagnosticRequest.current;
+    const isCurrent = () => mounted.current && requestId === diagnosticRequest.current && currentTarget.current === sid;
     setLoading(true);
     setData(null);
     try {
       const result = await api.getSymbolDataHealth(sid);
-      setData(result as DiagnosticData);
+      if (isCurrent()) setData(result as DiagnosticData);
     } catch (error: any) {
-      message.error(error?.message || t("diagLoadFailed"));
+      if (isCurrent()) message.error(error?.message || t("diagLoadFailed"));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
 
   useEffect(() => {
+    mounted.current = true;
     loadSymbols().catch(() => {});
+    return () => { mounted.current = false; ++diagnosticRequest.current; };
   }, []);
 
   useEffect(() => {
-    if (propSymbolId != null) {
-      setSymbolId(propSymbolId);
-      return;
-    }
+    if (propSymbolId != null) return;
     if (ctx.activeSymbolId && !symbolId) {
       setSymbolId(ctx.activeSymbolId);
     }
@@ -101,7 +107,8 @@ export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onO
   useEffect(() => {
     if (symbolId) {
       loadDiagnostic(symbolId);
-    }
+    } else { ++diagnosticRequest.current; setData(null); setLoading(false); }
+    return () => { ++diagnosticRequest.current; };
   }, [symbolId]);
 
   const handleOpenRepair = (mode: "bars" | "scores" | "both") => {
@@ -133,7 +140,7 @@ export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onO
 
         {symbolId && loading && <Spin style={{ display: "block", textAlign: "center", padding: 40 }} />}
 
-        {data && !loading && (
+        {data && data.symbol_id === symbolId && !loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Summary */}
             <Card size="small" title={t("diagSummary")}>

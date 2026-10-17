@@ -30,6 +30,26 @@ pytestmark = pytest.mark.whitebox
 
 
 def _runtime(db, *, model_id="active-A", mode="ridge"):
+    # Model runtime races still need an executable frozen input contract;
+    # an ID pointing at no FactorSet cannot reach the publication boundary.
+    from app.models.factor import Factor
+    from app.models.factor_evaluation import FactorSet, FactorSetMember
+    from app.models.factor_model import FactorVersion
+    from app.services.factor_set_service import freeze_factor_set
+    from app.services.factors.definitions import seed_factor_definitions
+    if db.get(FactorSet, "same-set") is None:
+        seed_factor_definitions(db)
+        factor = db.scalar(select(Factor).where(Factor.code == "ep_ttm"))
+        version = db.scalar(select(FactorVersion).where(
+            FactorVersion.factor_id == factor.id, FactorVersion.version == 1))
+        version.validation_status = "valid"
+        db.add(FactorSet(id="same-set", name="Runtime race frozen inputs", status="draft"))
+        db.flush()
+        db.add(FactorSetMember(factor_set_id="same-set", factor_id=factor.id,
+            factor_version_id=version.id, factor_code="ep_ttm", factor_version=1,
+            role="feature", missing_policy="exclude"))
+        db.flush()
+        freeze_factor_set(db, "same-set", actor="isolated_test")
     for identity in dict.fromkeys((model_id, "active-B")):
         if db.get(FactorModelRun, identity) is None:
             db.add(FactorModelRun(id=identity, status="validated",
@@ -179,7 +199,7 @@ def test_training_with_an_old_active_model_never_scores_or_activates_it(db_sessi
     _setup_config(db_session, tmp_path / "old_active.duckdb")
     _runtime(db_session)
     task = _create_task(db_session, task_id="train-new", payload=FactorPipelineCreate(
-        train_model=True, materialize_scores=materialize))
+        train_model=True, materialize_scores=materialize, factor_set_id="same-set"))
     scorer = _stub_calculation(monkeypatch)
     monkeypatch.setattr(pipeline, "train_rolling_ridge", lambda *args, **kwargs: RidgeTrainingResult(
         model_run_id="candidate-new", status="validated", selected_alpha=1.0,

@@ -54,11 +54,12 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { Snowflake } from "lucide-react";
-import { t } from "../../i18n";
+import { factorLabel, t } from "../../i18n";
 import {
   api,
   type FactorRuntime,
   type FactorModelRun,
+  type FactorPipelineTask,
   type FactorSet,
   type FactorSetMember,
   type FactorSetCreateRequest,
@@ -97,12 +98,18 @@ function parseFactorCenterQuery(): Record<string, string> {
   return out;
 }
 import { navigate } from "../../utils/navigate";
+import { formatDateTime } from "../../utils/factorRating";
+import { hydrateResearchModelPresentation, isTrustedResearchDataset, researchValidationPassed } from "../../utils/factorModelResearch";
 import ChainStepsBar, { type ChainState } from "./ChainStepsBar";
+import FactorModelTrainingEvidence, { FactorModelResearchWarning } from "./FactorModelTrainingEvidence";
+import useFactorModelReviewEvidence, { FactorModelReviewEvidenceNotice } from "./useFactorModelReviewEvidence";
+import ResearchRetrainModal from "./ResearchRetrainModal";
 
 const { Text, Paragraph } = Typography;
 
 /** 模型状态颜色映射。 */
-function modelStatusColor(status: string): string {
+function modelStatusColor(status: string, model?: FactorModelRun): string {
+  if (researchValidationPassed(model)) return "gold";
   const map: Record<string, string> = {
     validated: "green",
     rejected: "red",
@@ -110,7 +117,8 @@ function modelStatusColor(status: string): string {
   };
   return map[status] || "default";
 }
-function modelStatusLabel(status: string | null | undefined): string {
+function modelStatusLabel(status: string | null | undefined, model?: FactorModelRun): string {
+  if (researchValidationPassed(model)) return t("factorModelResearchValidatedPending");
   const map: Record<string, string> = { validated: "已验证", rejected: "已驳回", training: "训练中", production: "生产中", draft: "草稿", completed: "已完成", done: "已完成", failed: "失败", cancelled: "已取消" };
   return map[String(status ?? "").toLowerCase()] ?? status ?? "-";
 }
@@ -174,13 +182,14 @@ function computeFreezeGate(fs: FactorSet | null | undefined): { disabled: boolea
   const featureCount = members.filter((m) => m.role === "feature").length;
   if (featureCount === 0) return { disabled: true, tooltip: "集合中没有 feature 角色的因子" };
   // 任一成员 version 非 trainable（version_trainable=false 或 status∈{draft,deprecated}）
-  const anyNotTrainable = members.some((m: any) => {
-    if (typeof (m as any).version_trainable === "boolean" && !(m as any).version_trainable) return true;
-    const s = String((m as any).version_status || "").toLowerCase();
-    return s === "draft" || s === "deprecated" || s === "disabled";
-  });
-  if (anyNotTrainable) return { disabled: true, tooltip: "含有版本状态为 草稿/已废弃 的成员，请更新后再冻结" };
+  const anyNotTrainable = members.some((member) => !memberTrainable(member));
+  if (anyNotTrainable) return { disabled: true, tooltip: "含有草稿/已废弃或缺少版本校验证据的成员，请在因子库校验或创建合格版本后再冻结" };
   return { disabled: false, tooltip: "" };
+}
+
+function memberTrainable(member: FactorSetMember): boolean {
+  if (typeof member.version_trainable === "boolean") return member.version_trainable;
+  return ["trainable", "valid", "published", "testing", "shadow", "active"].includes(String(member.version_status || "").toLowerCase());
 }
 
 /** 门禁：「训练」按钮 readiness。返回 { disabled, tooltip }。 */
@@ -195,14 +204,17 @@ function computeTrainGate(fs: FactorSet | null | undefined): { disabled: boolean
 /** 门禁：「废弃」按钮 readiness。T2：若该集合被 active 模型使用 → 禁用。 */
 function computeDeprecateGate(
   fs: FactorSet | null | undefined,
-  runtime: FactorRuntime | null
+  runtime: FactorRuntime | null,
+  models: FactorModelRun[] = [],
 ): { disabled: boolean; tooltip: string } {
   if (!fs) return { disabled: true, tooltip: "未选择集合" };
   // 如果当前 active_model 的 hyperparameters.factor_set_id 指向该集合 → 禁用
   // 实际校验还应检查所有 active/shadow 模型；此处前端给出一层门禁
   // 注：FactorRuntime DTO 不直接暴露 active_factor_set_id（可能由后端 T5 relations 提供）
   //      这里做宽松兜底：若 runtime 上存在该字段（any 访问）则匹配；否则仅保留逻辑占位
-  const activeFsId = (runtime as unknown as { active_factor_set_id?: string | null })?.active_factor_set_id;
+  const activeModel = models.find((model) => model.id === runtime?.active_model_run_id);
+  const activeFsId = (runtime as unknown as { active_factor_set_id?: string | null })?.active_factor_set_id
+    || activeModel?.hyperparameters?.factor_set_id || activeModel?.hyperparameters?.factorset_id;
   if (activeFsId && activeFsId === fs.id) {
     return {
       disabled: true,
@@ -274,11 +286,6 @@ function sideColor(side: "long" | "short" | "neutral"): string {
   return side === "long" ? "#16a34a" : side === "short" ? "#dc2626" : "#6b7280";
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "-";
-  return value.replace("T", " ").slice(0, 19);
-}
-
 // WP0-8/WP1-1：与 PortfolioStrategyRules.tsx 统一表单字段 label 风格
 const fieldLabelStyle: React.CSSProperties = { fontSize: 12, color: "var(--pt-muted-foreground)" };
 const thStyle: React.CSSProperties = { textAlign: "left", padding: "4px 6px", fontSize: 11, color: "var(--pt-muted-foreground)", fontWeight: 500, borderBottom: "1px solid var(--pt-border)" };
@@ -304,9 +311,13 @@ export default function FactorModelPage() {
   const [warehouseReady, setWarehouseReady] = useState(false);
   const [navigationRevision, setNavigationRevision] = useState(0);
   const [models, setModels] = useState<FactorModelRun[]>([]);
+  const [trainingEvidenceTask, setTrainingEvidenceTask] = useState<FactorPipelineTask | null>(null);
+  const submittedTrainingTaskId = useRef<string | null>(null);
   const [factorSets, setFactorSets] = useState<FactorSet[]>([]);
   const [selectedModel, setSelectedModel] = useState<FactorModelRun | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [workspace, setWorkspace] = useState<"collections" | "models">(() =>
+    parseFactorCenterQuery().model_id ? "models" : "collections");
 
   // ═══════════════════════════════════════════════════════
   // P1 UI Stitching 新增状态
@@ -344,6 +355,7 @@ export default function FactorModelPage() {
   // 激活 Modal
   const [activateModalOpen, setActivateModalOpen] = useState(false);
   const [activateTarget, setActivateTarget] = useState<FactorModelRun | null>(null);
+  const activationEvidence = useFactorModelReviewEvidence();
   const [activateMode, setActivateMode] = useState<"shadow" | "ridge">("shadow");
   const [activateNote, setActivateNote] = useState("");
   const [modelAlias, setModelAlias] = useState("");
@@ -362,6 +374,7 @@ export default function FactorModelPage() {
 
   // 真实训练任务 Modal；成功提交后由任务中心跟踪异步流水线。
   const [trainModalOpen, setTrainModalOpen] = useState(false);
+  const [researchRetrainId, setResearchRetrainId] = useState<string | null>(null);
   const [trainTarget, setTrainTarget] = useState<FactorSet | null>(null);
   const [trainNote, setTrainNote] = useState("");
   const [training, setTraining] = useState(false);
@@ -392,7 +405,13 @@ export default function FactorModelPage() {
   // ③ 编辑成员 Drawer
   const [memberDrawerOpen, setMemberDrawerOpen] = useState(false);
   const [memberDrawerTarget, setMemberDrawerTarget] = useState<FactorSet | null>(null);
-  /** Drawer 内当前编辑的集合成员（实时态，提交才写回服务器） */
+  const pageMounted = useRef(true);
+  const memberDrawerSession = useRef(0);
+  const memberReadRequest = useRef(0);
+  const memberDrawerTargetId = useRef<string | null>(null);
+  const pageLoadRequest = useRef(0);
+  const modelDetailRequest = useRef(0);
+  /** Drawer 内当前集合成员；添加/移除立即写入服务器。 */
   const [drawerMembers, setDrawerMembers] = useState<FactorSetMember[]>([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
   /** 因子库搜索关键词（Tab 1: 全部因子） */
@@ -422,30 +441,55 @@ export default function FactorModelPage() {
   const newlyCreatedIdRef = useRef<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!pageMounted.current) return;
+    const request = ++pageLoadRequest.current;
     setLoading(true);
     try {
-      const [modelList, fsList, scoringOverview] = await Promise.all([
+      const [modelList, fsList, scoringOverview, recentTasks] = await Promise.all([
         // Factor-domain internal - DO NOT USE outside factor center
         api.scoringGetFactorModelListAsFactor(20),
         // Factor-domain internal - DO NOT USE outside factor center
         api.scoringListFactorSetsAsFactor("any", 50),
         api.scoringGetOverviewAsFactor(),
+        api.scoringListTasks("factor_pipeline", 20),
       ]);
+      const displayModels = await hydrateResearchModelPresentation<FactorModelRun>(modelList.items, (id) => api.getFactorModel(id));
+      if (!pageMounted.current || request !== pageLoadRequest.current) return;
       // The model-list compatibility adapter cannot reliably infer runtime
       // state from model statuses. Read the authoritative scoring overview
       // so activation refreshes show ridge/shadow immediately.
       setRuntime((current) => current && current.version > scoringOverview.runtime?.version
         ? current : scoringOverview.runtime);
       setWarehouseReady(scoringOverview.health?.warehouse_available === true);
-      setModels(modelList.items);
+      setModels(displayModels);
       setFactorSets(fsList);
+      const tasks: FactorPipelineTask[] = Array.isArray(recentTasks) ? recentTasks : (recentTasks as unknown as { items?: FactorPipelineTask[] })?.items || [];
+      const isTraining = (task: FactorPipelineTask) => {
+        try { const payload = typeof task.payload_json === "string" ? JSON.parse(task.payload_json) : task.payload_json; return payload?.train_model === true; }
+        catch { return false; }
+      };
+      const latest = submittedTrainingTaskId.current ? tasks.find(task => task.id === submittedTrainingTaskId.current) : tasks.find(isTraining);
+      setTrainingEvidenceTask(previous => latest || (previous?.id === submittedTrainingTaskId.current ? previous : null));
     } catch (err) {
+      if (!pageMounted.current || request !== pageLoadRequest.current) return;
       setWarehouseReady(false);
       message.error(t("factorModelLoadFailed") + ": " + String(err));
     } finally {
-      setLoading(false);
+      if (pageMounted.current && request === pageLoadRequest.current) setLoading(false);
     }
   }, [message]);
+
+  useEffect(() => {
+    pageMounted.current = true;
+    return () => {
+      pageMounted.current = false;
+      memberDrawerSession.current += 1;
+      memberReadRequest.current += 1;
+      pageLoadRequest.current += 1;
+      modelDetailRequest.current += 1;
+      factorLibGeneration.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -497,6 +541,7 @@ export default function FactorModelPage() {
     let setIdFromQuery: string | null = q.set_id ?? null;
     const modelIdFromQuery: string | null = q.model_id ?? null;
     if (setIdFromQuery) {
+      setWorkspace("collections");
       // 自动展开该集合卡
       setExpandedSetIds((prev) => (prev.includes(setIdFromQuery!) ? prev : [...prev, setIdFromQuery!]));
       // pulse 高亮 + scrollIntoView（DOM 渲染完后执行）
@@ -517,6 +562,7 @@ export default function FactorModelPage() {
       }, 3000);
     }
     if (modelIdFromQuery) {
+      setWorkspace("models");
       // 展开模型行 + 加载 relations
       setExpandModelIds((prev) => (prev.includes(modelIdFromQuery) ? prev : [...prev, modelIdFromQuery]));
       void ensureModelRelations(modelIdFromQuery);
@@ -528,6 +574,16 @@ export default function FactorModelPage() {
   // ──────────────────────────────────────────────────────
   // Task 3：链式步骤导航 ChainStepsBar 状态派生 + 直达按钮 handler
   // ──────────────────────────────────────────────────────
+  const trainingResultId = (trainingEvidenceTask?.result?.model as { model_run_id?: unknown } | undefined)?.model_run_id;
+  const trainingCandidate = ["done", "completed"].includes(trainingEvidenceTask?.status || "") && typeof trainingResultId === "string"
+    ? models.find(model => model.id === trainingResultId) : undefined;
+  const trainingCandidateEligible = trainingCandidate?.status === "validated" && trainingCandidate.production_eligible === true;
+  const trainingEvidenceReason = trainingEvidenceTask && !["done", "completed", "failed", "cancelled"].includes(trainingEvidenceTask.status)
+    ? t("factorModelCandidateTrainingRunning") : trainingCandidate?.readiness_message || t("factorModelCandidateEvidenceMissing");
+  const disabledModelSteps = {
+    ...(!trainingCandidate ? { 6: trainingEvidenceReason } : {}),
+    ...(!trainingCandidateEligible ? { 7: trainingEvidenceReason } : {}),
+  };
   const chainState: ChainState = useMemo<ChainState>(() => {
     const factorWarehouseReady = warehouseReady;
 
@@ -579,6 +635,8 @@ export default function FactorModelPage() {
   /** ChainStepsBar「修复直达按钮」onGoStep：定位父页面控件 / 跳转路由 */
   const handleChainGoStep = useCallback(
     (stepIdx: number) => {
+      if (stepIdx >= 2 && stepIdx <= 5) setWorkspace("collections");
+      if (stepIdx === 6 || stepIdx === 7) setWorkspace("models");
       switch (stepIdx) {
         case 1: {
           void loadData();
@@ -640,16 +698,13 @@ export default function FactorModelPage() {
           break;
         }
         case 6: {
-          const candidate = models.find((m) => String(m.status ?? "").toLowerCase() !== "draft");
-          if (candidate) void loadModelDetail(candidate.id);
-          else message.info("尚无模型验证结果，请先完成真实训练");
+          if (trainingCandidate) void loadModelDetail(trainingCandidate.id);
+          else message.warning(t("factorModelCandidateEvidenceMissing"));
           break;
         }
         case 7: {
-          // 直达：打开第一个已验证模型的生产激活对话框。
-          const validated = models.find((m) => String(m.status ?? "").toLowerCase() === "validated" && m.production_eligible === true);
-          if (validated) openActivateModal(validated, "ridge");
-          else message.warning("暂无通过正式运行资格检查的已验证模型，请先查看验证详情并修复");
+          if (trainingCandidate && trainingCandidateEligible) openActivateModal(trainingCandidate, "ridge");
+          else message.warning(t("factorModelCandidateEvidenceMissing"));
           break;
         }
         case 8: {
@@ -674,23 +729,31 @@ export default function FactorModelPage() {
           break;
       }
     },
-    [factorSets, models, message, runtime, loadData]
+    [factorSets, models, message, runtime, loadData, trainingCandidate, trainingCandidateEligible]
   );
 
   // 加载模型详情（含审计日志）
   const loadModelDetail = useCallback(
     async (modelRunId: string) => {
+      setWorkspace("models");
+      const request = ++modelDetailRequest.current;
+      setSelectedModel(null);
+      setAuditLogs([]);
       try {
         // Factor-domain internal - DO NOT USE outside factor center
         const detail = await api.getFactorModel(modelRunId);
+        if (!pageMounted.current || request !== modelDetailRequest.current) return;
+        if (detail.id !== modelRunId) throw new Error(t("factorModelRelationsTargetMismatch"));
         const listed = models.find((m) => m.id === modelRunId);
         setSelectedModel(listed ? {
           ...detail,
           production_eligible: listed.production_eligible,
+          readiness_code: listed.readiness_code,
           readiness_message: listed.readiness_message,
         } : detail);
         setAuditLogs((detail.audit ?? []) as unknown as AuditEntry[]);
       } catch (err) {
+        if (!pageMounted.current || request !== modelDetailRequest.current) return;
         message.error(t("factorModelLoadFailed") + ": " + String(err));
       }
     },
@@ -750,6 +813,7 @@ export default function FactorModelPage() {
 
   /** P1: 用户在模型行点 FactorSet → 双向反查跳转：navigate('/factors?set_id=X') */
   const jumpToFactorSet = useCallback((fsId: string) => {
+    setWorkspace("collections");
     // 先记本地高亮（如果当前页就是因子中心，立即生效）
     setHighlightFactorSetId(fsId);
     setPulseFactorSetId(fsId);
@@ -778,6 +842,7 @@ export default function FactorModelPage() {
       return;
     }
     setActivateTarget(model);
+    void activationEvidence.read(model.id, selectedModel?.id === model.id ? selectedModel : null);
     setActivateMode(mode);
     setActivateNote("");
     setActivationScoreNotice(null);
@@ -787,7 +852,7 @@ export default function FactorModelPage() {
 
   // 确认激活
   const handleActivate = async () => {
-    if (!activateTarget) return;
+    if (!activateTarget || !activationEvidence.readyFor(activateTarget.id)) return;
     setActivating(true);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
@@ -800,6 +865,7 @@ export default function FactorModelPage() {
       setRuntime(newRuntime);
       message.success(t("factorModelActivated"));
       setActivateModalOpen(false);
+      activationEvidence.clear();
       // Activation is already durable; scoring submission has its own outcome.
       try {
         const factorSetId = String(activateTarget.hyperparameters?.factor_set_id ?? "").trim();
@@ -877,7 +943,7 @@ export default function FactorModelPage() {
       setFactorSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       message.success(`FactorSet 已冻结：${updated.id}`);
       setFreezeModalOpen(false);
-      setFreezeReason("E2E 冻结：离线训练前");
+      setFreezeReason("本人确认冻结因子集合，用于真实训练");
       setFreezeIrrevocableConfirm(false);
       await loadData();
     } catch (err) {
@@ -903,6 +969,8 @@ export default function FactorModelPage() {
     try {
       // Factor-domain internal - DO NOT USE outside factor center
       const task = await api.scoringCreateTask({ factor_set_id: trainTarget.id, train_model: true, materialize_scores: false, window_days: 250, validation_days: 50, actor: "factor_center:train", source_hint: "factor_center:train", hyperparameters: { factor_set_id: trainTarget.id, note: trainNote.trim() }, factor_scope: { factor_set_id: trainTarget.id, asset_type: "stock" } });
+      submittedTrainingTaskId.current = task.id;
+      setTrainingEvidenceTask(task);
       message.success(`真实训练任务已提交：${task.id}，完成后需本人激活新模型，再生成评分。请在任务中心查看进度。`);
       setTrainModalOpen(false);
       setTrainNote("");
@@ -989,7 +1057,14 @@ export default function FactorModelPage() {
   // ──────────────────────────────────────────────────────
   // Factor-domain internal - DO NOT USE outside factor center
   const openMemberDrawer = async (fs: FactorSet) => {
+    const session = ++memberDrawerSession.current;
+    const request = ++memberReadRequest.current;
+    memberDrawerTargetId.current = fs.id;
+    const isCurrent = () => pageMounted.current && session === memberDrawerSession.current
+      && request === memberReadRequest.current && memberDrawerTargetId.current === fs.id;
     setMemberDrawerTarget(fs);
+    setDrawerLoading(false);
+    setAddingMember(false);
     setPendingFactorCode(null);
     setPendingVersion(null);
     setFactorSearchKeyword("");
@@ -1001,22 +1076,28 @@ export default function FactorModelPage() {
       setDrawerLoading(true);
       try {
         const detail = await api.getFactorSetDetail(fs.id, true);
+        if (!isCurrent()) return;
         setDrawerMembers(detail.members ? [...detail.members] : []);
       } catch (e) {
         // 忽略：保持空
       } finally {
-        setDrawerLoading(false);
+        if (isCurrent()) setDrawerLoading(false);
       }
     }
     // 懒加载因子库
-    void loadFactorLibrary("");
+    if (isCurrent()) void loadFactorLibrary("");
   };
 
   const closeMemberDrawer = () => {
+    memberDrawerSession.current += 1;
+    memberReadRequest.current += 1;
+    memberDrawerTargetId.current = null;
     factorLibGeneration.current += 1;
     setMemberDrawerOpen(false);
     setMemberDrawerTarget(null);
     setDrawerMembers([]);
+    setDrawerLoading(false);
+    setAddingMember(false);
     setFactorLibItems([]);
     setFactorLibError(null);
     setFactorSearchKeyword("");
@@ -1101,6 +1182,7 @@ export default function FactorModelPage() {
 
   /** Drawer Tab 1：选行 + 选版本 → 提交 addMember。 */
   const handleAddMemberFromLibrary = async () => {
+    if (addingMember || drawerLoading) return;
     if (factorLibError || factorLibLoading || !factorLibItems.find((item) => item.factor_code === pendingFactorCode)?.versions.some((version) => version.version === pendingVersion && version.trainable)) return;
     if (!memberDrawerTarget || !pendingFactorCode || pendingVersion == null) {
       message.warning("请先在左侧选择一个因子，并选择可训练版本");
@@ -1112,6 +1194,11 @@ export default function FactorModelPage() {
       return;
     }
     setAddingMember(true);
+    const targetId = memberDrawerTarget.id;
+    const session = memberDrawerSession.current;
+    const isCurrent = () => pageMounted.current && session === memberDrawerSession.current && memberDrawerTargetId.current === targetId;
+    // An earlier detail read must not replace the result of this mutation.
+    memberReadRequest.current += 1;
     try {
       const req: FactorSetMemberCreateRequest = {
         factor_code: pendingFactorCode,
@@ -1122,27 +1209,41 @@ export default function FactorModelPage() {
         actor: "factor_center:add_member",
       };
       // Factor-domain internal - DO NOT USE outside factor center
-      const added = await api.addFactorSetMember(memberDrawerTarget.id, req);
+      const added = await api.addFactorSetMember(targetId, req);
+      // The mutation remains durable even after the drawer is closed. Refresh
+      // the page's server-backed list, but never write into another session.
+      if (pageMounted.current) await loadData();
+      if (!isCurrent()) return;
       // optimistic 写回本地
       setDrawerMembers((prev) => [...prev, added as unknown as FactorSetMember]);
       setPendingFactorCode(null);
       setPendingVersion(null);
       message.success(`已添加成员：${pendingFactorCode} v${pendingVersion}`);
     } catch (err) {
+      if (!isCurrent()) return;
       message.error("添加成员失败：" + String(err));
     } finally {
-      setAddingMember(false);
+      if (isCurrent()) setAddingMember(false);
     }
   };
 
-  const handleRemoveMember = async (memberId: number) => {
-    if (!memberDrawerTarget) return;
+  const handleRemoveMember = async (factorId: number, factorSetId = memberDrawerTarget?.id) => {
+    if (!factorSetId) return;
+    const session = memberDrawerSession.current;
+    const sourceDrawerId = memberDrawerTargetId.current;
+    const isCurrent = () => pageMounted.current && session === memberDrawerSession.current && sourceDrawerId === memberDrawerTargetId.current;
+    if (sourceDrawerId === factorSetId) memberReadRequest.current += 1;
     try {
       // Factor-domain internal - DO NOT USE outside factor center
-      await api.removeFactorSetMember(memberDrawerTarget.id, memberId);
-      setDrawerMembers((prev) => prev.filter((m) => m.id !== memberId));
+      await api.removeFactorSetMember(factorSetId, factorId);
+      if (pageMounted.current) await loadData();
+      if (!isCurrent()) return;
+      if (memberDrawerTargetId.current === factorSetId) {
+        setDrawerMembers((prev) => prev.filter((m) => m.factor_id !== factorId));
+      }
       message.success("已移除该成员");
     } catch (err) {
+      if (!isCurrent()) return;
       message.error("移除成员失败：" + String(err));
     }
   };
@@ -1159,7 +1260,7 @@ export default function FactorModelPage() {
   // Task 2 (3) 废弃门禁 → deprecateFactorSet
   // ──────────────────────────────────────────────────────
   const handleDeprecateFactorSet = async (fs: FactorSet) => {
-    const gate = computeDeprecateGate(fs, runtime);
+    const gate = computeDeprecateGate(fs, runtime, models);
     if (gate.disabled) {
       message.warning(gate.tooltip);
       return;
@@ -1206,7 +1307,7 @@ export default function FactorModelPage() {
           style={{ padding: 0 }}
           onClick={() => loadModelDetail(id)}
         >
-          {id.length > 20 ? id.slice(0, 20) + "..." : id}
+          <Tooltip title={id}>{record.display_alias || (id.length > 20 ? id.slice(0, 20) + "..." : id)}</Tooltip>
         </Button>
       ),
     },
@@ -1214,8 +1315,9 @@ export default function FactorModelPage() {
       title: t("factorModelStatus"),
       dataIndex: "status",
       key: "status",
-      width: 120,
+      width: 240,
       render: (status: string, record: FactorModelRun) => {
+        if (researchValidationPassed(record)) return <Tooltip title={t("factorModelResearchIndependentRequired")}><Tag color="gold">{t("factorModelResearchValidatedPending")}</Tag></Tooltip>;
         const rejected = status === "rejected";
         const reasons = record.rejection_reason ? splitRejectionReasons(record.rejection_reason) : null;
         const hasReasons = rejected && !!record.rejection_reason;
@@ -1292,20 +1394,20 @@ export default function FactorModelPage() {
       },
     },
     {
-      title: t("factorModelValidationIc"),
+      title: <Tooltip title={t("factorModelValidationIcHelp")}><span>{t("factorModelValidationIc")} <InfoCircleOutlined /></span></Tooltip>,
       key: "validation_ic",
       width: 110,
       render: (_: unknown, record: FactorModelRun) =>
         formatNumber(record.metrics?.validation_ic),
     },
     {
-      title: t("factorModelSamples"),
+      title: <Tooltip title={t("factorModelSamplesHelp")}><span>{t("factorModelSamples")} <InfoCircleOutlined /></span></Tooltip>,
       key: "sample_count",
       width: 90,
       render: (_: unknown, record: FactorModelRun) => record.sample_count,
     },
     {
-      title: t("factorModelCutoff"),
+      title: <Tooltip title={t("factorModelInputAvailableAtHelp")}><span>{t("factorModelInputAvailableAt")} <InfoCircleOutlined /></span></Tooltip>,
       dataIndex: "data_cutoff_at",
       key: "data_cutoff_at",
       width: 160,
@@ -1349,6 +1451,7 @@ export default function FactorModelPage() {
       key: "actions",
       width: 220,
       render: (_: unknown, record: FactorModelRun) => {
+        if (researchValidationPassed(record)) return <Tooltip title={t("factorModelResearchIndependentRequired")}><Tag color="gold">{t("factorModelResearchNoProduction")}</Tag></Tooltip>;
         if (record.status !== "validated") {
           const split = record.rejection_reason ? splitRejectionReasons(record.rejection_reason) : null;
           const hasReasons = !!record.rejection_reason;
@@ -1534,7 +1637,7 @@ export default function FactorModelPage() {
               )}
               {rel.n_members != null && <Tag>因子数：{rel.n_members}</Tag>}
               {rel.data_cutoff_at && (
-                <Tag>数据截止：{rel.data_cutoff_at.slice(0, 10)}</Tag>
+                <Tooltip title={t("factorModelInputAvailableAtHelp")}><Tag>{t("factorModelInputAvailableAt")}：{formatDateTime(rel.data_cutoff_at)}</Tag></Tooltip>
               )}
             </Space>
             <Table<ScoringModelRelationFactor>
@@ -1546,14 +1649,14 @@ export default function FactorModelPage() {
               data-testid={`relations-table-${record.id}`}
               columns={[
                 {
-                  title: "factor_code",
+                  title: t("factorModelFactorCode"),
                   dataIndex: "factor_code",
                   key: "factor_code",
                   width: 150,
                   render: (v: unknown) => (v == null || String(v) === "" ? naCell(`factor_code-${record.id}`) : <code>{String(v)}</code>),
                 },
                 {
-                  title: "factor_version_id",
+                  title: t("factorModelFactorVersionId"),
                   dataIndex: "factor_version_id",
                   key: "factor_version_id",
                   width: 150,
@@ -1564,7 +1667,7 @@ export default function FactorModelPage() {
                   },
                 },
                 {
-                  title: "coef_raw",
+                  title: <Tooltip title={t("factorModelCoefficientHelp")}><span>{t("factorModelCoefficient")} <InfoCircleOutlined /></span></Tooltip>,
                   dataIndex: "coef_raw",
                   key: "coef_raw",
                   width: 120,
@@ -1576,7 +1679,7 @@ export default function FactorModelPage() {
                   },
                 },
                 {
-                  title: "weight_norm",
+                  title: <Tooltip title={t("factorModelNormalizedWeightHelp")}><span>{t("factorModelNormalizedWeight")} <InfoCircleOutlined /></span></Tooltip>,
                   dataIndex: "weight_norm",
                   key: "weight_norm",
                   width: 120,
@@ -1588,7 +1691,7 @@ export default function FactorModelPage() {
                   },
                 },
                 {
-                  title: "validation_ic",
+                  title: <Tooltip title={t("factorModelFactorValidationIcHelp")}><span>{t("factorModelFactorValidationIc")} <InfoCircleOutlined /></span></Tooltip>,
                   dataIndex: "validation_ic",
                   key: "validation_ic",
                   width: 130,
@@ -1604,7 +1707,7 @@ export default function FactorModelPage() {
                   },
                 },
                 {
-                  title: "coverage",
+                  title: <Tooltip title={t("factorModelTrainingCoverageHelp")}><span>{t("factorModelTrainingCoverage")} <InfoCircleOutlined /></span></Tooltip>,
                   dataIndex: "coverage",
                   key: "coverage",
                   width: 110,
@@ -1868,8 +1971,8 @@ export default function FactorModelPage() {
                         const details = alignedDetails;
                         const rows: Array<[string, (m: FactorModelRun, d: ScoringModelDetail | undefined) => React.ReactNode]> = [
                           ["状态", (m) => (
-                            <Tag color={modelStatusColor(m.status)}>
-                              {modelStatusLabel(m.status)}
+                            <Tag color={modelStatusColor(m.status, m)}>
+                              {modelStatusLabel(m.status, m)}
                             </Tag>
                           )],
                           ["校验 IC", (m, d) => {
@@ -1897,9 +2000,9 @@ export default function FactorModelPage() {
                             const signOk = Math.sign(t) === Math.sign(v);
                             return <Tag color={signOk ? "green" : "orange"}>{signOk ? "同向" : "反向"}</Tag>;
                           }],
-                          ["样本数", (m, d) => `${d?.sample_count ?? m.sample_count ?? 0}`],
+                          [t("factorModelSamples"), (m, d) => `${d?.sample_count ?? m.sample_count ?? 0}`],
                           ["交易日 × 个股", (_m, d) => `${d?.trade_date_count ?? 0} × ${d?.symbol_count ?? 0}`],
-                          ["数据截止", (m, d) => formatDateTime(d?.data_cutoff_at ?? m.data_cutoff_at)],
+                          [t("factorModelInputAvailableAt"), (m, d) => formatDateTime(d?.data_cutoff_at ?? m.data_cutoff_at)],
                           ["FactorSet", (m) => {
                             const fsId = m.hyperparameters?.factor_set_id as string | undefined;
                             const fs = fsId ? factorSets.find((s) => s.id === fsId) : undefined;
@@ -1929,7 +2032,7 @@ export default function FactorModelPage() {
                           }],
                           [
                             "门禁拒绝原因",
-                            (m, d) => renderRejectionReasonSplit(d?.rejection_reason ?? m.rejection_reason),
+                            (m, d) => researchValidationPassed(m) ? t("factorModelResearchIndependentRequired") : renderRejectionReasonSplit(d?.rejection_reason ?? m.rejection_reason),
                           ],
                           ["创建时间", (m) => formatDateTime(m.created_at)],
                         ];
@@ -2288,11 +2391,10 @@ export default function FactorModelPage() {
                   details.forEach(([m, d], i) => {
                     const vicRaw = d?.validation_ic ?? m.metrics?.validation_ic;
                     const vic = vicRaw == null ? null : Number(vicRaw);
-                    const n = (d?.sample_count ?? m.sample_count ?? 0) as number;
                     const k = d?.factors?.length ?? 0;
                     const label = `#${i + 1}(${m.id.slice(-8)})`;
-                    if (vic != null && Number.isFinite(vic) && vic >= 0.02 && n > 10000) {
-                      tips.push(`✓ ${label} 校验 IC≥2% 且样本充足，基准表现良好。`);
+                    if (vic != null && Number.isFinite(vic) && vic >= 0.02) {
+                      tips.push(`${label} ${t("factorModelComparisonIcObservation")}`);
                     }
                     if (k === 1) {
                       tips.push(`⚠ ${label} 只用了 ${k} 个因子，本质是单因子缩放而非多因子合成。`);
@@ -2505,7 +2607,11 @@ export default function FactorModelPage() {
 
         {/* Task 3：ChainStepsBar 链式步骤导航（8 Steps + 阻断直达 + 下一步主按钮） */}
         <div style={{ marginBottom: 16 }}>
-          <ChainStepsBar state={chainState} onGoStep={handleChainGoStep} />
+          <ChainStepsBar state={chainState} onGoStep={handleChainGoStep} disabledSteps={disabledModelSteps} />
+          {trainingEvidenceTask && <Alert style={{ marginTop: 12 }} type="info" showIcon
+            message={t("factorModelCurrentTrainingResult")}
+            description={`${trainingEvidenceTask.id} · ${trainingCandidate?.id || trainingEvidenceReason}`}
+            action={trainingCandidate ? <Button size="small" onClick={() => void loadModelDetail(trainingCandidate.id)}>{t("factorModelReviewCurrentCandidate")}</Button> : undefined} />}
         </div>
 
         {/* 当前 runtime 状态 */}
@@ -2569,6 +2675,18 @@ export default function FactorModelPage() {
           )}
         </Card>
 
+        <Tabs
+          activeKey={workspace}
+          onChange={(key) => setWorkspace(key as "collections" | "models")}
+          items={[
+            { key: "collections", label: t("factorModelWorkspaceCollections") },
+            { key: "models", label: t("factorModelWorkspaceModels") },
+          ]}
+        />
+        <Paragraph type="secondary" style={{ marginTop: -4 }}>
+          {t(workspace === "collections" ? "factorModelWorkspaceCollectionsHelp" : "factorModelWorkspaceModelsHelp")}
+        </Paragraph>
+        <section hidden={workspace !== "collections"} aria-label={t("factorModelWorkspaceCollections")}>
         {/* FactorSet 列表（Task 2：9 元素卡片式实现）*/}
         <Card
           size="small"
@@ -2597,22 +2715,18 @@ export default function FactorModelPage() {
           style={{ marginBottom: 16 }}
         >
           {factorSets.length > 0 ? (
-            <div ref={factorSetTableRef} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 14 }}>
+            <div ref={factorSetTableRef} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))", gap: 14 }}>
               {factorSets.map((fs) => {
                 const isFrozen = fs.status === "frozen";
                 const isDraft = fs.status === "draft";
                 const isDeprecated = fs.status === "deprecated";
                 const freezeGate = computeFreezeGate(fs);
                 const trainGate = computeTrainGate(fs);
-                const deprecateGate = computeDeprecateGate(fs, runtime);
+                const deprecateGate = computeDeprecateGate(fs, runtime, models);
                 // 成员 feature-first 排序
                 const sortedMembers = sortMembersByRole(fs.members ?? []);
                 const featureCount = sortedMembers.filter((m) => m.role === "feature").length;
-                const trainableCount = sortedMembers.filter((m: any) => {
-                  if (typeof (m as any).version_trainable === "boolean") return (m as any).version_trainable;
-                  const s = String((m as any).version_status || "trainable").toLowerCase();
-                  return !(s === "draft" || s === "deprecated" || s === "disabled");
-                }).length;
+                const trainableCount = sortedMembers.filter(memberTrainable).length;
                 const trainableRatio =
                   sortedMembers.length > 0 ? Math.round((trainableCount / sortedMembers.length) * 100) : 0;
                 const isNewlyCreated = newlyCreatedIdRef.current === fs.id;
@@ -2716,13 +2830,13 @@ export default function FactorModelPage() {
 
                     {/* 指标条：成员数 / feature 数 / 可训练比例 / 更新时间 */}
                     <Descriptions size="small" column={2} style={{ marginBottom: 8 }} styles={{ label: { fontSize: 11 }, content: { fontSize: 12 } }}>
-                      <Descriptions.Item label="成员数 (n_members)">
+                      <Descriptions.Item label={<Tooltip title={t("factorModelMemberCountHelp")}><span>{t("factorModelMemberCount")} <InfoCircleOutlined /></span></Tooltip>}>
                         <Text strong>{sortedMembers.length}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="feature 数">
+                      <Descriptions.Item label={<Tooltip title={t("factorModelFeatureCountHelp")}><span>{t("factorModelFeatureCount")} <InfoCircleOutlined /></span></Tooltip>}>
                         <Text strong>{featureCount}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="可训练比例">
+                      <Descriptions.Item label={<Tooltip title={t("factorModelTrainableRatioHelp")}><span>{t("factorModelTrainableRatio")} <InfoCircleOutlined /></span></Tooltip>}>
                         <Tag color={trainableRatio === 100 ? "green" : trainableRatio >= 50 ? "orange" : "red"} style={{ marginInlineEnd: 0 }}>
                           {trainableRatio}%
                         </Tag>
@@ -2773,9 +2887,7 @@ export default function FactorModelPage() {
                                 >
                                   <td style={tdStyle}><code>{m.factor_code}</code></td>
                                   <td style={tdStyle}>
-                                    {((m as any).factor_name as string | null) ?? (
-                                      <Text type="secondary" style={{ fontSize: 11 }}>N/A</Text>
-                                    )}
+                                    {factorLabel(m.factor_code, (m as unknown as { factor_name?: string }).factor_name || factorLibItems.find(item => item.factor_code === m.factor_code)?.factor_name || undefined)}
                                   </td>
                                   <td style={tdStyle}>
                                     <Tag style={{ marginInlineEnd: 0, fontSize: 11 }}>
@@ -2805,7 +2917,7 @@ export default function FactorModelPage() {
                                           disabled={isFrozen || isDeprecated}
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            handleRemoveMember(m.id);
+                                            handleRemoveMember(m.factor_id, fs.id);
                                           }}
                                           data-testid={`btn-del-member-${m.id}`}
                                         />
@@ -2939,6 +3051,8 @@ export default function FactorModelPage() {
           )}
         </Card>
 
+        </section>
+        <section hidden={workspace !== "models"} aria-label={t("factorModelWorkspaceModels")}>
         {/* 候选模型列表 */}
         <Card
           size="small"
@@ -3024,7 +3138,7 @@ export default function FactorModelPage() {
         >
           {models.length > 0 ? (
             <div ref={modelTableRef} data-testid="model-table-wrapper">
-              <Paragraph type="secondary">训练完成的新模型等待本人激活；激活后会提交固定该模型版本的评分任务。</Paragraph>
+              <Paragraph type="secondary">{t("factorModelCandidateReviewNotice")}</Paragraph>
               <Table
                 size="small"
                 columns={modelColumns}
@@ -3107,12 +3221,12 @@ export default function FactorModelPage() {
 
         {/* 选中模型详情 + 审计日志 */}
         {selectedModel && (
-          <div ref={modelDetailRef} data-testid="model-validation-detail">
+          <div ref={modelDetailRef} data-testid="model-validation-detail" style={{ minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
           <Card
             size="small"
             title={`${t("factorModelDetail")}: ${selectedModel.id}`}
             extra={
-              <Button size="small" onClick={() => setSelectedModel(null)}>
+              <Button size="small" onClick={() => { modelDetailRequest.current += 1; setSelectedModel(null); setAuditLogs([]); }}>
                 关闭详情
               </Button>
             }
@@ -3121,9 +3235,10 @@ export default function FactorModelPage() {
               <Alert
                 type="warning"
                 showIcon
-                message="正式运行资格未通过"
-                description={selectedModel.readiness_message || "生产资格尚未确认，请完成真实训练和验证后再激活。"}
+                message={researchValidationPassed(selectedModel) ? t("factorModelResearchValidatedPending") : "正式运行资格未通过"}
+                description={researchValidationPassed(selectedModel) ? t("factorModelResearchIndependentRequired") : selectedModel.readiness_code === "MODEL_NOT_VALIDATED" ? <Tooltip title={[selectedModel.rejection_reason, selectedModel.readiness_message].filter(Boolean).join("\n")}><span>{t("factorModelValidationNotPassed")}</span></Tooltip> : selectedModel.readiness_message || "生产资格尚未确认，请完成真实训练和验证后再激活。"}
                 action={(() => {
+                  if (isTrustedResearchDataset(selectedModel.hyperparameters?.trusted_history_dataset)) return <Button size="small" onClick={() => setResearchRetrainId(selectedModel.id)}>{t("factorResearchRetrainTitle")}</Button>;
                   const fs = factorSets.find((item) => item.id === selectedModel.hyperparameters?.factor_set_id && !computeTrainGate(item).disabled);
                   return fs ? <Button size="small" onClick={() => {
                     setTrainTarget(fs);
@@ -3135,16 +3250,16 @@ export default function FactorModelPage() {
                 style={{ marginBottom: 12 }}
               />
             )}
-            <Descriptions size="small" column={3} bordered>
+            <Descriptions size="small" column={{ xs: 1, sm: 1, md: 1, lg: 2, xl: 2, xxl: 3 }} bordered style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>
               <Descriptions.Item label={t("factorModelStatus")}>
-                <Tag color={modelStatusColor(selectedModel.status)}>
-                  {modelStatusLabel(selectedModel.status)}
+                <Tag color={modelStatusColor(selectedModel.status, selectedModel)}>
+                  {modelStatusLabel(selectedModel.status, selectedModel)}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label={t("factorModelValidationIc")}>
+              <Descriptions.Item label={<Tooltip title={t("factorModelValidationIcHelp")}><span>{t("factorModelValidationIc")} <InfoCircleOutlined /></span></Tooltip>}>
                 {formatNumber(selectedModel.metrics?.validation_ic)}
               </Descriptions.Item>
-              <Descriptions.Item label={t("factorModelSamples")}>
+              <Descriptions.Item label={<Tooltip title={t("factorModelSamplesHelp")}><span>{t("factorModelSamples")} <InfoCircleOutlined /></span></Tooltip>}>
                 {selectedModel.sample_count}
               </Descriptions.Item>
               <Descriptions.Item label={t("factorModelFactorSet")}>
@@ -3156,7 +3271,15 @@ export default function FactorModelPage() {
               <Descriptions.Item label={t("factorModelValidationRange")}>
                 {selectedModel.validation_start_date ?? "-"} ~ {selectedModel.validation_end_date ?? "-"}
               </Descriptions.Item>
+              <Descriptions.Item label={t("factorModelSampleCutoffDate")}>
+                {typeof selectedModel.hyperparameters?.data_cutoff_date === "string" ? selectedModel.hyperparameters.data_cutoff_date : t("factorModelSampleCutoffNotRecorded")}
+              </Descriptions.Item>
+              <Descriptions.Item label={<Tooltip title={t("factorModelInputAvailableAtHelp")}><span>{t("factorModelInputAvailableAt")} <InfoCircleOutlined /></span></Tooltip>}>
+                {formatDateTime(selectedModel.data_cutoff_at)}
+              </Descriptions.Item>
             </Descriptions>
+
+            <FactorModelTrainingEvidence model={selectedModel} />
 
             {/* 权重快照 */}
             {(selectedModel.weights?.length ?? 0) > 0 && (
@@ -3191,7 +3314,7 @@ export default function FactorModelPage() {
                   render: (v: number) => formatNumber(v),
                 },
                 {
-                  title: t("factorModelValidationIc"),
+                  title: <Tooltip title={t("factorModelFactorValidationIcHelp")}><span>{t("factorModelFactorValidationIc")} <InfoCircleOutlined /></span></Tooltip>,
                   dataIndex: "validation_ic",
                   key: "validation_ic",
                   render: (v: number | null) => formatNumber(v),
@@ -3206,10 +3329,10 @@ export default function FactorModelPage() {
             {/* 拒绝原因 */}
             {selectedModel.rejection_reason && (
               <Alert
-                type="error"
+                type={researchValidationPassed(selectedModel) ? "warning" : "error"}
                 showIcon
-                message={t("factorModelRejectionReason")}
-                description={selectedModel.rejection_reason}
+                message={t(researchValidationPassed(selectedModel) ? "factorModelResearchNoProduction" : "factorModelRejectionReason")}
+                description={researchValidationPassed(selectedModel) ? <Tooltip title={selectedModel.rejection_reason}><span>{t("factorModelResearchIndependentRequired")}</span></Tooltip> : selectedModel.rejection_reason}
                 style={{ marginBottom: 16 }}
               />
             )}
@@ -3232,9 +3355,14 @@ export default function FactorModelPage() {
           </Card>
           </div>
         )}
+        </section>
       </Spin>
 
       {/* 激活确认 Modal */}
+      <ResearchRetrainModal modelId={researchRetrainId} onClose={() => setResearchRetrainId(null)} onSubmitted={task => {
+        submittedTrainingTaskId.current = task.id; setTrainingEvidenceTask(task); setResearchRetrainId(null);
+        message.success(t("factorResearchRetrainSubmitted")); void loadData();
+      }} />
       <Modal
         title={
           <Space>
@@ -3244,13 +3372,16 @@ export default function FactorModelPage() {
         }
         open={activateModalOpen}
         onOk={handleActivate}
-        onCancel={() => setActivateModalOpen(false)}
+        onCancel={() => { setActivateModalOpen(false); activationEvidence.clear(); }}
         confirmLoading={activating}
+        okButtonProps={{ disabled: !activationEvidence.readyFor(activateTarget?.id) }}
         okText={t("factorTransitionOk")}
         cancelText={t("cancel")}
       >
         {activateTarget && (
           <div>
+            <FactorModelReviewEvidenceNotice state={activationEvidence.state} onRetry={activationEvidence.retry} />
+            <FactorModelResearchWarning hyperparameters={activationEvidence.readyFor(activateTarget.id) ? activationEvidence.state?.model?.hyperparameters : null} />
             <Paragraph>
               <Text>{t("factorModelActivateConfirm")}</Text>
             </Paragraph>
@@ -3262,7 +3393,12 @@ export default function FactorModelPage() {
               <Descriptions.Item label={t("factorModelRuntimeMode")}>
                 <Tag color={weightModeColor(activateMode)}>{activateMode === "ridge" ? "生产模式" : "观察模式"}</Tag>
               </Descriptions.Item>
+              <Descriptions.Item label={t("factorModelFactorSet")}>{String(activateTarget.hyperparameters?.factor_set_id || t("factorModelEnableUnbound"))}</Descriptions.Item>
+              <Descriptions.Item label={t("factorModelEnableCurrentModel")}>{runtime?.active_model_run_id || t("factorModelEnableNoActive")}</Descriptions.Item>
+              <Descriptions.Item label={t("factorModelEnableCurrentMode")}>{weightModeLabel(runtime?.weight_mode || "manual")}</Descriptions.Item>
+              <Descriptions.Item label={t("factorModelEnableEligibility")}>{activateTarget.production_eligible === true ? t("factorModelEnableEligible") : activateTarget.readiness_message || t("factorModelEnableNotEligible")}</Descriptions.Item>
             </Descriptions>
+            <Alert type="warning" showIcon message={t("factorModelEnableReviewEffects")} style={{ marginTop: 12 }} />
             <Input
               value={modelAlias}
               onChange={(e) => setModelAlias(e.target.value)}
@@ -3354,7 +3490,7 @@ export default function FactorModelPage() {
             name="description"
           >
             <Input.TextArea
-              placeholder="描述此集合预期用途、特征筛选条件、目标范围等（会写入 audit 日志）"
+              placeholder="描述此集合的预期用途、特征筛选条件和目标范围"
               rows={3}
               maxLength={500}
               showCount
@@ -3366,7 +3502,7 @@ export default function FactorModelPage() {
             message="新建说明"
             description={
               <ul style={{ paddingInlineStart: 20, margin: 0, fontSize: 12 }}>
-                <li>创建者为当前登录用户（actor 自动写入审计日志，不显示手填输入框）。</li>
+                <li>当前以本地用户创建草稿；创建后还需添加成员、确认冻结，再提交训练。</li>
                 <li>初始状态为 <Tag color="blue" style={{ marginInlineEnd: 0 }}>草稿</Tag>，成员数为 0。</li>
                 <li>提交成功后会自动滚动到新卡片，并打开「编辑成员」抽屉。</li>
               </ul>
@@ -3408,11 +3544,7 @@ export default function FactorModelPage() {
           const members = freezeTarget.members ?? [];
           const n_members = members.length || (freezeTarget.n_members ?? 0);
           const featureCount = members.filter((m) => m.role === "feature").length;
-          const trainableCount = members.filter((m: any) => {
-            if (typeof (m as any).version_trainable === "boolean") return (m as any).version_trainable;
-            const s = String((m as any).version_status || "trainable").toLowerCase();
-            return s !== "draft" && s !== "deprecated" && s !== "disabled";
-          }).length;
+          const trainableCount = members.filter(memberTrainable).length;
           const trainablePct = n_members > 0 ? Math.round((trainableCount / n_members) * 100) : 0;
           const lastUpdated = freezeTarget.updated_at ?? freezeTarget.frozen_at ?? freezeTarget.created_at;
           const allOk = n_members > 0 && featureCount > 0 && trainablePct === 100;
@@ -3423,10 +3555,10 @@ export default function FactorModelPage() {
                 <Col xs={12}>
                   <Card size="small" variant="borderless" style={{ background: "var(--pt-accent-soft)" }}>
                     <Statistic
-                      title={<span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>① 成员数 n_members</span>}
+                      title={<span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>① {t("factorModelMemberCount")}</span>}
                       value={n_members}
                       valueStyle={{ fontSize: 22, color: n_members > 0 ? "#0ea5e9" : "#dc2626", fontWeight: 700 }}
-                      suffix={<Text type="secondary" style={{ fontSize: 11 }}>人</Text>}
+                      suffix={<Text type="secondary" style={{ fontSize: 11 }}>个</Text>}
                       data-testid="freeze-summary-n-members"
                     />
                   </Card>
@@ -3434,7 +3566,7 @@ export default function FactorModelPage() {
                 <Col xs={12}>
                   <Card size="small" variant="borderless" style={{ background: "var(--pt-accent-soft)" }}>
                     <Statistic
-                      title={<span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>② feature_count</span>}
+                      title={<span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>② {t("factorModelFeatureCount")}</span>}
                       value={featureCount}
                       valueStyle={{ fontSize: 22, color: featureCount > 0 ? "#16a34a" : "#dc2626", fontWeight: 700 }}
                       suffix={<Text type="secondary" style={{ fontSize: 11 }}>个</Text>}
@@ -3445,7 +3577,7 @@ export default function FactorModelPage() {
                 <Col xs={12}>
                   <Card size="small" variant="borderless" style={{ background: "var(--pt-accent-soft)" }}>
                     <Statistic
-                      title={<span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>③ trainable 比例</span>}
+                      title={<span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>③ {t("factorModelTrainableRatio")}</span>}
                       value={trainablePct}
                       precision={0}
                       valueStyle={{ fontSize: 22, color: trainablePct === 100 ? "#16a34a" : trainablePct >= 50 ? "#ea580c" : "#dc2626", fontWeight: 700 }}
@@ -3637,19 +3769,20 @@ export default function FactorModelPage() {
         maskClosable
         extra={
           <Space>
-            <Button onClick={closeMemberDrawer}>取消</Button>
+            <Button onClick={closeMemberDrawer}>{t("factorSetMembersClose")}</Button>
             <Button
               type="primary"
               onClick={handleDrawerSaveAndClose}
               data-testid="drawer-save-close"
             >
-              保存并关闭
+              {t("factorSetMembersDone")}
             </Button>
           </Space>
         }
         data-testid="drawer-edit-members"
       >
         <Spin spinning={drawerLoading}>
+          <Alert type="info" showIcon message={t("factorSetMembersImmediateSave")} style={{ marginBottom: 12 }} />
           <Tabs
             defaultActiveKey="all"
             data-testid="drawer-members-tabs"
@@ -3693,8 +3826,8 @@ export default function FactorModelPage() {
                         <thead style={{ position: "sticky", top: 0, background: "var(--pt-card)", zIndex: 1 }}>
                           <tr style={{ borderBottom: "1px solid var(--pt-border)" }}>
                             <th style={{ ...thStyle, width: 36 }}>&nbsp;</th>
-                            <th style={thStyle}>factor_code</th>
-                            <th style={thStyle}>factor_name</th>
+                            <th style={thStyle}>{t("factorModelFactorCode")}</th>
+                            <th style={thStyle}>{t("factorModelFactorName")}</th>
                             <th style={thStyle}>可训练版本数</th>
                           </tr>
                         </thead>
@@ -3865,7 +3998,7 @@ export default function FactorModelPage() {
                                     size="small"
                                     icon={<DeleteOutlined />}
                                     style={{ padding: "0 2px", minWidth: 24 }}
-                                    onClick={() => handleRemoveMember(m.id)}
+                                    onClick={() => handleRemoveMember(m.factor_id)}
                                     data-testid={`drawer-btn-del-${m.id}`}
                                   />
                                 </Tooltip>

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -144,23 +145,37 @@ def is_in_quiet_hours(
     try:
         config = json.loads(quiet_hours_json)
     except Exception:
-        return False
+        return True
+    if not isinstance(config, dict):
+        return True
 
     start_str = config.get("start")
     end_str = config.get("end")
-    if not start_str or not end_str:
+    if not start_str and not end_str:
         return False
+    if not start_str or not end_str:
+        return True
 
-    # 时区处理（简化：使用本地时间，生产环境需处理时区）
-    now = now or _now_utc()
+    instant = now or _now_utc()
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    try:
+        local_zone = ZoneInfo(config.get("timezone") or "Asia/Shanghai")
+        now = instant.astimezone(local_zone)
+    except (KeyError, ValueError, TypeError):
+        # Corrupt legacy configuration must not accidentally allow delivery.
+        return True
 
     # 交易日/工作日检查（trading_days_only=true 时周末不算交易日）
     trading_days_only = config.get("trading_days_only", False)
     if trading_days_only and now.weekday() >= 5:
         return False
 
-    start_time = datetime.strptime(start_str, "%H:%M").time()
-    end_time = datetime.strptime(end_str, "%H:%M").time()
+    try:
+        start_time = datetime.strptime(start_str, "%H:%M").time()
+        end_time = datetime.strptime(end_str, "%H:%M").time()
+    except (ValueError, TypeError):
+        return True
     now_time = now.time()
 
     # 跨天情况（如 22:00 - 08:00）
@@ -192,10 +207,13 @@ def should_bypass_quiet_hours(
     try:
         config = json.loads(quiet_hours_json)
     except Exception:
-        return True
+        return False
+
+    if not isinstance(config, dict):
+        return False
 
     bypass = config.get("bypass_for_critical", False)
-    return bool(bypass) and severity == "critical"
+    return bypass is True and severity == "critical"
 
 
 def should_send_now(

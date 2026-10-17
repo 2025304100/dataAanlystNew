@@ -391,6 +391,10 @@ def validate_definition(task_type: str) -> None:
 def validate_task_payload(task_type: str, payload: dict) -> dict:
     """Validate task-specific settings when a schedule is saved."""
     validate_definition(task_type)
+    if task_type == "factor_grade_review":
+        from app.schemas.scheduled_task import FactorGradeReviewPayload
+
+        return FactorGradeReviewPayload.model_validate(payload).model_dump()
     if task_type == "universe_incremental_sync":
         allowed_scopes = {"cn-stock", "cn-etf", "us-stock", "us-etf"}
         scopes = payload.get("scopes") or sorted(allowed_scopes)

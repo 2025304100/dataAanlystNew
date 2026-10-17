@@ -40,6 +40,20 @@ from app.services.factors.factor_shadow import (
 router = APIRouter()
 
 
+@router.get("/factor-shadow/capabilities")
+def get_shadow_capabilities():
+    from app.services.factors.shadow_capabilities import shadow_capabilities
+    return shadow_capabilities()
+
+
+def _require_observation_collection():
+    from app.services.factors.shadow_capabilities import SHADOW_BLOCK_CODE, SHADOW_BLOCK_REASON
+    raise HTTPException(status_code=409, detail={
+        "error_code": SHADOW_BLOCK_CODE, "user_message": SHADOW_BLOCK_REASON,
+        "retryable": False,
+    })
+
+
 # ── 请求模型 ──────────────────────────────────────────────
 
 
@@ -114,6 +128,7 @@ class CorrelationGovernancePayload(BaseModel):
 @router.post("/factor-shadow/observations")
 def create_shadow_observation(payload: ShadowObservationCreate):
     """记录 Shadow 每日观测（幂等）。"""
+    _require_observation_collection()
     with SessionLocal() as db:
         try:
             inp = ShadowObservationInput(
@@ -213,7 +228,6 @@ def get_shadow_health(factor_version_id: int):
     """获取 Shadow 因子健康报告。"""
     with SessionLocal() as db:
         report = run_shadow_health_check(db, factor_version_id=factor_version_id)
-        db.commit()
         return report.to_dict()
 
 
@@ -223,6 +237,7 @@ def get_shadow_health(factor_version_id: int):
 @router.post("/factor-shadow/activation/request")
 def post_activation_request(payload: ActivationRequestPayload):
     """申请 Shadow → Active（门禁检查）。"""
+    _require_observation_collection()
     with SessionLocal() as db:
         req = ActivationRequest(
             factor_id=payload.factor_id,
@@ -249,6 +264,7 @@ def post_activation_request(payload: ActivationRequestPayload):
 @router.post("/factor-shadow/activation/approve")
 def post_activation_approve(payload: ActivationApprovePayload):
     """批准 Shadow → Active（人工审批）。"""
+    _require_observation_collection()
     with SessionLocal() as db:
         result = approve_activation(
             db,
@@ -299,6 +315,10 @@ def post_activation_reject(payload: ActivationRejectPayload):
 def post_quarantine(factor_id: int, payload: QuarantinePayload):
     """数据硬错误自动隔离。"""
     with SessionLocal() as db:
+        from app.models.factor_model import FactorVersion
+        version = db.get(FactorVersion, payload.factor_version_id)
+        if payload.factor_id != factor_id or version is None or version.factor_id != factor_id:
+            raise HTTPException(status_code=422, detail="factor_version_mismatch")
         result = auto_quarantine(
             db,
             factor_id=factor_id,

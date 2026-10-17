@@ -3,10 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 Frequency = Literal["daily", "weekly", "interval"]
+
+
+class FactorGradeReviewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    actor: str = Field(default="scheduler", min_length=1, max_length=128)
 
 
 class ScheduledTaskCreate(BaseModel):

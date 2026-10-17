@@ -51,6 +51,9 @@ _EULER_GAMMA = 0.5772156649015329
 #: Walk-Forward 默认窗口数（设计 §7.9：3~4 个滚动窗口）
 DEFAULT_WF_WINDOWS = 3
 
+# Fewer valid test observations cannot support the resampling evidence shown by the wizard.
+MIN_RESAMPLING_POINTS = 24
+
 #: 窗口内 test 段占比（与全局 60/20/20 切分比例一致）
 _WF_TEST_RATIO = 0.2
 
@@ -352,7 +355,7 @@ def compute_stats(
             缺省时 perm_p_value=None）。
         n_resamples: 重采样/置换次数（测试可调小）。
         rng: `random.Random`（None 时用固定种子，输出完全确定）。
-        degraded: 显式指定降级；缺省按 frequency=="monthly" 判定。
+        degraded: 可主动降级；月频或有效 IC 点不足 24 时始终降级。
 
     Returns:
         `StatResult`。NaN/None 语义：无法计算的统计量返回 NaN（置换
@@ -360,8 +363,7 @@ def compute_stats(
     """
     rng = rng if rng is not None else random.Random(0)
     arr = _finite_array(ic_series)
-    is_degraded = (str(frequency) == "monthly") if degraded is None \
-        else bool(degraded)
+    is_degraded = bool(degraded) or str(frequency) == "monthly" or arr.size < MIN_RESAMPLING_POINTS
 
     # 1) t 检验（月频降级也保留——"仅报告 t 检验参考值"）
     p_value = t_test_pvalue(arr)

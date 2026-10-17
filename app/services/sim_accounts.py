@@ -35,13 +35,26 @@ def _round_money(value: float) -> float:
 # 此处保留导入以维持向后兼容（外部模块可能 from app.services.sim_accounts import lot_size_for_symbol）。
 
 
+def latest_prices_for_symbols(db: Session, symbol_ids: list[int]) -> dict[int, float]:
+    """Batch quotes by trading date; backfilled history can have a larger ID."""
+    if not symbol_ids:
+        return {}
+    latest_dates = (
+        select(DailyBar.symbol_id, func.max(DailyBar.trade_date).label('trade_date'))
+        .where(DailyBar.symbol_id.in_(set(symbol_ids)))
+        .group_by(DailyBar.symbol_id).subquery()
+    )
+    rows = db.execute(
+        select(DailyBar.symbol_id, DailyBar.close).join(latest_dates,
+            (DailyBar.symbol_id == latest_dates.c.symbol_id)
+            & (DailyBar.trade_date == latest_dates.c.trade_date))
+    ).all()
+    # (symbol_id, trade_date) is unique in the production daily_bars contract.
+    return {symbol_id: float(close) for symbol_id, close in rows}
+
+
 def latest_price_for_symbol(db: Session, symbol_id: int) -> float | None:
-    bar = db.execute(
-        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date), desc(DailyBar.id))
-    ).scalars().first()
-    if bar is None:
-        return None
-    return float(bar.close)
+    return latest_prices_for_symbols(db, [symbol_id]).get(symbol_id)
 
 
 def ensure_sim_account_seed(db: Session, portfolio: Portfolio) -> None:
@@ -519,26 +532,13 @@ def apply_sim_order_fill(
     return trade
 
 
-def build_sim_account_summary(db: Session, portfolio: Portfolio) -> dict:
+def build_sim_account_summary(db: Session, portfolio: Portfolio, *, update_positions: bool = True) -> dict:
+    """Value the account; read endpoints opt out of ORM position updates."""
     positions = db.execute(select(Position).where(Position.portfolio_id == portfolio.id)).scalars().all()
 
     # 风控加固：批量预加载每个 symbol 的最新 bar，避免循环内 N+1 查询
     position_symbol_ids = [p.symbol_id for p in positions]
-    latest_price_map: dict[int, float] = {}
-    if position_symbol_ids:
-        # 子查询：每个 symbol 的最大 id（即最新一条 bar）
-        latest_bar_subq = (
-            select(func.max(DailyBar.id))
-            .where(DailyBar.symbol_id.in_(position_symbol_ids))
-            .group_by(DailyBar.symbol_id)
-            .scalar_subquery()
-        )
-        latest_bars = db.execute(
-            select(DailyBar.symbol_id, DailyBar.close)
-            .where(DailyBar.id.in_(latest_bar_subq))
-        ).all()
-        for sym_id, close in latest_bars:
-            latest_price_map[sym_id] = float(close)
+    latest_price_map = latest_prices_for_symbols(db, position_symbol_ids)
 
     market_value = 0.0
     unrealized_pnl = 0.0
@@ -547,12 +547,16 @@ def build_sim_account_summary(db: Session, portfolio: Portfolio) -> dict:
         if latest_price is None:
             # 无法确定价格，跳过该持仓避免计算异常
             continue
-        latest_price = _round_money(latest_price)
+        # Quotes may have 3+ decimals (e.g. ETFs). Round amounts, not the quote
+        # before multiplication, so account totals agree with position details.
+        latest_price = float(latest_price)
         avg_cost = position.avg_cost if position.avg_cost is not None else latest_price
-        position.latest_price = latest_price
-        position.market_value = _round_money(position.quantity * latest_price)
-        position.position_pct = round(position.market_value / portfolio.total_capital, 4) if portfolio.total_capital else 0.0
-        market_value += position.market_value
+        valued_amount = _round_money(position.quantity * latest_price)
+        if update_positions:
+            position.latest_price = latest_price
+            position.market_value = valued_amount
+            position.position_pct = round(valued_amount / portfolio.total_capital, 4) if portfolio.total_capital else 0.0
+        market_value += valued_amount
         unrealized_pnl += (latest_price - avg_cost) * position.quantity
 
     realized_pnl = db.execute(

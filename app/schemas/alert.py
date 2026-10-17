@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, computed_field, field_validator
+from app.services.alert_capabilities import SUPPORTED_ALERT_TYPES, UNSUPPORTED_ALERT_REASON
 
 
 class AlertRuleCreate(BaseModel):
@@ -41,6 +42,16 @@ class AlertRuleRead(BaseModel):
     cooldown_minutes: int
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def supported(self) -> bool:
+        return self.alert_type in SUPPORTED_ALERT_TYPES
+
+    @computed_field
+    @property
+    def unsupported_reason(self) -> str | None:
+        return None if self.supported else UNSUPPORTED_ALERT_REASON
 
     @property
     def config(self) -> dict:

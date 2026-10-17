@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Empty, Modal, Popconfirm, Progress, Row, Space, Tag, Tooltip, Typography } from "antd";
 import {
   AlertOutlined,
@@ -19,8 +19,10 @@ import {
   WarningOutlined,
 } from "@ant-design/icons";
 import { api, type FactorOverview, type ScoringOverview } from "../api/client";
+import FactorCoverageSummary from "./factors/FactorCoverageSummary";
 import { actionLabel, enumLabel, stageLabel, t, template } from "../i18n";
 import { govStatusLabel } from "../utils/govStatusLabel";
+import { modelCoverageSummary } from "../utils/modelCoverage";
 import { useApp } from "../context/AppContext";
 import { navigateToResearch } from "../utils/sourceContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
@@ -223,23 +225,16 @@ function reasonText(item: WorkbenchCandidate) {
 /** Facade ScoringOverview → 旧 FactorOverview 适配（防腐层），避免改动大面积渲染代码。 */
 function adaptScoringToFactorOverview(s: ScoringOverview | null): FactorOverview | null {
   if (!s) return null;
-  const coverage: FactorOverview["factor_coverage"] = [];
-  // 用平均覆盖率构造一个合成项，避免 TodayDecision 的覆盖率/低覆盖计数渲染出错
-  if (s.active_factor_avg_coverage != null) {
-    coverage.push({
-      factor_code: "__avg__",
-      latest_trade_date: s.latest_trade_date,
-      universe_symbols: s.active_factor_coverage_count,
-      eligible_symbols: Math.max(0, Math.round(s.active_factor_coverage_count * s.active_factor_avg_coverage)),
-      imputed_symbols: 0,
-      coverage: s.active_factor_avg_coverage,
-    });
-  }
+  const summary = modelCoverageSummary(s);
+  const coverage = summary.rows;
   return {
     feature_enabled: s.feature_enabled,
     warehouse_error: s.warehouse_error,
     latest_trade_date: s.latest_trade_date,
     factor_coverage: coverage,
+    average_coverage: summary.average,
+    model_average_coverage: summary.average,
+    latest_factor_date: s.latest_factor_date ?? null,
     runtime: {
       weight_mode: s.weight_mode,
       score_weight_mode: s.weight_mode === "manual" ? "manual" : "ridge",
@@ -260,11 +255,11 @@ function adaptScoringToFactorOverview(s: ScoringOverview | null): FactorOverview
       warehouse_available: s.warehouse_available,
       warehouse_path: s.warehouse_path,
       schema_version: null,
-      calc_batch_id: null,
+      calc_batch_id: s.calc_batch_id ?? null,
       latest_bar_date: s.latest_trade_date,
       raw_tables: [],
       factors: coverage,
-      reasons: [],
+      reasons: s.health_reasons ?? [],
     },
   };
 }
@@ -292,8 +287,15 @@ export default function TodayDecision() {
   // FR-P1-3 三硬门禁：预检响应 + loading（fail-closed，未预检视为 proceed=false）
   const [preflightResult, setPreflightResult] = useState<AutoSimulationPreflightResponse | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
+  const loadSequence = useRef(0);
+  const pageActive = useRef(true);
+  const portfolioRef = useRef(portfolioId);
+  portfolioRef.current = portfolioId;
 
   const load = async () => {
+    if (!pageActive.current) return;
+    const sequence = ++loadSequence.current;
+    const isCurrent = () => pageActive.current && sequence === loadSequence.current && portfolioId === portfolioRef.current;
     setLoading(true);
     setStatusLoading(true);
     setError(null);
@@ -307,6 +309,7 @@ export default function TodayDecision() {
         // FR-P1-8a HG1：拉取组合状态（失败不阻塞今日决策其它面板）
         api.getPortfolioStatus(portfolioId).catch(() => null),
       ]);
+      if (!isCurrent()) return;
       setMacro(macroData);
       setEvents(newsData.events ?? []);
       setHealth(healthData);
@@ -314,14 +317,20 @@ export default function TodayDecision() {
       setPortfolioStatus(statusData ?? null);
       await ctx.loadWorkbench();
     } catch (err: any) {
-      setError(err.message || t("tdLoadFailed"));
+      if (isCurrent()) setError(err.message || t("tdLoadFailed"));
     } finally {
-      setLoading(false);
-      setStatusLoading(false);
+      if (isCurrent()) {
+        setLoading(false);
+        setStatusLoading(false);
+      }
     }
   };
 
-  useEffect(() => { load(); }, [portfolioId]);
+  useEffect(() => {
+    pageActive.current = true;
+    void load();
+    return () => { pageActive.current = false; loadSequence.current += 1; };
+  }, [portfolioId]);
 
   // ── FR-P0-10：HG1 权限 & 横幅配置（API返回优先，静态9×4兜底） ──
   const perm = useMemo<PortfolioStatePermissions>(() => resolvePermissions(portfolioStatus), [portfolioStatus]);
@@ -418,18 +427,15 @@ export default function TodayDecision() {
   const visibleRepairSamples = useMemo(() => allRepairSamples.slice(0, 6), [allRepairSamples]);
   const hasMoreRepairSamples = allRepairSamples.length > 6;
 
-  const factorCoverage = useMemo(() => {
-    const rows = factorOverview?.factor_coverage ?? [];
-    if (!rows.length) return null;
-    return rows.reduce((sum, item) => sum + Number(item.coverage || 0), 0) / rows.length;
-  }, [factorOverview]);
+  const factorCoverage = factorOverview?.average_coverage ?? null;
 
   const missingBarCount = health?.bars.missing_symbols ?? 0;
   const outdatedBarCount = health?.bars.outdated_symbols ?? 0;
   const factorCoveragePct = factorCoverage == null ? null : factorCoverage * 100;
-  const lowFactorCount = (factorOverview?.factor_coverage ?? []).filter((item) => Number(item.coverage || 0) < 0.95).length;
+  const factorRows = factorOverview?.factor_coverage ?? [];
+  const lowFactorCount = factorCoverage !== null && factorRows.length ? factorRows.filter((item) => item.coverage < 0.95).length : null;
   const needsMarketData = missingBarCount > 0 || outdatedBarCount > 0;
-  const needsFactorData = factorCoveragePct != null && (factorCoveragePct < 95 || lowFactorCount > 0);
+  const needsFactorData = factorCoveragePct != null && (factorCoveragePct < 95 || (lowFactorCount ?? 0) > 0);
 
   const repairSymbol = async (item: DataHealthBarIssue) => {
     setRepairingSymbolId(item.symbol_id);
@@ -575,7 +581,7 @@ export default function TodayDecision() {
         <Button icon={<ReloadOutlined />} loading={loading} onClick={load}>{t("tdRefresh")}</Button>
       </section>
 
-      {error && <Alert type="error" showIcon message={error} />}
+      {(error || ctx.workbenchError) && <Alert type="error" showIcon message={error || ctx.workbenchError} />}
 
       {/* ===============================================================
        * FR-P0-10 / FR-P1-8a HG1 组合状态门禁横幅（9 状态 × 色彩分级）
@@ -834,7 +840,7 @@ export default function TodayDecision() {
               <Alert
                 type="warning"
                 showIcon
-                message={template("tdHealthFactorGuide", { pct: factorCoveragePct?.toFixed(1) ?? "-", lowCount: lowFactorCount })}
+                message={template(lowFactorCount === null ? "tdHealthFactorGuideAggregate" : "tdHealthFactorGuide", { pct: factorCoveragePct?.toFixed(1) ?? "-", lowCount: lowFactorCount ?? "—" })}
                 action={
                   <Space wrap>
                     <Button size="small" onClick={() => openDataCenter("inputs")}>{t("tdHealthOpenFactorInput")}</Button>
@@ -928,7 +934,7 @@ export default function TodayDecision() {
         extra={
           <Space>
             <Tag color={factorOverview?.health.warehouse_available ? (factorOverview.health.status === "healthy" ? "green" : "orange") : "red"}>
-              {factorOverview?.health.warehouse_available ? factorOverview.health.status : t("tdFactorUnavailable")}
+              {factorOverview?.health.warehouse_available ? enumLabel("shadowLabHealth", factorOverview.health.status) : t("tdFactorUnavailable")}
             </Tag>
             <Button type="link" onClick={openFactorSettings}>{t("tdFactorManage")}</Button>
           </Space>
@@ -938,8 +944,8 @@ export default function TodayDecision() {
           <span><b>{t("tdFactorMode")}</b><Tag color={factorOverview?.runtime.weight_mode === "ridge" ? "green" : factorOverview?.runtime.weight_mode === "shadow" ? "blue" : "default"}>{enumLabel("factorMode", factorOverview?.runtime.weight_mode ?? "manual")}</Tag></span>
           <span><b>{t("tdFactorScoreSource")}</b><strong>{enumLabel("factorMode", factorOverview?.runtime.score_weight_mode ?? "manual")}</strong></span>
           <span title={factorOverview?.runtime.active_model_run_id ?? undefined}><b>{t("tdFactorModel")}</b><strong>{factorOverview?.runtime.active_model_run_id ? factorOverview.runtime.active_model_run_id.slice(0, 16) : "-"}</strong></span>
-          <span><b>{t("tdFactorLatest")}</b><strong>{factorOverview?.latest_trade_date ?? "-"}</strong></span>
-          <span><b>{t("tdFactorCoverage")}</b><strong>{factorCoverage == null ? "-" : `${(factorCoverage * 100).toFixed(1)}%`}</strong></span>
+          <span><b>{t("factorCoverageBarDate")}</b><strong>{factorOverview?.latest_trade_date ?? "-"}</strong></span>
+          <span><FactorCoverageSummary overview={factorOverview} /></span>
         </div>
       </Card>
 

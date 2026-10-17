@@ -3,15 +3,15 @@
 借鉴 EasyXT 利用通达信本地文件的思路:通达信客户端免费,行情数据下载到本地 .day 二进制文件,
 读本地文件零网络、零频率限制、零成本,适合作为 akshare 风控触发时的兜底源。
 
-文件格式(每条记录 32 字节,大端序):
-    int32  date      日期 YYYYMMDD
-    int32  open      开盘价(分,需 /100)
-    float32 high     最高价
-    float32 low      最低价
-    float32 close    收盘价
+文件格式(每条记录 32 字节,小端序，与 pytdx TdxDailyBarReader 一致):
+    uint32 date      日期 YYYYMMDD
+    uint32 open      开盘价(分,需 /100)
+    uint32 high      最高价(分,需 /100)
+    uint32 low       最低价(分,需 /100)
+    uint32 close     收盘价(分,需 /100)
     float32 amount   成交额(元)
-    int32  volume    成交量(手)
-    int32  reserved  保留字段
+    uint32 volume    本地原始数量，保留整数，不推断股/手单位
+    uint32 reserved  保留字段
 
 文件路径:
     vipdoc/sh/lday/sh600000.day  ← 上交所
@@ -20,7 +20,8 @@
     vipdoc/sh/fzline/sh600000.lc1  ← 1分钟线(暂不解析)
 
 注意:
-- 通达信 open 字段存的是"分",需 /100 转为"元"
+- A 股 OHLC 字段均为整数分，需 /100 转为元
+- 解析布局本身不证明数量单位或数据来源，不赋予可信股数标签
 - 通达信不提供复权因子,返回不复权价
 - 通达信不提供 turnover_rate,该列留空
 """
@@ -36,11 +37,10 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# 每条记录 32 字节,大端序
-# > 表示大端序(big-endian)
-# i = int32, f = float32
+# 每条记录 32 字节,小端序；I = uint32, f = float32。
+# 对照 pytdx.reader.TdxDailyBarReader.parse_data_by_file 的原生布局。
 # 字段顺序:date, open, high, low, close, amount, volume, reserved
-RECORD_FORMAT = ">iiffffii"
+RECORD_FORMAT = "<IIIIIfII"
 RECORD_SIZE = struct.calcsize(RECORD_FORMAT)  # = 32 字节
 
 # 标准化后的列名(与 _standard_history_frame 对齐)
@@ -64,7 +64,8 @@ def parse_day_file(
         文件不存在或为空时返回空 DataFrame(不抛异常,由上层 source 判断是否降级)
 
     Raises:
-        无主动抛出,文件 IO 异常由上层捕获并转 SourceUnavailable
+        ValueError: 日期无效或文件含不完整记录，拒绝整个文件。
+        文件 IO 异常由上层捕获并转 SourceUnavailable。
     """
     if not filepath.exists():
         return pd.DataFrame(columns=COLUMNS)
@@ -76,18 +77,29 @@ def parse_day_file(
     with open(filepath, "rb") as f:
         while True:
             chunk = f.read(RECORD_SIZE)
-            if len(chunk) < RECORD_SIZE:
+            if not chunk:
                 break
+            if len(chunk) != RECORD_SIZE:
+                raise ValueError("Truncated TDX day record")
             date_int, open_p, high, low, close, amount, volume, _ = struct.unpack(RECORD_FORMAT, chunk)
+            # Validate every record before range filtering. An invalid date
+            # outside the requested range still indicates a corrupt layout.
+            date_text = str(date_int)
+            try:
+                if len(date_text) != 8:
+                    raise ValueError("Expected YYYYMMDD")
+                trade_date = datetime.strptime(date_text, "%Y%m%d").date()
+            except ValueError as exc:
+                raise ValueError(f"Invalid TDX day record date: {date_int}") from exc
             # 日期过滤(在解析阶段过滤,减少内存占用)
             if date_int < start_int or date_int > end_int:
                 continue
             records.append({
-                "trade_date": datetime.strptime(str(date_int), "%Y%m%d").date(),
-                "open": open_p / 100.0,   # 通达信开盘价存的是"分",需 /100 转为"元"
-                "high": float(high),
-                "low": float(low),
-                "close": float(close),
+                "trade_date": trade_date,
+                "open": open_p / 100.0,
+                "high": high / 100.0,
+                "low": low / 100.0,
+                "close": close / 100.0,
                 "amount": float(amount),
                 "volume": int(volume),
             })

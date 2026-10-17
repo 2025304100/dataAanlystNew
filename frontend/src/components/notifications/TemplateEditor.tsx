@@ -45,6 +45,7 @@ import {
 } from "@ant-design/icons";
 import { requestJson } from "../../api/client";
 import { t } from "../../i18n";
+import { NOTIF, semanticTagStyle } from "./notificationTheme";
 
 // 消息模板（对齐 app.models.notification.NotificationTemplate）
 interface Template {
@@ -435,7 +436,7 @@ export const TemplateEditor: React.FC = () => {
         return (
           <Space size={[2, 2]} wrap>
             {vars.slice(0, 4).map((v) => (
-              <Tag key={v.name} color="blue">
+              <Tag key={v.name} style={semanticTagStyle("info")}>
                 {`{${v.name}}`}
               </Tag>
             ))}
@@ -745,7 +746,7 @@ const TemplateFormFields: React.FC<TemplateFormFieldsProps> = ({ form }) => {
 
       <div
         style={{
-          border: "1px solid var(--border, #d9d9d9)",
+          border: `1px solid ${NOTIF.border}`,
           borderRadius: 6,
           padding: 12,
           marginBottom: 16,
@@ -926,7 +927,7 @@ const TemplateFormFields: React.FC<TemplateFormFieldsProps> = ({ form }) => {
                 gutter={8}
                 align="bottom"
                 style={{
-                  borderBottom: "1px solid var(--border, #f0f0f0)",
+                  borderBottom: `1px solid ${NOTIF.border}`,
                   marginBottom: 8,
                   marginInline: 0,
                 }}
@@ -1021,8 +1022,8 @@ const TemplateDraftPreview: React.FC<TemplateDraftPreviewProps> = ({
 }) => {
   const previewBlockStyle = {
     padding: 10,
-    background: "var(--bg-alt, #f5f5f5)",
-    borderRadius: 4,
+    background: "#f8fafc",
+    borderRadius: 6,
     minHeight: 40,
     whiteSpace: "pre-wrap" as const,
     wordBreak: "break-word" as const,
@@ -1031,7 +1032,7 @@ const TemplateDraftPreview: React.FC<TemplateDraftPreviewProps> = ({
   return (
     <div
       style={{
-        borderLeft: "3px solid #1677ff",
+        borderLeft: `3px solid ${NOTIF.primary}`,
         paddingLeft: 14,
         marginBottom: 16,
       }}
@@ -1062,7 +1063,7 @@ const TemplateDraftPreview: React.FC<TemplateDraftPreviewProps> = ({
                 key={variable.name}
                 title={variable.description || variable.name}
               >
-                <Tag color={variable.example ? "green" : "default"}>
+                <Tag style={semanticTagStyle(variable.example ? "success" : "neutral")}>
                   {`{${variable.name}}`} = {variable.example || t("templateNoExample")}
                 </Tag>
               </Tooltip>
@@ -1151,7 +1152,7 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
         <div
           style={{
             padding: 8,
-            background: "var(--bg-alt, #f5f5f5)",
+            background: "#f8fafc",
             borderRadius: 4,
             minHeight: 32,
           }}
@@ -1166,7 +1167,7 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
         <pre
           style={{
             padding: 8,
-            background: "var(--bg-alt, #f5f5f5)",
+            background: "#f8fafc",
             borderRadius: 4,
             minHeight: 60,
             whiteSpace: "pre-wrap",
@@ -1185,7 +1186,7 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
           <pre
             style={{
               padding: 8,
-              background: "var(--bg-alt, #f5f5f5)",
+              background: "#f8fafc",
               borderRadius: 4,
               minHeight: 40,
               whiteSpace: "pre-wrap",

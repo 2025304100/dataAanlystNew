@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+from ctypes import wintypes
 import json
 import os
 import signal
@@ -50,6 +52,28 @@ def save_state(state: dict[str, Any]) -> None:
 def is_pid_running(pid: int | None) -> bool:
     if not pid:
         return False
+    if os.name == "nt":
+        if pid < 0 or pid > 0xFFFFFFFF:
+            return False
+        # On Windows signal 0 is CTRL_C_EVENT; os.kill(pid, 0) can terminate
+        # a detached process instead of querying it. Wait on a read-only
+        # process handle so status/start/stop guards never send a signal.
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            # An elevated/protected process may exist without granting us a
+            # handle. Preserve it rather than pruning its managed record.
+            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -57,10 +81,6 @@ def is_pid_running(pid: int | None) -> bool:
     except PermissionError:
         # The process exists, but the current token cannot query it.
         return True
-    except SystemError:
-        # Python 3.12 on Windows can surface ERROR_ACCESS_DENIED from
-        # os.kill(pid, 0) as SystemError instead of PermissionError.
-        return os.name == "nt"
     except OSError:
         return False
     return True
@@ -98,19 +118,71 @@ def append_log_banner(label: str, out_log: Path, err_log: Path) -> None:
     stamp = f"[{now_text()}] {label}"
     for path in (out_log, err_log):
         try:
-            # A fresh launch gets a fresh log. Keeping old startup exceptions
-            # in stderr makes the launcher look failed even after a later
-            # process started successfully.
-            if path.name == "backend.err.log":
-                path.write_text("", encoding="utf-8")
-            elif path.exists() and path.stat().st_size > MAX_LOG_BYTES:
-                path.write_text("", encoding="utf-8")
+            # Keep a fresh current stderr without erasing the previous
+            # process's exit evidence. Rename before opening new log handles.
+            if path.exists() and path.stat().st_size and (
+                path.name == "backend.err.log" or path.stat().st_size > MAX_LOG_BYTES
+            ):
+                archive = path.with_name(f"{path.stem}.previous-{time.time_ns()}{path.suffix}")
+                path.rename(archive)
         except OSError:
             # A stale elevated process may still own the file. Startup will
             # report the process error; log maintenance must not hide it.
             pass
         with path.open("a", encoding="utf-8") as handle:
             handle.write(f"\n=== {stamp} ===\n")
+
+
+def _windows_job_allows_breakaway() -> bool:
+    """Read current job policy; request no exception to a forbidden policy.
+
+    Detached consoles and process groups still inherit Windows Jobs. Some
+    command executors permit explicit breakaway while killing their remaining
+    job members on close. Query failure must preserve the original flags.
+    """
+    class ExtendedJobLimits(ctypes.Structure):
+        # JOBOBJECT_EXTENDED_LIMIT_INFORMATION, including the basic prefix.
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+            ("IoInfo", ctypes.c_uint64 * 6),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.argtypes = []
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.IsProcessInJob.argtypes = [
+            wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        kernel32.IsProcessInJob.restype = wintypes.BOOL
+        kernel32.QueryInformationJobObject.argtypes = [
+            wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD)]
+        kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+        in_job = wintypes.BOOL()
+        if not kernel32.IsProcessInJob(
+            kernel32.GetCurrentProcess(), None, ctypes.byref(in_job)
+        ) or not in_job.value:
+            return False
+        limits = ExtendedJobLimits()
+        if not kernel32.QueryInformationJobObject(
+            None, 9, ctypes.byref(limits), ctypes.sizeof(limits), None
+        ):
+            return False
+        return bool(limits.LimitFlags & 0x00000800)  # JOB_OBJECT_LIMIT_BREAKAWAY_OK
+    except (OSError, AttributeError):
+        return False
 
 
 def launch_process(command: list[str], cwd: Path, out_log: Path, err_log: Path, env: dict[str, str] | None = None) -> subprocess.Popen[str]:
@@ -127,6 +199,8 @@ def launch_process(command: list[str], cwd: Path, out_log: Path, err_log: Path, 
     }
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        if _windows_job_allows_breakaway():
+            kwargs["creationflags"] |= subprocess.CREATE_BREAKAWAY_FROM_JOB
     else:
         kwargs["start_new_session"] = True
     try:

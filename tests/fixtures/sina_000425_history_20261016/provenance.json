@@ -1,0 +1,10 @@
+{
+  "symbol": "sz000425",
+  "capture_date": "2026-10-16",
+  "origin": "public Sina HTTP responses, already captured before test; no requests made by tests",
+  "sha256": {
+    "history": "0a3d8b87542c830c8715787a86c969d066912268df355ff0ea03d06418d30d86",
+    "shares": "18d9c42e71de179bc489d9782c7867d75e08f97221523165a972a7e24c2e7cd1",
+    "qfq": "9ba36e47d86777d49da75ae726959aaf42ce0d3f4fb576510aabf0a564de9315"
+  }
+}

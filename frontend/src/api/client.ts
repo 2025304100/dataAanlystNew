@@ -1115,6 +1115,18 @@ export const api = {
   },
   scoringGetOverview: () =>
     requestJson<ScoringOverview>(`${API}/scoring/overview`),
+  listVerifiedInputBundles: () => requestJson<VerifiedInputBundle[]>(`${API}/scoring/input-bundles`),
+  getProductionAdmission: (modelId:string,bundleId:string) => requestJson<import('../types/productionAdmission').ProductionAdmissionReport>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-admission?bundle_id=${encodeURIComponent(bundleId)}`),
+  reviewProductionCandidate: (modelId:string,bundleId:string,portfolioId:number) => requestJson<import('../types/productionAdmission').ProductionExecutionReview>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-candidate/review?bundle_id=${encodeURIComponent(bundleId)}&portfolio_id=${portfolioId}`),
+  submitProductionCandidate: (modelId:string,bundleId:string,portfolioId:number,sha:string) => requestJson<AsyncTaskRead>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-candidate`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,portfolio_id:portfolioId,expected_sha256:sha})}),
+  getProductionCandidateTask: (planId:string) => requestJson<AsyncTaskRead>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}`),
+  freezeProductionAdmission: (modelId:string,bundleId:string,identity:string) => requestJson<import('../types/productionAdmission').ProductionAdmissionReport>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-admission/freeze`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,expected_identity_sha256:identity})}),
+  getInputBusinessStatus: (bundleId: string) => requestJson<import("../types/inputReplay").InputBusinessStatus>(`${API}/scoring/input-bundles/${encodeURIComponent(bundleId)}/business-status`),
+  createInputReplay: (payload: InputReplayRequest) => requestJson<InputReplayTask>(`${API}/scoring/input-replays`, {
+    method: "POST", body: JSON.stringify(payload), headers: {"Content-Type": "application/json"}, dedupe: false,
+  }),
+  getInputReplayTask: (id: string) => requestJson<InputReplayTask>(`${API}/scoring/input-replays/${encodeURIComponent(id)}`, {dedupe: false}),
+  getInputReplayReport: (id: string) => requestJson<InputReplayReport>(`${API}/scoring/input-replays/${encodeURIComponent(id)}/report`),
   scoringGetActiveScope: () =>
     requestJson<ScoringActiveScope>(`${API}/scoring/active-scope`),
   scoringCancelTask: (taskId: string) =>
@@ -1153,6 +1165,16 @@ export const api = {
     }),
   scoringGetTask: (taskId: string) =>
     requestJson<FactorPipelineTask>(`${API}/scoring/tasks/${encodeURIComponent(taskId)}`),
+  scoringGetResearchRetrainPlan: (modelId: string) =>
+    requestJson<ResearchRetrainPlan>(`${API}/scoring/models/${encodeURIComponent(modelId)}/research-retrain`, { timeoutMs: 90000 }),
+  scoringRetrainResearchModel: (modelId: string, manifestSha256: string, note: string, requestId: string) =>
+    requestJson<FactorPipelineTask>(`${API}/scoring/models/${encodeURIComponent(modelId)}/research-retrain`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      jsonBody: { manifest_sha256: manifestSha256, note, request_id: requestId },
+      timeoutMs: 180000,
+    }),
+  scoringRecoverResearchRetrain: (modelId: string, requestId: string) =>
+    requestJson<ResearchRetrainRecovery>(`${API}/scoring/models/${encodeURIComponent(modelId)}/research-retrain/requests/${encodeURIComponent(requestId)}`, { timeoutMs: 30000, dedupe: false }),
   scoringEnsureFeatureInputsReady: (
     payload: Partial<{ source_hint: string; actor: string; mirror_only: boolean }> = {}
   ) =>
@@ -1375,7 +1397,8 @@ export const api = {
   // WP5-07: 评估实验室 API
   preflightFactorEvaluation: (params: PreflightFactorEvaluationParams) => {
     const body: Record<string, unknown> = { factor_code: params.factorCode };
-    if (params.factorVersionId != null) body.factor_version_id = params.factorVersionId;
+    // Preflight's HTTP schema uses a string ID; task/Shadow endpoints use numbers.
+    if (params.factorVersionId != null) body.factor_version_id = String(params.factorVersionId);
     if (params.universe != null) body.universe = params.universe;
     if (params.startDate != null) body.start_date = params.startDate;
     if (params.endDate != null) body.end_date = params.endDate;
@@ -1411,6 +1434,8 @@ export const api = {
     requestJson<EvaluationRunRead>(`${API}/factor-evaluation/runs/${encodeURIComponent(runId)}`),
 
   // WP6-06: Shadow 观测与审批 API
+  getShadowCapabilities: () =>
+    requestJson<{ mode: string; history: { supported: boolean }; observation_collection: { supported: boolean; reason?: string }; activation: { supported: boolean; reason?: string } }>(`${API}/factor-shadow/capabilities`),
   listShadowObservations: (factorVersionId: number, params: { startDate?: string; endDate?: string; validOnly?: boolean; limit?: number } = {}) => {
     const sp = new URLSearchParams();
     sp.set("factor_version_id", String(factorVersionId));
@@ -2605,7 +2630,7 @@ export const api = {
       { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
     ),
   testAiConnection: (params: AiConfigUpdate) =>
-    requestJson<{ success: boolean; message: string }>(
+    requestJson<{ success: boolean; message: string; connection_test?: AiConnectionTest }>(
       `${API}/settings/ai-config/test`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 60000 },
     ),
@@ -2717,6 +2742,8 @@ export const api = {
         time: string;
         created_at: string | null;
         read: boolean;
+        source_type?: string | null;
+        event_type?: string | null;
       }>
     >(`${API}/notifications/inbox${suffix}`);
   },
@@ -2735,6 +2762,9 @@ export const api = {
   /** 1. GET /portfolios/{pid}/status：9 状态机当前态 + 出边矩阵 allowed_transitions */
   getPortfolioStatus: (portfolioId: number) =>
     requestJson<PortfolioStatusResponse>(`${API}/portfolios/${portfolioId}/status`),
+
+  previewPortfolioReconciliation: (portfolioId: number) =>
+    requestJson<ReconciliationResponse>(`${API}/portfolios/${portfolioId}/reconciliation-preview`),
 
   /** 2. POST /portfolios/{pid}/reconcile：执行一次对账，返回 10 字段守恒明细 */
   triggerPortfolioReconcile: (portfolioId: number, payload?: { as_of_trade_date?: string | null; trade_date?: string | null; correlation_id?: string | null } | undefined) =>
@@ -3056,9 +3086,9 @@ export const api = {
     }),
 
   // Factor-domain internal - DO NOT USE outside factor center (factorset remove member)
-  removeFactorSetMember: (factorSetId: string, memberId: number) =>
-    requestJson<{ ok: boolean; member_id: number }>(
-      `${API}/factor-sets/${encodeURIComponent(factorSetId)}/members/${encodeURIComponent(String(memberId))}`,
+  removeFactorSetMember: (factorSetId: string, factorId: number) =>
+    requestJson<{ success: boolean; factor_set_id: string; factor_id: number }>(
+      `${API}/factor-sets/${encodeURIComponent(factorSetId)}/members/${encodeURIComponent(String(factorId))}`,
       { method: "DELETE" },
     ),
 
@@ -3275,6 +3305,7 @@ export interface FactorCoverage {
   eligible_symbols: number;
   imputed_symbols: number;
   coverage: number;
+  model_enabled?: boolean;
 }
 
 /**
@@ -3303,6 +3334,9 @@ export interface FactorOverview {
   latest_trade_date: string | null;
   factor_coverage: FactorCoverage[];
   average_coverage?: number | null;
+  model_average_coverage?: number | null;
+  model_factor_count?: number;
+  latest_factor_date?: string | null;
 }
 
 export interface FactorModelWeight {
@@ -3369,6 +3403,8 @@ export interface FactorSetMember {
   display_order: number;
   missing_policy: string;
   excluded_reason: string | null;
+  version_status?: string | null;
+  version_trainable?: boolean;
 }
 
 export type FactorSetStatus = "draft" | "frozen" | "deprecated";
@@ -3566,6 +3602,41 @@ export interface ScoringOverview {
   health_status: string;
   active_factor_coverage_count: number;
   active_factor_avg_coverage: number;
+  factor_coverage?: FactorCoverage[];
+  health_reasons?: string[];
+  calc_batch_id?: string | null;
+  latest_factor_date?: string | null;
+  model_factor_coverage_count?: number;
+  model_factor_avg_coverage?: number | null;
+}
+
+export interface ResearchRetrainPlan {
+  model_id: string;
+  factor_set_id: string;
+  dataset_id: string;
+  manifest_sha256: string;
+  start_date: string;
+  end_date: string;
+  symbol_count: number;
+  bar_count: number;
+  trade_date_count: number;
+  window_days: number;
+  validation_days: number;
+  fit_policy: string;
+  alphas: number[];
+  research_only: true;
+  independent_validation: false;
+  materialize_scores: false;
+  auto_activate: false;
+}
+
+export interface ResearchRetrainRecovery {
+  model_id: string;
+  request_id: string;
+  state: "found" | "not_found";
+  manifest_sha256: string | null;
+  note: string | null;
+  task: FactorPipelineTask | null;
 }
 
 export interface ScoringActiveScope {
@@ -3646,13 +3717,16 @@ export function _scoringOverviewToFactorOverview(raw: any): any {
       warehouse_path: $("warehouse_path", ""),
       schema_version: $("schema_version", null),
       calc_batch_id: $("calc_batch_id", null),
-      latest_bar_date: $("latest_bar_date", null),
+      latest_bar_date: $("latest_bar_date", $("latest_trade_date", null)),
       raw_tables: Array.isArray($("raw_tables", [])) ? $("raw_tables", []) : [],
       factors: coverage,
       reasons: Array.isArray($("health_reasons", [])) ? $("health_reasons", []) : [],
     },
     latest_trade_date: $("latest_trade_date", null),
     factor_coverage: coverage,
+    model_average_coverage: typeof raw?.model_factor_avg_coverage === "number" ? raw.model_factor_avg_coverage : null,
+    model_factor_count: raw?.model_factor_coverage_count,
+    latest_factor_date: raw?.latest_factor_date ?? null,
     average_coverage: Number(raw?.active_factor_coverage_count) > 0 && Number.isFinite(Number(raw?.active_factor_avg_coverage))
       ? Number(raw.active_factor_avg_coverage) : null,
   };
@@ -3819,6 +3893,8 @@ export interface ScoringFactorUsage {
   description: string | null;
   active_version: number | null;
   coverage_30d: number | null;
+  coverage_window_days?: number | null;
+  coverage_as_of?: string | null;
   ic_mean_30d: number | null;
   days_in_production: number | null;
   in_factor_sets: ScoringFactorUsageSet[];
@@ -3923,7 +3999,7 @@ export interface PreflightResponse {
 
 export interface PreflightFactorEvaluationParams {
   factorCode: string;
-  factorVersionId?: string;
+  factorVersionId?: string | number;
   universe?: string;
   startDate?: string;
   endDate?: string;
@@ -4292,6 +4368,11 @@ export interface ScheduledTaskRun {
 // ----------------------------------------------------------------------------
 // AI 接口配置类型
 // ----------------------------------------------------------------------------
+export interface AiConnectionTest {
+  status: "untested" | "passed" | "failed" | "expired";
+  tested_at: string | null;
+}
+
 export interface AiConfig {
   provider: "openai_compatible" | "anthropic" | "ollama" | "custom";
   service_url: string;
@@ -4309,6 +4390,7 @@ export interface AiConfig {
   api_key_set: boolean;
   persisted: boolean;
   updated_at?: string | null;
+  connection_test?: AiConnectionTest;
 }
 
 export interface AiModelInfo {
@@ -4384,6 +4466,18 @@ export interface FactorDefinition {
   asset_scope: string[] | null;
   active_version_id: number | null;
   shadow_version_id: number | null;
+  latest_version_id?: number | null;
+  latest_version_no?: number | null;
+  latest_version_validation_status?: string | null;
+  latest_evaluation?: {
+    run_id: string;
+    factor_version_id: number;
+    gate_result: string;
+    production_fidelity: boolean;
+    created_at: string | null;
+    metrics: Record<string, unknown>;
+    rejection_reasons: string[];
+  } | null;
   risk_level: string | null;
   archived_at: string | null;
   created_at: string | null;
@@ -4423,25 +4517,16 @@ export interface FactorVersionDefinition {
 }
 
 export interface FactorVersionListItem {
+  id?: number;
+  factor_id?: number;
+  validation_status?: string | null;
   factor_code: string;
   version: number;
   formula_expr: string;
   params: Record<string, unknown>;
   direction: string;
   source_mapping: Record<string, unknown>;
-  effective_from: string | null;
-  change_note: string;
-  is_latest: boolean;
-  created_at: string | null;
-}
-
-export interface FactorVersionListItem {
-  factor_code: string;
-  version: number;
-  formula_expr: string;
-  params: Record<string, unknown>;
-  direction: string;
-  source_mapping: Record<string, unknown>;
+  postprocess?: Record<string, unknown> | null;
   effective_from: string | null;
   change_note: string;
   is_latest: boolean;
@@ -4752,3 +4837,4 @@ export interface BacktestPrecheckResponse {
 }
 
 
+import type { VerifiedInputBundle, InputReplayRequest, InputReplayTask, InputReplayReport } from "../types/inputReplay";

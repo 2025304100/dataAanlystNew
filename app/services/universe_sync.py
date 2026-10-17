@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.orm import Session
 
@@ -497,12 +497,14 @@ def _fetch_universe_history(
     通过 SimpleNamespace 适配 _fetch_history 所需的 Symbol 接口（.symbol/.asset_type/.market）。
     """
     from app.services.market_data import _fetch_history
+    from app.services.market_history_contract import mark_cn_stock_production_mode, require_cn_stock_qfq
     fake_symbol = SimpleNamespace(
         symbol=universe_symbol.symbol,
         asset_type=universe_symbol.asset_type,
         market=universe_symbol.market,
     )
-    return _fetch_history(fake_symbol, start_date, end_date, adjust)
+    require_cn_stock_qfq(fake_symbol, adjust)
+    return mark_cn_stock_production_mode(_fetch_history(fake_symbol, start_date, end_date, adjust), fake_symbol, adjust)
 
 
 def _normalize_trade_date(value) -> date:
@@ -535,9 +537,15 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
     MySQL 使用 INSERT ... ON DUPLICATE KEY UPDATE 批量语句（单条 SQL 完成全部插入/更新）；
     其他方言（如 SQLite 测试环境）回退到逐行 ORM upsert。
     """
+    from app.services.market_history_contract import production_history_source_tag
+
+    source = production_history_source_tag(frame)
     rows = _dedupe_history_rows(frame)
     if not rows:
         return 0, 0
+
+    payload_fields = ("open", "high", "low", "close", "volume", "amount", "turnover_rate", "source")
+    observed_at = _now()
 
     trade_dates = [r["trade_date"] for r in rows]
 
@@ -565,7 +573,7 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
             "volume": _to_float(row.get("volume")),
             "amount": _to_float(row.get("amount")),
             "turnover_rate": _to_float(row.get("turnover_rate")),
-            "source": "akshare",
+            "source": source,
         }
         for row in rows
     ]
@@ -574,16 +582,16 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
     if dialect_name == "mysql":
         # MySQL：单条 INSERT ... ON DUPLICATE KEY UPDATE 完成批量 upsert
         stmt = mysql_insert(UniverseDailyBar).values(values)
-        stmt = stmt.on_duplicate_key_update(
-            open=stmt.inserted.open,
-            high=stmt.inserted.high,
-            low=stmt.inserted.low,
-            close=stmt.inserted.close,
-            volume=stmt.inserted.volume,
-            amount=stmt.inserted.amount,
-            turnover_rate=stmt.inserted.turnover_rate,
-            source=stmt.inserted.source,
-        )
+        unchanged = and_(*(
+            getattr(UniverseDailyBar, field).is_not_distinct_from(stmt.inserted[field])
+            for field in payload_fields
+        ))
+        # MySQL evaluates assignments left-to-right. Compare the old payload
+        # before any data column is replaced; <=> also detects NULL transitions.
+        stmt = stmt.on_duplicate_key_update([
+            ("created_at", case((unchanged, UniverseDailyBar.created_at), else_=observed_at)),
+            *((field, stmt.inserted[field]) for field in payload_fields),
+        ])
         db.execute(stmt)
     else:
         # SQLite/其他：逐行 ORM upsert（测试环境兼容）
@@ -603,6 +611,10 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
                 )
                 db.add(existing)
                 existing_map[trade_date] = existing
+            elif any(getattr(existing, field) != row[field] for field in payload_fields):
+                # A replacement became available now; observing the identical
+                # payload must preserve its prior availability time.
+                existing.created_at = observed_at
             existing.open = row["open"]
             existing.high = row["high"]
             existing.low = row["low"]

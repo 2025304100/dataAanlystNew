@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 
 /** antd Modal 确认按钮（okText 匹配 .ant-btn-primary） */
 const modalConfirm = () =>
@@ -39,6 +40,8 @@ const {
   removeMembers,
   fetchMembers,
   fetchSnapshot,
+  previewImport,
+  importPoolMembers,
 } = vi.hoisted(() => ({
   previewPool: vi.fn(),
   createPoolFromFilter: vi.fn(),
@@ -48,6 +51,8 @@ const {
   removeMembers: vi.fn(),
   fetchMembers: vi.fn(),
   fetchSnapshot: vi.fn(),
+  previewImport: vi.fn(),
+  importPoolMembers: vi.fn(),
 }));
 
 vi.mock("./poolApi", () => ({
@@ -90,17 +95,9 @@ vi.mock("./poolApi", () => ({
   fetchSnapshot,
   fetchLatestSnapshot: vi.fn(async () => null),
   downloadImportTemplate: vi.fn(),
-  previewImport: vi.fn(async () => ({
-    total_rows: 0,
-    admitted_count: 0,
-    error_count: 0,
-    has_errors: false,
-    counts: {},
-    counts_label_zh: {},
-    rows: [],
-  })),
+  previewImport,
   exportImportErrors: vi.fn(),
-  importPoolMembers: vi.fn(async () => ({ rows: [] })),
+  importPoolMembers,
 }));
 
 import MiningPoolStep from "./MiningPoolStep";
@@ -120,6 +117,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   previewPool.mockResolvedValue(PREVIEW_OK);
   createPoolFromFilter.mockResolvedValue({ id: "pool-1", name: "p", source_type: "filter" });
+  createPool.mockResolvedValue({ id: "pool-import" });
+  previewImport.mockResolvedValue({ total_rows: 1, admitted_count: 1, error_count: 0, has_errors: false, counts: {}, counts_label_zh: {}, rows: [], import_batch_id: "batch-1" });
+  importPoolMembers.mockResolvedValue({ total_rows: 1, admitted_count: 1, error_count: 0, rows: [] });
   createSnapshot.mockResolvedValue({ id: "snap-1", is_locked: true, analysis_json: {} });
   deleteLatestSnapshot.mockResolvedValue({ ok: true });
   removeMembers.mockResolvedValue({ removed: 1 });
@@ -236,9 +236,131 @@ describe("MiningPoolStep 防抖预览", () => {
     expect(createPoolFromFilter).not.toHaveBeenCalled();
     expect(document.querySelector("[data-pool-preview-stats]")).toBeTruthy();
   });
+
+  it("StrictMode 双调 effect 下首次预览仍然发出（2026-10-14 回归）", async () => {
+    // 生产 main.tsx 包了 React.StrictMode：开发模式下 effect 会
+    // mount→cleanup→mount 双调。旧实现用 bootPreviewRef 守卫，二次调用被
+    // 守卫挡回、首次调的定时器又被 cleanup 清掉 → 首查永远不发（浏览器
+    // 实测：预览区停留「选择或调整筛选条件后…」空闲态，生成按钮常灰）。
+    render(
+      <StrictMode>
+        <MiningPoolStep />
+      </StrictMode>,
+    );
+    await settlePreview();
+    expect(previewPool).toHaveBeenCalled();
+  });
+
+  it("旧筛选预览迟到时仍保留最新条件的阻断结果", async () => {
+    vi.useFakeTimers();
+    let resolveOld!: (value: typeof PREVIEW_OK) => void;
+    let resolveNew!: (value: typeof PREVIEW_OK) => void;
+    previewPool
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNew = resolve; }));
+    render(<MiningPoolStep />);
+    const input = await flushPanel();
+    await act(async () => { vi.advanceTimersByTime(300); });
+    fireEvent.change(input, { target: { value: "800" } });
+    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => {
+      resolveNew({ ...PREVIEW_OK, hits: 12, can_generate: false });
+    });
+    expect(document.querySelector("[data-pool-preview-hits]")?.textContent).toBe("12");
+    await act(async () => { resolveOld(PREVIEW_OK); });
+    expect(document.querySelector("[data-pool-preview-hits]")?.textContent).toBe("12");
+    expect((document.querySelector("[data-pool-generate]") as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 describe("MiningPoolStep 生成物料与锁定", () => {
+  it("导入后新成员回读先完成，入池前的旧成员读取迟到不能清空新成员", async () => {
+    let resolveOldMembers!: (value: unknown) => void;
+    fetchMembers.mockImplementationOnce(() => new Promise((resolve) => { resolveOldMembers = resolve; }));
+    fetchMembers.mockResolvedValueOnce({ items: [{ symbol: "600000", name: "新导入标的" }], total: 1, page: 1, page_size: 20 });
+    render(<MiningPoolStep poolId="pool-import" />);
+    fireEvent.click(document.querySelector('[data-pool-tab="import"]') as HTMLElement);
+    fireEvent.click(modalConfirm() as HTMLElement);
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [new File(["symbol\n600000"], "new.csv", { type: "text/csv" })] },
+    });
+    await waitFor(() => expect(document.querySelector("[data-import-confirm]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-import-confirm]") as HTMLElement);
+    await waitFor(() => expect(document.querySelector("[data-pool-member-table]")?.textContent).toContain("新导入标的"));
+    await act(async () => { resolveOldMembers({ items: [], total: 0, page: 1, page_size: 20 }); });
+    expect(document.querySelector("[data-pool-member-table]")?.textContent).toContain("新导入标的");
+  });
+
+  it("离开导入入口后返回，旧文件预览迟到也不恢复旧导入结果", async () => {
+    let resolvePreview!: (value: unknown) => void;
+    previewImport.mockImplementationOnce(() => new Promise((resolve) => { resolvePreview = resolve; }));
+    render(<MiningPoolStep />);
+    fireEvent.click(document.querySelector('[data-pool-tab="import"]') as HTMLElement);
+    fireEvent.click(modalConfirm() as HTMLElement);
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [new File(["symbol\n600000"], "old.csv", { type: "text/csv" })] },
+    });
+    await waitFor(() => expect(previewImport).toHaveBeenCalledTimes(1));
+    fireEvent.click(document.querySelector('[data-pool-tab="filter"]') as HTMLElement);
+    fireEvent.click(modalConfirm() as HTMLElement);
+    fireEvent.click(document.querySelector('[data-pool-tab="import"]') as HTMLElement);
+    fireEvent.click(modalConfirm() as HTMLElement);
+    await act(async () => { resolvePreview({ total_rows: 1, admitted_count: 1, error_count: 0, rows: [] }); });
+    expect(document.querySelector("[data-import-result]")).toBeNull();
+    expect(document.querySelector("[data-import-confirm]")).toBeNull();
+  });
+
+  it("旧向导的快照已提交，完成时不得回调到新向导", async () => {
+    let resolveSnapshot!: (value: { id: string; is_locked: boolean }) => void;
+    createSnapshot.mockImplementationOnce(() => new Promise((resolve) => { resolveSnapshot = resolve; }));
+    const onSnapshot = vi.fn();
+    const old = render(<MiningPoolStep poolId="old-pool" onSnapshot={onSnapshot} />);
+    await settlePreview();
+    fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
+    await waitFor(() => expect(createSnapshot).toHaveBeenCalledTimes(1));
+    old.unmount();
+    render(<MiningPoolStep />);
+    await act(async () => { resolveSnapshot({ id: "old-snapshot", is_locked: true }); });
+    expect(onSnapshot).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-pool-lock-banner]")).toBeNull();
+  });
+
+  it("导入入池已提交后离开旧向导，完成时不拉取或回写旧成员", async () => {
+    let resolveImport!: (value: unknown) => void;
+    importPoolMembers.mockImplementationOnce(() => new Promise((resolve) => { resolveImport = resolve; }));
+    const old = render(<MiningPoolStep poolId="old-pool" />);
+    fireEvent.click(document.querySelector('[data-pool-tab="import"]') as HTMLElement);
+    fireEvent.click(modalConfirm() as HTMLElement);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["symbol\n600000"], "pool.csv", { type: "text/csv" })] } });
+    await waitFor(() => expect(document.querySelector("[data-import-confirm]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-import-confirm]") as HTMLElement);
+    await waitFor(() => expect(importPoolMembers).toHaveBeenCalledTimes(1));
+    const readsBefore = fetchMembers.mock.calls.length;
+    old.unmount();
+    render(<MiningPoolStep />);
+    await act(async () => { resolveImport({ total_rows: 1, admitted_count: 1, error_count: 0, rows: [] }); });
+    expect(fetchMembers).toHaveBeenCalledTimes(readsBefore);
+  });
+
+  it("离开旧向导后候选池创建才返回，不回写新向导也不继续生成快照", async () => {
+    let resolvePool!: (value: { id: string }) => void;
+    createPoolFromFilter.mockImplementationOnce(() => new Promise((resolve) => { resolvePool = resolve; }));
+    const oldPool = vi.fn();
+    const oldSnapshot = vi.fn();
+    const old = render(<MiningPoolStep onPoolCreated={oldPool} onSnapshot={oldSnapshot} />);
+    await settlePreview();
+    fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
+    await waitFor(() => expect(createPoolFromFilter).toHaveBeenCalledTimes(1));
+    old.unmount();
+    render(<MiningPoolStep onPoolCreated={vi.fn()} onSnapshot={vi.fn()} />);
+    await act(async () => { resolvePool({ id: "old-pool" }); });
+    expect(oldPool).not.toHaveBeenCalled();
+    expect(oldSnapshot).not.toHaveBeenCalled();
+    expect(createSnapshot).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-pool-lock-banner]")).toBeNull();
+  });
+
   it("点击生成挖掘物料 → 走 snapshot 接口并进入锁定态", async () => {
     render(<MiningPoolStep />);
     const btn = document.querySelector("[data-pool-generate]") as HTMLElement;
@@ -548,9 +670,8 @@ describe("MiningPoolStep 成员表列按真实契约呈现（2026-09-21）", () 
 describe("DEF-4：预览三态与生成门控（VIS-2）", () => {
   it("预览未定型 → 生成按钮置灰；定型后恢复可用", async () => {
     let resolvePreview: (v: unknown) => void = () => undefined;
-    previewPool.mockImplementation(
-      () => new Promise((res) => { resolvePreview = res; }),
-    );
+    const pendingPreview = new Promise((res) => { resolvePreview = res; });
+    previewPool.mockReturnValue(pendingPreview);
     render(<MiningPoolStep />);
     await waitFor(() => {
       expect(document.querySelector("[data-pool-preview-loading]")).toBeTruthy();

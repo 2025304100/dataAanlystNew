@@ -38,7 +38,7 @@ from app.services.factors.__facade__ import apply_active_score_scope_to_scores_s
 from app.services.regions import markets_for_region, region_from_market
 from app.services.signal_stats import build_similar_signal_stats
 from app.services.scoring_config_engine import calculate_universe_symbol_score
-from app.services.sim_accounts import build_sim_account_summary, recent_sim_trades
+from app.services.sim_accounts import build_sim_account_summary, latest_prices_for_symbols, recent_sim_trades
 from app.services.trade_plans import build_trade_setup_view, load_recent_bars, upsert_trade_setup
 
 
@@ -77,23 +77,21 @@ def _safe_iso_date(value) -> str | None:
 
 
 def _is_scan_result_valid(result: ScanResult) -> bool:
+    if result.is_active == 0:
+        return False
     if result.is_frozen:
         return True
-    return (_now() - _safe_datetime(result.created_at)).days < result.valid_days
+    created_at = _safe_datetime(result.created_at)
+    if created_at is None or result.valid_days is None:
+        return False
+    if created_at.tzinfo is not None:
+        created_at = created_at.astimezone(timezone.utc).replace(tzinfo=None)
+    return (_now() - created_at).days < result.valid_days
 
 
-def _delete_expired_scan_results(db: Session, rows: list[tuple[ScanResult, Symbol]]) -> list[tuple[ScanResult, Symbol]]:
-    valid_rows: list[tuple[ScanResult, Symbol]] = []
-    deleted = False
-    for result, symbol in rows:
-        if _is_scan_result_valid(result):
-            valid_rows.append((result, symbol))
-            continue
-        db.delete(result)
-        deleted = True
-    if deleted:
-        db.commit()
-    return valid_rows
+def _visible_scan_results(rows: list[tuple[ScanResult, Symbol]]) -> list[tuple[ScanResult, Symbol]]:
+    """Filter page visibility without deleting historical evidence or committing."""
+    return [(result, symbol) for result, symbol in rows if _is_scan_result_valid(result)]
 
 
 def _latest_score_map(db: Session, symbol_ids: list[int]) -> dict[int, Score]:
@@ -138,7 +136,6 @@ def get_dashboard_overview(
             .join(Symbol, Symbol.id == ScanResult.symbol_id)
             .where(ScanResult.scan_run_id == latest_run.id, ScanResult.result_type == "executable")
             .order_by(ScanResult.rank_no.asc())
-            .limit(5)
         ).all()
         top_candidates = [
             {
@@ -151,7 +148,7 @@ def get_dashboard_overview(
                 "action": result.action,
                 "recommended_position_pct": result.recommended_position_pct,
             }
-            for result, symbol in rows
+            for result, symbol in _visible_scan_results(rows)[:5]
         ]
 
     risk_flags = []
@@ -200,7 +197,8 @@ def get_dashboard_workbench(
         )
         if market_codes:
             candidate_stmt = candidate_stmt.where(Symbol.market.in_(market_codes))
-        candidate_rows = _delete_expired_scan_results(db, db.execute(candidate_stmt).all())
+        candidate_rows = _visible_scan_results(db.execute(candidate_stmt).all())
+        executable_count = len(candidate_rows)
         candidate_rows.sort(
             key=lambda item: (
                 int(item[0].is_frozen),
@@ -267,27 +265,13 @@ def get_dashboard_workbench(
             for result, symbol in candidate_rows
         ]
         total_results_stmt = select(func.count(ScanResult.id)).where(ScanResult.scan_run_id == latest_run.id)
-        executable_count_stmt = select(func.count(ScanResult.id)).where(
-            ScanResult.scan_run_id == latest_run.id,
-            ScanResult.result_type == "executable",
-        )
         if market_codes:
             total_results_stmt = (
                 select(func.count(ScanResult.id))
                 .join(Symbol, Symbol.id == ScanResult.symbol_id)
                 .where(ScanResult.scan_run_id == latest_run.id, Symbol.market.in_(market_codes))
             )
-            executable_count_stmt = (
-                select(func.count(ScanResult.id))
-                .join(Symbol, Symbol.id == ScanResult.symbol_id)
-                .where(
-                    ScanResult.scan_run_id == latest_run.id,
-                    ScanResult.result_type == "executable",
-                    Symbol.market.in_(market_codes),
-                )
-            )
         total_results = db.execute(total_results_stmt).scalar_one()
-        executable_count = db.execute(executable_count_stmt).scalar_one()
         latest_scan = WorkbenchLatestScan(
             scan_run_id=latest_run.id,
             run_name=latest_run.run_name,
@@ -303,8 +287,10 @@ def get_dashboard_workbench(
     ).subquery()
     score_stmt = (
         select(Score, Symbol)
+        # Join the materialized latest-ID set once. MySQL can otherwise
+        # repeatedly evaluate the grouped IN subquery for outer score rows.
+        .join(latest_score_ids, Score.id == latest_score_ids.c.id)
         .join(Symbol, Symbol.id == Score.symbol_id)
-        .where(Score.id.in_(select(latest_score_ids.c.id)))
         .order_by(Score.priority_score.desc())
         .limit(score_limit)
     )
@@ -421,7 +407,7 @@ def get_dashboard_workbench(
         region_counts[region] = cnt
     total_symbols = sum(region_counts.values())
     filtered_symbols = total_symbols if market_group == "all" else region_counts.get(market_group, 0)
-    account_summary = build_sim_account_summary(db, portfolio)
+    account_summary = build_sim_account_summary(db, portfolio, update_positions=False)
     recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=8)]
 
     # 构建所有持仓
@@ -434,21 +420,7 @@ def get_dashboard_workbench(
 
     # 风控加固：批量预加载每个 symbol 的最新 bar，避免循环内 N+1 查询
     position_symbol_ids = [sym.id for _, sym in position_rows]
-    latest_close_map: dict[int, float] = {}
-    if position_symbol_ids:
-        from sqlalchemy import func as sa_func
-        latest_bar_subq = (
-            select(sa_func.max(DailyBar.id))
-            .where(DailyBar.symbol_id.in_(position_symbol_ids))
-            .group_by(DailyBar.symbol_id)
-            .scalar_subquery()
-        )
-        latest_bars = db.execute(
-            select(DailyBar.symbol_id, DailyBar.close)
-            .where(DailyBar.id.in_(latest_bar_subq))
-        ).all()
-        for sym_id, close in latest_bars:
-            latest_close_map[sym_id] = float(close)
+    latest_close_map = latest_prices_for_symbols(db, position_symbol_ids)
 
     positions = []
     for pos, sym in position_rows:

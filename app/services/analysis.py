@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.services.scoring_direction import ScoringConfigValidationError
 
 from datetime import date, datetime, timezone
 import math
@@ -54,6 +55,8 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
     try:
         from app.services.scoring_config_engine import calculate_symbol_score_with_config
         return calculate_symbol_score_with_config(db, symbol, trade_date, config=None)
+    except ScoringConfigValidationError:
+        raise
     except Exception:
         # 兜底：表未建/无激活预设时走旧硬编码逻辑，保证向后兼容
         return _legacy_calculate_symbol_score(db, symbol, trade_date)

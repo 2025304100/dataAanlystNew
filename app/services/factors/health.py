@@ -22,6 +22,8 @@ class FactorCoverage:
     eligible_symbols: int
     imputed_symbols: int
     coverage: float
+    observed_bar_symbols: int = 0
+    denominator_basis: str = 'active_cn_stock_universe_with_unknown_bar_symbols'
 
 
 @dataclass
@@ -69,14 +71,22 @@ def _raw_table_health(conn) -> list[RawTableHealth]:
 
 
 def _latest_batch(conn) -> str | None:
+    # This reader describes the default native factor suite. A newer frozen-
+    # set research batch can intentionally contain only one different version;
+    # its unrequested factors are not evidence of missing default inputs.
+    expected = [(definition.code, definition.version) for definition in FACTOR_DEFINITIONS]
+    pairs = ",".join("(?,?)" for _ in expected)
     row = conn.execute(
-        """
+        f"""
         SELECT calc_batch_id
         FROM factor_values
+        WHERE (factor_code, factor_version) IN ({pairs})
         GROUP BY calc_batch_id
+        HAVING COUNT(DISTINCT factor_code) = ?
         ORDER BY MAX(created_at) DESC, calc_batch_id DESC
         LIMIT 1
-        """
+        """,
+        [value for pair in expected for value in pair] + [len(expected)],
     ).fetchone()
     return str(row[0]) if row else None
 
@@ -85,14 +95,15 @@ def _factor_coverage(
     conn, *, calc_batch_id: str, adjust: str
 ) -> list[FactorCoverage]:
     result = []
+    denominator_cache = {}
     for definition in FACTOR_DEFINITIONS:
         latest_row = conn.execute(
             """
             SELECT MAX(trade_date)
             FROM factor_values
-            WHERE calc_batch_id = ? AND factor_code = ?
+            WHERE calc_batch_id = ? AND factor_code = ? AND factor_version = ?
             """,
-            [calc_batch_id, definition.code],
+            [calc_batch_id, definition.code, definition.version],
         ).fetchone()
         latest = latest_row[0] if latest_row else None
         if latest is None:
@@ -107,7 +118,7 @@ def _factor_coverage(
                 )
             )
             continue
-        universe = conn.execute(
+        observed = conn.execute(
             """
             SELECT COUNT(DISTINCT symbol)
             FROM raw_daily_bars
@@ -115,6 +126,22 @@ def _factor_coverage(
             """,
             [latest, adjust],
         ).fetchone()[0]
+        # Partial-date imports must not shrink the market denominator. Use the
+        # active CN stock directory, retaining unknown historical bar symbols
+        # conservatively when their metadata is absent. A missing directory
+        # falls back to all observed symbols through the calculation date.
+        if latest not in denominator_cache:
+            denominator_cache[latest] = conn.execute('''
+            SELECT COUNT(*) FROM (
+                SELECT symbol FROM raw_asset_universe
+                WHERE asset_type='stock' AND region='cn' AND is_active
+                UNION
+                SELECT DISTINCT b.symbol FROM raw_daily_bars b
+                WHERE b.adjust=? AND b.trade_date<=?
+                  AND NOT EXISTS (SELECT 1 FROM raw_asset_universe u WHERE u.symbol=b.symbol)
+            ) expected
+            ''', [adjust, latest]).fetchone()[0]
+        universe = denominator_cache[latest]
         eligible, imputed = conn.execute(
             """
             SELECT
@@ -123,9 +150,10 @@ def _factor_coverage(
             FROM factor_values
             WHERE calc_batch_id = ?
               AND factor_code = ?
+              AND factor_version = ?
               AND trade_date = ?
             """,
-            [calc_batch_id, definition.code, latest],
+            [calc_batch_id, definition.code, definition.version, latest],
         ).fetchone()
         universe_count = int(universe or 0)
         eligible_count = int(eligible or 0)
@@ -140,6 +168,7 @@ def _factor_coverage(
                 eligible_symbols=eligible_count,
                 imputed_symbols=int(imputed or 0),
                 coverage=round(coverage, 6),
+                observed_bar_symbols=int(observed or 0),
             )
         )
     return result

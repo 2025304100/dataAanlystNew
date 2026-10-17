@@ -7,7 +7,10 @@
 """
 from __future__ import annotations
 
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
+
+ProfilePurpose = Literal["all", "chat", "explanation", "draft", "factor_mining_ai_generate"]
 
 
 class AIProfileBase(BaseModel):
@@ -23,7 +26,7 @@ class AIProfileBase(BaseModel):
     max_context_tokens: int = Field(default=8192, ge=1, le=200000)
     daily_request_limit: int = Field(default=100, ge=0, le=100000)
     max_concurrent: int = Field(default=3, ge=1, le=100)
-    purpose: str = Field(default="all", max_length=64)
+    purpose: ProfilePurpose = "all"
     priority: int = Field(default=0, ge=0, le=1000)
     is_enabled: bool = True
     is_fallback: bool = False
@@ -52,7 +55,7 @@ class AIProfileUpdate(BaseModel):
     max_context_tokens: int | None = Field(default=None, ge=1, le=200000)
     daily_request_limit: int | None = Field(default=None, ge=0, le=100000)
     max_concurrent: int | None = Field(default=None, ge=1, le=100)
-    purpose: str | None = Field(default=None, max_length=64)
+    purpose: ProfilePurpose | None = None
     priority: int | None = Field(default=None, ge=0, le=1000)
     is_enabled: bool | None = None
     is_fallback: bool | None = None

@@ -86,6 +86,7 @@ class DiscoveryIndicatorEvaluationRow(BaseModel):
     scan_result_id: int
     symbol_id: int
     values: dict[str, bool | float | None] = Field(default_factory=dict)
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 # ── WP-P.4 数据准备与用户扫描分离 ──────────────────────────────

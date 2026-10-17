@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { mockApi, mockNavigate, showToast } = vi.hoisted(() => ({
   showToast: vi.fn(),
@@ -13,12 +13,15 @@ const { mockApi, mockNavigate, showToast } = vi.hoisted(() => ({
     scoringGetTask: vi.fn(),
     scoringGetPipelineEta: vi.fn(),
     scoringCreateTask: vi.fn(),
+    scoringGetResearchRetrainPlan: vi.fn(async () => { throw new Error("isolated missing research receipt"); }),
+    scoringRetrainResearchModel: vi.fn(),
     scoringActivateModel: vi.fn(),
     scoringCancelTask: vi.fn(),
     scoringUpdateSystemConfig: vi.fn(),
     scoringInitializeWarehouse: vi.fn(),
     scoringFallbackToManual: vi.fn(),
     scoringGetModelRelations: vi.fn(),
+    getFactorModel: vi.fn(),
   },
 }));
 
@@ -27,6 +30,7 @@ vi.mock("../../context/AppContext", () => ({ useApp: () => ({ locale: "zh-CN", s
 vi.mock("../../utils/navigate", () => ({ navigate: (path: string) => mockNavigate(path) }));
 
 import FactorModelSettings from "../FactorModelSettings";
+import trustedResearchFixture from "../../utils/__tests__/fixtures/trustedResearchCandidate.json";
 
 const overview = {
   feature_enabled: true,
@@ -56,6 +60,7 @@ async function chooseSet(label = "价值因子集合") {
 describe("FactorModelSettings — end-user pipeline journey", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockApi.getFactorModel.mockImplementation(async (id: string) => ({ id, hyperparameters: {} }));
     window.localStorage.clear();
     mockApi.scoringGetOverviewAsFactor.mockResolvedValue(overview);
     mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [] });
@@ -69,6 +74,101 @@ describe("FactorModelSettings — end-user pipeline journey", () => {
     }));
     mockApi.scoringGetPipelineEta.mockResolvedValue({ recommended_seconds: 1200, sample_count: 0 });
     mockApi.scoringCreateTask.mockResolvedValue({ id: "train-task", task_type: "factor_pipeline", status: "queued", stage: "queued", percent: 0, message: "queued", payload_json: { train_model: true, materialize_scores: false, factor_set_id: "fs-B" }, result: null });
+  });
+
+  it("renders the real completed research task and candidate without claiming failed validation or enabling production", async () => {
+    const model = trustedResearchFixture.model;
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [model] });
+    mockApi.scoringListFactorSetsAsFactor.mockResolvedValue([frozenSet(model.hyperparameters.factor_set_id, "可信研究集合")]);
+    mockApi.scoringListTasks.mockResolvedValue([trustedResearchFixture.task]);
+    mockApi.getFactorModel.mockResolvedValue(model);
+    mockApi.scoringGetModelRelations.mockResolvedValue({ model_id: model.id, factors: [], unbound_reason: null });
+    render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 2 步：训练模型/ }));
+    expect((await screen.findAllByText(/研究验证通过，待独立验证/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("模型未通过验证")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pipeline-step-4")).toHaveClass("ps-state-ready");
+    fireEvent.click(screen.getByRole("button", { name: /第 3 步：验证与启用/ }));
+    const row = (await screen.findByTestId(`view-relations-${model.id}`)).closest("tr")!;
+    expect(within(row).getByText("研究验证通过，待独立验证")).toBeVisible();
+    const activate = within(row).getByRole("button", { name: /正式启用|生产运行|生产激活/ });
+    expect(activate).toBeDisabled();
+    fireEvent.click(activate);
+    fireEvent.click(within(row).getByTestId(`view-relations-${model.id}`));
+    const drawer = await screen.findByTestId("relations-drawer");
+    expect((await within(drawer).findAllByText(/没有新的独立盲测/)).length).toBeGreaterThan(0);
+    expect(within(drawer).queryByRole("button", { name: "确认正式启用" })).not.toBeInTheDocument();
+    const retrain = within(drawer).getByRole("button", { name: "使用原可信数据集重训" });
+    expect(retrain).toBeEnabled();
+    fireEvent.click(retrain);
+    await screen.findByText("研究输入核验未通过，请关闭后重新检查");
+    expect(screen.getByRole("button", { name: "提交研究重训" })).toBeDisabled();
+    expect(mockApi.scoringGetResearchRetrainPlan).toHaveBeenCalledWith(model.id);
+    expect(mockApi.scoringRetrainResearchModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
+  it("keeps B's reviewed factor evidence and cutoff when A's detail read finishes late", async () => {
+    const models = ["A", "B"].map((id) => ({ id, status: "validated", production_eligible: true, model_type: "ridge", hyperparameters: { factor_set_id: "fs-B" }, metrics: {}, weights: [], sample_count: 1000 }));
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: models });
+    const pending = new Map<string, (value: unknown) => void>();
+    const detailPending = new Map<string, (value: unknown) => void>();
+    mockApi.scoringGetModelRelations.mockImplementation((id: string) => new Promise((resolve) => pending.set(id, resolve)));
+    mockApi.getFactorModel.mockImplementation((id: string) => new Promise((resolve) => detailPending.set(id, resolve)));
+    const relations = (id: string) => ({ model_id: id, status: "validated", factor_set_id: "fs-B", factor_set_name: "价值因子集合", n_members: 1, factors: [{ factor_code: `EVIDENCE_${id}`, factor_version_id: 101, factor_version: 1, role: "feature" }], unbound_reason: null });
+    render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
+    fireEvent.click(await screen.findByTestId("view-relations-A"));
+    fireEvent.click(within(screen.getByTestId("relations-drawer")).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByTestId("view-relations-B"));
+    await act(async () => {
+      pending.get("B")!(relations("B"));
+      detailPending.get("B")!({ id: "B", hyperparameters: { data_cutoff_date: "2026-10-14" } });
+    });
+    await within(screen.getByTestId("relations-drawer")).findByText("EVIDENCE_B");
+    await act(async () => {
+      pending.get("A")!(relations("A"));
+      detailPending.get("A")!({ id: "A", hyperparameters: { data_cutoff_date: "2026-10-13" } });
+    });
+    expect(within(screen.getByTestId("relations-drawer")).getByText("EVIDENCE_B")).toBeInTheDocument();
+    expect(within(screen.getByTestId("relations-drawer")).getByText("2026-10-14")).toBeInTheDocument();
+    expect(within(screen.getByTestId("relations-drawer")).queryByText("EVIDENCE_A")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("relations-drawer")).queryByText("2026-10-13")).not.toBeInTheDocument();
+  });
+
+  it.each(["failed", "wrong_model"])("blocks drawer activation when the reviewed evidence is %s", async (outcome) => {
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [{ id: "review-B", status: "validated", production_eligible: true, model_type: "ridge", hyperparameters: { factor_set_id: "fs-B" }, metrics: {}, weights: [], sample_count: 1000 }] });
+    if (outcome === "failed") mockApi.scoringGetModelRelations.mockRejectedValue(new Error("review unavailable"));
+    else mockApi.scoringGetModelRelations.mockResolvedValue({ model_id: "review-A", factors: [{ factor_code: "WRONG_EVIDENCE" }] });
+    render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
+    fireEvent.click(await screen.findByTestId("view-relations-review-B"));
+    const drawer = screen.getByTestId("relations-drawer");
+    const confirm = await within(drawer).findByRole("button", { name: /确认正式启用/ });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(within(drawer).queryByText("WRONG_EVIDENCE")).not.toBeInTheDocument();
+  });
+
+  it("keeps a newly opened review visible when an earlier activation completes and still submits its pinned scores", async () => {
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: ["A", "B"].map((id) => ({ id, status: "validated", production_eligible: true, model_type: "ridge", hyperparameters: { factor_set_id: "fs-B" }, metrics: {}, weights: [], sample_count: 1000 })) });
+    mockApi.scoringGetModelRelations.mockImplementation(async (id: string) => ({ model_id: id, factors: [{ factor_code: `REVIEW_${id}` }], factor_set_id: "fs-B", unbound_reason: null }));
+    let resolveActivation!: (value: unknown) => void;
+    mockApi.scoringActivateModel.mockReturnValueOnce(new Promise((resolve) => { resolveActivation = resolve; }));
+    render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
+    const rowA = screen.getByTestId("view-relations-A").closest("tr")!;
+    fireEvent.click(within(rowA).getByRole("button", { name: /正式启用|生产运行|生产激活/ }));
+    const activationReview = await screen.findByRole("dialog", { name: "确认启用模型" });
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    fireEvent.click(within(activationReview).getByRole("button", { name: "确认启用并生成评分" }));
+    fireEvent.click(screen.getByTestId("view-relations-B"));
+    await within(screen.getByTestId("relations-drawer")).findByText("REVIEW_B");
+    await act(async () => resolveActivation({ weight_mode: "ridge", active_model_run_id: "A", version: 2 }));
+    expect(within(screen.getByTestId("relations-drawer")).getByText("REVIEW_B")).toBeInTheDocument();
+    expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ hyperparameters: expect.objectContaining({ expected_model_run_id: "A" }) }));
   });
 
   it("keeps a manually selected training set when refreshing page data", async () => {
@@ -201,6 +301,9 @@ describe("FactorModelSettings — end-user pipeline journey", () => {
     fireEvent.click(screen.getByRole("button", { name: /第 3 步：验证与启用/ }));
     await screen.findByText("ridge-new");
     fireEvent.click(screen.getByRole("button", { name: /正式启用|生产运行|生产激活/ }));
+    const activationReview = await screen.findByRole("dialog", { name: "确认启用模型" });
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    fireEvent.click(within(activationReview).getByRole("button", { name: "确认启用并生成评分" }));
 
     await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
       train_model: false, materialize_scores: true, factor_set_id: "fs-B",

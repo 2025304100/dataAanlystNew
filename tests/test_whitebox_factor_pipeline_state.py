@@ -406,7 +406,8 @@ def test_failed_task_has_error_code(db_session, tmp_path):
     """
     _setup_config(db_session, tmp_path / "error_code.duckdb")
     task = _create_task(
-        db_session, task_id="error-code", status="running", stage="mirror"
+        db_session, task_id="error-code", status="running", stage="mirror",
+        payload=_data_prep_payload(),
     )
 
     with patch(
@@ -433,7 +434,8 @@ def test_failed_task_message_is_utf8_not_mojibake(db_session, tmp_path):
     """失败任务的 message/errors_json 为合法 UTF-8，无 U+FFFD 替换字符（对齐 WPD-05）。"""
     _setup_config(db_session, tmp_path / "utf8_msg.duckdb")
     task = _create_task(
-        db_session, task_id="utf8-msg", status="running", stage="mirror"
+        db_session, task_id="utf8-msg", status="running", stage="mirror",
+        payload=_data_prep_payload(),
     )
 
     with patch(

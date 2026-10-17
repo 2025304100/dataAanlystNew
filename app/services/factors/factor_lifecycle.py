@@ -162,6 +162,23 @@ def execute_transition(
 
     target_status = ACTION_TO_STATUS[action]
 
+    # Replays must be checked before the state prerequisites: a successful
+    # first request has already changed the factor's state. Never reuse a key
+    # belonging to another factor or another action.
+    if request.request_id:
+        existing_audit = db.execute(select(TransitionAudit).where(
+            TransitionAudit.request_id == request.request_id,
+        ).limit(1)).scalar_one_or_none()
+        if existing_audit is not None:
+            if existing_audit.factor_id != factor_id or existing_audit.to_status != target_status:
+                raise ValueError("transition_request_id_conflict")
+            return TransitionResult(
+                factor_id=factor_id, from_status=existing_audit.from_status,
+                to_status=existing_audit.to_status, action=action,
+                actor=existing_audit.actor, reason=existing_audit.reason,
+                audit_id=existing_audit.id, success=True,
+            )
+
     # 3. 推断当前状态（处理 legacy None）
     raw_status = factor.lifecycle_status
     current_status = _infer_current_status(factor)
@@ -176,25 +193,10 @@ def execute_transition(
     if target_status not in allowed:
         raise ValueError("transition_forbidden")
 
-    # 6. 幂等检查（request_id）
-    if request.request_id:
-        existing_audit = db.execute(
-            select(TransitionAudit)
-            .where(TransitionAudit.request_id == request.request_id)
-            .limit(1)
-        ).scalar_one_or_none()
-        if existing_audit is not None:
-            return TransitionResult(
-                factor_id=factor_id,
-                from_status=existing_audit.from_status,
-                to_status=existing_audit.to_status,
-                action=action,
-                actor=existing_audit.actor,
-                reason=existing_audit.reason,
-                audit_id=existing_audit.id,
-                success=True,
-                error=None,
-            )
+    # No alternative route may admit manually fabricated Shadow evidence.
+    if action in {"start_shadow", "activate", "recover_shadow"}:
+        from app.services.factors.shadow_capabilities import SHADOW_BLOCK_CODE
+        raise ValueError(SHADOW_BLOCK_CODE)
 
     # 7. 更新 lifecycle_status
     factor.lifecycle_status = target_status
@@ -203,7 +205,7 @@ def execute_transition(
     if target_status == "active":
         factor.status = "active"
         factor.is_active = 1
-    elif target_status == "deprecated":
+    else:
         factor.is_active = 0
 
     # 9. 追加 TransitionAudit

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox } from "antd";
 import { t } from "../../../../i18n";
 import { factorMiningApi } from "../../../../api/factorMining";
@@ -6,6 +6,7 @@ import GradeEvidenceDrawer from "./GradeEvidenceDrawer";
 import type { Grade, GradeEvidence } from "./gradeEvidenceTypes";
 import { GRADE_CHIPS, contextComplete } from "./resultTypes";
 import type { MiningResultContext, MiningResultRow, QualityGrade } from "./resultTypes";
+import { miningSourceLabel } from "../miningDisplay";
 
 /**
  * 结果总览（向导 §8.4，任务卡 pitfalls / not_do）。
@@ -30,15 +31,6 @@ export interface FactorMiningResultProps {
   onExport?: () => void;
   onCandidateChanged?: () => void;
 }
-
-const SOURCE_LABEL: Record<string, string> = {
-  elite: "精英保留",
-  mutation: "变异",
-  crossover: "交叉",
-  random: "随机注入",
-  ai: "AI 生成",
-  enumerated: "枚举",
-};
 
 /** 质量分级数值序（用于「等级变更标记」等展示） */
 const GRADE_ORDER: QualityGrade[] = ["S", "A", "B", "C", "D"];
@@ -68,15 +60,16 @@ function normalizeEvidence(raw: Record<string, unknown>): GradeEvidence {
   return {
     candidate_id: String(raw.candidate_id ?? ""),
     formula: String(raw.formula ?? ""),
-    grade: (VALID.includes(String(raw.grade) as Grade) ? raw.grade : "D") as Grade,
+    grade: (VALID.includes(String(raw.grade) as Grade) ? raw.grade : null) as Grade | null,
     reason_zh: String(raw.reason_zh ?? raw.reason ?? ""),
     thresholds_source: raw.thresholds_source === "custom" ? "custom" : "default",
     frequency: String(raw.frequency ?? "daily"),
     dimensions: Array.isArray(raw.dimensions) ? (raw.dimensions as GradeEvidence["dimensions"]) : [],
+    stat_thresholds: (raw.stat_thresholds as GradeEvidence["stat_thresholds"]) ?? {},
     stats: {
       t_test_p: null, bonferroni_p: null, fdr_q: null,
       bootstrap_ci: null, permutation_p: null, dsr_icir: null, decay_ratio: null,
-      walk_forward: {}, total_trials: null, degraded: true,
+      walk_forward: {}, total_trials: null, degraded: false,
       ...(statsRaw ?? {}),
     } as GradeEvidence["stats"],
     lineage: {
@@ -113,14 +106,45 @@ export default function FactorMiningResult({
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [evidenceActionBusy, setEvidenceActionBusy] = useState(false);
   const [evidenceActionError, setEvidenceActionError] = useState<string | null>(null);
+  const evidenceEpochRef = useRef(0);
+  const evidenceRequestRef = useRef(0);
+  const evidenceTargetRef = useRef<string | null>(null);
+  const evidenceActionRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  const resultScope = JSON.stringify([context?.candidate_pool_snapshot_id, rows.map((row) => row.candidate_id)]);
+  const resultScopeRef = useRef(resultScope);
+  resultScopeRef.current = resultScope;
 
-  const loadEvidence = useCallback(async (candidateId: string) => {
+  const closeEvidence = useCallback(() => {
+    evidenceEpochRef.current += 1;
+    evidenceRequestRef.current += 1;
+    evidenceTargetRef.current = null;
+    evidenceActionRef.current = null;
+    setEvidenceTarget(null);
+    setEvidence(null);
+    setEvidenceActionBusy(false);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; evidenceEpochRef.current += 1; };
+  }, []);
+  useEffect(() => { closeEvidence(); }, [resultScope, closeEvidence]);
+
+  const loadEvidence = useCallback(async (candidateId: string, epoch: number) => {
+    const request = ++evidenceRequestRef.current;
+    const scope = resultScopeRef.current;
+    const isCurrent = () => mountedRef.current && epoch === evidenceEpochRef.current &&
+      request === evidenceRequestRef.current && evidenceTargetRef.current === candidateId &&
+      resultScopeRef.current === scope;
     setEvidence(null);
     setEvidenceError(null);
     try {
       const raw = await factorMiningApi.getGradeEvidence(candidateId);
+      if (!isCurrent()) return;
       setEvidence(normalizeEvidence(raw));
     } catch (e) {
+      if (!isCurrent()) return;
       setEvidenceError(
         (e as { detail?: { user_message?: string } })?.detail?.user_message
         ?? t("miningEvidenceLoadFailed"),
@@ -129,36 +153,60 @@ export default function FactorMiningResult({
   }, []);
 
   const openEvidence = useCallback((candidateId: string) => {
+    const epoch = ++evidenceEpochRef.current;
+    evidenceTargetRef.current = candidateId;
+    evidenceActionRef.current = null;
+    setEvidenceActionBusy(false);
     setEvidenceActionError(null);
     setEvidenceTarget(candidateId);
-    void loadEvidence(candidateId);
+    void loadEvidence(candidateId, epoch);
   }, [loadEvidence]);
 
   const handleAdjustGrade = useCallback(async (grade: Grade, reason: string) => {
-    if (!evidenceTarget || evidenceActionBusy) return;
+    if (!evidenceTarget || evidenceActionRef.current != null || evidence?.candidate_id !== evidenceTarget) return;
+    const epoch = evidenceEpochRef.current;
+    const scope = resultScopeRef.current;
+    const isCurrent = () => mountedRef.current && epoch === evidenceEpochRef.current &&
+      evidenceTargetRef.current === evidenceTarget && resultScopeRef.current === scope;
+    evidenceActionRef.current = epoch;
     setEvidenceActionBusy(true);
     setEvidenceActionError(null);
     try {
       await factorMiningApi.manualGrade(evidenceTarget, grade, reason);
-      await loadEvidence(evidenceTarget);
-      onCandidateChanged?.();
+      if (!isCurrent()) {
+        if (mountedRef.current && resultScopeRef.current === scope) onCandidateChanged?.();
+        return;
+      }
+      await loadEvidence(evidenceTarget, epoch);
+      if (mountedRef.current && resultScopeRef.current === scope) onCandidateChanged?.();
     } catch (error) {
+      if (!isCurrent()) return;
       setEvidenceActionError(error instanceof Error ? error.message : t("miningRunOpError"));
-    } finally { setEvidenceActionBusy(false); }
-  }, [evidenceTarget, loadEvidence, onCandidateChanged, evidenceActionBusy]);
+    } finally { if (isCurrent()) { evidenceActionRef.current = null; setEvidenceActionBusy(false); } }
+  }, [evidenceTarget, evidence, loadEvidence, onCandidateChanged]);
 
   const handleRestoreAuto = useCallback(async () => {
-    if (!evidenceTarget || evidenceActionBusy) return;
+    if (!evidenceTarget || evidenceActionRef.current != null || evidence?.candidate_id !== evidenceTarget) return;
+    const epoch = evidenceEpochRef.current;
+    const scope = resultScopeRef.current;
+    const isCurrent = () => mountedRef.current && epoch === evidenceEpochRef.current &&
+      evidenceTargetRef.current === evidenceTarget && resultScopeRef.current === scope;
+    evidenceActionRef.current = epoch;
     setEvidenceActionBusy(true);
     setEvidenceActionError(null);
     try {
       await factorMiningApi.restoreAutoGrade(evidenceTarget);
-      await loadEvidence(evidenceTarget);
-      onCandidateChanged?.();
+      if (!isCurrent()) {
+        if (mountedRef.current && resultScopeRef.current === scope) onCandidateChanged?.();
+        return;
+      }
+      await loadEvidence(evidenceTarget, epoch);
+      if (mountedRef.current && resultScopeRef.current === scope) onCandidateChanged?.();
     } catch (error) {
+      if (!isCurrent()) return;
       setEvidenceActionError(error instanceof Error ? error.message : t("miningRunOpError"));
-    } finally { setEvidenceActionBusy(false); }
-  }, [evidenceTarget, loadEvidence, onCandidateChanged, evidenceActionBusy]);
+    } finally { if (isCurrent()) { evidenceActionRef.current = null; setEvidenceActionBusy(false); } }
+  }, [evidenceTarget, evidence, loadEvidence, onCandidateChanged]);
 
   const countOf = (g: QualityGrade | "all") =>
     g === "all" ? rows.length : rows.filter((r) => r.grade === g).length;
@@ -418,7 +466,7 @@ export default function FactorMiningResult({
                   {r.coverage != null ? `${(r.coverage * 100).toFixed(0)}%` : "-"}
                 </td>
                 <td className="mining-cell-num">{fmt(r.decay_ratio, 2)}</td>
-                <td>{SOURCE_LABEL[String(r.source ?? "")] ?? r.source ?? "-"}</td>
+                <td>{miningSourceLabel(r.source)}</td>
               </tr>
             ))}
           </tbody>
@@ -454,10 +502,11 @@ export default function FactorMiningResult({
       {evidenceTarget && (
         evidence ? (
           <GradeEvidenceDrawer
+            key={evidenceTarget}
             evidence={evidence}
             actionBusy={evidenceActionBusy}
             actionError={evidenceActionError}
-            onClose={() => setEvidenceTarget(null)}
+            onClose={closeEvidence}
             onAdjustGrade={(g, reason) => void handleAdjustGrade(g, reason)}
             onRestoreAuto={() => void handleRestoreAuto()}
           />
@@ -467,7 +516,7 @@ export default function FactorMiningResult({
             <header>
               <span>{t("miningEvidenceTitle")}</span>
               <button type="button" data-evidence-close
-                onClick={() => setEvidenceTarget(null)}>×</button>
+                onClick={closeEvidence}>×</button>
             </header>
             <p>{evidenceError ?? t("miningEvidenceLoading")}</p>
           </aside>

@@ -1,0 +1,9 @@
+.factor-shadow-lab-guided { display:flex; flex-direction:column; gap:16px; min-width:0; padding:16px 0; }
+.factor-shadow-lab-guided h3 { margin:0 0 6px; }
+.shadow-selection-grid { display:grid; grid-template-columns:minmax(220px, 2fr) minmax(180px, 1fr) auto; align-items:end; gap:16px; }
+.shadow-selection-grid label { display:block; margin-bottom:6px; font-weight:500; }
+.factor-shadow-lab-guided .anticon-info-circle { color:#738394; cursor:help; }
+.factor-shadow-lab-guided .ant-card { border-radius:12px; }
+.factor-shadow-lab-guided .ant-spin-container > .ant-card { margin-bottom:16px; }
+.factor-shadow-lab-guided .ant-spin-container > .ant-card:last-child { margin-bottom:0; }
+@media(max-width:768px) { .shadow-selection-grid { grid-template-columns:1fr; } }

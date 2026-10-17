@@ -104,7 +104,7 @@ def test_incremental_fallback_stops_on_cancel(db_session, monkeypatch):
     def fail(*_args, **_kwargs):
         raise ConnectionError("audit snapshot unavailable")
 
-    def single(worker_db, symbol, *_args):
+    def single(worker_db, symbol, *_args, **_kwargs):
         seen.append(symbol.id)
         if len(seen) == 1:
             row = worker_db.get(AsyncTaskRecord, task.id)

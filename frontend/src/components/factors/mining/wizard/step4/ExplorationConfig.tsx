@@ -13,6 +13,7 @@ export interface ExplorationConfigProps {
   aiRatio?: number;
   randomRatio?: number;
   aiEnabled?: boolean;
+  ratiosReadOnly?: boolean;
   onAiEnabledChange?: (next: boolean) => void;
   onChange?: (patch: Record<string, unknown>) => void;
 }
@@ -28,6 +29,7 @@ export default function ExplorationConfig({
   aiRatio = 0.5,
   randomRatio = 0.5,
   aiEnabled = true,
+  ratiosReadOnly = false,
   onAiEnabledChange,
   onChange,
 }: ExplorationConfigProps) {
@@ -53,6 +55,7 @@ export default function ExplorationConfig({
         <span className="mining-evo-field-label">{t("miningEvoExplorePreset")}</span>
         <Radio.Group
           data-evo-explore-preset
+          disabled={ratiosReadOnly}
           value={presetKey ?? "custom"}
           onChange={(e) => {
             const p = EXPLORE_PRESETS.find((x) => x.key === e.target.value);
@@ -71,6 +74,7 @@ export default function ExplorationConfig({
         <span className="mining-evo-field-label">{t("miningEvoAiRatio")}</span>
         <InputNumber
           data-evo-ai-ratio
+          disabled={ratiosReadOnly}
           min={0}
           max={1}
           step={0.05}
@@ -82,6 +86,7 @@ export default function ExplorationConfig({
         <span className="mining-evo-field-label">{t("miningEvoRandomRatio")}</span>
         <InputNumber
           data-evo-random-ratio
+          disabled={ratiosReadOnly}
           min={0}
           max={1}
           step={0.05}

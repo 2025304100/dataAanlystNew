@@ -32,6 +32,7 @@ from app.models.daily_bar import DailyBar
 from app.models.score import Score
 from app.models.scoring_config import ScoringConfig
 from app.models.symbol import Symbol
+from app.services.scoring_direction import ScoringConfigValidationError, prepare_scoring_config
 
 
 # ----------------------------------------------------------------------------
@@ -200,6 +201,8 @@ ETF_SYSTEM_PRESETS: list[dict[str, Any]] = [
 
 
 ALL_SYSTEM_PRESETS: list[dict[str, Any]] = STOCK_SYSTEM_PRESETS + ETF_SYSTEM_PRESETS
+for _preset in ALL_SYSTEM_PRESETS:
+    _preset.update(prepare_scoring_config(_preset, legacy=True))
 
 # 默认激活预设
 DEFAULT_ACTIVE_PRESET_KEYS: dict[str, str] = {
@@ -350,9 +353,10 @@ def get_scoring_config_by_id(db: Session, config_id: int) -> ScoringConfig | Non
 def parse_config_json(config: ScoringConfig) -> dict[str, Any]:
     """安全解析 config_json。"""
     try:
-        return json.loads(config.config_json) if config.config_json else {}
-    except (json.JSONDecodeError, TypeError):
-        return {}
+        parsed = json.loads(config.config_json) if config.config_json else {}
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ScoringConfigValidationError("Scoring config JSON is invalid") from exc
+    return prepare_scoring_config(parsed, legacy=True) if parsed else {}
 
 
 # ----------------------------------------------------------------------------
@@ -593,6 +597,7 @@ def evaluate_dimension_scores(
         dimension_scores: { dim_key: score }
         factor_detail:   { factor_key: { raw_value, normalized_value, weight, contribution } }
     """
+    config_json = prepare_scoring_config(config_json)
     dimensions = config_json.get("dimensions", [])
     dim_scores: dict[str, float] = {}
     factor_detail: dict[str, Any] = {}
@@ -611,6 +616,8 @@ def evaluate_dimension_scores(
             fkey = f["key"]
             raw = _resolve_factor_score(fkey, factor_scores)
             normalized = _apply_missing_policy(raw, f.get("missing_policy", "neutral"))
+            if raw is not None and f.get("direction") == "lower_better":
+                normalized = 100.0 - _clamp(float(raw))
             # 未接入数据源的因子（如 pe_score、main_net_inflow_score）按 ignore 处理
             if raw is None and f.get("source") not in ("builtin", "daily_bar"):
                 # 跳过未接入数据源

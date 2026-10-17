@@ -18,11 +18,14 @@ export interface FieldValidationPanelProps {
 }
 
 function BlockedRow({ item }: { item: BlockedItem }) {
+  // The current API supplies free-form reasons, not an issue-code enum. Only
+  // normalizeValidation's fixed fallback is translated; provider text is kept.
+  const issueLabel = item.issue === "校验未通过" ? t("miningFieldIssueFailed") : item.issue ?? "-";
   return (
     <div className="mining-field-blocked-item" data-field-blocked-item>
       <span>{item.field}</span>
       {item.name_zh ? <span>{item.name_zh}</span> : null}
-      <span className="mining-chip mining-chip--danger">{item.issue ?? "-"}</span>
+      <span className="mining-chip mining-chip--danger">{issueLabel}</span>
       <span>
         {t("miningFieldCurrent")}: {String(item.current ?? "-")} /{" "}
         {t("miningFieldRequired")}: {String(item.required ?? "-")}
@@ -43,16 +46,15 @@ export default function FieldValidationPanel({
   const total = status.progress?.total ?? 0;
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
 
-  /** 后端结论标签（通过/警告/阻断）；无则按本地区分 */
+  /** Stable verdict codes take priority; unknown labels remain provider-owned. */
   const verdictLabel =
-    status.verdict_label_zh ??
     (status.verdict === "pass"
       ? t("miningFieldVerdictPass")
       : status.verdict === "warn"
         ? t("miningFieldVerdictWarn")
         : status.verdict === "block"
           ? t("miningFieldVerdictBlock")
-          : null);
+          : status.verdict_label_zh ?? status.verdict ?? null);
   const verdictTone =
     status.verdict === "block" ? "danger" : status.verdict === "warn" ? "warn" : "success";
 

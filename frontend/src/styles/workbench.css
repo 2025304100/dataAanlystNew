@@ -1,18 +1,33 @@
 :root {
   color-scheme: light;
-  --bg: #f5f1e8;
-  --panel: #fffaf0;
-  --panel-strong: #fffef8;
-  --ink: #1f2933;
-  --muted: #6b7280;
-  --line: rgba(31, 41, 51, 0.12);
+  /* 中性冷灰画布 + 纯白表面：专业控制台底色 */
+  --bg: #f6f7f9;
+  --bg-subtle: #f1f3f6;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  /* 文本三级 */
+  --ink: #111827;
+  --text-primary: #111827;
+  --muted: #5f6b7a;
+  --muted-2: #98a2b3;
+  /* 发丝边框 + 分层阴影 */
+  --line: #e5e8ee;
+  --line-strong: #d4d9e2;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.12);
+  /* 品牌青（克制使用） */
   --accent: #0f766e;
-  --accent-soft: rgba(15, 118, 110, 0.12);
-  --accent-soft-hover: rgba(15, 118, 110, 0.18);
-  --focus-ring: 0 0 0 3px rgba(15, 118, 110, 0.28);
+  --accent-hover: #0c625c;
+  --accent-soft: rgba(15, 118, 110, 0.08);
+  --accent-soft-hover: rgba(15, 118, 110, 0.12);
+  --focus-ring: 0 0 0 3px rgba(15, 118, 110, 0.2);
   --warn: #b45309;
-  --danger: #b42318;
-  --shadow: 0 18px 50px rgba(31, 41, 51, 0.08);
+  --danger: #d92d20;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 }
 
 * {
@@ -27,12 +42,13 @@ html {
 body {
   margin: 0;
   min-height: 100%;
-  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   color: var(--ink);
-  background-color: #f5f1e8;
-  background-image:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.15), transparent 32%),
-    linear-gradient(180deg, #f9f5ed 0%, #f3eee5 100%);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -65,9 +81,9 @@ a:focus-visible,
   margin-bottom: 6px;
   padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 250, 240, 0.72);
-  box-shadow: 0 12px 34px rgba(31, 41, 51, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
 }
 
 .brand-block {
@@ -91,13 +107,15 @@ p {
 }
 
 h1 {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 h2 {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .toolbar {
@@ -241,7 +259,7 @@ h2 {
   height: 34px;
   border: 1px solid rgba(15, 118, 110, 0.18);
   border-radius: 999px;
-  background: rgba(255, 250, 240, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 8px 24px rgba(31, 41, 51, 0.14);
   pointer-events: none;
 }
@@ -265,14 +283,14 @@ h2 {
   top: 0;
   z-index: 50;
   display: flex;
-  gap: 6px;
-  margin: 0 0 6px;
-  padding: 6px;
+  gap: 2px;
+  margin: 0 0 8px;
+  padding: 5px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 250, 240, 0.92);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 26px rgba(31, 41, 51, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
   overflow-x: auto;
   flex-wrap: nowrap;
   scrollbar-width: thin;
@@ -280,19 +298,29 @@ h2 {
 }
 
 .view-tab {
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
   padding: 0 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.view-tab:hover {
+  color: var(--ink);
+  background: var(--bg-subtle);
 }
 
 .view-tab.active {
-  border-color: rgba(15, 118, 110, 0.28);
-  background: rgba(15, 118, 110, 0.12);
+  border-color: transparent;
+  background: var(--accent-soft);
   color: var(--accent);
+  font-weight: 600;
 }
 
 body[data-active-view="overview"] [data-workbench-view]:not([data-workbench-view="overview"]),
@@ -1189,7 +1217,7 @@ tr.clickable.active td,
 }
 
 .detail-panel {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 250, 240, 0.96));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.98));
 }
 
 .detail-dock {
@@ -1366,7 +1394,7 @@ tr.clickable.active td,
   max-height: calc(100vh - 44px);
   overflow: auto;
   padding: 0;
-  background: #f5f1e8;
+  background: var(--bg-subtle);
   border-radius: 10px;
   box-shadow: 0 24px 80px rgba(31, 41, 51, 0.28);
 }
@@ -1573,9 +1601,9 @@ body.detail-modal-open {
   width: 100%;
   min-height: 260px;
   aspect-ratio: 1.38;
-  border: 1px solid rgba(31, 41, 51, 0.08);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fffaf0;
+  background: #ffffff;
 }
 
 /* Score radar and factor breakdown. */
@@ -1621,7 +1649,7 @@ body.detail-modal-open {
 .breakdown-panel {
   border: 1px solid rgba(31, 41, 51, 0.08);
   border-radius: 8px;
-  background: linear-gradient(135deg, #fffef8 0%, #fffaf0 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #fbfcfd 100%);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -1665,7 +1693,7 @@ body.detail-modal-open {
   gap: 4px;
   padding: 6px 8px;
   border-radius: 6px;
-  background: rgba(255, 250, 240, 0.6);
+  background: rgba(255, 255, 255, 0.72);
   transition: background 0.15s ease;
 }
 
@@ -1817,7 +1845,7 @@ body.detail-modal-open {
 .timing-scores-panel {
   border: 1px solid rgba(31, 41, 51, 0.08);
   border-radius: 8px;
-  background: linear-gradient(135deg, #fffef8 0%, #fffaf0 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #fbfcfd 100%);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -1861,7 +1889,7 @@ body.detail-modal-open {
   gap: 4px;
   padding: 6px 8px;
   border-radius: 6px;
-  background: rgba(255, 250, 240, 0.6);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .timing-item-head {
@@ -1927,9 +1955,9 @@ body.detail-modal-open {
 
 /* Stage Panel */
 .stage-panel {
-  border: 1px solid rgba(31, 41, 51, 0.08);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fffaf0;
+  background: #ffffff;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -2045,7 +2073,7 @@ body.detail-modal-open {
   gap: 8px;
   margin: 12px 0 16px;
   padding: 8px;
-  background: rgba(255, 250, 240, 0.72);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(31, 41, 51, 0.08);
   border-radius: 8px;
   flex-wrap: wrap;
@@ -2071,7 +2099,7 @@ body.detail-modal-open {
 }
 
 .pool-tab--active {
-  background: #fffef8;
+  background: #ffffff;
   font-weight: 700;
 }
 
@@ -2435,7 +2463,7 @@ body.detail-modal-open {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 8px;
-  background: rgba(255, 250, 240, 0.98);
+  background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 28px 90px rgba(31, 41, 51, 0.24);
 }
 
@@ -2726,7 +2754,7 @@ body.chart-expanded {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 250, 240, 0.6);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 /* —— 治理页 5 子 Tab：在 scoped 深色主题下覆盖旧的浅色暖色样式 —— */
@@ -3385,25 +3413,26 @@ body.chart-expanded {
 .sub-tab {
   min-height: 34px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
-  padding: 0 14px;
+  padding: 0 13px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .sub-tab:hover {
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--bg-subtle);
 }
 
 .sub-tab.active {
-  border-color: rgba(15, 118, 110, 0.24);
-  background: rgba(15, 118, 110, 0.10);
+  border-color: transparent;
+  background: var(--accent-soft);
   color: var(--accent);
+  font-weight: 600;
 }
 
 .sub-tab-container {
@@ -3426,40 +3455,46 @@ body.chart-expanded {
 .settings-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
+  gap: 2px;
+  padding: 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 250, 240, 0.6);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
   position: sticky;
-  top: 56px;
+  top: 60px;
 }
 
 .settings-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 42px;
+  min-height: 36px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
-  padding: 0 14px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .settings-nav-item:hover {
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--bg-subtle);
 }
 
 .settings-nav-item.active {
-  border-color: rgba(15, 118, 110, 0.24);
-  background: rgba(15, 118, 110, 0.10);
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-nav-item.active .settings-nav-icon {
   color: var(--accent);
 }
 
@@ -3469,6 +3504,8 @@ body.chart-expanded {
   justify-content: center;
   flex: 0 0 auto;
   width: 16px;
+  font-size: 14px;
+  color: var(--muted-2);
 }
 
 .settings-nav-copy {
@@ -4321,7 +4358,7 @@ td .symbol-name {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
-  background: rgba(255, 250, 240, 0.48);
+  background: rgba(255, 255, 255, 0.6);
   overflow-x: auto;
   min-width: 0;
 }
@@ -7598,31 +7635,40 @@ td .symbol-name {
 }
 
 .stat-card {
-  border-radius: 8px;
-  transition: box-shadow 0.2s ease;
+  border-radius: 10px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.stat-card .ant-card-body {
+  padding: 15px 18px;
 }
 
 .stat-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
+  border-color: var(--line-strong);
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.2;
-  margin-bottom: 4px;
+  line-height: 1.15;
+  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .stat-sub {
   font-size: 12px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -10026,8 +10072,53 @@ td .symbol-name {
     line-height: 1.2;
   }
 
-  .app-global-nav .global-nav-tools {
-    align-self: flex-start;
-    margin-top: 6px !important;
+  /* 消息/帮助工具区已并入一级菜单 nav（2026-10-17）；窄屏 grid 下单独占一行右对齐 */
+  .app-global-nav .nav-tools-light {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    margin-top: 2px;
   }
+}
+
+/* ==========================================================================
+   一级菜单内消息/帮助工具区 · 米白浅色作用域（2026-10-17 用户要求）
+   - 位置：从右上角独立工具区并入一级菜单 nav（App.tsx，设置 tab 之后）
+   - 颜色：贴合页面主体（近白 #f6f7f9 / 文字 #1f2937 / 主品牌色 teal #0f766e），
+     不走组合交易域 .pt-theme-scope 的深色变量；作用域内覆盖 --pt-* 为浅色系。
+   - 覆盖语义：按钮/面板/红点/竖条/图标底全部取此处的浅色值，
+     组合交易域（.pt-theme-scope）不受影响。
+   ========================================================================== */
+.nav-tools-light {
+  --pt-background: #ffffff;
+  --pt-foreground: #1f2937;
+  --pt-card: #ffffff;
+  --pt-card-foreground: #1f2937;
+  --pt-popover: #ffffff;
+  --pt-popover-foreground: #1f2937;
+  --pt-primary: #0f766e;
+  --pt-primary-foreground: #ffffff;
+  --pt-muted: #f1f5f9;
+  --pt-muted-foreground: #64748b;
+  --pt-border: #e2e8f0;
+  --pt-input: #f1f5f9;
+  --pt-ring: #0f766e;
+  --pt-state-success: #059669;
+  --pt-state-success-dim: rgba(5, 150, 105, 0.12);
+  --pt-state-warning: #d97706;
+  --pt-state-warning-dim: rgba(217, 119, 6, 0.12);
+  --pt-state-error: #dc2626;
+  --pt-state-error-dim: rgba(220, 38, 38, 0.12);
+  --pt-state-info: #2563eb;
+  --pt-state-info-dim: rgba(37, 99, 235, 0.12);
+  --pt-surface-1: #ffffff;
+  --pt-surface-2: #ffffff;
+  --pt-surface-3: #f1f5f9;
+  --pt-surface-4: #e2e8f0;
+  --pt-slate-500: #64748b;
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-shadow-lg: 0 10px 24px rgba(15, 23, 42, 0.12), 0 4px 8px -4px rgba(15, 23, 42, 0.08);
+  background: transparent;
+  color: var(--pt-foreground);
 }

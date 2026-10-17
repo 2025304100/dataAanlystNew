@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { t } from "../../../../../i18n";
+import { miningSourceLabel, miningStageLabel } from "../../miningDisplay";
 import { Progress } from "antd";
 import MiningChart, {
   MINING_CHART_COLORS,
@@ -187,7 +188,7 @@ export default function FactorMiningRunTrack({
   };
   const statusLabel = progress.status === "succeeded" && progress.converged
     ? t("miningRunStatusCompletedConverged")
-    : statusKeys[progress.status] ? t(statusKeys[progress.status]) : progress.status;
+    : statusKeys[progress.status] ? t(statusKeys[progress.status]) : miningStageLabel(progress.status);
   const shownGeneration = completed ? Math.min(progress.max_generations, progress.generation + 1) : progress.generation;
   const fv = progress.final_validation ?? null;
   const genPercent = completed ? 100 : Math.min(100, Math.max(0, Math.round(
@@ -447,7 +448,7 @@ export default function FactorMiningRunTrack({
                   <td className="mining-run-top-formula">{c.formula}</td>
                   <td>{c.icir != null ? c.icir.toFixed(2) : "-"}</td>
                   <td>{c.coverage != null ? `${(c.coverage * 100).toFixed(0)}%` : "-"}</td>
-                  <td>{c.source ?? "-"}</td>
+                  <td>{miningSourceLabel(c.source)}</td>
                 </tr>
               ))}
             </tbody>
@@ -545,7 +546,7 @@ export default function FactorMiningRunTrack({
                       entry.level === "error" ? "is-error" : ""
                     }`}
                   >
-                    {entry.message}
+                    {miningStageLabel(entry.message)}
                   </div>
                 ))}
               </details>

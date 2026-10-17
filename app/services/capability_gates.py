@@ -75,12 +75,17 @@ def _parse_date(value: Any) -> date | None:
 
 
 def _parse_datetime(value: Any) -> datetime | None:
-    """将可能是字符串的 datetime 值安全转为 datetime 对象。"""
+    """统一为 UTC naive datetime，与本模块的 _utcnow_naive 对齐。"""
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo is not None else value
     if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None) if parsed.tzinfo is not None else parsed
+        except ValueError:
+            pass
         for fmt in (
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%dT%H:%M:%S",
@@ -1009,11 +1014,11 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
     """AI 配置就绪状态。
 
     判定依据：参照 `app/api/routes/ai_config.py` 的 `_load_ai_config()`，
-    检查配置文件是否持久化、enabled、service_url、api_key 是否完整。
+    检查持久化配置、启用状态、鉴权所需字段，以及同配置指纹的真实连接测试。
 
     状态规则：
     - 未配置 AI → blocked, reason="ai_not_configured"
-    - 已配置但测试未通过 → degraded, reason="ai_test_failed"
+    - 当前配置未测试、测试失败或成功证据超过 7 天 → degraded
     - 否则 → ready
 
     注意：本函数不发起任何网络请求，仅检查配置完整性。
@@ -1021,10 +1026,11 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
     now = _utcnow_naive()
 
     try:
-        from app.api.routes.ai_config import AI_CONFIG_PATH, _load_ai_config
+        from app.api.routes.ai_config import AI_CONFIG_PATH, _load_ai_config, get_ai_connection_test_status
 
         cfg = _load_ai_config()
         persisted = AI_CONFIG_PATH.exists()
+        connection_test = get_ai_connection_test_status(cfg)
     except Exception as exc:
         logger.debug("AI config load failed: %s", exc)
         return CapabilityStatus(
@@ -1063,13 +1069,13 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
         persisted
         and bool(cfg.get("enabled"))
         and bool(cfg.get("service_url"))
-        and bool(cfg.get("api_key"))
+        and (cfg.get("auth_type", "bearer") == "none" or bool(cfg.get("api_key")))
     )
-    # 测试通过判定：配置过且 updated_at 在最近 7 天内（视为近期测试通过）
-    updated_at_str = cfg.get("updated_at")
+    # A save timestamp is never proof of a successful provider request.
+    updated_at_str = connection_test.get("tested_at")
     updated_at = _parse_datetime(updated_at_str)
     test_age_days = _age_days(updated_at) if updated_at else None
-    ai_test_passed = ai_configured and test_age_days is not None and test_age_days <= 7
+    ai_test_passed = ai_configured and connection_test.get("status") == "passed" and updated_at is not None
 
     prerequisites = [
         CapabilityPrerequisite(
@@ -1079,7 +1085,7 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
             detail=(
                 f"提供商 {cfg.get('provider')} / 模型 {cfg.get('model')}"
                 if ai_configured
-                else "AI 服务地址或 API Key 未配置"
+                else "AI 服务未保存或未启用，或地址 / 当前鉴权所需凭据不完整"
             ),
         ),
         CapabilityPrerequisite(
@@ -1087,12 +1093,12 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
             label="连接测试已通过",
             satisfied=ai_test_passed,
             detail=(
-                f"最近配置/测试时间 {updated_at_str}"
+                f"当前配置最近连接测试通过时间 {updated_at_str}"
                 if ai_test_passed
                 else (
-                    f"配置时间 {updated_at_str} 距今 {test_age_days} 天，建议重新测试连接"
+                    f"最近测试时间 {updated_at_str}，状态 {connection_test.get('status')}，请重新测试连接"
                     if test_age_days is not None
-                    else "尚未进行连接测试"
+                    else "当前配置没有可信的连接测试记录；保存或更改配置后需重新测试"
                 )
             ),
         ),
@@ -1114,7 +1120,7 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
             label="AI 配置",
             status="blocked",
             reason_code="ai_not_configured",
-            user_message="AI 助手未配置或未启用，请在设置中配置 AI 服务地址与 API Key。",
+            user_message="AI 助手未配置或未启用，请配置服务地址及当前鉴权方式要求的凭据。",
             prerequisites=prerequisites,
             recommended_actions=recommended_actions,
             data_cutoff_at=data_cutoff_at,
@@ -1128,7 +1134,7 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
             status="degraded",
             reason_code="ai_test_failed",
             user_message=(
-                "AI 配置已保存，但近 7 天内未进行连接测试或测试已过期，"
+                "AI 配置已保存，但当前配置没有近 7 天内成功的连接测试，"
                 "建议在设置中点击「测试连接」验证可用性。"
             ),
             prerequisites=prerequisites,
@@ -1144,7 +1150,7 @@ def check_ai_capability(db: Session) -> CapabilityStatus:
         reason_code=None,
         user_message=(
             f"AI 助手就绪：提供商 {cfg.get('provider')}，模型 {cfg.get('model')}，"
-            f"最近配置时间 {updated_at_str}。"
+            f"最近连接测试时间 {updated_at_str}。"
         ),
         prerequisites=prerequisites,
         recommended_actions=recommended_actions,

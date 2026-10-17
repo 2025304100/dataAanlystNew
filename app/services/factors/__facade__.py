@@ -27,6 +27,26 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from typing import Any, Literal
 
+
+def list_verified_input_bundles():
+    from app.services.factors.input_replay import list_input_bundles
+    return list_input_bundles()
+
+
+def create_verified_input_replay(db, **request):
+    from app.services.factors.input_replay_task import create_input_replay
+    return create_input_replay(db, **request)
+
+
+def get_verified_input_replay_task(db, request_id):
+    from app.services.factors.input_replay_task import get_input_replay_task
+    return get_input_replay_task(db, request_id)
+
+
+def read_verified_input_replay_report(request_id):
+    from app.services.factors.input_replay import read_input_replay_report
+    return read_input_replay_report(request_id)
+
 # ── DTOs ──────────────────────────────────────────────────────────────
 
 ScoreModelStatus = Literal["validated", "rejected", "training", "any"]
@@ -99,6 +119,14 @@ class ScoreRuntimeOverviewDTO:
     runtime_active_model_id: str | None = None
     score_weight_mode: Literal["manual", "ridge", "shadow"] | None = None
     updated_by: str | None = None
+    # Preserve legacy aggregate fields; expose the real rows and a separately
+    # named model-enabled subset instead of manufacturing coverage from a mean.
+    factor_coverage: list[dict[str, Any]] = field(default_factory=list)
+    health_reasons: list[str] = field(default_factory=list)
+    calc_batch_id: str | None = None
+    latest_factor_date: str | None = None
+    model_factor_coverage_count: int = 0
+    model_factor_avg_coverage: float | None = None
 
 
 @dataclass(frozen=True)
@@ -206,7 +234,7 @@ class ScoreModelFactorMemberDTO:
     normalized_weight: float           # Std. weight; abs() == 1.0 across features for 1-Ridge-model display
     train_ic: float | None
     validation_ic: float | None
-    coverage: float | None             # 0..1 coverage ratio (best-effort from health snapshot when available)
+    coverage: float | None             # 0..1 coverage in this model's version-bound input batch
     side: Literal["long", "short", "neutral"]  # derived from sign(normalized_weight)
 
 
@@ -292,6 +320,8 @@ class FactorUsageDTO:
     days_in_production: int | None    # Since activation; may be None
     in_factor_sets: list[FactorUsageSetDTO]
     in_models: list[FactorUsageModelDTO]
+    coverage_window_days: int | None = None
+    coverage_as_of: str | None = None
 
 
 # ── P1 Chain Closure: Unified Model Relations DTO (Task 5) ───────────
@@ -308,7 +338,7 @@ class ModelRelationsFactorDTO:
     """One factor row inside ModelRelationsDTO.factors[].
 
     Cross-references FactorSetMember → Factor/FactorVersion with weight
-    snapshot (or legacy JSON fallback). Null means missing / N/A; never
+    snapshot, materialized fit weights or legacy JSON. Null means missing / N/A; never
     coerce NaN → 0 (TR-5.2).
     """
     factor_code: str
@@ -319,7 +349,7 @@ class ModelRelationsFactorDTO:
     weight_norm: float | None        # L1-normalized weight
     training_ic: float | None        # per-factor in-sample IC
     validation_ic: float | None      # per-factor out-of-sample IC
-    coverage: float | None           # 0..1 coverage ratio (best-effort)
+    coverage: float | None           # same-model input batch + version evidence, otherwise null
     role: str | None                 # FactorSetMember.role (feature/control/...)
 
 
@@ -578,6 +608,7 @@ def get_score_runtime_overview() -> ScoreRuntimeOverviewDTO:
     from app.services.factors.health import get_factor_health
     from app.services.factors.runtime import get_factor_runtime_snapshot
     from app.services.factors.store import FactorWarehouse
+    from app.services.factors.definitions import FACTOR_BY_CODE
 
     db, owned = _open_session()
     try:
@@ -595,6 +626,12 @@ def get_score_runtime_overview() -> ScoreRuntimeOverviewDTO:
             reasons = [f"warehouse_unavailable: {type(exc).__name__}"]
             avg_cov = 0.0
         mode = _coerce_mode(runtime.score_weight_mode)
+        coverage_rows = [
+            {**asdict(item), 'model_enabled': FACTOR_BY_CODE[item.factor_code].model_enabled}
+            for item in getattr(health, 'factors', [])
+        ]
+        model_rows = [item for item in coverage_rows if item['model_enabled']]
+        factor_dates = [item['latest_trade_date'] for item in coverage_rows if item['latest_trade_date']]
         return ScoreRuntimeOverviewDTO(
             feature_enabled=bool(cfg.feature_enabled),
             weight_mode=mode,
@@ -614,6 +651,12 @@ def get_score_runtime_overview() -> ScoreRuntimeOverviewDTO:
             runtime_active_model_id=runtime.active_model_run_id,
             score_weight_mode=mode,
             updated_by=runtime.updated_by,
+            factor_coverage=coverage_rows,
+            health_reasons=list(reasons),
+            calc_batch_id=getattr(health, 'calc_batch_id', None),
+            latest_factor_date=max(factor_dates) if factor_dates else None,
+            model_factor_coverage_count=len(model_rows),
+            model_factor_avg_coverage=(round(sum(item['coverage'] for item in model_rows) / len(model_rows), 6) if model_rows else None),
         )
     finally:
         if owned:
@@ -649,6 +692,7 @@ def create_scoring_task(
     actor: str = "external:data_sync",
     source_hint: str = "external_data_sync",
     factor_set_id: str | None = None,
+    trusted_history_dataset_id: str | None = None,
     window_days: int | None = None,
     validation_days: int | None = None,
     batch_size: int = 50000,
@@ -704,6 +748,7 @@ def create_scoring_task(
         window_days=(FactorPipelineCreate.model_fields["window_days"].default if window_days is None else int(window_days)),
         validation_days=(FactorPipelineCreate.model_fields["validation_days"].default if validation_days is None else int(validation_days)),
         factor_set_id=(str(factor_set_id).strip() if factor_set_id and str(factor_set_id).strip() else None),
+        trusted_history_dataset_id=trusted_history_dataset_id,
         actor=actor,
         source_hint=source_hint,
         hyperparameters_json=hp,
@@ -947,6 +992,13 @@ def submit_factor_draft_from_external(
                     )
                 # 校验通过 → 草稿写 submitted，回写 indicator approval_status
                 _draft_obj.review_status = "submitted"
+                # Freeze the reviewed source content on the server. Promotion
+                # must not silently read a different formula after submission.
+                _payload_for_store["_indicator_snapshot"] = {
+                    "formula": ind_row.formula,
+                    "params_json": ind_row.params_json,
+                    "value_type": ind_row.value_type,
+                }
                 _draft_obj.payload_json = _json_safe(_payload_for_store)
                 db.add(_draft_obj)
                 # ── P2.2: 审计事件 FACTOR_DRAFT_SUBMITTED（事务 flush 后） ──
@@ -1144,6 +1196,8 @@ def list_factorsets(
     from app.models.factor_evaluation import FactorSet, FactorSetMember
     from app.models.factor_model import FactorModelRun
     from app.services.factor_model_contract import model_factor_set_id as _fsid
+    from app.models.factor_model import FactorVersion
+    from app.services.factor_set_service import _factor_version_trainable
 
     db, owned = _open_session()
     try:
@@ -1185,8 +1239,15 @@ def list_factorsets(
             .where(FactorSetMember.factor_set_id.in_(row_ids))
             .order_by(FactorSetMember.factor_set_id, FactorSetMember.display_order, FactorSetMember.id)
         ).scalars().all() if row_ids else []
+        version_ids = {member.factor_version_id for member in member_rows}
+        versions_by_id = {
+            version.id: version for version in db.execute(
+                select(FactorVersion).where(FactorVersion.id.in_(version_ids))
+            ).scalars()
+        } if version_ids else {}
         members_by_set: dict[str, list[dict[str, Any]]] = {}
         for member in member_rows:
+            version = versions_by_id.get(member.factor_version_id)
             members_by_set.setdefault(member.factor_set_id, []).append({
                 "id": member.id,
                 "factor_set_id": member.factor_set_id,
@@ -1199,6 +1260,11 @@ def list_factorsets(
                 "display_order": member.display_order,
                 "missing_policy": member.missing_policy,
                 "excluded_reason": member.excluded_reason,
+                "version_status": version.validation_status if version is not None else "missing",
+                "version_trainable": bool(version is not None
+                    and version.factor_id == member.factor_id
+                    and version.version == member.factor_version
+                    and _factor_version_trainable(version, factor_code=member.factor_code)),
             })
 
         out: list[ScoreFactorSetDTO] = []
@@ -1241,6 +1307,118 @@ def get_scoring_factor_set_readiness(factor_set_id: str) -> dict[str, Any]:
             db.close()
 
 
+def find_research_retrain_request(model_id: str, request_id: str, *,
+                                  manifest_sha256: str | None = None,
+                                  note: str = '') -> dict[str, Any] | None:
+    from app.models.async_task import AsyncTaskRecord
+    from app.services.async_tasks import _task_to_read
+    from app.services.factors.research_requests import research_request_identity, validate_research_task
+    task_id, expected = research_request_identity(model_id, request_id, manifest_sha256 or '0' * 64, note)
+    db, owned = _open_session()
+    try:
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is None:
+            return None
+        validate_research_task(task, model_id, request_id)
+        if manifest_sha256 is not None and task.idempotency_key != 'request:' + expected:
+            raise ValueError('research_request_conflict')
+        return _task_to_read(task).model_dump()
+    finally:
+        if owned:
+            db.close()
+
+
+def get_research_retrain_plan(model_id: str) -> dict[str, Any]:
+    """Read and verify the exact immutable inputs of a research candidate.
+
+    No default warehouse, data collection, task creation or gate changes occur.
+    The worker repeats the manifest check when the user submits this plan.
+    """
+    import math
+    from app.services.market_history_evidence import load_trusted_history_dataset
+    from app.models.factor_model import FactorModelRun
+
+    db, owned = _open_session()
+    try:
+        run = db.get(FactorModelRun, model_id)
+        if run is None:
+            raise ValueError('research_retrain_model_not_found')
+        hp = _json_object(run.hyperparameters_json)
+        model_type, asset_type = run.model_type, run.asset_type
+    finally:
+        if owned:
+            db.close()
+    identity = hp.get('trusted_history_dataset')
+    if (model_type != 'ridge' or asset_type != 'stock' or not isinstance(identity, dict)
+            or identity.get('research_only') is not True):
+        raise ValueError('research_retrain_requires_trusted_research_model')
+    dataset = load_trusted_history_dataset(identity.get('dataset_id'))
+    if dataset.identity != identity:
+        raise ValueError('research_retrain_source_dataset_changed')
+    factor_set_id = hp.get('factor_set_id')
+    if not isinstance(factor_set_id, str) or not factor_set_id:
+        raise ValueError('research_retrain_factor_set_missing')
+    readiness = get_scoring_factor_set_readiness(factor_set_id)
+    if (readiness.get('ready') is not True
+            or readiness.get('factor_set_id') != factor_set_id
+            or not hp.get('factor_set_content_hash')
+            or readiness.get('details', {}).get('content_hash') != hp['factor_set_content_hash']):
+        raise ValueError('research_retrain_frozen_set_changed_or_unready')
+    alphas = hp.get('alphas')
+    if (hp.get('fit_policy') != 'cross_sectional_rank_v1'
+            or not isinstance(alphas, list) or not alphas
+            or any(isinstance(a, bool) or not isinstance(a, (int, float))
+                   or not math.isfinite(a) or a <= 0 for a in alphas)):
+        raise ValueError('research_retrain_original_fit_policy_missing')
+    return {
+        'model_id': model_id, 'factor_set_id': factor_set_id,
+        'dataset_id': dataset.dataset_id, 'manifest_sha256': dataset.manifest_sha256,
+        'start_date': dataset.calendar[0].isoformat(),
+        'end_date': dataset.calendar[-1].isoformat(),
+        'symbol_count': len(dataset.symbols), 'bar_count': len(dataset.bars),
+        'trade_date_count': len(dataset.calendar), 'window_days': 250, 'validation_days': 50,
+        'fit_policy': hp['fit_policy'], 'alphas': list(alphas),
+        'research_only': True, 'independent_validation': False,
+        'materialize_scores': False, 'auto_activate': False,
+    }
+
+
+def _materialized_model_weight_entries(run: Any) -> list[dict[str, Any]]:
+    """A rejected fit still owns real member rows even without a release snapshot."""
+    return [{
+        "factor_code": row.factor_code,
+        "factor_version": row.factor_version,
+        "coef_raw": row.coefficient,
+        "weight_norm": row.normalized_weight,
+        "training_ic": row.train_ic,
+        "validation_ic": row.validation_ic,
+    } for row in run.weights]
+
+
+def _model_training_coverage(hyperparameters: dict[str, Any], code: str,
+                             version: int) -> float | None:
+    """Never substitute current global health for an immutable model's inputs."""
+    import math
+    batch_id = hyperparameters.get("factor_calc_batch_id")
+    evidence = hyperparameters.get("training_gate_evidence")
+    if not isinstance(batch_id, str) or not batch_id.strip() or not isinstance(evidence, dict):
+        return None
+    entry = evidence.get(code)
+    if not isinstance(entry, dict) or entry.get("factor_calc_batch_id") != batch_id:
+        return None
+    observed_version = entry.get("factor_version")
+    if isinstance(observed_version, bool) or observed_version != version or version <= 0:
+        return None
+    value = entry.get("coverage")
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        coverage = float(value)
+    except (TypeError, ValueError):
+        return None
+    return coverage if math.isfinite(coverage) and 0 <= coverage <= 1 else None
+
+
 def get_model_detail(model_id: str) -> ScoreModelDetailDTO | None:
     """Deep model payload used by the factor-model "expand" UI.
 
@@ -1261,6 +1439,7 @@ def get_model_detail(model_id: str) -> ScoreModelDetailDTO | None:
         if run is None:
             return None
         metrics = _json_object(run.metrics_json)
+        model_hp = _json_object(run.hyperparameters_json)
         fsid = model_factor_set_id(run)
         fs = db.get(FactorSet, fsid) if fsid else None
 
@@ -1272,9 +1451,9 @@ def get_model_detail(model_id: str) -> ScoreModelDetailDTO | None:
         ).scalar_one_or_none()
         weight_entries: list[dict] = []
         if snap_row is not None:
-            parsed = _json_object(snap_row.weights_norm_json)
-            if isinstance(parsed, list):
-                weight_entries = [e for e in parsed if isinstance(e, dict)]
+            weight_entries = [e for e in _json_array_list(snap_row.weights_norm_json) if isinstance(e, dict)]
+        if not weight_entries:
+            weight_entries = _materialized_model_weight_entries(run)
         if not weight_entries:
             fv = _json_object(run.feature_versions_json)
             if isinstance(fv, dict):
@@ -1295,21 +1474,6 @@ def get_model_detail(model_id: str) -> ScoreModelDetailDTO | None:
         if codes:
             for f in db.execute(select(Factor).where(Factor.code.in_(codes))).scalars():
                 name_map[f.code] = f.name
-
-        # Build a best-effort coverage map from factor health
-        coverage_map: dict[str, float] = {}
-        try:
-            from app.services.factors.config import get_factor_system_config
-            from app.services.factors.health import get_factor_health
-            from app.services.factors.store import FactorWarehouse
-            cfg = get_factor_system_config(db)
-            h = get_factor_health(FactorWarehouse(cfg.warehouse_path))
-            for fh in getattr(h, "factors", []) or []:
-                coverage_map[str(getattr(fh, "factor_code", ""))] = float(
-                    getattr(fh, "coverage", 0) or 0
-                )
-        except Exception:
-            coverage_map = {}
 
         def _num(x):
             if x is None:
@@ -1342,7 +1506,7 @@ def get_model_detail(model_id: str) -> ScoreModelDetailDTO | None:
                 normalized_weight=nw_f,
                 train_ic=_num(w.get("training_ic")),
                 validation_ic=_num(w.get("validation_ic")),
-                coverage=coverage_map.get(fc),
+                coverage=_model_training_coverage(model_hp, fc, fvno),
                 side=side,
             ))
         factors.sort(key=lambda m: abs(m.normalized_weight), reverse=True)
@@ -1425,7 +1589,10 @@ def get_factor_usage(factor_code: str) -> FactorUsageDTO | None:
         all_snaps = db.execute(select(FactorWeightSnapshot)).scalars().all()
         weight_by_model: dict[str, dict] = {}
         for s in all_snaps:
-            parsed = _json_object(s.weights_norm_json)
+            try:
+                parsed = _jsonmod.loads(s.weights_norm_json or "[]")
+            except (TypeError, ValueError):
+                parsed = []
             if not isinstance(parsed, list):
                 continue
             for entry in parsed:
@@ -1475,23 +1642,31 @@ def get_factor_usage(factor_code: str) -> FactorUsageDTO | None:
             fv = db.get(FactorVersion, factor.active_version_id)
             active_version = fv.version if fv else None
         days_in_production: int | None = None
-        if factor.archived_at is None and factor.created_at:
-            days_in_production = max(0, (datetime.now(timezone.utc).replace(tzinfo=None) - factor.created_at).days)
+        if factor.archived_at is None and factor.lifecycle_status == "active":
+            from app.models.factor_evaluation import TransitionAudit
+            activated_at = db.scalar(select(TransitionAudit.created_at).where(
+                TransitionAudit.factor_id == factor.id,
+                TransitionAudit.to_status == "active",
+            ).order_by(TransitionAudit.created_at.desc(), TransitionAudit.id.desc()).limit(1))
+            if activated_at is not None:
+                days_in_production = max(0, (datetime.now(timezone.utc).replace(tzinfo=None) - activated_at).days)
 
         coverage_30d: float | None = None
         ic_mean_30d: float | None = None
+        coverage_window_days = None
+        coverage_as_of = None
         try:
             from app.services.factors.config import get_factor_system_config
-            from app.services.factors.health import get_factor_health
             from app.services.factors.store import FactorWarehouse
+            from app.services.factors.factor_registry import get_latest_version
+            from app.services.factors.usage_statistics import read_usage_coverage
             cfg = get_factor_system_config(db)
-            h = get_factor_health(FactorWarehouse(cfg.warehouse_path))
-            for fh in getattr(h, "factors", []) or []:
-                if str(getattr(fh, "factor_code", "")) == factor_code:
-                    coverage_30d = float(getattr(fh, "coverage", 0) or 0)
-                    ic_val = getattr(fh, "ic_mean", None) or getattr(fh, "ic", None)
-                    ic_mean_30d = float(ic_val) if ic_val is not None else None
-                    break
+            latest_version = get_latest_version(db, factor.id)
+            stats = read_usage_coverage(FactorWarehouse(cfg.warehouse_path), code=factor_code,
+                version=latest_version.version if latest_version else None)
+            coverage_30d = stats["coverage_30d"]
+            coverage_window_days = stats["coverage_window_days"]
+            coverage_as_of = stats["coverage_as_of"]
         except Exception:
             coverage_30d = None
             ic_mean_30d = None
@@ -1511,6 +1686,8 @@ def get_factor_usage(factor_code: str) -> FactorUsageDTO | None:
             days_in_production=days_in_production,
             in_factor_sets=in_factor_sets,
             in_models=in_models,
+            coverage_window_days=coverage_window_days,
+            coverage_as_of=coverage_as_of,
         )
     finally:
         if owned:
@@ -1532,7 +1709,8 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
 
     Weight source priority:
       1. FactorWeightSnapshot 的 weights_norm_json（per-model 聚合行，PK=model_id）
-      2. FactorModelRun.feature_versions_json (legacy fallback)
+      2. FactorModelMember materialized fit weights (including rejected fits)
+      3. FactorModelRun.feature_versions_json (legacy fallback)
 
     Data guarantees:
       - Missing numeric values → Python ``None`` → JSON ``null`` (TR-5.2).
@@ -1617,7 +1795,6 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
         factor_id_to_code: dict[int, str] = {}
         factor_code_to_name: dict[str, str] = {}
         fv_id_to_version: dict[int, int] = {}
-        factor_code_to_cov: dict[str, float] = {}
 
         if feature_members:
             f_ids = sorted({int(m.factor_id) for m in feature_members if m.factor_id})
@@ -1634,10 +1811,8 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
                 ).scalars():
                     fv_id_to_version[int(fvrow.id)] = int(fvrow.version)
 
-        # ── 5. Weight source priority (Task 11 FR-12 / AC-11) ──
-        # ① Snapshot 优先：FactorWeightSnapshot.weights_norm_json（per-model row）
-        #   如果存在且 JSON 数组 len > 0 → 用 snapshot（TR-11.4：破坏 fallback 后仍能读到）
-        # ② Fallback：FactorModelRun.feature_versions_json（legacy 路径）
+        # Immutable aggregate snapshot first, materialized fit members second,
+        # historical rich feature_versions_json only when neither is present.
         snap_row = db.execute(
             select(FactorWeightSnapshot).where(
                 FactorWeightSnapshot.model_id == run.id
@@ -1645,9 +1820,7 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
         ).scalar_one_or_none()
         snap_entries: list[dict] = []
         if snap_row is not None:
-            parsed = _json_object(snap_row.weights_norm_json)
-            if isinstance(parsed, list):
-                snap_entries = [e for e in parsed if isinstance(e, dict)]
+            snap_entries = [e for e in _json_array_list(snap_row.weights_norm_json) if isinstance(e, dict)]
 
         weight_lookup: dict[tuple[str, int], dict[str, Any]] = {}
 
@@ -1662,9 +1835,10 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
                 return None
             return fv
 
-        if len(snap_entries) > 0:
-            # ── ① Priority 1: from aggregate snapshot ──
-            for entry in snap_entries:
+        fit_entries = snap_entries or _materialized_model_weight_entries(run)
+        if len(fit_entries) > 0:
+            # Snapshot entries and materialized members use the same key shape.
+            for entry in fit_entries:
                 fc = str(entry.get("factor_code", ""))
                 try:
                     fvno = int(entry.get("factor_version", entry.get("factor_version_number", 0)) or 0)
@@ -1680,7 +1854,7 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
                     "factor_version_id": entry.get("factor_version_id"),
                 }
         else:
-            # ── ② Legacy fallback: parse feature_versions_json ──
+            # Legacy fallback: parse feature_versions_json.
             fv_obj = _json_object(run.feature_versions_json)
             # Accept either "factors": {code: {...}} or flat {code: {...}}
             factors_block = fv_obj if fv_obj and not any(
@@ -1703,26 +1877,6 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
                         "validation_ic": _safe_num(info.get("validation_ic")),
                         "factor_version_id": info.get("factor_version_id"),
                     }
-
-        # ── 6. Best-effort coverage from health snapshot ──
-        try:
-            from app.services.factors.config import get_factor_system_config
-            from app.services.factors.health import get_factor_health
-            from app.services.factors.store import FactorWarehouse
-            cfg = get_factor_system_config(db)
-            h = get_factor_health(FactorWarehouse(cfg.warehouse_path))
-            for fh in getattr(h, "factors", []) or []:
-                cc = str(getattr(fh, "factor_code", ""))
-                cv = getattr(fh, "coverage", None)
-                if cc and cv is not None:
-                    try:
-                        cv_f = float(cv)
-                        if cv_f == cv_f:
-                            factor_code_to_cov[cc] = cv_f
-                    except (TypeError, ValueError):
-                        pass
-        except Exception:
-            factor_code_to_cov = {}
 
         def _num_safe(v: Any) -> float | None:
             """Universal numeric sanitiser: None / NaN / inf → None (JSON null)."""
@@ -1765,7 +1919,7 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
             weight_norm = _num_safe(wdata.get("weight_norm"))
             training_ic = _num_safe(wdata.get("training_ic"))
             validation_ic = _num_safe(wdata.get("validation_ic"))
-            coverage = _num_safe(factor_code_to_cov.get(fc))
+            coverage = _model_training_coverage(hp, fc, fv_no)
 
             factor_rows.append(ModelRelationsFactorDTO(
                 factor_code=fc,
@@ -2076,7 +2230,7 @@ def approve_factor_draft(
             if row is None:
                 raise ValueError(f"draft_missing_after_approve:{draft_no}")
             try:
-                factor, version = _promote_factor_draft(row)
+                factor, version = _promote_factor_draft(row, session=db)
                 # promote 成功 → 迁 applied
                 row.review_status = "applied"
                 _fid = int(getattr(factor, "id", 0) or 0)
@@ -2686,13 +2840,11 @@ def run_training_eligibility_gates(
                     )
                 ).scalar_one_or_none()
                 if snap is not None:
-                    parsed = _json_object(snap.weights_norm_json)
-                    if isinstance(parsed, list):
-                        codes = sorted({
-                            str(e.get("factor_code", ""))
-                            for e in parsed
-                            if isinstance(e, dict) and e.get("factor_code")
-                        })
+                    codes = sorted({
+                        str(e.get("factor_code", ""))
+                        for e in _json_array_list(snap.weights_norm_json)
+                        if isinstance(e, dict) and e.get("factor_code")
+                    })
         finally:
             if owned:
                 try:
@@ -2776,6 +2928,15 @@ class _SentinelHealth:
     factors: list = []
 
 _SENTINEL_HEALTH = _SentinelHealth()
+
+
+def _json_array_list(raw: str | None) -> list[Any]:
+    import json
+    try:
+        obj = json.loads(raw or "[]")
+        return obj if isinstance(obj, list) else []
+    except (TypeError, ValueError):
+        return []
 
 
 def _json_object(raw: str | None) -> dict[str, Any]:
@@ -2960,6 +3121,8 @@ def activate_scoring_model(
     finally:
         db.close()
     try:
+        if hasattr(snap, "to_dict"):
+            return dict(snap.to_dict())
         return dict(snap.model_dump()) if hasattr(snap, "model_dump") else {
             "weight_mode": getattr(snap, "weight_mode", mode),
             "active_model_run_id": getattr(snap, "active_model_run_id", model_run_id),
@@ -3009,6 +3172,8 @@ def fallback_scoring_model(
     finally:
         db.close()
     try:
+        if hasattr(snap, "to_dict"):
+            return dict(snap.to_dict())
         return dict(snap.model_dump()) if hasattr(snap, "model_dump") else {
             "weight_mode": getattr(snap, "weight_mode", "manual"),
             "fallback_reason": getattr(snap, "fallback_reason", reason),
@@ -3034,6 +3199,7 @@ def freeze_scoring_factor_set(
     db = get_session_local()()
     safe_actor = (actor or "local_user") if str(actor or "").lower() != "anonymous" else "local_user"
     updated = None
+    response_payload: dict[str, Any] | None = None
     try:
         # before snapshot
         before_fs = db.execute(_sas(_FS).where(_FS.id == str(factorset_id))).scalar_one_or_none()
@@ -3080,6 +3246,10 @@ def freeze_scoring_factor_set(
         ))
         db.commit()
         db.refresh(updated)
+        from app.services.factors.factor_set_service import to_read_dict
+        response_payload = to_read_dict(updated)
+        response_payload["label"] = updated.name
+        response_payload["member_count"] = sum(1 for member in response_payload["members"] if member["role"] == "feature")
     except ValueError:
         db.rollback()
         raise
@@ -3088,6 +3258,8 @@ def freeze_scoring_factor_set(
         raise
     finally:
         db.close()
+    if response_payload is not None:
+        return response_payload
     try:
         d = dict(updated.model_dump()) if hasattr(updated, "model_dump") else {
             "id": getattr(updated, "id", factorset_id),
@@ -3228,7 +3400,7 @@ def list_scoring_factor_definitions(
 ) -> dict[str, Any]:
     """薄封列出因子库定义（listFactorDefinitions → scoringListFactorDefinitions）。"""
     from app.schemas.factor_library import FactorRead
-    from app.services.factors.factor_registry import list_factors as _list_factors
+    from app.services.factors.factor_registry import list_factors as _list_factors, factor_definition_rows
     db, owned = _open_session()
     try:
         no_params = all(x is None for x in (lifecycle_status, origin, factor_kind, category, search)) and page == 1 and page_size == 20
@@ -3243,7 +3415,7 @@ def list_scoring_factor_definitions(
             )
             page_size_out = int(page_size)
         return {
-            "items": [FactorRead.model_validate(row).model_dump(mode="json") for row in items],
+            "items": factor_definition_rows(db, items),
             "total": int(total),
             "page": int(page),
             "page_size": page_size_out,
@@ -3261,6 +3433,7 @@ def get_scoring_factor_definition(factor_code: str) -> dict[str, Any]:
     from sqlalchemy import select
     from app.models.factor import Factor
     from app.models.factor_model import FactorVersion
+    from app.services.factor_set_service import _factor_version_trainable
     db, owned = _open_session()
     try:
         factor = db.execute(
@@ -3283,7 +3456,7 @@ def get_scoring_factor_definition(factor_code: str) -> dict[str, Any]:
                 "created_by": getattr(v, "created_by", None),
                 "status": getattr(v, "validation_status", None),
                 "validation_status": getattr(v, "validation_status", None),
-                "trainable": getattr(v, "validation_status", None) in {"valid", "testing", "shadow", "active"},
+                "trainable": _factor_version_trainable(v, factor_code=factor.code),
             }
             for v in versions_rows
         ]
@@ -3302,7 +3475,11 @@ def get_scoring_factor_definition(factor_code: str) -> dict[str, Any]:
             "created_at": getattr(factor, "created_at", None),
             "updated_at": getattr(factor, "updated_at", None),
         }
-        d["versions"] = versions
+        from app.schemas.factor_library import FactorVersionRead
+        from app.services.factors.factor_registry import factor_definition_rows
+        d = {**d, **factor_definition_rows(db, [factor])[0]}
+        d["versions"] = [{**legacy, **FactorVersionRead.model_validate(row).model_dump(mode="json")}
+                         for legacy, row in zip(versions, versions_rows)]
         return d
     finally:
         if owned:
@@ -3528,7 +3705,7 @@ def _parse_indicator_id(source_ref_id: Any) -> int | None:
     return None
 
 
-def _promote_factor_draft(draft: Any) -> tuple[Any, Any]:
+def _promote_factor_draft(draft: Any, *, session: Any = None) -> tuple[Any, Any]:
     """P2.2b：审批通过后真正 promote custom_indicators 草稿为因子。
 
     返回 (factor, version)。任何异常抛出由调用方处理并回滚草稿状态。
@@ -3581,22 +3758,32 @@ def _promote_factor_draft(draft: Any) -> tuple[Any, Any]:
     norm_payload.setdefault("change_note", payload.get("change_note") or "")
     norm_payload.setdefault("created_by", payload.get("created_by") or payload.get("actor") or "promote-via-draft")
 
-    db, owned = _open_session()
+    db, owned = _open_session(session)
     try:
+        from app.models.custom_indicator import CustomIndicator
+        indicator = db.get(CustomIndicator, ind_id)
+        if indicator is None:
+            raise ValueError("indicator_not_found")
+        snapshot = payload.get("_indicator_snapshot")
+        current_snapshot = {
+            "formula": indicator.formula, "params_json": indicator.params_json,
+            "value_type": indicator.value_type,
+        }
+        if not isinstance(snapshot, dict):
+            raise ValueError("upstream_indicator_snapshot_missing:请驳回旧草稿后重新提交，以冻结待审公式和参数")
+        if snapshot != current_snapshot:
+            raise ValueError("upstream_indicator_changed:上游公式或参数已变更，请驳回旧草稿后重新提交")
         factor, version, _info = promote_factor_from_indicator(
             db, indicator_id=ind_id, request=_Bunch(norm_payload)
         )
-        # promote_factor_from_indicator 仅 flush；此处必须显式 commit，才能
-        #   1) 让 Factor / FactorVersion 真正持久化（否则关闭 session 回滚）
-        #   2) 让调用方 session 在外层事务里通过 FK 校验（MySQL/Postgres 均不可见未提交事务）
-        try:
-            db.commit()
-        except Exception:
+        # The reviewer owns the transaction: factor/version publication and
+        # the draft's applied marker either commit together or both roll back.
+        if owned:
             try:
-                db.rollback()
+                db.commit()
             except Exception:
-                pass
-            raise
+                db.rollback()
+                raise
         # 保存关键 id / code / version_no，避免关闭 session 后对象 detach 再访问属性抛错
         _factor_pk = int(getattr(factor, "id", 0) or 0)
         _factor_code = str(getattr(factor, "code", "") or "")
@@ -3619,6 +3806,36 @@ def _promote_factor_draft(draft: Any) -> tuple[Any, Any]:
 
 
 # -------- BFG 过滤治理：因子评价预检 Facade 出口（纯函数同步返回） --------
+def get_verified_input_business_status(db, bundle_id):
+    from app.services.factors.verified_input_status import read_verified_input_business_status
+    return read_verified_input_business_status(db,bundle_id)
+
+
+def inspect_model_production_admission(db, model_id, *, bundle_id):
+    from app.services.factors.production_admission import inspect_production_admission
+    return inspect_production_admission(db,model_id,bundle_id=bundle_id)
+
+
+def freeze_model_production_admission(db, model_id, *, bundle_id, expected_identity_sha256):
+    from app.services.factors.production_admission import freeze_production_admission
+    return freeze_production_admission(db,model_id,bundle_id=bundle_id,expected_identity_sha256=expected_identity_sha256)
+
+
+def review_production_candidate(db, model_id, **kwargs):
+    from app.services.factors.production_execution import review_execution
+    return review_execution(db, model_id, **kwargs)
+
+
+def submit_production_candidate(db, model_id, **kwargs):
+    from app.services.factors.production_candidate_task import create_candidate_task
+    return create_candidate_task(db, model_id, **kwargs)
+
+
+def get_production_candidate_task(db, plan_id):
+    from app.services.factors.production_candidate_task import get_candidate_task
+    return get_candidate_task(db, plan_id)
+
+
 def run_factor_eval_precheck(
     db: Session,  # type: ignore[name-defined]
     factor_code: str | None,

@@ -29,6 +29,10 @@ function CoverageDiagnostics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [qualityHistory, setQualityHistory] = useState<{ field: string; snapshots: DataQualitySnapshot[] } | null>(null);
+  const [historyField, setHistoryField] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyRequest = useRef(0);
 
   const mounted = useRef(true);
   const load = useCallback(async () => {
@@ -49,7 +53,7 @@ function CoverageDiagnostics() {
     }).finally(() => {
       if (mounted.current) setLoading(false);
     });
-    return () => { mounted.current = false; };
+    return () => { mounted.current = false; ++historyRequest.current; };
   }, [load]);
 
   const retryRead = async () => {
@@ -70,10 +74,19 @@ function CoverageDiagnostics() {
   };
 
   const openHistory = async (field: string) => {
+    const requestId = ++historyRequest.current;
+    const isCurrent = () => mounted.current && requestId === historyRequest.current;
+    setHistoryField(field);
+    setQualityHistory(null);
+    setHistoryLoading(true);
+    setHistoryError(null);
     try {
-      setQualityHistory(await api.getExternalDataQualityHistory(field));
+      const history = await api.getExternalDataQualityHistory(field);
+      if (isCurrent()) setQualityHistory(history);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (isCurrent()) setHistoryError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      if (isCurrent()) setHistoryLoading(false);
     }
   };
 
@@ -121,8 +134,10 @@ function CoverageDiagnostics() {
       <Button onClick={() => void refreshQuality()} loading={loading}>刷新质量快照</Button>
     </Space>
     <Table<CoverageRow> rowKey={(row) => `${row.dataset}:${row.field}`} columns={columns} dataSource={rows} pagination={false} size="middle" scroll={{ x: 1400 }} locale={{ emptyText: "暂无可诊断的外部因子字段" }} />
-    <Modal title={`字段质量趋势：${qualityHistory?.field || ""}`} open={qualityHistory !== null} footer={null} onCancel={() => setQualityHistory(null)} width={760}>
+    <Modal title={`字段质量趋势：${FIELD_LABELS[historyField || ""] || historyField || ""}`} open={historyField !== null} footer={null} onCancel={() => { ++historyRequest.current; setHistoryField(null); setQualityHistory(null); }} width={760}>
+      {historyError && <Alert type="error" message={historyError} action={<Button onClick={() => historyField && void openHistory(historyField)}>重试读取</Button>} />}
       <Table<DataQualitySnapshot>
+        loading={historyLoading}
         rowKey="id"
         size="small"
         pagination={false}

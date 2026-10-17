@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 
 /**
@@ -15,6 +15,9 @@ import { fireEvent, render } from "@testing-library/react";
  */
 import FactorMiningRunTrack from "./FactorMiningRunTrack";
 import type { RunProgress } from "./runTypes";
+import { setLocale } from "../../../../../i18n";
+
+afterEach(() => setLocale("zh-CN"));
 
 const PROGRESS: RunProgress = {
   run_id: "run-1",
@@ -40,6 +43,21 @@ const PROGRESS: RunProgress = {
 const p = (over: Partial<RunProgress> = {}): RunProgress => ({ ...PROGRESS, ...over });
 
 describe("FactorMiningRunTrack 进度总览", () => {
+  it("来源枚举随语言切换，公式与未知自定义来源保持原文", () => {
+    const candidates = [
+      { rank: 1, formula: "mean(close,5)", source: "mutation" },
+      { rank: 2, formula: "delta(roe_ttm,4)", source: "custom-strategy-v2" },
+    ];
+    setLocale("zh-CN");
+    const { rerender } = render(<FactorMiningRunTrack progress={PROGRESS} topCandidates={candidates} />);
+    expect(document.querySelector("[data-run-top-list]")?.textContent).toContain("变异");
+    expect(document.querySelector("[data-run-top-list]")?.textContent).not.toContain("mutation");
+    setLocale("en-US");
+    rerender(<FactorMiningRunTrack progress={PROGRESS} topCandidates={candidates} />);
+    expect(document.querySelector("[data-run-top-list]")?.textContent).toContain("Mutation");
+    expect(document.querySelector("[data-run-top-list]")?.textContent).toContain("mean(close,5)");
+    expect(document.querySelector("[data-run-top-list]")?.textContent).toContain("custom-strategy-v2");
+  });
   it("展示代数、收敛状态与多样性", () => {
     render(<FactorMiningRunTrack progress={PROGRESS} />);
     const overview = document.querySelector("[data-run-overview]");

@@ -3,6 +3,17 @@ import { DownloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { t } from "../../../../../i18n";
 import type { ImportPreviewResult } from "./poolApi";
 
+// Fixed RowStatus values from candidate_pool/importer.py. Unknown supplier
+// statuses retain the label returned by that supplier.
+function importStatusLabel(status: string, fallback?: string | null): string {
+  const keys: Record<string, string> = {
+    success: "miningPoolImportStatusSuccess", unmatched: "miningPoolImportStatusUnmatched",
+    duplicate: "miningPoolImportStatusDuplicate", format_error: "miningPoolImportStatusFormatError",
+    non_stock: "miningPoolImportStatusNonStock", suspended: "miningPoolImportStatusSuspended",
+  };
+  return keys[status] ? t(keys[status]) : fallback ?? status;
+}
+
 /**
  * 导入股票池面板（向导 §3.1 方式 A）。
  *
@@ -94,7 +105,7 @@ export default function PoolImportPanel({
             {result.counts_label_zh &&
               Object.entries(result.counts_label_zh).map(([status, label]) => (
                 <span key={status} data-import-count={status}>
-                  {label}: {result.counts?.[status] ?? 0}
+                  {importStatusLabel(status, label)}: {result.counts?.[status] ?? 0}
                 </span>
               ))}
           </div>
@@ -113,7 +124,7 @@ export default function PoolImportPanel({
                 {result.rows.map((r) => (
                   <tr key={r.row_no}>
                     <td>{r.row_no}</td>
-                    <td>{r.status_label_zh ?? r.status}</td>
+                    <td>{importStatusLabel(r.status, r.status_label_zh)}</td>
                     <td>{r.symbol}</td>
                     <td>{r.name ?? "-"}</td>
                   </tr>

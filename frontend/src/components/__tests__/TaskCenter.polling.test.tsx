@@ -2,7 +2,7 @@
 // 后端补了读列表时就地过期，前端这一侧要保证：列表里还有 running/queued 时会自己再拉一次，
 // 用户不必手动点刷新就能看到它变成终态；没有活动任务时不轮询（不持续打后端）。
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { mockApi } = vi.hoisted(() => ({
   mockApi: {
@@ -15,7 +15,12 @@ const { mockApi } = vi.hoisted(() => ({
 // 写错时 vi.mock 静默失效，症状是"mock 从未被调用"。
 vi.mock("../../api/client", () => ({ api: mockApi }));
 vi.mock("../../i18n", () => ({
-  t: (key: string) => key,
+  t: (key: string) => ({
+    extSyncFundamental: "同步股票估值",
+    extSyncFinancial: "同步财报历史",
+    extSyncLhb: "同步龙虎榜机构",
+    extSyncCapitalFlow: "同步资金流",
+  } as Record<string, string>)[key] ?? key,
   enumLabel: (_group: string, value: string) => value,
   getLocale: () => "zh-CN",
 }));
@@ -32,7 +37,7 @@ const task = (status: string) => ({
   task_type: "market_data_sync",
   status,
   stage: status,
-  percent: 10,
+  percent: status === "partial" ? 100 : 10,
   message: "",
   payload: {},
   result: {},
@@ -59,6 +64,26 @@ beforeEach(() => {
 // 而"僵尸执行中"的真正病灶就是列表页从不自己再拉一次，所以直接盯 setInterval 的注册。
 // 不做通用 helper：setInterval 的重载元组 arity 一旦塞进自定义类型就要跟 TS 打太极。
 describe("TaskCenter 活动任务轮询", () => {
+  it("distinguishes valuation, financial reports, institutions and capital flow in task rows", async () => {
+    seed([]);
+    mockApi.getTaskHistory.mockResolvedValue({ tasks: [
+      ["fundamental", "同步股票估值"],
+      ["financial", "同步财报历史"],
+      ["lhb", "同步龙虎榜机构"],
+      ["capital_flow", "同步资金流"],
+    ].map(([dataset]) => ({
+      ...task("done"), id: `external-${dataset}`, task_type: `external_sync_${dataset}`,
+    })) });
+    const { container } = render(<TaskCenter />);
+    await waitFor(() => expect(container.querySelectorAll(".task-list-item")).toHaveLength(4));
+    const rows = Array.from(container.querySelectorAll<HTMLElement>(".task-list-item"));
+    for (const [index, label] of ["同步股票估值", "同步财报历史", "同步龙虎榜机构", "同步资金流"].entries()) {
+      expect(within(rows[index]).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(rows[0]).queryByText("同步财报历史")).not.toBeInTheDocument();
+    expect(within(rows[0]).queryByText("fundamental")).not.toBeInTheDocument();
+  });
+
   it("列表存在 running 时挂 10s 轮询，且轮询是静默的（不闪整表 loading）", async () => {
     const handlers: Array<() => void> = [];
     vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler, delay?: number) => {
@@ -79,12 +104,26 @@ describe("TaskCenter 活动任务轮询", () => {
 
   it("列表只有终态任务时不挂轮询（不持续打后端）", async () => {
     const spy = vi.spyOn(window, "setInterval");
-    seed(["done", "failed"]);
+    seed(["done", "partial", "failed"]);
     render(<TaskCenter />);
     await waitFor(() => expect(mockApi.getTaskHistory.mock.calls.length).toBeGreaterThan(0));
     // 给状态落定一个额外回合，避免"还没来得及注册"被误判成"没有注册"
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
     expect(spy.mock.calls.some(([, delay]) => delay === 10_000)).toBe(false);
     vi.restoreAllMocks();
+  });
+
+  it("filters partial terminal tasks and does not show running or success progress", async () => {
+    seed(["partial", "done"]);
+    const { container } = render(<TaskCenter />);
+    await waitFor(() => expect(screen.getByText("taskStatus_partial")).toBeInTheDocument());
+    fireEvent.mouseDown(container.querySelector(".ant-select-selector")!);
+    fireEvent.click(await screen.findByText("taskFilterPartial"));
+    await waitFor(() => expect(container.querySelectorAll(".task-list-item")).toHaveLength(1));
+    fireEvent.click(screen.getByText("taskStatus_partial"));
+    await waitFor(() => expect(container.querySelector(".task-detail-panel")).not.toBeNull());
+    expect(container.querySelector(".task-detail-panel .ant-progress-status-active")).toBeNull();
+    expect(container.querySelector(".task-detail-panel .ant-progress-status-success")).toBeNull();
+    expect(screen.queryByText("taskAbort")).not.toBeInTheDocument();
   });
 });

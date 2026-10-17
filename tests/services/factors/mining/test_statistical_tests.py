@@ -39,6 +39,16 @@ from app.services.factors.mining.statistical_tests import (
 # ══════════════════════════════════════════════════════════
 
 pytestmark = pytest.mark.whitebox
+
+def test_weekly_test_with_only_twenty_valid_points_skips_resampling():
+    result = compute_stats(ic_series=[.11, .13, .10, .15, .12] * 4,
+        train_icir=.5, test_icir=.4, total_trials=10, frequency='weekly', n_resamples=20)
+    assert result.degraded is True
+    assert math.isnan(result.ci_lower)
+    assert result.perm_p_value is None
+    assert result.walk_forward['windows'] == 0
+
+
 class TestBonferroni:
     def test_basic_scaling(self):
         out = bonferroni_adjust([0.01, 0.2], total_trials=10)

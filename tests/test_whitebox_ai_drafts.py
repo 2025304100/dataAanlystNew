@@ -234,7 +234,7 @@ def test_draft_alert(db_session):
     ctx = _make_context(db_session)
     suggestion = {
         "name": "AI建议告警_测试",
-        "alert_type": "price_alert",
+        "alert_type": "score_drop",
         "severity": "warn",
         "config_json": '{"threshold": 15.0}',
         "cooldown_minutes": 60,
@@ -247,8 +247,20 @@ def test_draft_alert(db_session):
     assert result["draft_type"] == "draft_alert"
     assert result["requires_confirmation"] is True
     assert result["validation_status"] == "valid"
-    assert result["suggested_payload"]["alert_type"] == "price_alert"
+    assert result["suggested_payload"]["alert_type"] == "score_drop"
     assert after == before, "draft_alert 不应写入 alert_rules"
+
+
+def test_unsupported_alert_draft_cannot_be_previewed_or_executed(db_session):
+    payload = {"name": "unsupported-price-rule", "alert_type": "price_alert"}
+    assert preview_alert(db_session, payload)["is_valid"] is False
+    audit = _make_audit(db_session, ACTION_DRAFT_ALERT, payload)
+    confirm_action(db_session, audit.id)
+    before = _row_count(db_session, "alert_rules")
+    result = execute_alert(db_session, audit.id)
+    assert result["success"] is False
+    assert result["error"] == "validation_failed"
+    assert _row_count(db_session, "alert_rules") == before
 
 
 # ----------------------------------------------------------------------------
@@ -440,7 +452,7 @@ def test_preview_shows_changes(db_session):
     # 告警 preview
     payload = {
         "name": "预览测试告警",
-        "alert_type": "price_alert",
+        "alert_type": "score_drop",
         "severity": "warn",
         "config_json": "{}",
     }
@@ -473,7 +485,7 @@ def test_execute_requires_confirmation(db_session):
     cases = [
         (ACTION_DRAFT_INDICATOR, {"name": "X1", "key": "x1", "formula": "close>1"}, "custom_indicators", execute_indicator),
         (ACTION_DRAFT_FILTER, {"name": "X筛选", "scope_type": "universe"}, "scan_presets", execute_filter),
-        (ACTION_DRAFT_ALERT, {"name": "X告警", "alert_type": "price_alert"}, "alert_rules", execute_alert),
+        (ACTION_DRAFT_ALERT, {"name": "X告警", "alert_type": "score_drop"}, "alert_rules", execute_alert),
         (ACTION_DRAFT_REVIEW, {"portfolio_id": 99999, "start_date": "2024-01-01", "end_date": "2024-06-30"}, "portfolio_reviews", execute_review),
     ]
 
@@ -540,7 +552,7 @@ def test_execute_after_confirmation(db_session):
     # 告警草稿：确认后写入 alert_rules
     payload = {
         "name": "确认后执行_告警",
-        "alert_type": "price_alert",
+        "alert_type": "score_drop",
         "severity": "warn",
         "config_json": '{"threshold": 10}',
         "cooldown_minutes": 30,
@@ -820,7 +832,7 @@ def test_draft_does_not_write_any_business_table(db_session):
         },
         "draft_alert": {
             "name": "不变测试_告警",
-            "alert_type": "price_alert",
+            "alert_type": "score_drop",
         },
         "draft_note": {
             "watchlist_item_id": item.id,

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,7 @@ class AiSessionCreateRequest(BaseModel):
     """
 
     profile_id: int | None = Field(default=None, description="AI Profile ID，未提供则用默认 Profile")
+    purpose: Literal["chat", "explanation", "draft"] = "chat"
     session_id: int | None = Field(default=None, description="已有会话 ID；提供时继续该会话")
     title: str | None = Field(default=None, description="会话标题，未提供时取首条消息前 80 字")
     source_page: str | None = Field(default=None, description="来源页：discovery/research/portfolio/backtest/task")

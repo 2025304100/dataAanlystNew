@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { Button, Space, Modal } from "antd";
-import { ExperimentOutlined } from "@ant-design/icons";
-import { useApp } from "../../context/AppContext";
+import { Modal } from "antd";
 import { t } from "../../i18n";
 import FactorLibrary from "./FactorLibrary";
 import FactorDetail from "./FactorDetail";
@@ -10,6 +8,7 @@ import FactorDraftConfirmModal from "./FactorDraftConfirmModal";
 import FactorEvaluationLab from "./FactorEvaluationLab";
 import FactorShadowLab from "./FactorShadowLab";
 import FactorModelPage from "./FactorModelPage";
+import "./FactorCenter.css";
 
 type FactorSubTab = "library" | "evaluation" | "shadow" | "model";
 
@@ -30,7 +29,6 @@ type FactorDraftPayload = {
 };
 
 export default function FactorCenter() {
-  const ctx = useApp();
   const [activeTab, setActiveTab] = useState<FactorSubTab>(() => {
     if (typeof window === "undefined") return "library";
     const stored = window.localStorage.getItem("settings_factor_center_subtab");
@@ -52,6 +50,8 @@ export default function FactorCenter() {
   const [draftModalOpen, setDraftModalOpen] = useState(false);
   const [draftAuditId, setDraftAuditId] = useState<number | null>(null);
   const [draftSuggestedPayload, setDraftSuggestedPayload] = useState<FactorDraftPayload | null>(null);
+  const [libraryRevision, setLibraryRevision] = useState(0);
+  const [labSelection, setLabSelection] = useState<{factorCode?:string;versionId?:number}>({});
 
   useEffect(() => {
     window.localStorage.setItem("settings_factor_center_subtab", activeTab);
@@ -61,8 +61,8 @@ export default function FactorCenter() {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.payload) {
-        openDraftModal(null, detail.payload as FactorDraftPayload);
+      if (detail?.payload || detail?.auditId || detail?.audit_id) {
+        openDraftModal(detail.auditId ?? detail.audit_id ?? null, detail.payload as FactorDraftPayload);
       }
     };
     window.addEventListener("open-factor-draft", handler as EventListener);
@@ -74,14 +74,16 @@ export default function FactorCenter() {
   useEffect(() => {
     const navHandler = (e: Event) => {
       const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
-      const rawTarget = detail?.target as string | undefined;
+      const rawTarget = (detail?.target ?? detail?.tab) as string | undefined;
       const target = rawTarget === "models" ? "model" : rawTarget;
+      const code = (detail?.factor_code ?? detail?.code) as string | undefined;
+      const versionId = Number(detail?.version_id);
+      if (code) setLabSelection({factorCode:code,versionId:Number.isFinite(versionId) && versionId > 0 ? versionId : undefined});
       // 兼容旧 target 值
       if (target === "detail") {
-        const code = (detail?.factor_code as string) || selectedFactorCode;
-        if (code) openDetailModal(code);
+        const selected = code || selectedFactorCode;
+        if (selected) openDetailModal(selected);
       } else if (target === "editor") {
-        const code = (detail?.factor_code as string) || null;
         if (code) {
           openEditorModalFromFactor(code);
         } else {
@@ -90,8 +92,11 @@ export default function FactorCenter() {
       } else {
         const allowed: FactorSubTab[] = ["library", "evaluation", "shadow", "model"];
         if (target && allowed.includes(target as FactorSubTab)) {
+          setDetailModalOpen(false);
+          setEditorModalOpen(false);
           setActiveTab(target as FactorSubTab);
           window.localStorage.setItem("settings_factor_center_subtab", target);
+          if (target === "library" && code) openDetailModal(code);
         }
       }
     };
@@ -102,6 +107,7 @@ export default function FactorCenter() {
 
   // —— 详情弹窗 ——
   const openDetailModal = (code: string) => {
+    setEditorModalOpen(false);
     setSelectedFactorCode(code);
     setDetailModalOpen(true);
   };
@@ -113,6 +119,7 @@ export default function FactorCenter() {
   // —— 编辑器弹窗 ——
   // 新建草稿
   const openEditorModalNew = () => {
+    setDetailModalOpen(false);
     setSelectedFactorCode(null);
     setEditorInitialPayload(null);
     setEditorIsNewDraft(true);
@@ -121,6 +128,7 @@ export default function FactorCenter() {
 
   // 基于已有因子创建新版本
   const openEditorModalFromFactor = (code: string) => {
+    setDetailModalOpen(false);
     setSelectedFactorCode(code);
     setEditorInitialPayload(null);
     setEditorIsNewDraft(false);
@@ -158,6 +166,7 @@ export default function FactorCenter() {
 
   // WP4-05: 直接创建成功后跳转详情
   const handleDraftCreated = (factorCode: string) => {
+    setLibraryRevision((value) => value + 1);
     setEditorInitialPayload(null);
     setEditorModalOpen(false);
     openDetailModal(factorCode);
@@ -165,6 +174,7 @@ export default function FactorCenter() {
 
   // 编辑器保存成功后
   const handleEditorSaved = (code: string) => {
+    setLibraryRevision((value) => value + 1);
     setEditorModalOpen(false);
     openDetailModal(code);
   };
@@ -175,63 +185,26 @@ export default function FactorCenter() {
         <h2>{t("factorCenterTitle")}</h2>
         <p className="factor-center-subtitle">{t("factorCenterSubtitle")}</p>
       </div>
-      <div className="sub-tabs">
-        <button
-          type="button"
-          className={`sub-tab ${activeTab === "library" ? "active" : ""}`}
-          onClick={() => setActiveTab("library")}
-        >
-          {t("factorCenterTabLibrary")}
-        </button>
-        <button
-          type="button"
-          className={`sub-tab ${activeTab === "evaluation" ? "active" : ""}`}
-          onClick={() => setActiveTab("evaluation")}
-        >
-          {t("factorCenterTabEvaluation")}
-        </button>
-        <button
-          type="button"
-          className={`sub-tab ${activeTab === "shadow" ? "active" : ""}`}
-          onClick={() => setActiveTab("shadow")}
-        >
-          {t("factorCenterTabShadow")}
-        </button>
-        <button
-          type="button"
-          className={`sub-tab ${activeTab === "model" ? "active" : ""}`}
-          onClick={() => setActiveTab("model")}
-        >
-          {t("factorCenterTabModel")}
-        </button>
-        <Space style={{ marginLeft: "auto" }}>
-          <Button
-            size="small"
-            icon={<ExperimentOutlined />}
-            onClick={() => openDraftModal()}
-            title={t("aiDraftFactorTitle")}
-          >
-            {t("aiDraftFactorTitle")}
-          </Button>
-        </Space>
+      <div className="sub-tabs factor-center-workspaces" aria-label={t("factorCenterTitle")}>
+        {(["library", "evaluation", "shadow", "model"] as FactorSubTab[]).map((tab) => <button
+          key={tab} type="button" className={`sub-tab ${activeTab === tab ? "active" : ""}`}
+          aria-current={activeTab === tab ? "page" : undefined} onClick={() => setActiveTab(tab)}>
+          <strong>{t({library:"factorCenterTabLibrary",evaluation:"factorCenterTabEvaluation",shadow:"factorCenterTabShadow",model:"factorCenterTabModel"}[tab])}</strong>
+          <span>{t(`factorCenterWorkspace_${tab}`)}</span>
+        </button>)}
       </div>
       <div className="sub-tab-container">
-        <div hidden={activeTab !== "library"}>
+        {activeTab === "library" &&
           <FactorLibrary
             onViewDetail={openDetailModal}
             onEditFactor={openEditorModalFromFactor}
             onNewFactor={openEditorModalNew}
+            refreshKey={libraryRevision}
           />
-        </div>
-        <div hidden={activeTab !== "evaluation"}>
-          <FactorEvaluationLab />
-        </div>
-        <div hidden={activeTab !== "shadow"}>
-          <FactorShadowLab />
-        </div>
-        <div hidden={activeTab !== "model"}>
-          <FactorModelPage />
-        </div>
+        }
+        {activeTab === "evaluation" && <FactorEvaluationLab initialFactorCode={labSelection.factorCode} initialVersionId={labSelection.versionId} onSelectionChange={setLabSelection} />}
+        {activeTab === "shadow" && <FactorShadowLab initialFactorCode={labSelection.factorCode} initialVersionId={labSelection.versionId} onSelectionChange={setLabSelection} />}
+        {activeTab === "model" && <FactorModelPage />}
       </div>
 
       {/* 因子详情弹窗 */}
@@ -249,6 +222,7 @@ export default function FactorCenter() {
             factorCode={selectedFactorCode}
             onOpenEditor={handleDetailOpenEditor}
             onBack={closeDetailModal}
+            onChanged={() => setLibraryRevision((value) => value + 1)}
           />
         ) : null}
       </Modal>

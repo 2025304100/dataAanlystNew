@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * T27 前端入口测试（设计 §9.1 / 裁决 D1）
@@ -17,13 +17,15 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
  */
 
 // ── 桩：AppContext ──────────────────────────────────────────────────
+const ruleContext = vi.hoisted(() => ({ rule: null as any, save: vi.fn(async () => undefined) }));
 vi.mock("../../context/AppContext", () => ({
   useApp: () => ({
-    signalRule: null,
+    signalRule: ruleContext.rule,
     signalRulePresets: [],
     signalRulePreview: null,
     activeSymbolId: null,
     loadSignalRulePreview: vi.fn(async () => undefined),
+    saveSignalRule: ruleContext.save,
   }),
 }));
 
@@ -70,6 +72,8 @@ function navigateTo(detail: string) {
 }
 
 beforeEach(() => {
+  ruleContext.rule = null;
+  ruleContext.save.mockClear();
   window.localStorage.clear();
 });
 
@@ -79,6 +83,12 @@ afterEach(() => {
 });
 
 describe("Settings 因子挖掘入口", () => {
+  it("点击保存规则提交当前规则", async () => {
+    ruleContext.rule = { rule_name: "自定义规则", mode: "expert", quality_tolerance: 12, timing_tolerance: 12, min_sample_count: 3, max_samples: 60, same_region: true, same_asset_type: true, same_stage: true, same_action: true };
+    render(<Settings />);
+    fireEvent.click(screen.getByRole("button", { name: "保存规则" }));
+    await waitFor(() => expect(ruleContext.save).toHaveBeenCalledOnce());
+  });
   it("左侧导航出现「因子挖掘」一栏（菜单可见）", () => {
     render(<Settings />);
     const buttons = Array.from(document.querySelectorAll("button.settings-nav-item"));

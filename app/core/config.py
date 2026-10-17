@@ -193,10 +193,17 @@ def load_db_config() -> dict:
 def save_db_config(config: dict) -> None:
     """将数据库配置写入 config/db_config.json，并限制文件权限。"""
     DB_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    DB_CONFIG_PATH.write_text(
-        json.dumps(config, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    pending_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=DB_CONFIG_PATH.parent, delete=False) as pending:
+            pending_path = Path(pending.name)
+            json.dump(config, pending, indent=2, ensure_ascii=False)
+            pending.flush()
+            os.fsync(pending.fileno())
+        os.replace(pending_path, DB_CONFIG_PATH)
+    finally:
+        if pending_path is not None:
+            pending_path.unlink(missing_ok=True)
     # 尝试限制文件权限（Windows 上可能不生效，但不影响功能）
     try:
         os.chmod(str(DB_CONFIG_PATH), stat.S_IRUSR | stat.S_IWUSR)

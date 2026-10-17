@@ -42,6 +42,8 @@ const { mockApi, mockMessage } = vi.hoisted(() => ({
     scoringGetFactorSetReadiness: vi.fn<(id: string) => Promise<any>>(),
     scoringRenameModel: vi.fn(async () => ({})),
     scoringCreateTask: vi.fn<any>(async () => ({ id: "score-task-001", status: "queued" })),
+    scoringGetResearchRetrainPlan: vi.fn(async () => { throw new Error("isolated missing research receipt"); }),
+    scoringRetrainResearchModel: vi.fn(),
     scoringTrainModel: vi.fn(async () => ({})),
     getEvaluationTaskHeartbeat: vi.fn(async () => ({})),
     activateFactorModel: vi.fn(),
@@ -72,7 +74,8 @@ vi.mock("antd", async () => {
   };
 });
 
-vi.mock("../../i18n", () => ({
+vi.mock("../../i18n", async () => ({
+  ...await vi.importActual<typeof import("../../i18n")>("../../i18n"),
   t: (key: string) => key,
   template: (key: string) => key,
 }));
@@ -87,6 +90,7 @@ vi.mock("../../api/client", () => ({
 
 import FactorModelPage from "../factors/FactorModelPage";
 import { navigate } from "../../utils/navigate";
+import trustedResearchFixture from "../../utils/__tests__/fixtures/trustedResearchCandidate.json";
 
 /** 构造 runtime 状态。 */
 function makeRuntime(overrides: Partial<any> = {}): any {
@@ -187,9 +191,11 @@ function mockLoadSuccess(overrides: { runtime?: any; models?: any[]; factorSets?
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockApi.getFactorModel.mockImplementation(async (id: string) => makeModel({ id }));
   vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
   window.history.replaceState(null, "", window.location.pathname);
   mockApi.scoringCreateTask.mockResolvedValue({ id: "score-task-001", status: "queued" });
+  mockApi.scoringListTasks.mockResolvedValue([] as any);
   mockApi.scoringGetFactorSetReadiness.mockImplementation(async (id: string) => ({ ready: true, factor_set_id: id, code: "READY", message: "集合资格检查通过", details: {} }));
 });
 
@@ -198,6 +204,114 @@ afterEach(() => {
 });
 
 describe("FactorModelPage", () => {
+  it("shows the real research pass as awaiting independent validation and offers no activation or scoring", async () => {
+    const model = makeModel(trustedResearchFixture.model);
+    mockLoadSuccess({ models: [model], factorSets: [makeFactorSet({ id: model.hyperparameters.factor_set_id })] });
+    mockApi.getFactorModel.mockResolvedValue(model);
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "factorModelWorkspaceModels" }));
+    expect(await screen.findByText("factorModelResearchValidatedPending")).toBeVisible();
+    expect(screen.queryByText("factorModelRejected")).not.toBeInTheDocument();
+    const modelLink = screen.getByRole("button", { name: model.display_alias });
+    fireEvent.click(modelLink);
+    const detail = await screen.findByTestId("model-validation-detail");
+    expect(within(detail).getAllByText("factorModelResearchValidatedPending").length).toBeGreaterThan(0);
+    expect(within(detail).getAllByText("factorModelResearchIndependentRequired").length).toBeGreaterThan(0);
+    expect(within(detail).queryByText("factorModelValidationNotPassed")).not.toBeInTheDocument();
+    const retrain = within(detail).getByRole("button", { name: "factorResearchRetrainTitle" });
+    expect(retrain).toBeEnabled();
+    const factorIcHeader = within(detail).getByText("factorModelFactorValidationIc");
+    expect(factorIcHeader).toBeVisible();
+    expect(within(detail).getByText("-0.0588")).toBeVisible();
+    expect(within(detail).getByText("0.0588")).toBeVisible();
+    fireEvent.mouseEnter(factorIcHeader);
+    await waitFor(() => expect(screen.getByText("factorModelFactorValidationIcHelp")).toBeVisible());
+    fireEvent.click(retrain);
+    await screen.findByText("factorResearchRetrainBlocked");
+    expect(screen.getByRole("button", { name: "factorResearchRetrainSubmit" })).toBeDisabled();
+    expect(mockApi.scoringGetResearchRetrainPlan).toHaveBeenCalledWith(model.id);
+    expect(mockApi.scoringRetrainResearchModel).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "factorModelShadow" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "factorModelProduction" })).not.toBeInTheDocument();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
+  it.each(["pre-gate", "weights-present", "artifact-present", "artifact-unknown"])("只凭完整前置拒绝证据区分准入段样本与实际拟合 (%s)", async (evidenceCase) => {
+    const model = makeModel({ id: "pre-fit-evidence", status: "rejected", production_eligible: false,
+      rejection_reason: "[P2-G Pre] ic_gate: below original threshold",
+      weights: evidenceCase === "weights-present" ? makeModel().weights : [],
+      artifact_path: evidenceCase === "artifact-present" ? "saved-model/manifest.json" : evidenceCase === "artifact-unknown" ? undefined : null,
+      hyperparameters: { factor_set_id: "fs-test-001", protocol_version: "ridge-temporal-holdout-v2", coefficient_stage: "outer_training_purged" },
+      metrics: { training_sample_count: 600, inner_training_sample_count: 450, tuning_sample_count: 120 },
+    });
+    mockLoadSuccess({ models: [model] });
+    mockApi.getFactorModel.mockResolvedValue(model);
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "factorModelWorkspaceModels" }));
+    fireEvent.click(await screen.findByText(model.id));
+    const detail = await screen.findByTestId("model-validation-detail");
+    const evidence = within(detail).getByTestId("model-training-evidence");
+    if (evidenceCase === "pre-gate") {
+      expect(within(evidence).getByText("factorModelFitSkippedPreGate")).toBeVisible();
+      expect(within(evidence).getByText("factorModelTrainingAdmissionSamples")).toBeVisible();
+      expect(within(evidence).getByText("600")).toBeVisible();
+      expect(within(evidence).queryByText("factorModelActualFitSamples")).not.toBeInTheDocument();
+      expect(within(evidence).queryByText("factorModelCoefficientOuter")).not.toBeInTheDocument();
+    } else {
+      expect(within(evidence).getByText("factorModelActualFitSamples")).toBeVisible();
+      expect(within(evidence).getByText("600")).toBeVisible();
+      expect(within(evidence).queryByText("factorModelFitSkippedPreGate")).not.toBeInTheDocument();
+    }
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+  });
+
+  it.each(["v2", "legacy", "quality-only"])("模型详情按本次记录区分总样本、实际拟合与验收，不给旧模型套用新协议 (%s)", async (protocol) => {
+    const model = makeModel({ id: "fit-evidence", production_eligible: false, status: "rejected", sample_count: 1000,
+      hyperparameters: { factor_set_id: "fs-test-001", ...(protocol === "v2" ? { protocol_version: "ridge-temporal-holdout-v2", coefficient_stage: "outer_training_purged" } : {}), ...(protocol === "quality-only" ? { research_data_quality_limitations: "raw source conflict text" } : {}) },
+      metrics: { validation_ic: -0.02, ...(protocol === "v2" ? { training_sample_count: 600, inner_training_sample_count: 450, tuning_sample_count: 120, validation_sample_count: 350, validation_date_count: 50, validation_icir: 0.12, validation_ic_method: "pooled_spearman", validation_icir_method: "daily_spearman_mean_over_sample_std_ddof1" } : {}) },
+    });
+    mockLoadSuccess({ models: [model] });
+    mockApi.getFactorModel.mockResolvedValue(model);
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "factorModelWorkspaceModels" }));
+    fireEvent.click(await screen.findByText(model.id));
+    const detail = await screen.findByTestId("model-validation-detail");
+    const evidence = within(detail).getByTestId("model-training-evidence");
+    expect(within(detail).getByText("factorModelSamples")).toBeVisible();
+    if (protocol === "v2") {
+      expect(within(evidence).getByText("600")).toBeVisible();
+      expect(within(evidence).getByText("350")).toBeVisible();
+      expect(within(evidence).getByText("450")).toBeVisible();
+      expect(within(evidence).getByText("120")).toBeVisible();
+      expect(within(evidence).getByText("ridge-temporal-holdout-v2")).toBeVisible();
+      expect(within(evidence).getByText("factorModelCoefficientOuter")).toBeVisible();
+    } else {
+      expect(within(evidence).getAllByText("factorModelEvidenceNotRecorded")).toHaveLength(10);
+      expect(within(evidence).queryByText("ridge-temporal-holdout-v2")).not.toBeInTheDocument();
+    }
+    if (protocol === "quality-only") {
+      expect(within(detail).getByText("factorModelSourceConflictWarning")).toBeVisible();
+      expect(within(detail).queryByText("raw source conflict text")).not.toBeInTheDocument();
+      expect(within(detail).queryByTestId("model-research-warning")).not.toBeInTheDocument();
+    } else expect(within(detail).queryByTestId("model-data-quality-warning")).not.toBeInTheDocument();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
+  it("集合与模型分工作区展示，点击模型来源可返回对应集合", async () => {
+    mockLoadSuccess();
+    render(<FactorModelPage />);
+    const modelsTab = await screen.findByRole("tab", { name: "factorModelWorkspaceModels" });
+    expect(screen.getByTestId("btn-create-factorset-top")).toBeVisible();
+    expect(screen.getByTestId("model-table-wrapper")).not.toBeVisible();
+    fireEvent.click(modelsTab);
+    expect(screen.getByTestId("model-table-wrapper")).toBeVisible();
+    expect(screen.getByTestId("btn-create-factorset-top")).not.toBeVisible();
+    fireEvent.click(screen.getByTestId("linked-fs-cell-model-001-abc"));
+    expect(screen.getByRole("tab", { name: "factorModelWorkspaceCollections" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("set-card-header-fs-test-001")).toBeVisible();
+  });
   it("模型页已经挂载后，关联模型深链仍打开指定模型的真实验证详情", async () => {
     mockLoadSuccess({ models: [makeModel({ id: "deep-model" })] });
     mockApi.getFactorModel.mockResolvedValue(makeModel({ id: "deep-model" }));
@@ -265,6 +379,7 @@ describe("FactorModelPage", () => {
   it("旧模型虽标记已验证但生产资格失败时，下一步查看真实验证详情", async () => {
     mockLoadSuccess({ models: [makeModel({ production_eligible: false, readiness_message: "训练来源无法核验" })] });
     mockApi.getFactorModel.mockResolvedValue(makeModel({ production_eligible: false, readiness_message: "训练来源无法核验" }));
+    mockApi.scoringListTasks.mockResolvedValue([{ id: "source-training", status: "done", payload_json: { train_model: true }, result: { model: { model_run_id: "model-001-abc" } } }] as any);
     render(<FactorModelPage />);
     await waitFor(() => expect(screen.getByTestId("chain-step-5")).toHaveAttribute("data-step-state", "ready"));
     expect(screen.getByTestId("chain-step-6")).toHaveAttribute("data-step-state", "blocked");
@@ -286,6 +401,7 @@ describe("FactorModelPage", () => {
       makeModel({ id: "legacy-candidate", production_eligible: false }),
       makeModel({ id: "production-candidate", production_eligible: true }),
     ] });
+    mockApi.scoringListTasks.mockResolvedValue([{ id: "verified-training", status: "done", payload_json: { train_model: true }, result: { model: { model_run_id: "production-candidate" } } }] as any);
     render(<FactorModelPage />);
     await waitFor(() => expect(screen.getByTestId("chain-step-6")).toHaveAttribute("data-step-state", "ready"));
 
@@ -296,10 +412,59 @@ describe("FactorModelPage", () => {
     expect(mockMessage.error).not.toHaveBeenCalled();
   });
 
+  it("去激活只定位本次训练结果，不使用列表首个旧合格模型", async () => {
+    mockLoadSuccess({ models: [makeModel({ id: "older-eligible" }), makeModel({ id: "new-turnover-candidate" })] });
+    mockApi.scoringListTasks.mockResolvedValue([{ id: "new-training", status: "done", payload_json: { train_model: true, materialize_scores: false, factor_set_id: "fs-test-001" }, result: { model: { model_run_id: "new-turnover-candidate", status: "validated" } } }] as any);
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-step-6")).toHaveAttribute("data-step-state", "ready"));
+    fireEvent.click(screen.getByTestId("chain-btn-activate-model"));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByText("new-turnover-candidate")).toBeVisible());
+    expect(within(dialog).queryByText("older-eligible")).not.toBeInTheDocument();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
+  it("本次训练没有候选结果时禁用通用验证和激活入口，不代用旧模型", async () => {
+    mockLoadSuccess({ models: [makeModel({ id: "older-eligible" })] });
+    mockApi.scoringListTasks.mockResolvedValue([{ id: "running-training", status: "running", payload_json: { train_model: true, materialize_scores: false }, result: null }] as any);
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-step-6")).toHaveAttribute("data-step-state", "ready"));
+    expect(screen.getByTestId("chain-btn-activate-model")).toBeDisabled();
+    expect(screen.getByTestId("chain-btn-next")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("chain-btn-activate-model"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+  });
+
+  it("本次训练被拒后仍打开该候选的真实原因，仅禁用启用", async () => {
+    const rejected = makeModel({ id: "new-rejected-candidate", status: "rejected", production_eligible: false, readiness_message: "本次模型未通过正式运行资格", rejection_reason: "本次验证 IC 未达到门槛" });
+    mockLoadSuccess({ models: [makeModel({ id: "older-eligible" }), rejected] });
+    mockApi.scoringListTasks.mockResolvedValue([{ id: "rejected-training", status: "done", payload_json: { train_model: true }, result: { model: { model_run_id: rejected.id, status: "rejected" } } }] as any);
+    mockApi.getFactorModel.mockResolvedValue(rejected);
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "factorModelReviewCurrentCandidate" }));
+    await waitFor(() => expect(mockApi.getFactorModel).toHaveBeenCalledWith(rejected.id));
+    const detail = await screen.findByTestId("model-validation-detail");
+    expect(detail).toHaveTextContent("本次验证 IC 未达到门槛");
+    expect(screen.getByTestId("chain-btn-activate-model")).toBeDisabled();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+  });
+
+  it("集合成员缺少名称时显示已有国际化因子名称", async () => {
+    const set = makeFactorSet();
+    set.members[0].factor_code = "turnover_z20";
+    mockLoadSuccess({ factorSets: [set] });
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("set-card-header-fs-test-001"));
+    expect(within(screen.getByTestId("member-row-1")).getByText("20日换手率 Z 分数")).toBeVisible();
+  });
+
   it("仓库不可用时不会仅凭runtime打勾，主按钮重新检查仓库", async () => {
     const { runtime } = mockLoadSuccess();
     mockApi.scoringGetOverviewAsFactor.mockResolvedValue({ runtime, health: { warehouse_available: false } });
     render(<FactorModelPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "factorModelWorkspaceModels" }));
     await waitFor(() => expect(screen.getByText("model-001-abc")).toBeVisible());
     expect(screen.getByTestId("chain-step-1")).toHaveAttribute("data-step-state", "blocked");
     const before = mockApi.scoringGetOverviewAsFactor.mock.calls.length;

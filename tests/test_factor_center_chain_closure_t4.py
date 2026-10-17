@@ -1,7 +1,7 @@
 """Task 4 - factor-center-chain-closure Test Requirements (TR-4.1 / TR-4.2 / TR-4.3).
 
 覆盖：
-  TR-4.1：4 场景冻结/训练 gate 全部 HTTP 400 + 精确 code。
+  TR-4.1：3 类冻结门禁的精确 code，以及旧演示训练入口明确拒绝。
   TR-4.2：5 类写动作 freeze/train/activate/fallback/clone_set → factor_audit_logs COUNT=5
           且 actor != anonymous，before_json/after_json 长度 > 2，created_at 非空。
   TR-4.3：在全新 sqlite 临时 url 上执行 alembic upgrade head → exit_code=0，三段闭环。
@@ -32,7 +32,6 @@ from app.services.factor_set_service import (
     FactorSetStatusError,
 )
 from app.services.factors.__facade__ import (
-    GovernanceGateResultDTO,
     freeze_scoring_factor_set,
     activate_scoring_model,
     fallback_scoring_model,
@@ -92,7 +91,7 @@ def _insert_valid_factor_set(
         fv = FactorVersion(
             factor_id=int(factor.id),
             version=1,
-            formula_expr=f"1 as {factor_code}",
+            formula_expr="close",
             params_json="{}",
             direction="higher_better",
             source_mapping_json="{}",
@@ -123,7 +122,7 @@ def _insert_valid_factor_set(
 
 # ── TR-4.1 ──────────────────────────────────────────────────────────
 class TestTR4_1_FreezeAndTrainGates:
-    """4 场景 HTTP 400 + 精确 code."""
+    """冻结失败给出精确 code，旧演示训练不能生成伪模型。"""
 
     def test_tr_4_1_case1_empty_set_freeze(self, db_session):
         """空集合冻结 → FACTOR_SET_EMPTY."""
@@ -172,13 +171,8 @@ class TestTR4_1_FreezeAndTrainGates:
         # 附带 version_id 和 factor_code
         assert details.get("version_id") or details.get("factor_code")
 
-    def test_tr_4_1_case4_train_gate_ic_low(self, db_session, monkeypatch):
-        """训练 gate IC=0.001(<0.01) → 精确 code TRAIN_GATE_IC_OUT_OF_RANGE.
-
-        Facade 方法 train_scoring_model 在调用 HTTP 前先跑 gate。我们 monkeypatch
-        gate_factor_ic 为返回 GovernanceGateResultDTO(passed=False, actual=0.001)，
-        捕获 FactorSevenError 7 要素 code。
-        """
+    def test_tr_4_1_case4_demo_training_disabled(self, db_session):
+        """旧 offline_minimal 演示入口明确拒绝，不伪称经过真实 IC 门禁。"""
         _insert_valid_factor_set(
             db_session,
             factorset_id="t4_iclow",
@@ -189,26 +183,9 @@ class TestTR4_1_FreezeAndTrainGates:
             frozen=True,
         )
 
-        def _bad_ic(*a, **k):
-            return GovernanceGateResultDTO(
-                gate_name="factor_ic_range",
-                passed=False,
-                score=0.001,
-                threshold_min=0.01,
-                threshold_max=0.10,
-                reasons=["abs_ic=0.001<0.01"],
-                detail={},
-            )
-
-        import app.services.factors.__facade__ as facade_mod
-        monkeypatch.setattr(facade_mod, "gate_factor_ic", _bad_ic)
-
-        with pytest.raises(ValueError) as ei:
+        with pytest.raises(ValueError, match=r"^DEMO_TRAINING_DISABLED:"):
             train_scoring_model("t4_iclow", mode="offline_minimal", actor="tester")
-
-        msg = str(ei.value)
-        # 7 要素结构里应该能识别 TRAIN_GATE_IC_OUT_OF_RANGE
-        assert "TRAIN_GATE_IC_OUT_OF_RANGE" in msg or "factor_ic_range" in msg or "0.001" in msg
+        assert db_session.query(FactorModelRun).count() == 0
 
 
 # ── TR-4.2 ──────────────────────────────────────────────────────────

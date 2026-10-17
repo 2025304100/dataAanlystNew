@@ -355,6 +355,7 @@ export default function Discovery({
   const [indicatorFilters, setIndicatorFilters] = useState<IndicatorFilter[]>([]);
   const [filterLogic, setFilterLogic] = useState<LogicMode>("AND");
   const [indicatorValues, setIndicatorValues] = useState<Record<number, Record<string, boolean | number | null>>>({});
+  const [indicatorErrors, setIndicatorErrors] = useState<Record<number, Record<string, string>>>({});
   const [poolTab, setPoolTab] = useState<PoolTab>("actionable");
   const [savedPlans, setSavedPlans] = useState<IndicatorPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | undefined>();
@@ -364,6 +365,9 @@ export default function Discovery({
   // 直接查 /discovery/latest-candidates 获取全量候选（含 hold/reduce），让用户看到全貌
   const [discoveryCandidates, setDiscoveryCandidates] = useState<WorkbenchCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const candidateRequestRef = useRef(0);
+  const candidateTargetRef = useRef("");
+  candidateTargetRef.current = `${scope}|${minScore}`;
   // 卡死检测：任务 running 但 updated_at 长时间未变化时提示用户
   const [staleWarning, setStaleWarning] = useState(false);
 
@@ -394,16 +398,22 @@ export default function Discovery({
   }, [task?.id, task?.status, task?.updated_at]);
 
   const reloadDiscoveryCandidates = useCallback(() => {
+    const target = `${scope}|${minScore}`;
+    if (candidateTargetRef.current !== target) return;
+    const requestId = ++candidateRequestRef.current;
+    const isCurrent = () => candidateRequestRef.current === requestId && candidateTargetRef.current === target;
+    setDiscoveryCandidates([]);
     setCandidatesLoading(true);
     api.getLatestDiscoveryCandidates(minScore, 50, scope)
-      .then((rows) => setDiscoveryCandidates(rows as WorkbenchCandidate[]))
-      .catch(() => setDiscoveryCandidates([]))
-      .finally(() => setCandidatesLoading(false));
+      .then((rows) => { if (isCurrent()) setDiscoveryCandidates(rows as WorkbenchCandidate[]); })
+      .catch(() => { if (isCurrent()) setDiscoveryCandidates([]); })
+      .finally(() => { if (isCurrent()) setCandidatesLoading(false); });
   }, [minScore, scope]);
 
   // 初次加载 + minScore 变化 + 任务状态变化时刷新
   useEffect(() => {
     reloadDiscoveryCandidates();
+    return () => { candidateRequestRef.current += 1; };
   }, [reloadDiscoveryCandidates]);
 
   // P1：根据当前 scope 加载对应的激活评分预设（scope -> asset_type 映射）
@@ -415,7 +425,7 @@ export default function Discovery({
         if (cancelled) return;
         setActivePreset(cfg ? { preset_key: cfg.preset_key, name: cfg.name, version: cfg.version, asset_type: cfg.asset_type } : null);
       })
-      .catch(() => setActivePreset(null));
+      .catch(() => { if (!cancelled) setActivePreset(null); });
     return () => { cancelled = true; };
   }, [scope]);
 
@@ -580,8 +590,11 @@ export default function Discovery({
   }, [sortedResults, requiredIndicatorKeys]);
 
   useEffect(() => {
+    let current = true;
     if (!requiredIndicatorKeys.length || !sortedResults.length) {
       setIndicatorValues({});
+      setIndicatorErrors({});
+      setIndicatorLoading(false);
       return;
     }
     const scanResultIds = sortedResults
@@ -589,27 +602,46 @@ export default function Discovery({
       .filter((id: number) => id > 0);
     if (!scanResultIds.length) {
       setIndicatorValues({});
+      setIndicatorErrors({});
+      setIndicatorLoading(false);
       return;
     }
+    setIndicatorValues({});
+    setIndicatorErrors({});
     setIndicatorLoading(true);
     api.evaluateDiscoveryIndicators({
       scan_result_ids: scanResultIds,
       indicator_keys: requiredIndicatorKeys,
     }).then((rows) => {
+      if (!current) return;
       const map: Record<number, Record<string, boolean | number | null>> = {};
+      const errors: Record<number, Record<string, string>> = {};
       (rows as DiscoveryIndicatorEvaluation[]).forEach((row) => {
-        map[row.scan_result_id] = row.values;
+        map[row.scan_result_id] = { ...row.values };
+        errors[row.scan_result_id] = { ...row.errors };
+        Object.keys(row.errors || {}).forEach((key) => { map[row.scan_result_id][key] = null; });
       });
       setIndicatorValues(map);
+      setIndicatorErrors(errors);
     }).catch((error: any) => {
+      if (!current) return;
       setIndicatorValues({});
+      setIndicatorErrors(Object.fromEntries(scanResultIds.map((id) => [id, Object.fromEntries(requiredIndicatorKeys.map((key) => [key, error?.message || t("indicatorEvalFailed")]))])));
       ctx.showToast("error", error?.message || t("indicatorEvalFailed"));
     }).finally(() => {
-      setIndicatorLoading(false);
+      if (current) setIndicatorLoading(false);
     });
+    return () => { current = false; };
     // 用 evaluateDeps 字符串作为依赖，避免 sortedResults/requiredIndicatorKeys 引用变化但内容不变时触发死循环
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evaluateDeps]);
+
+  const uncomputedIndicators = useMemo(() => sortedResults.flatMap((item: any) => {
+    const resultId = Number(item.scan_result_id ?? item.id);
+    return Object.entries(indicatorErrors[resultId] || {})
+      .filter(([key]) => requiredIndicatorKeys.includes(key))
+      .map(([key, reason]) => ({ resultId, key, symbol: item.symbol, name: item.name, indicator: indicatorMap[key]?.name || key, reason }));
+  }), [sortedResults, indicatorErrors, requiredIndicatorKeys, indicatorMap]);
 
   const filteredPool = useMemo(() => {
     if (!activeFilters.length) return currentPool;
@@ -1072,6 +1104,7 @@ export default function Discovery({
             expectedText: indicatorDisplayValue(expectedValue),
             operator: filter.operator,
             matched,
+            error: indicatorErrors[resultId]?.[key],
           };
         });
         const matchedIndicatorCount = indicatorEntries.filter((entry) => entry.matched).length;
@@ -1080,8 +1113,8 @@ export default function Discovery({
           <div style={{ display: "grid", gap: 4 }}>
             <div className="discovery-indicator-tags">
               {indicatorEntries.map((entry) => (
-                <span key={entry.key} className={`discovery-indicator-tag ${entry.matched ? "is-match" : "is-miss"}`}>
-                  {entry.name}: {entry.actualText}
+                <span key={entry.key} title={entry.error} className={`discovery-indicator-tag ${entry.matched ? "is-match" : "is-miss"}`}>
+                  {entry.name}: {entry.error ? t("dpNotComputed") : entry.actualText}
                 </span>
               ))}
             </div>
@@ -1279,7 +1312,7 @@ export default function Discovery({
       statusBadgesColumn,
       operationsColumn,
     ];
-  }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleRunBacktest, handleCreateJournal, handleToggleFreeze, handleUpdateRow]);
+  }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, indicatorErrors, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleRunBacktest, handleCreateJournal, handleToggleFreeze, handleUpdateRow]);
 
   return (
     <div className="tab-container" data-tab-content="discovery">
@@ -1559,6 +1592,11 @@ export default function Discovery({
               {indicatorLoading ? t("dpComputing") : template("dpEnabledIndicators", { count: requiredIndicatorKeys.length })}
             </div>
           )}
+
+          {uncomputedIndicators.length > 0 && <Alert type="warning" showIcon style={{ marginTop: 12 }} message={template("dpUncomputedTitle", { count: uncomputedIndicators.length })} description={<>
+            <p>{t("dpUncomputedHelp")}</p>
+            <ul style={{ margin: 0, paddingLeft: 20, maxHeight: 180, overflowY: "auto" }}>{uncomputedIndicators.map((item) => <li key={`${item.resultId}:${item.key}`}><strong>{item.symbol} {item.name} · {item.indicator}</strong>: <span>{item.reason}</span></li>)}</ul>
+          </>} />}
 
           <div className="table-wrap">
             <Table<WorkbenchCandidate>

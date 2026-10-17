@@ -27,7 +27,7 @@ from app.schemas.custom_indicator import (
     CustomIndicatorUpdate,
     CustomIndicatorVersionRead,
 )
-from app.services.backtest import _resolve_formula_expr
+from app.services.backtest import FormulaEvaluationError, _resolve_formula_expr
 
 router = APIRouter()
 
@@ -338,7 +338,10 @@ def preview_custom_indicator(payload: CustomIndicatorPreviewRequest, db: Session
     score_by_date = {row.trade_date: row for row in reversed(score_rows)}
     score = score_by_date.get(preview_bar.trade_date)
 
-    raw_value = _resolve_formula_expr(score, preview_bar, prev_bar, history_bars, payload.formula)
+    try:
+        raw_value = _resolve_formula_expr(score, preview_bar, prev_bar, history_bars, payload.formula)
+    except FormulaEvaluationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     result_boolean: bool | None = None
     result_number: float | None = None
     if payload.value_type == "number":

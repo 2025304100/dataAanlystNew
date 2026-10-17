@@ -138,6 +138,25 @@ def assess_factor_model_readiness(
 
     factor_set_id = model_factor_set_id(model)
     factor_set_metadata = _model_factor_set_metadata(model)
+    research = _json_object(model.hyperparameters_json).get('trusted_history_dataset')
+    if research is not None:
+        return _result(
+            False, 'MODEL_RESEARCH_DATASET_ONLY',
+            '代表股票池历史研究模型仅供研究对照，不能启用、发布正式评分或绑定生产策略。',
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+            trusted_history_dataset=research,
+        )
+    production = _json_object(model.hyperparameters_json).get('production_admission')
+    if production is not None:
+        # Qualification cannot be asserted through a client flag. A dedicated
+        # issuer must bind independently observed predictions and net costs to
+        # this exact candidate; pending candidates stay blocked everywhere.
+        return _result(
+            False, 'MODEL_INDEPENDENT_QUALIFICATION_PENDING',
+            '生产候选尚待冻结边界之后的成熟独立样本、可得时点及成本后评估；不能启用或发布正式评分。',
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+            production_admission=production,
+        )
     if model.status in {"retired", "deprecated"}:
         return _result(
             False,

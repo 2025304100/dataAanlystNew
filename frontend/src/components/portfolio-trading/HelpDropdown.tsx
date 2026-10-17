@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BookOpen,
   MessageCircleQuestionMark,
@@ -8,6 +9,7 @@ import {
 } from "lucide-react";
 import { message } from "antd";
 import { t } from "../../i18n";
+import NavIconButton from "./NavIconButton";
 
 /**
  * HelpDropdown — 顶部栏右侧问答帮助下拉
@@ -90,6 +92,11 @@ const HelpDropdown: React.FC<HelpDropdownProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // 面板 portal 到 body + fixed 定位：一级菜单 nav 有 overflow-x:auto，
+  // absolute 面板会被裁掉；fixed 相对视口不受裁剪（按钮在 sticky header 内，垂直位置恒定）
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number } | null>(null);
 
   /** 统一更新 open 状态并通知父组件（forceClose 触发的关闭不回调，父组件已知） */
   const updateOpen = useCallback(
@@ -107,13 +114,15 @@ const HelpDropdown: React.FC<HelpDropdownProps> = ({
     }
   }, [forceClose]);
 
-  /** 点击外部关闭（仅 open 时绑定监听） */
+  /** 点击外部关闭（仅 open 时绑定监听）；按钮与 portal 面板内部不算外部 */
   useEffect(() => {
     if (!open) return;
     function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node;
       if (
         wrapperRef.current &&
-        !wrapperRef.current.contains(e.target as Node)
+        !wrapperRef.current.contains(target) &&
+        !(panelRef.current && panelRef.current.contains(target))
       ) {
         updateOpen(false);
       }
@@ -122,10 +131,36 @@ const HelpDropdown: React.FC<HelpDropdownProps> = ({
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [open, updateOpen]);
 
-  /** 切换下拉展开/收起 */
+  /** 切换下拉展开/收起；打开时计算面板 fixed 坐标 */
   const handleToggle = useCallback(() => {
-    updateOpen(!open);
+    const next = !open;
+    updateOpen(next);
+    if (next) {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (rect) {
+        setPanelPos({
+          top: rect.bottom + 8,
+          right: Math.max(8, window.innerWidth - rect.right),
+        });
+      }
+    }
   }, [open, updateOpen]);
+
+  // 打开时监听 resize：按钮水平位置随布局变化，重算面板坐标
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (rect) {
+        setPanelPos({
+          top: rect.bottom + 8,
+          right: Math.max(8, window.innerWidth - rect.right),
+        });
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
 
   /** 点击菜单项：关闭下拉 + toast */
   const handleClickItem = useCallback(
@@ -138,46 +173,24 @@ const HelpDropdown: React.FC<HelpDropdownProps> = ({
 
   return (
     <div ref={wrapperRef} style={{ position: "relative" }}>
-      {/* ========== 帮助按钮（help-circle） ========== */}
-      <button
-        type="button"
-        title={t("portfolioTrading.help.title")}
-        onClick={handleToggle}
-        style={{
-          width: 32,
-          height: 32,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 6,
-          background: "transparent",
-          border: "none",
-          color: "var(--pt-muted-foreground)",
-          cursor: "pointer",
-          position: "relative",
-          transition: "background 0.15s ease, color 0.15s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--pt-surface-3)";
-          e.currentTarget.style.color = "var(--pt-foreground)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = "var(--pt-muted-foreground)";
-        }}
-      >
+      {/* ========== 帮助按钮（help-circle，与通知按钮共用 NavIconButton 保证风格统一） ========== */}
+      <NavIconButton ref={buttonRef} title={t("portfolioTrading.help.title")} onClick={handleToggle}>
         <CircleQuestionMark size={20} />
-      </button>
+      </NavIconButton>
 
-      {/* ========== 帮助下拉面板 ========== */}
-      {open && (
+      {/* ========== 帮助下拉面板（portal 到 body + fixed，避开 nav 的 overflow 裁剪；
+          外层 nav-tools-light 保持米白变量作用域随面板一起 portal） ========== */}
+      {open && panelPos && createPortal(
+        <div className="nav-tools-light">
         <div
+          ref={panelRef}
           className="pt-dropdown"
           style={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            right: 0,
+            position: "fixed",
+            top: panelPos.top,
+            right: panelPos.right,
             zIndex: 100,
+            width: 280,
             minWidth: 280,
             padding: 8,
             background: "var(--pt-popover)",
@@ -274,6 +287,9 @@ const HelpDropdown: React.FC<HelpDropdownProps> = ({
             {t("portfolioTrading.help.version")}
           </div>
         </div>
+        </div>
+        ,
+        document.body
       )}
     </div>
   );

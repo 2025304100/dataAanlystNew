@@ -24,7 +24,6 @@ from app.services.market_data_sources.chain import SourceChain
 from app.services.market_data_sources.sources.base import HistorySource, SourceUnavailable
 from app.services.market_data_sources.sources.tdx_source import TDXHistorySource
 from app.services.market_data_sources.tdx_parser import (
-    RECORD_FORMAT,
     detect_tdx_path,
     parse_day_file,
     symbol_to_tdx_code,
@@ -42,7 +41,7 @@ def _make_day_record(
     volume: int,
 ) -> bytes:
     """构造一条 32 字节的 .day 记录。"""
-    return struct.pack(RECORD_FORMAT, date_int, open_cents, high, low, close, amount, volume, 0)
+    return struct.pack("<IIIIIfII", date_int, open_cents, round(high * 100), round(low * 100), round(close * 100), amount, volume, 0)
 
 
 def _make_symbol(symbol: str = "000001", market: str = "SZ", asset_type: str = "stock"):
@@ -61,7 +60,7 @@ class TestTDXParser:
     """parse_day_file 二进制解析测试。"""
 
     def test_parse_normal_file(self, tmp_path: Path):
-        """正常文件:多条记录,验证字段解析(open /100,其他原值)。"""
+        """原生小端文件:所有 OHLC 由整数分转为元。"""
         day_file = tmp_path / "sz000001.day"
         day_file.write_bytes(
             _make_day_record(20240101, 1000, 10.5, 9.8, 10.2, 1.0e8, 100000)
@@ -73,7 +72,7 @@ class TestTDXParser:
         # open 是"分",需 /100(open 是 int32 精确存储,无精度问题)
         assert df.iloc[0]["open"] == 10.0  # 1000 / 100
         assert df.iloc[1]["open"] == 10.2  # 1020 / 100
-        # high/low/close 是 float32 存储有精度误差,用 approx 比较
+        # 所有 OHLC 均来自整数分；成交额为 float32。
         assert df.iloc[0]["high"] == pytest.approx(10.5, abs=1e-5)
         assert df.iloc[0]["close"] == pytest.approx(10.2, abs=1e-5)
         assert df.iloc[0]["volume"] == 100000
@@ -126,16 +125,16 @@ class TestTDXParser:
         assert dates == sorted(dates)
         assert df.iloc[0]["open"] == 10.10  # 20240101 的 open
 
-    def test_partial_record_ignored(self, tmp_path: Path):
-        """不完整记录(不足 32 字节)被忽略,不报错。"""
+    def test_partial_record_rejected(self, tmp_path: Path):
+        """不完整记录使整个文件拒绝，防止完整前缀伪装为完整行情。"""
         day_file = tmp_path / "test.day"
         # 完整记录 + 16 字节残缺记录
         day_file.write_bytes(
             _make_day_record(20240101, 1000, 10.0, 9.5, 9.8, 1.0e8, 100000)
             + b"\x00" * 16  # 不足 32 字节
         )
-        df = parse_day_file(day_file)
-        assert len(df) == 1  # 只解析到完整的那条
+        with pytest.raises(ValueError, match="Truncated TDX day record"):
+            parse_day_file(day_file)
 
 
 # ====================================================================
@@ -229,7 +228,7 @@ class TestTDXSource:
         source = TDXHistorySource()
         source.tdx_path = str(tmp_path)
         sym = _make_symbol("000001", "SZ", "stock")
-        df = source.fetch(sym, date(2024, 1, 1), date(2024, 1, 31), "qfq")
+        df = source.fetch(sym, date(2024, 1, 1), date(2024, 1, 31), "")
         assert len(df) == 2
         assert "trade_date" in df.columns
         assert "open" in df.columns
@@ -241,7 +240,7 @@ class TestTDXSource:
         source.tdx_path = None
         sym = _make_symbol("000001", "SZ", "stock")
         with pytest.raises(SourceUnavailable):
-            source.fetch(sym, date(2024, 1, 1), date(2024, 1, 31), "qfq")
+            source.fetch(sym, date(2024, 1, 1), date(2024, 1, 31), "")
 
     def test_fetch_empty_file_raises(self, tmp_path: Path):
         """空 .day 文件 -> SourceUnavailable(触发降级)。"""
@@ -253,7 +252,7 @@ class TestTDXSource:
         source.tdx_path = str(tmp_path)
         sym = _make_symbol("000001", "SZ", "stock")
         with pytest.raises(SourceUnavailable):
-            source.fetch(sym, date(2024, 1, 1), date(2024, 1, 31), "qfq")
+            source.fetch(sym, date(2024, 1, 1), date(2024, 1, 31), "")
 
 
 # ====================================================================

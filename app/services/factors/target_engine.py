@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from math import isfinite
 from typing import Any
 from uuid import uuid4
 
@@ -38,6 +39,7 @@ def _load_target_panel(
     signal_from: date | None = None,
     signal_to: date | None = None,
     target_horizon: int = 5,
+    symbols: tuple[str, ...] | list[str] | None = None,
 ) -> pd.DataFrame:
     """按交易日历自连接出 entry=T+1 / exit=T+5 的标签面板。
 
@@ -53,6 +55,11 @@ def _load_target_panel(
     if signal_to is not None:
         signal_filter += " AND b.trade_date <= ?"
         params.append(signal_to)
+    if symbols is not None:
+        if not symbols:
+            return pd.DataFrame()
+        signal_filter += " AND b.symbol IN (" + ",".join("?" for _ in symbols) + ")"
+        params.extend(symbols)
 
     sql = f"""
         WITH bars AS (
@@ -78,13 +85,16 @@ def _load_target_panel(
             s.trade_date AS signal_date,
             s.close AS signal_close,
             entry_calendar.trade_date AS entry_date,
+            entry_bar.trade_date AS entry_bar_date,
             entry_bar.open AS entry_open,
             entry_bar.high AS entry_high,
             entry_bar.low AS entry_low,
             entry_bar.volume AS entry_volume,
             entry_bar.amount AS entry_amount,
             previous_exit_bar.close AS previous_exit_close,
+            previous_exit_bar.trade_date AS previous_exit_bar_date,
             exit_calendar.trade_date AS exit_date,
+            exit_bar.trade_date AS exit_bar_date,
             exit_bar.close AS exit_close,
             exit_bar.high AS exit_high,
             exit_bar.low AS exit_low,
@@ -117,19 +127,27 @@ def _invalid_reason(row: dict, *, limit_threshold: float) -> str | None:
         return "insufficient_future_calendar"
     if row["exit_date"] is None or pd.isna(row["exit_date"]):
         return "insufficient_future_calendar"
-    if row["entry_open"] is None or pd.isna(row["entry_open"]):
+    # Calendar presence and numeric validity are different facts. A present
+    # bar with NaN/Inf must not be mistaken for suspension (or yield -100%).
+    entry_bar_date = row.get("entry_bar_date", row["entry_open"])
+    exit_bar_date = row.get("exit_bar_date", row["exit_close"])
+    if entry_bar_date is None or pd.isna(entry_bar_date):
         return "missing_entry_bar"
-    if row["exit_close"] is None or pd.isna(row["exit_close"]):
+    if exit_bar_date is None or pd.isna(exit_bar_date):
         return "missing_exit_bar"
-    if (
-        float(row["entry_open"]) <= 0
-        or row["entry_volume"] is None
-        or pd.isna(row["entry_volume"])
-        or float(row["entry_volume"]) <= 0
-        or row["entry_amount"] is None
-        or pd.isna(row["entry_amount"])
-        or float(row["entry_amount"]) <= 0
-    ):
+
+    def finite_values(fields: tuple[str, ...]) -> list[float] | None:
+        try:
+            values = [float(row[field]) for field in fields]
+        except (TypeError, ValueError):
+            return None
+        return values if all(isfinite(value) for value in values) else None
+
+    entry_values = finite_values(("entry_open", "entry_high", "entry_low",
+        "entry_volume", "entry_amount", "signal_close"))
+    if entry_values is None:
+        return "entry_non_finite_values"
+    if any(value <= 0 for value in entry_values):
         return "entry_not_tradable"
     signal_close = row["signal_close"]
     if (
@@ -145,15 +163,14 @@ def _invalid_reason(row: dict, *, limit_threshold: float) -> str | None:
         >= limit_threshold
     ):
         return "entry_locked_limit_up"
-    if (
-        float(row["exit_close"]) <= 0
-        or row["exit_volume"] is None
-        or pd.isna(row["exit_volume"])
-        or float(row["exit_volume"]) <= 0
-        or row["exit_amount"] is None
-        or pd.isna(row["exit_amount"])
-        or float(row["exit_amount"]) <= 0
-    ):
+    exit_fields = ("exit_close", "exit_high", "exit_low", "exit_volume", "exit_amount")
+    previous_bar_date = row.get("previous_exit_bar_date", row["previous_exit_close"])
+    if previous_bar_date is not None and not pd.isna(previous_bar_date):
+        exit_fields += ("previous_exit_close",)
+    exit_values = finite_values(exit_fields)
+    if exit_values is None:
+        return "exit_non_finite_values"
+    if any(value <= 0 for value in exit_values):
         return "exit_not_tradable"
     previous_close = row["previous_exit_close"]
     if (
@@ -172,7 +189,7 @@ def _invalid_reason(row: dict, *, limit_threshold: float) -> str | None:
     return None
 
 
-def calculate_targets(
+def preview_targets(
     warehouse: FactorWarehouse,
     *,
     start_date: date | None = None,
@@ -181,8 +198,15 @@ def calculate_targets(
     adjust: str = "qfq",
     limit_threshold: float = 0.095,
     target_horizon: int = 5,
-) -> TargetCalculationResult:
-    """Persist T+1 open to T+N close labels without skipping suspensions."""
+    symbols: tuple[str, ...] | list[str] | None = None,
+    as_of_exit_date: date | None = None,
+) -> pd.DataFrame:
+    """Read-only T+1 open to T+N close labels using the production label rules.
+
+    No initialization, upsert or coverage refresh is allowed here. Preflight can
+    therefore inspect a first-use horizon without requiring a persisted batch.
+    The complete qfq calendar remains the entry/exit clock even for a small pool.
+    """
     if not isinstance(target_horizon, int) or not 1 <= target_horizon <= 20:
         raise ValueError("target_horizon must be an integer between 1 and 20")
     target_code = f"target_{target_horizon}d_return"
@@ -190,7 +214,6 @@ def calculate_targets(
         raise ValueError("start_date must not be after end_date")
     if not 0 < limit_threshold < 1:
         raise ValueError("limit_threshold must be between 0 and 1")
-    warehouse.initialize()
     # 窗口下推进 SQL 是为了"只重算尾部几天"真的省钱；下面的 pandas 过滤仍保留，
     # 因为 panel 也可能来自调用方注入的桩，正确性不能只靠 SQL 那一层。
     panel = _load_target_panel(
@@ -199,6 +222,7 @@ def calculate_targets(
         signal_from=start_date,
         signal_to=end_date,
         **({"target_horizon": target_horizon} if target_horizon != 5 else {}),
+        **({"symbols": symbols} if symbols is not None else {}),
     )
     if not panel.empty:
         for column in ("signal_date", "entry_date", "exit_date"):
@@ -212,7 +236,6 @@ def calculate_targets(
     batch_id = calc_batch_id or f"targets-{uuid4().hex}"
     created_at = _utcnow_naive()
     records = []
-    tradable_rows = 0
     for row in panel.to_dict("records"):
         reason = _invalid_reason(row, limit_threshold=limit_threshold)
         is_tradable = reason is None
@@ -225,8 +248,6 @@ def calculate_targets(
                 reason = "non_finite_return"
                 is_tradable = False
                 target_value = None
-        if is_tradable:
-            tradable_rows += 1
         records.append(
             {
                 "symbol": row["symbol"],
@@ -241,21 +262,46 @@ def calculate_targets(
                 "created_at": created_at,
             }
         )
-    rows_written = warehouse.upsert_frame(
-        "factor_targets", pd.DataFrame.from_records(records)
-    )
+    frame = pd.DataFrame.from_records(records, columns=["symbol", "signal_date", "entry_date",
+        "exit_date", "target_code", "target_value", "is_tradable", "invalid_reason",
+        "calc_batch_id", "created_at"])
+    if as_of_exit_date is not None and not frame.empty:
+        exits = pd.to_datetime(frame["exit_date"], errors="coerce")
+        frame = frame[exits.notna() & (exits <= pd.Timestamp(as_of_exit_date))]
+    return frame.reset_index(drop=True)
+
+
+def calculate_targets(
+    warehouse: FactorWarehouse,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    calc_batch_id: str | None = None,
+    adjust: str = "qfq",
+    limit_threshold: float = 0.095,
+    target_horizon: int = 5,
+    symbols: tuple[str, ...] | list[str] | None = None,
+) -> TargetCalculationResult:
+    """Persist the same labels that read-only preflight previews."""
+    warehouse.initialize()
+    batch_id = calc_batch_id or f"targets-{uuid4().hex}"
+    target_code = f"target_{target_horizon}d_return"
+    frame = preview_targets(warehouse, start_date=start_date, end_date=end_date,
+        calc_batch_id=batch_id, adjust=adjust, limit_threshold=limit_threshold,
+        target_horizon=target_horizon, symbols=symbols)
+    rows_written = warehouse.upsert_frame("factor_targets", frame)
     # 写完就刷新覆盖表：覆盖 gate 的依据必须是这次写入后的真实状态，
     # 而不是调用方再去扫一遍全量标签行。
     warehouse.refresh_label_coverage(batch_id, target_code, adjust=adjust)
     return TargetCalculationResult(
         calc_batch_id=batch_id,
         rows_written=rows_written,
-        tradable_rows=tradable_rows,
-        invalid_rows=len(records) - tradable_rows,
-        signal_date_count=int(panel["signal_date"].nunique())
-        if not panel.empty
+        tradable_rows=int(frame["is_tradable"].sum()) if not frame.empty else 0,
+        invalid_rows=int((~frame["is_tradable"]).sum()) if not frame.empty else 0,
+        signal_date_count=int(frame["signal_date"].nunique())
+        if not frame.empty
         else 0,
-        symbol_count=int(panel["symbol"].nunique())
-        if not panel.empty
+        symbol_count=int(frame["symbol"].nunique())
+        if not frame.empty
         else 0,
     )

@@ -71,9 +71,10 @@ export interface ChainStepsBarProps {
   state: ChainState;
   onGoStep?: (stepIdx: number) => void;
   className?: string;
+  disabledSteps?: Partial<Record<number, string>>;
 }
 
-const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, className }) => {
+const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, className, disabledSteps = {} }) => {
   const { current, blocked, nextEnabled } = inferChainStep(state);
   const currentMeta = STEP_META.find((m) => m.idx === current)!;
   const nextStepName = currentMeta.longName;
@@ -81,7 +82,7 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
   const completedCount = allReady ? 8 : current - 1;
 
   const handleNextPrimary = () => {
-    onGoStep?.(current);
+    if (!disabledSteps[current]) onGoStep?.(current);
   };
 
   return (
@@ -107,7 +108,8 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
         <Button
           type="primary"
           size="large"
-          disabled={!nextEnabled}
+          disabled={!nextEnabled || !!disabledSteps[current]}
+          title={disabledSteps[current]}
           onClick={handleNextPrimary}
           icon={<ArrowRightOutlined />}
           className="chain-primary-action"
@@ -183,6 +185,8 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
                 key={meta.idx}
                 size="small"
                 data-testid={meta.goAction!.testId}
+                disabled={!!disabledSteps[meta.idx]}
+                title={disabledSteps[meta.idx]}
                 onClick={() => onGoStep?.(meta.idx)}
               >
                 {meta.idx}. {meta.goAction!.label}

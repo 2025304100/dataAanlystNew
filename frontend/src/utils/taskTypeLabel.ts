@@ -7,7 +7,7 @@
 //
 // 规则：
 // - 命中映射 → 中文（i18n）；
-// - external_sync_ 前缀 → 统一"外部数据同步"，不再拼内部后缀；
+// - external_sync_ 前缀 → 按已接入数据集显示具体名称，未知数据集用"外部数据同步"；
 // - 没命中 → "其他任务"，**原 code 只放进 tooltip**（运维需要时仍能看到），
 //   不进入正文文案。
 import { t } from "../i18n";
@@ -36,6 +36,7 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
   // 外部数据
   macro_update: "taskTypeMacro",
   financial_report_sync: "taskTypeFinancialReportSync",
+  factor_production_candidate: "productionCandidate.taskType",
   hot_rank_snapshot: "taskTypeHotRankSnapshot",
   lhb_institution_sync: "taskTypeLhbInstitutionSync",
   tail_proxy_snapshot: "taskTypeTailProxySnapshot",
@@ -48,6 +49,15 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
 };
 
 const EXTERNAL_SYNC_PREFIX = "external_sync_";
+const EXTERNAL_SYNC_DATASET_LABEL_KEYS: Record<string, string> = {
+  fundamental: "extSyncFundamental",
+  financial: "extSyncFinancial",
+  lhb: "extSyncLhb",
+  hot_rank: "extSyncHotRank",
+  tail_proxy: "extSyncTailProxy",
+  capital_flow: "extSyncCapitalFlow",
+  etf: "extSyncEtf",
+};
 
 /** 供测试与守护使用：映射已覆盖的内部 code 全集。 */
 export const KNOWN_TASK_TYPES: readonly string[] = Object.keys(TASK_TYPE_LABEL_KEYS);
@@ -61,9 +71,11 @@ export function taskTypeLabel(taskType?: string | null): string {
   if (!value) return t("taskTypeOther");
   const key = TASK_TYPE_LABEL_KEYS[value];
   if (key) return t(key);
-  // 外部数据同步族是按数据集动态拼出来的（external_sync_<dataset>），
-  // 以前会显示成 "外部数据 · <dataset 内部名>" —— 后缀仍是内部 code，故统一收成一句中文。
-  if (value.startsWith(EXTERNAL_SYNC_PREFIX)) return t("taskTypeExternalSync");
+  // fundamental 是股票估值，financial 才是财报；复用同步入口的文案，避免任务中心混淆。
+  if (value.startsWith(EXTERNAL_SYNC_PREFIX)) {
+    const dataset = value.slice(EXTERNAL_SYNC_PREFIX.length);
+    return t(EXTERNAL_SYNC_DATASET_LABEL_KEYS[dataset] ?? "taskTypeExternalSync");
+  }
   return t("taskTypeOther");
 }
 

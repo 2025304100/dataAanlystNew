@@ -25,15 +25,15 @@ class CapitalFlow(Base):
     symbol_id: Mapped[int] = mapped_column(ForeignKey("symbols.id", ondelete="CASCADE"), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     # 净流入金额（元，正为净流入，负为净流出）
-    main_net_inflow: Mapped[float | None] = mapped_column(Float, nullable=True)  # 主力净流入
-    super_large_net_inflow: Mapped[float | None] = mapped_column(Float, nullable=True)  # 超大单净流入
-    large_net_inflow: Mapped[float | None] = mapped_column(Float, nullable=True)  # 大单净流入
-    medium_net_inflow: Mapped[float | None] = mapped_column(Float, nullable=True)  # 中单净流入
-    small_net_inflow: Mapped[float | None] = mapped_column(Float, nullable=True)  # 小单净流入
+    main_net_inflow: Mapped[float | None] = mapped_column(Float(53), nullable=True)  # 主力净流入
+    super_large_net_inflow: Mapped[float | None] = mapped_column(Float(53), nullable=True)  # 超大单净流入
+    large_net_inflow: Mapped[float | None] = mapped_column(Float(53), nullable=True)  # 大单净流入
+    medium_net_inflow: Mapped[float | None] = mapped_column(Float(53), nullable=True)  # 中单净流入
+    small_net_inflow: Mapped[float | None] = mapped_column(Float(53), nullable=True)  # 小单净流入
     # 主力净流入占比（%）
-    main_net_inflow_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    main_net_inflow_pct: Mapped[float | None] = mapped_column(Float(53), nullable=True)
     # 标准化评分（0-100，越高越优；由 calc_main_net_inflow_score 写入）
-    main_net_inflow_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    main_net_inflow_score: Mapped[float | None] = mapped_column(Float(53), nullable=True)
     # 元信息
     source: Mapped[str] = mapped_column(String(32), default="akshare")
     raw_json: Mapped[str | None] = mapped_column(Text, nullable=True)

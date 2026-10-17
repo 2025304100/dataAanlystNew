@@ -69,8 +69,8 @@ class FactorSetStatusError(ValueError):
         }
 
 
-# FactorVersion 可训练状态判定（多字段容错：status / validation_status / is_latest）
-def _factor_version_trainable(version: Any) -> bool:
+# FactorVersion 可训练状态判定（兼容历史 status 字段；latest 不代表校验通过）
+def _factor_version_has_validation(version: Any) -> bool:
     """判断某个 FactorVersion 是否处于 trainable 状态。
 
     真实 FactorVersion 表目前使用 validation_status 存 pending/valid/invalid；
@@ -85,11 +85,20 @@ def _factor_version_trainable(version: Any) -> bool:
             return False
     vs = getattr(version, "validation_status", None)
     if isinstance(vs, str):
-        if vs.lower() in {"valid", "published", "trainable", "active"}:
+        if vs.lower() in {"valid", "published", "trainable", "testing", "shadow", "active"}:
             return True
-        if vs.lower() in {"invalid", "rejected", "retired"}:
+        if vs.strip():
             return False
-    return bool(getattr(version, "is_latest", 0)) == 1
+    # Latest identifies the current version; it is never validation evidence.
+    return False
+
+
+def _factor_version_trainable(version: Any, *, factor_code: str | None = None) -> bool:
+    """Historical validation plus current strict DSL/native execution capability."""
+    from app.services.factors.version_compatibility import can_execute_version
+
+    return (_factor_version_has_validation(version)
+            and can_execute_version(version, factor_code=factor_code))
 
 
 def assert_factor_set_ready(
@@ -165,12 +174,12 @@ def assert_factor_set_ready(
                     "factor_code": m.factor_code,
                 },
             )
-        if not _factor_version_trainable(version):
+        if not _factor_version_trainable(version, factor_code=m.factor_code):
             vs_val = getattr(version, "validation_status", None)
             status_val = getattr(version, "status", None)
             raise FactorSetStatusError(
                 "FACTOR_SET_MEMBER_VERSION_NOT_TRAINABLE",
-                f"成员因子 {m.factor_code}（version_id={vid}）状态不可训练：status={status_val!r} validation_status={vs_val!r}",
+                f"成员因子 {m.factor_code}（version_id={vid}）缺少有效校验证据或不兼容当前执行器；请在编辑器重新校验并创建新版本。status={status_val!r} validation_status={vs_val!r}",
                 title_zh="因子集合成员版本不可训练",
                 details={
                     "factor_set_id": factor_set_id,
@@ -336,11 +345,36 @@ def deprecate_factor_set(db: "Session", factor_set_id: str) -> FactorSet:
         raise KeyError(f"FactorSet(id={factor_set_id}) 不存在")
     if fs.status == "deprecated":
         return fs
+    assert_factor_set_not_in_use(db, factor_set_id)
     fs.status = "deprecated"
     fs.updated_at = _utcnow_naive()
     db.commit()
     db.refresh(fs)
     return fs
+
+
+def assert_factor_set_not_in_use(db: "Session", factor_set_id: str) -> None:
+    """Do not invalidate the frozen input of the current production/observer model."""
+    import json
+    from app.models.factor_model import FactorModelRun
+    from app.models.factor_runtime import FactorRuntimeState
+    runtime = db.execute(
+        select(FactorRuntimeState).where(FactorRuntimeState.id == 1).with_for_update()
+    ).scalar_one_or_none()
+    if runtime is None or runtime.weight_mode not in {"ridge", "shadow"} or not runtime.active_model_run_id:
+        return
+    model = db.get(FactorModelRun, runtime.active_model_run_id)
+    try:
+        hp = json.loads(model.hyperparameters_json or "{}") if model is not None else {}
+    except (TypeError, json.JSONDecodeError):
+        hp = {}
+    if isinstance(hp, dict) and (hp.get("factor_set_id") or hp.get("factorset_id")) == factor_set_id:
+        raise FactorSetStatusError(
+            "FACTOR_SET_IN_USE",
+            "该集合正被生产或观察模型使用，请先回退手工模式或切换模型后再废弃。",
+            title_zh="集合仍在运行中",
+            details={"factor_set_id": factor_set_id, "model_run_id": runtime.active_model_run_id},
+        )
 
 
 def copy_factor_set_to_new_id(
@@ -387,6 +421,9 @@ def copy_factor_set_to_new_id(
             factor_version=m.factor_version,
             role=m.role,
             weight_constraint=m.weight_constraint,
+            display_order=m.display_order,
+            missing_policy=m.missing_policy,
+            excluded_reason=m.excluded_reason,
         ))
     db.commit()
     db.refresh(new_fs)
@@ -554,12 +591,12 @@ def factor_set_readiness(
                     "factor_version_id": vid,
                 },
             )
-        if not _factor_version_trainable(version):
+        if not _factor_version_trainable(version, factor_code=m.factor_code):
             return _make_readiness(
                 False, factor_set_id=factor_set_id,
                 code="MEMBER_VERSION_NOT_TRAINABLE",
                 message=(
-                    f"成员因子 {m.factor_code} (version_id={vid}) 版本状态非可训练: "
+                    f"成员因子 {m.factor_code} (version_id={vid}) 缺少有效校验证据或不兼容当前执行器；请在编辑器重新校验并创建新版本。"
                     f"validation_status={getattr(version, 'validation_status', None)!r}"
                 ),
                 details={

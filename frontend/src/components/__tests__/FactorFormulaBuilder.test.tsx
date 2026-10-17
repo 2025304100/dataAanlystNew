@@ -37,19 +37,20 @@ describe("FactorFormulaBuilder", () => {
   const onUseExample = vi.fn();
   const onInspect = vi.fn();
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
   it("renders the executable catalog supplied by the backend contract", () => {
     render(<FactorFormulaBuilder isZh catalog={catalog} onInsert={onInsert} onUseExample={onUseExample} onInspect={onInspect} />);
 
     expect(screen.getByRole("button", { name: "close 收盘价" })).toBeInTheDocument();
     expect(screen.getByText("可评价")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "函数 (2)" }));
+    fireEvent.click(screen.getByRole("tab", { name: "函数 (1)" }));
     expect(screen.getByRole("button", { name: "sma 简单移动平均" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "rank_cs 截面排名" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("button", { name: "rank_cs 截面排名" })).not.toBeInTheDocument();
   });
 
   it("inserts only enabled field and function snippets at the caller cursor", () => {
+    localStorage.setItem("settings.show_unsupported", "true");
     render(<FactorFormulaBuilder isZh catalog={catalog} onInsert={onInsert} onUseExample={onUseExample} onInspect={onInspect} />);
 
     fireEvent.click(screen.getByRole("button", { name: "close 收盘价" }));

@@ -18,6 +18,7 @@ from app.models.symbol import Symbol
 from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.factors.batch_audit import begin_batch, finalize_batch
 from app.services.factors.store import FactorWarehouse
+from app.services.market_history_contract import explicit_source_price_mode
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,8 @@ class BarMirrorResult:
     universe_watermark: int = 0
     metadata_rows: int = 0
     metadata_watermark: int = 0
+    price_mode_unknown_rows: int = 0
+    price_mode_conflict_rows: int = 0
 
     @property
     def rows_written(self) -> int:
@@ -48,6 +51,10 @@ class BarMirrorResult:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["rows_written"] = self.rows_written
+        if self.price_mode_unknown_rows:
+            payload["price_mode_notice_zh"] = "旧行情复权方式尚未核实；保留既有镜像口径，不属于本次可信研究样本。"
+        if self.price_mode_conflict_rows:
+            payload["price_mode_conflict_notice_zh"] = "复权方式与镜像请求冲突的行情已拒绝写入；原始行情仍保留。"
         return payload
 
 
@@ -169,6 +176,7 @@ def _business_record(
     adjust: str,
     ingested_at: datetime,
 ) -> dict[str, Any]:
+    _require_compatible_price_mode(bar.source, adjust)
     return {
         "symbol": _normalized_symbol(symbol.symbol),
         "trade_date": bar.trade_date,
@@ -199,6 +207,7 @@ def _universe_record(
     adjust: str,
     ingested_at: datetime,
 ) -> dict[str, Any]:
+    _require_compatible_price_mode(bar.source, adjust)
     return {
         "symbol": _normalized_symbol(symbol.symbol),
         "trade_date": bar.trade_date,
@@ -221,6 +230,30 @@ def _universe_record(
     }
 
 
+class PriceModeConflict(ValueError):
+    pass
+
+
+def _require_compatible_price_mode(source: str | None, adjust: str) -> None:
+    known_mode = explicit_source_price_mode(source)
+    if known_mode is not None and known_mode != adjust:
+        raise PriceModeConflict("bar_mirror_explicit_price_mode_conflict")
+
+
+def _price_mode_records(rows, builder, result: BarMirrorResult, *, adjust: str, ingested_at: datetime):
+    records = []
+    for bar, symbol in rows:
+        try:
+            record = builder(bar, symbol, batch_id=result.batch_id, adjust=adjust, ingested_at=ingested_at)
+        except PriceModeConflict:
+            result.price_mode_conflict_rows += 1
+            continue
+        if explicit_source_price_mode(bar.source) is None:
+            result.price_mode_unknown_rows += 1
+        records.append(record)
+    return records
+
+
 def _mirror_business_bars(
     db: Session,
     warehouse: FactorWarehouse,
@@ -237,7 +270,12 @@ def _mirror_business_bars(
     if _cancelled(should_cancel):
         return
     source_key = _watermark_key(BUSINESS_SOURCE_KEY, start_date, end_date)
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    # Bounded universe passes replay old IDs to pick up source corrections.
+    # Replay the business overlay too: otherwise that baseline overwrites
+    # earlier business values while their persisted ID watermark skips them.
+    # Replaying from zero also restores the overlay after a cancelled pass.
+    bounded_range = start_date is not None or end_date is not None
+    cursor = 0 if full_refresh or bounded_range else warehouse.get_watermark(source_key)
     # 一次性 COUNT 总行数（基于 cursor 过滤），用于进度计算
     total_rows = int(
         _read_scalar(db,
@@ -278,16 +316,7 @@ def _mirror_business_bars(
         if _cancelled(should_cancel):
             break
         ingested_at = _utcnow_naive()
-        records = [
-            _business_record(
-                bar,
-                symbol,
-                batch_id=result.batch_id,
-                adjust=adjust,
-                ingested_at=ingested_at,
-            )
-            for bar, symbol in rows
-        ]
+        records = _price_mode_records(rows, _business_record, result, adjust=adjust, ingested_at=ingested_at)
         cursor = int(rows[-1][0].id)
         result.business_rows += warehouse.upsert_daily_bars(
             records,
@@ -386,16 +415,7 @@ def _mirror_universe_bars(
         if _cancelled(should_cancel):
             break
         ingested_at = _utcnow_naive()
-        records = [
-            _universe_record(
-                bar,
-                symbol,
-                batch_id=result.batch_id,
-                adjust=adjust,
-                ingested_at=ingested_at,
-            )
-            for bar, symbol in rows
-        ]
+        records = _price_mode_records(rows, _universe_record, result, adjust=adjust, ingested_at=ingested_at)
         cursor = int(rows[-1][0].id)
         result.universe_rows += warehouse.upsert_daily_bars(
             records,
@@ -498,16 +518,7 @@ def _mirror_universe_bars_by_symbol(
                 f"Writing {len(rows)} universe bars to local warehouse",
             )
         ingested_at = _utcnow_naive()
-        records = [
-            _universe_record(
-                bar,
-                symbol,
-                batch_id=result.batch_id,
-                adjust=adjust,
-                ingested_at=ingested_at,
-            )
-            for bar, symbol in rows
-        ]
+        records = _price_mode_records(rows, _universe_record, result, adjust=adjust, ingested_at=ingested_at)
         chunk_cursor = max(int(bar.id) for bar, _symbol in rows)
         cursor = max(
             cursor, chunk_cursor

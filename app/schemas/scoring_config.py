@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.services.scoring_direction import prepare_scoring_config
 
 
 class ScoringConfigRead(BaseModel):
@@ -36,11 +37,21 @@ class ScoringConfigCreate(BaseModel):
     config: dict[str, Any]
     base_preset_key: str | None = None
 
+    @field_validator("config")
+    @classmethod
+    def validate_config(cls, value):
+        return prepare_scoring_config(value)
+
 
 class ScoringConfigUpdate(BaseModel):
     name: str | None = Field(None, max_length=128)
     description: str | None = None
     config: dict[str, Any] | None = None
+
+    @field_validator("config")
+    @classmethod
+    def validate_config(cls, value):
+        return prepare_scoring_config(value) if value is not None else None
 
 
 class ScoringConfigDuplicate(BaseModel):

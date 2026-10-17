@@ -25,7 +25,6 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.ai_profile import PURPOSE_ALL
 from app.models.ai_session import (
     ACTION_TYPES,
     AIMessage,
@@ -242,7 +241,7 @@ def create_session(
                 override_user_message="AI 助手未配置，请前往设置",
             )
     else:
-        profile = mgr.select_profile(db, purpose=PURPOSE_ALL)
+        profile = mgr.select_profile(db, purpose=payload.purpose)
         if profile is None:
             raise UnifiedErrorException(
                 "AI_CONFIG_MISSING",
@@ -311,7 +310,7 @@ def create_session(
         db,
         llm_messages,
         profile_id=profile.id,
-        purpose=PURPOSE_ALL,
+        purpose=payload.purpose,
         max_tokens=profile.max_tokens,
     )
 
@@ -401,7 +400,7 @@ def create_session_stream(payload: AiSessionCreateRequest, db: Session = Depends
     profile = (
         ai_profile_service.get_profile(db, int(session.profile_id))
         if session is not None and session.profile_id and str(session.profile_id).isdigit()
-        else (ai_profile_service.get_profile(db, payload.profile_id) if payload.profile_id else mgr.select_profile(db, purpose=PURPOSE_ALL))
+        else (ai_profile_service.get_profile(db, payload.profile_id) if payload.profile_id else mgr.select_profile(db, purpose=payload.purpose))
     )
     if profile is None or not profile.is_enabled:
         raise UnifiedErrorException("AI_CONFIG_MISSING", status_code=400, override_user_message="AI 助手未配置，请前往设置")
@@ -441,6 +440,7 @@ def create_session_stream(payload: AiSessionCreateRequest, db: Session = Depends
         displayed_answer = ""
         for event in stream_llm_completion(
             db, llm_messages, profile_id=profile.id, max_tokens=profile.max_tokens,
+            purpose=payload.purpose,
         ):
             if event["type"] == "delta":
                 raw_stream += event["content"]
@@ -454,20 +454,24 @@ def create_session_stream(payload: AiSessionCreateRequest, db: Session = Depends
             message = result.error_message if result else "AI 流式响应异常结束"
             yield _sse("error", {"message": message})
             return
+        used_profile = result.profile_used or profile
         metadata = {
             "data_as_of": pack.metadata.get("data_as_of") if pack else None,
             "model_version": pack.metadata.get("model_version") if pack else None,
             "rule_version": pack.metadata.get("rule_version") if pack else None,
-            "provider_used": profile.provider, "model_used": profile.model,
+            "provider_used": used_profile.provider, "model_used": used_profile.model,
             "latency_ms": result.latency_ms, "tokens": result.total_tokens,
         }
         ai_resp = parse_llm_response(result.raw_response, metadata)
+        if result.failover_happened:
+            ai_resp.warnings.append(f"已从 {result.failover_from} 切换到备用模型 {result.failover_to}")
+            ai_resp.metadata.update(failover_from=result.failover_from, failover_to=result.failover_to, failover_happened=True)
         assistant_msg = ai_session_service.add_message(
             db, session_id=session.id, role=ROLE_ASSISTANT,
             content=ai_resp.to_message_content(), context_summary=context_summary,
             prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens,
             total_tokens=result.total_tokens, latency_ms=result.latency_ms,
-            model_used=profile.model, provider_used=profile.provider,
+            model_used=used_profile.model, provider_used=used_profile.provider,
             metadata_json=json.dumps(ai_resp.metadata, ensure_ascii=False),
         )
         _maybe_audit_draft(db, session.id, assistant_msg.id, pack, ai_resp)

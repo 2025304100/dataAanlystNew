@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("../ExternalDataSync", () => ({ default: () => <div data-testid="input-content">factor input content</div> }));
 vi.mock("../TaskCenter", () => ({ default: () => <div>task content</div> }));
@@ -9,6 +9,7 @@ const mockApi = vi.hoisted(() => ({
   getExternalDataCoverage: vi.fn(async () => ({ datasets: [] as any[] })),
   getExternalDataQualitySnapshots: vi.fn(async () => ({ fields: [] })),
   refreshExternalDataQualitySnapshots: vi.fn(async () => ({ fields: 0 })),
+  getExternalDataQualityHistory: vi.fn(),
 }));
 vi.mock("../../api/client", () => ({ api: mockApi }));
 
@@ -75,5 +76,19 @@ describe("data-center factor-input entry and tab persistence", () => {
     expect(await screen.findByText("temporary quality error")).toBeInTheDocument();
     fireEvent.click(button);
     await waitFor(() => expect(screen.queryByText("temporary quality error")).not.toBeInTheDocument());
+  });
+
+  it("does not reopen a dismissed quality history when its request completes", async () => {
+    let resolveHistory!: (value: unknown) => void;
+    mockApi.getExternalDataQualityHistory.mockImplementation(() => new Promise((resolve) => { resolveHistory = resolve; }));
+    mockApi.getExternalDataCoverage.mockResolvedValue({ datasets: [{ dataset: "fundamental", fields: [{ field: "pe_ttm", table_rows: 1, nonnull_rows: 1 }] }] });
+    mockApi.getExternalDataQualitySnapshots.mockResolvedValue({ fields: [{ field: "pe_ttm" }] } as any);
+    localStorage.setItem("settings_data_center_tab", "coverage");
+    render(<DataCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "查看趋势" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeVisible());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await act(async () => resolveHistory({ field: "pe_ttm", snapshots: [] }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });

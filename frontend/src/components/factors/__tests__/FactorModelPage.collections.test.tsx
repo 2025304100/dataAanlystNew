@@ -80,7 +80,8 @@ vi.mock("antd", async () => {
   };
 });
 
-vi.mock("../../../i18n", () => ({
+vi.mock("../../../i18n", async () => ({
+  ...await vi.importActual<typeof import("../../../i18n")>("../../../i18n"),
   t: (key: string) => key,
   template: (key: string) => key,
 }));
@@ -201,6 +202,123 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("factor-set member deletion identity", () => {
+  it.each([2, 3])("removes the clicked factor after reload with unequal member IDs (other factor %s)", async (otherFactorId) => {
+    const set = makeFactorSet({ id: "delete-contract", name: "删除契约集合", members: [
+      makeMember({ id: 2, factor_id: 1, factor_code: "CLICKED_A" }),
+      makeMember({ id: 11, factor_id: otherFactorId, factor_code: "KEEP_B" }),
+    ] });
+    seedSuccess({ factorSets: [set] });
+    // The public HTTP contract removes by factor_id, not the row's member id.
+    mockApi.removeFactorSetMember.mockImplementation(async (_setId: string, factorId: number) => {
+      if (!set.members.some((member: FactorSetMember) => member.factor_id === factorId)) throw new Error("member_not_found");
+      set.members = set.members.filter((member: FactorSetMember) => member.factor_id !== factorId);
+      set.n_members = set.members.length;
+      return { success: true, factor_set_id: set.id, factor_id: factorId };
+    });
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-edit-members-delete-contract"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    fireEvent.click(await screen.findByTestId("drawer-btn-del-2"));
+    await waitFor(() => expect(screen.queryByTestId("drawer-btn-del-2")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("drawer-save-close"));
+    await waitFor(() => expect(mockApi.scoringListFactorSetsAsFactor.mock.calls.length).toBeGreaterThan(1));
+    fireEvent.click(screen.getByTestId("btn-edit-members-delete-contract"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    expect(await screen.findByTestId("drawer-btn-del-11")).toBeInTheDocument();
+    expect(screen.queryByTestId("drawer-btn-del-2")).not.toBeInTheDocument();
+  });
+});
+
+describe("factor-set member drawer sessions", () => {
+  it("keeps the newly selected model detail when an earlier model read finishes late", async () => {
+    const modelA = makeModel({ id: "detail-A" });
+    const modelB = makeModel({ id: "detail-B" });
+    seedSuccess({ models: [modelA, modelB] });
+    const pending = new Map<string, (value: unknown) => void>();
+    mockApi.getFactorModel.mockImplementation((id: string) => new Promise((resolve) => pending.set(id, resolve)));
+    render(<FactorModelPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "factorModelWorkspaceModels" }));
+    fireEvent.click(await screen.findByRole("button", { name: "detail-A" }));
+    fireEvent.click(screen.getByRole("button", { name: "detail-B" }));
+    await act(async () => pending.get("detail-B")!(modelB));
+    expect(screen.getByTestId("model-validation-detail")).toHaveTextContent("factorModelDetail: detail-B");
+    await act(async () => pending.get("detail-A")!(modelA));
+    expect(screen.getByTestId("model-validation-detail")).toHaveTextContent("factorModelDetail: detail-B");
+  });
+  it("keeps B's members when A's detail arrives after closing A and opening B", async () => {
+    const setA = makeFactorSet({ id: "session-A", members: [] });
+    const setB = makeFactorSet({ id: "session-B", members: [] });
+    seedSuccess({ factorSets: [setA, setB] });
+    let resolveA!: (value: unknown) => void;
+    mockApi.getFactorSetDetail.mockImplementation((id: string) => id === "session-A"
+      ? new Promise((resolve) => { resolveA = resolve; })
+      : Promise.resolve({ ...setB, members: [makeMember({ id: 22, factor_id: 12, factor_code: "MEMBER_B" })] }));
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-edit-members-session-A"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByTestId("btn-edit-members-session-B"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    await screen.findByTestId("drawer-btn-del-22");
+    await act(async () => resolveA({ ...setA, members: [makeMember({ id: 21, factor_code: "MEMBER_A" })] }));
+    expect(screen.getByTestId("drawer-btn-del-22")).toBeInTheDocument();
+    expect(screen.queryByTestId("drawer-btn-del-21")).not.toBeInTheDocument();
+  });
+
+  it("does not append A's completed add to B and still shows the durable member when A is reopened", async () => {
+    const setA = makeFactorSet({ id: "add-A", members: [makeMember({ id: 21, factor_code: "EXISTING_A" })] });
+    const setB = makeFactorSet({ id: "add-B", members: [makeMember({ id: 22, factor_code: "EXISTING_B" })] });
+    seedSuccess({ factorSets: [setA, setB] });
+    mockApi.scoringListFactorDefinitions.mockResolvedValue({ items: [{ factor_code: "ADD_TO_A", versions: [{ version: 1, validation_status: "valid", trainable: true }] }] });
+    let resolveAdd!: (value: FactorSetMember) => void;
+    mockApi.addFactorSetMember.mockImplementation(() => new Promise<FactorSetMember>((resolve) => { resolveAdd = resolve; }).then((added) => {
+      setA.members = [...setA.members, added];
+      setA.n_members = setA.members.length;
+      return added;
+    }));
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-edit-members-add-A"));
+    fireEvent.click(await screen.findByTestId("lib-row-ADD_TO_A"));
+    fireEvent.click(screen.getByTestId("btn-add-member"));
+    await waitFor(() => expect(mockApi.addFactorSetMember).toHaveBeenCalled());
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByTestId("btn-edit-members-add-B"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    await act(async () => resolveAdd(makeMember({ id: 99, factor_set_id: "add-A", factor_id: 99, factor_code: "ADD_TO_A" })));
+    expect(screen.getByTestId("drawer-btn-del-22")).toBeInTheDocument();
+    expect(screen.queryByTestId("drawer-btn-del-99")).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByTestId("btn-edit-members-add-A"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    expect(await screen.findByTestId("drawer-btn-del-99")).toBeInTheDocument();
+  });
+
+  it("does not remove B's copy of a factor when A's delete completes after changing drawers", async () => {
+    const setA = makeFactorSet({ id: "remove-A", members: [makeMember({ id: 2, factor_id: 1 })] });
+    const setB = makeFactorSet({ id: "remove-B", members: [makeMember({ id: 22, factor_id: 1 })] });
+    seedSuccess({ factorSets: [setA, setB] });
+    let resolveRemove!: () => void;
+    mockApi.removeFactorSetMember.mockImplementation(() => new Promise<void>((resolve) => { resolveRemove = resolve; }).then(() => {
+      setA.members = [];
+      setA.n_members = 0;
+      return { success: true, factor_id: 1 };
+    }));
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-edit-members-remove-A"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    fireEvent.click(await screen.findByTestId("drawer-btn-del-2"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByTestId("btn-edit-members-remove-B"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    await act(async () => resolveRemove());
+    expect(screen.getByTestId("drawer-btn-del-22")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByTestId("btn-edit-members-remove-A"));
+    fireEvent.click(within(screen.getByTestId("drawer-edit-members")).getByRole("tab", { name: /已选成员/ }));
+    expect(screen.queryByTestId("drawer-btn-del-2")).not.toBeInTheDocument();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -470,6 +588,17 @@ describe("TR-2.3 成员明细表格 6 列 × 3 行 × feature=3", () => {
 //               Error Banner 显示 detail_zh 原文（不丢失）
 // ═══════════════════════════════════════════════════════════════════════
 describe("TR-2.4 训练门禁 错误 Banner 显示 detail_zh 原文", () => {
+  it("成员缺少版本校验证据时不伪报100%可训练，并阻止冻结", async () => {
+    seedSuccess({ factorSets: [makeFactorSet({ id: "unknown-qualification", status: "draft", members: [
+      makeMember({ version_trainable: undefined, version_status: undefined }),
+    ] })] });
+    render(<FactorModelPage />);
+    const freeze = await screen.findByTestId("btn-freeze-unknown-qualification");
+    expect(freeze).toBeDisabled();
+    expect(freeze.getAttribute("data-gate-tooltip")).toMatch(/校验|资格/);
+    const card = screen.getByTestId("set-card-header-unknown-qualification").closest<HTMLElement>(".factor-set-card")!;
+    expect(within(card).queryByText("100%")).not.toBeInTheDocument();
+  });
   it("因子库不可用时明确报错且不提供伪造因子成员", async () => {
     seedSuccess({ factorSets: [makeFactorSet({ id: "library-error", status: "draft", members: [makeMember({ id: 1 })] })] });
     mockApi.scoringListFactorDefinitions.mockRejectedValueOnce(new Error("library unavailable"));

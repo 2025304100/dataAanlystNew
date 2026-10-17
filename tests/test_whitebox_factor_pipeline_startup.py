@@ -24,14 +24,20 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
+from app.models.factor import Factor
 from app.models.factor_runtime import FactorSystemConfig, FactorRuntimeState
 from app.schemas.async_task import FactorPipelineCreate
+from app.schemas.factor_library import FactorVersionCreate
 from app.services.factors.bar_mirror import BarMirrorResult
 from app.services.factors.data_sync import FactorInputMirrorResult
 from app.services.factors.factor_engine import FactorCalculationResult
+from app.services.factors.definitions import seed_factor_definitions
+from app.services.factors.factor_registry import create_factor_version
+from app.services.factor_set_service import create_factor_set, add_member, freeze_factor_set
 from app.services.factors.pipeline_task import (
     _classify_pipeline_error,
     _run_factor_pipeline,
@@ -239,7 +245,8 @@ def test_cancelled_terminal_state_not_overwritten_by_worker(db_session, tmp_path
     """
     _setup_config(db_session, tmp_path / "cancel_protect.duckdb")
     task = _create_task(
-        db_session, task_id="cancel-protect", status="running", stage="mirror"
+        db_session, task_id="cancel-protect", status="running", stage="mirror",
+        payload=FactorPipelineCreate(train_model=False, materialize_scores=False),
     )
 
     def _fail_after_cancel(*args, **kwargs):
@@ -272,7 +279,8 @@ def test_pipeline_failure_uses_unified_error_protocol(db_session, tmp_path):
     """
     _setup_config(db_session, tmp_path / "error_protocol.duckdb")
     task = _create_task(
-        db_session, task_id="error-protocol", status="running", stage="mirror"
+        db_session, task_id="error-protocol", status="running", stage="mirror",
+        payload=FactorPipelineCreate(train_model=False, materialize_scores=False),
     )
 
     with patch(
@@ -407,9 +415,25 @@ def test_pipeline_training_path_waits_for_explicit_activation(db_session, tmp_pa
     """
     wh_path = tmp_path / "success.duckdb"
     _setup_config(db_session, wh_path)
+    # The orchestration mock still uses a real, compilable immutable binding;
+    # input qualification now runs before any warehouse or training mock.
+    seed_factor_definitions(db_session)
+    factor = db_session.scalar(select(Factor).where(Factor.code == "ep_ttm"))
+    version = create_factor_version(db_session, factor_id=factor.id, request=FactorVersionCreate(
+        formula_expr="iif(pe_ttm > 0, 1 / pe_ttm, None)", direction="higher_better",
+        source_mapping={"table": "raw_valuation_snapshots", "field": "pe_ttm"},
+    ))
+    set_id = "startup-training-ep"
+    create_factor_set(db_session, factor_set_id=set_id, name="Startup training EP")
+    add_member(db_session, set_id, factor_id=factor.id, factor_version_id=version.id,
+               factor_code="ep_ttm", factor_version=version.version, role="feature")
+    freeze_factor_set(db_session, set_id)
     payload = FactorPipelineCreate(
         train_model=True,
         materialize_scores=True,
+        factor_set_id=set_id,
+        hyperparameters={"factor_set_id": set_id},
+        factor_scope={"factor_set_id": set_id},
         window_days=250,
         validation_days=50,
     )
@@ -423,7 +447,8 @@ def test_pipeline_training_path_waits_for_explicit_activation(db_session, tmp_pa
     model_run_id = "ridge-run-001"
     factor_date = date(2026, 7, 15)
     from app.models.factor_model import FactorModelRun
-    db_session.add(FactorModelRun(id=model_run_id, status="validated", feature_versions_json='{"ep_ttm": 1}'))
+    db_session.add(FactorModelRun(id=model_run_id, status="validated",
+                                  feature_versions_json=json.dumps({"ep_ttm": version.version})))
     db_session.add(FactorRuntimeState(id=1, weight_mode="shadow", active_model_run_id=model_run_id,
                                      updated_by="test", version=1))
     db_session.commit()

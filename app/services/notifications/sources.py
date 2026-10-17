@@ -10,6 +10,9 @@ MESSAGE_SOURCES: dict[str, dict] = {
     "system": {
         "name": "系统运行",
         "events": [
+            {"type": "score_drop", "name": "评分下降", "default_severity": "warn"},
+            {"type": "data_stale", "name": "数据过期告警", "default_severity": "warn"},
+            {"type": "task_failed", "name": "任务失败告警", "default_severity": "error"},
             {"type": "system_error", "name": "系统错误", "default_severity": "error"},
             {"type": "system_warning", "name": "系统警告", "default_severity": "warn"},
             {"type": "task_complete", "name": "任务完成", "default_severity": "info"},
@@ -59,6 +62,21 @@ MESSAGE_SOURCES: dict[str, dict] = {
         ],
     },
 }
+
+# Only these events have production call sites. The rest are inspectable plans,
+# not selectable operational subscriptions.
+CONNECTED_EVENT_TYPES = frozenset({
+    "score_drop", "data_stale", "task_failed", "discovery_new",
+    "trade_executed", "auto_trade_blocked", "drawdown_warning", "max_loss_warning",
+})
+for _source in MESSAGE_SOURCES.values():
+    for _event in _source["events"]:
+        _event["supported"] = _event["type"] in CONNECTED_EVENT_TYPES
+    _source["supported"] = any(event["supported"] for event in _source["events"])
+
+
+def supported_source_choices() -> set[str]:
+    return set(CONNECTED_EVENT_TYPES) | {key for key, value in MESSAGE_SOURCES.items() if value["supported"]}
 
 
 def list_sources() -> dict:

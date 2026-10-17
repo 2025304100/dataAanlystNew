@@ -29,9 +29,11 @@ class TestConnectionResult(BaseModel):
 
 
 class MigrationProgress(BaseModel):
-    status: str = "idle"  # "idle" | "running" | "completed" | "failed"
+    status: str = "idle"  # idle | running | completed | partial | failed
     current_table: str | None = None
     tables_done: int = 0
     tables_total: int = 0
     rows_migrated: int = 0
     error: str | None = None
+    failed_tables: list[str] = Field(default_factory=list)
+    fk_checks_restored: bool = True

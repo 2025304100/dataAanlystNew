@@ -27,6 +27,7 @@ import ExplainButton from "./ai/ExplainButton";
 
 const STATUS_COLORS: Record<string, string> = {
   done: "#0f766e",
+  partial: "#d97706",
   failed: "#b42318",
   cancelled: "#94a3b8",
   expired: "#94a3b8",
@@ -37,6 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   done: <CheckCircleOutlined />,
+  partial: <ExceptionOutlined />,
   failed: <CloseCircleOutlined />,
   cancelled: <CloseCircleOutlined />,
   expired: <ExceptionOutlined />,
@@ -189,6 +191,7 @@ export default function TaskCenter() {
     if (filter === "all") return tasks;
     if (filter === "active") return tasks.filter((task) => ["running", "queued"].includes(task.status));
     if (filter === "failed") return tasks.filter((task) => task.status === "failed");
+    if (filter === "partial") return tasks.filter((task) => task.status === "partial");
     if (filter === "external") return tasks.filter((task) => isExternalSyncTask(task.task_type));
     return tasks.filter((task) => task.task_type === filter);
   }, [tasks, filter]);
@@ -258,7 +261,7 @@ export default function TaskCenter() {
         <div className="task-detail-section">
           <div className="task-detail-row">
             <span className="task-detail-label">{t("taskProgress")}</span>
-            <Progress percent={progressPct} size="small" style={{ flex: 1, marginLeft: 12 }} status={task.status === "failed" ? "exception" : task.status === "done" ? "success" : "active"} />
+            <Progress percent={progressPct} size="small" style={{ flex: 1, marginLeft: 12 }} strokeColor={task.status === "partial" ? "#d97706" : undefined} status={task.status === "failed" ? "exception" : task.status === "partial" ? "normal" : task.status === "done" ? "success" : "active"} />
           </div>
           <div className="task-detail-row">
             <span className="task-detail-label">{t("taskProcessed")}</span>
@@ -408,6 +411,7 @@ export default function TaskCenter() {
               { value: "all", label: t("taskFilterAll") },
               { value: "active", label: t("taskFilterActive") },
               { value: "failed", label: t("taskFilterFailed") },
+              { value: "partial", label: t("taskFilterPartial") },
               { value: "market_data_sync", label: t("taskTypeSync") },
               { value: "history_initialization", label: t("taskTypeHistory") },
               { value: "discovery_mining", label: t("taskTypeDiscovery") },

@@ -254,7 +254,10 @@ def test_fetch_history_retries_only_once_per_source(monkeypatch):
     # mock akshare 三个源都失败(重构后 akshare 在 akshare_source.py 中调用,patch 模块级属性)
     monkeypatch.setattr("akshare.stock_zh_a_hist", failing_em)
     monkeypatch.setattr("akshare.stock_zh_a_daily", failing_sina)
+    monkeypatch.setattr(market_data, "fetch_sina_history_raw", failing_sina, raising=False)
     monkeypatch.setattr("akshare.stock_zh_a_hist_tx", failing_tx)
+    monkeypatch.setattr("app.services.market_data_sources.sources.tencent_history.requests.get",
+        lambda _url, **kwargs: failing_tx(**kwargs))
 
     # _fetch_history 内部有 _proxy_bypass 上下文管理器,chain 内有 quiet_akshare_output,需确保不报错
     # 所有源失败后 SourceChain 抛 RuntimeError（Exception 子类）

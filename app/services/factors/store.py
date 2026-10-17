@@ -589,6 +589,26 @@ def _get_or_create_shared_connections(path):
         return pool
 
 
+def close_owned_warehouse_path(path):
+    """Release a uniquely owned task store; caller guarantees no other users.
+
+    Never call for the shared default warehouse. Isolated replay workers own
+    UUID-named paths and must release their file handles after publication.
+    """
+    key = str(Path(path).resolve())
+    if Path(path).resolve() == Path(settings.factor_warehouse_path).resolve():
+        raise ValueError('cannot_close_default_warehouse_as_owned_task')
+    with _WH_POOLS_GUARD:
+        pool = _WH_POOLS.pop(key, None)
+    if pool:
+        with pool['lock']:
+            for attr in ('ro','rw'):
+                connection = pool.get(attr)
+                if connection is not None:
+                    connection.close()
+                    pool[attr] = None
+
+
 def shutdown_factor_warehouse_pools():
     keys = list(_WH_POOLS.keys())
     for k in keys:

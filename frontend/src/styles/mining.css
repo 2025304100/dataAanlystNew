@@ -24,19 +24,19 @@
 :root {
   /* 表面 */
   --m-surface: #ffffff;
-  --m-surface-warm: #fffaf0;
-  --m-surface-tint: rgba(255, 250, 240, 0.55);
-  --m-surface-sunken: #f7f4ec;
+  --m-surface-warm: #fbfcfd;
+  --m-surface-tint: rgba(246, 247, 249, 0.7);
+  --m-surface-sunken: #f1f3f6;
 
   /* 描边 */
-  --m-border: rgba(31, 41, 51, 0.12);
-  --m-border-strong: rgba(31, 41, 51, 0.2);
+  --m-border: #e5e8ee;
+  --m-border-strong: #d4d9e2;
   --m-border-brand: rgba(15, 118, 110, 0.28);
 
   /* 文本（三级） */
-  --m-text: #1f2933;
-  --m-text-2: #52606d;
-  --m-text-3: #7b8794;
+  --m-text: #111827;
+  --m-text-2: #5f6b7a;
+  --m-text-3: #98a2b3;
 
   /* 品牌 */
   --m-brand: #0f766e;
@@ -86,9 +86,9 @@
   --m-fs-2xl: 26px;
 
   /* 阴影 */
-  --m-shadow-1: 0 1px 2px rgba(31, 41, 51, 0.06);
-  --m-shadow-2: 0 4px 14px rgba(31, 41, 51, 0.08);
-  --m-shadow-3: 0 14px 44px rgba(31, 41, 51, 0.2);
+  --m-shadow-1: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --m-shadow-2: 0 4px 14px rgba(16, 24, 40, 0.08);
+  --m-shadow-3: 0 16px 40px rgba(16, 24, 40, 0.14);
 
   /* 字体 */
   --m-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
@@ -962,6 +962,109 @@
   color: var(--m-text-3);
 }
 
+/* 未解锁（强引导：越过最远可达步；禁用点击，仅悬浮指引） */
+.mining-step.locked .mining-step-btn {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.mining-step.locked .mining-step-index {
+  border-style: dashed;
+  border-color: var(--m-border-strong);
+  background: var(--m-surface-sunken);
+  color: var(--m-text-3);
+}
+
+.mining-step.locked .mining-step-label {
+  color: var(--m-text-3);
+}
+
+.mining-step.locked .mining-step-state {
+  color: var(--m-text-3);
+}
+
+.mining-step.locked .mining-step-btn:hover {
+  background: transparent;
+}
+
+/* 步骤引导横幅（强引导：第 N 步/共 M 步 + 这步做什么 + 完成标志） */
+.mining-step-guide {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border-brand);
+  border-left: 3px solid var(--m-brand);
+  border-radius: var(--m-r);
+  background: var(--m-brand-softer);
+}
+
+.mining-step-guide.is-done {
+  border-left-color: var(--m-success);
+}
+
+.mining-step-guide-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+}
+
+.mining-step-guide-no {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--m-s3);
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand);
+  color: #fff;
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mining-step-guide-title {
+  font-size: var(--m-fs-lg);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-step-guide-desc {
+  margin: 0;
+  color: var(--m-text-2);
+  font-size: var(--m-fs);
+  line-height: 1.65;
+}
+
+.mining-step-guide-req {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+  color: var(--m-brand);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+}
+
+.mining-step-guide-req::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--m-brand);
+  flex: 0 0 auto;
+}
+
+/* 顺序规则提示（步骤条下方一句话） */
+.mining-wizard-seq-hint {
+  margin: 0;
+  padding: var(--m-s2) var(--m-s4);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+  line-height: 1.6;
+}
+
 /* 向导底部导航 */
 .mining-wizard-nav {
   display: flex;
@@ -1027,6 +1130,13 @@
 }
 
 /* 只读态：配置步骤禁用交互（步骤条/上一步下一步仍可浏览） */
+.mining-wizard-body {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
 .mining-wizard-body[data-mining-wizard-readonly="true"] {
   pointer-events: none;
   user-select: none;
@@ -1216,6 +1326,106 @@
   font-weight: 700;
   color: var(--m-text-2);
   letter-spacing: 0.02em;
+}
+
+.mining-filter-view-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--m-s2) var(--m-s4);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border-brand);
+  border-radius: var(--m-r);
+  background: var(--m-brand-softer);
+}
+.mining-filter-view-settings > span:first-child {
+  font-weight: 600;
+  color: var(--m-text);
+}
+.mining-filter-view-settings > .mining-card-sub {
+  grid-column: 1 / -1;
+  line-height: 1.6;
+}
+.mining-filter-saved-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s4);
+  border: 1px solid rgba(180, 83, 9, 0.24);
+  border-radius: var(--m-r);
+  background: var(--m-warn-soft);
+  color: var(--m-warn);
+  font-size: var(--m-fs-sm);
+}
+.mining-filter-saved-warning ul {
+  flex-basis: 100%;
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.mining-filter-row-label,
+.mining-filter-preset-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mining-metric-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--m-text-3);
+  font-size: 14px;
+  cursor: help;
+}
+.mining-metric-help:hover,
+.mining-metric-help[aria-expanded="true"] {
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+}
+.mining-metric-help:focus-visible {
+  outline: 2px solid var(--m-brand);
+  outline-offset: 2px;
+}
+.mining-metric-popover { max-width: calc(100vw - 32px); }
+.mining-metric-help-content {
+  width: min(340px, calc(100vw - 64px));
+  display: grid;
+  gap: 12px;
+  padding: 2px;
+  color: var(--m-text);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.mining-metric-help-content > strong {
+  color: var(--m-brand);
+  font-size: 14px;
+}
+.mining-metric-help-content > div > span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--m-text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.mining-metric-help-content p { margin: 0; }
+.mining-filter-row.is-disabled .mining-filter-blocked-hint { color: var(--m-text-3); }
+
+@media (max-width: 560px) {
+  .mining-filter-view-settings { padding: var(--m-s3); }
+  .mining-filter-range-inputs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .mining-filter-range-inputs .ant-input-number { width: 100%; min-width: 0; }
+  .mining-filter-range-inputs .ant-select { grid-column: 1 / -1; width: 100% !important; }
+  .mining-filter-range-inputs > div { min-width: 0; }
 }
 
 /* 左栏预设：按分组纵向平铺（原型：市值/估值/流动性/上市时间，各自按钮网格 + 分隔线） */

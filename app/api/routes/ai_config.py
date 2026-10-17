@@ -6,12 +6,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 import stat
 import tempfile
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -73,17 +74,18 @@ def _load_ai_config() -> dict:
             return json.loads(json.dumps(_DEFAULT_AI_CONFIG))
 
 
-def _save_ai_config(config: dict) -> None:
+def _save_ai_config(config: dict, *, path: Path | None = None) -> None:
     with _CONFIG_LOCK:
-        AI_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        target_path = path if path is not None else AI_CONFIG_PATH
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(config, indent=2, ensure_ascii=False)
         temp_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 encoding="utf-8",
-                dir=AI_CONFIG_PATH.parent,
-                prefix=f".{AI_CONFIG_PATH.name}.",
+                dir=target_path.parent,
+                prefix=f".{target_path.name}.",
                 suffix=".tmp",
                 delete=False,
             ) as handle:
@@ -91,13 +93,13 @@ def _save_ai_config(config: dict) -> None:
                 handle.flush()
                 os.fsync(handle.fileno())
                 temp_path = Path(handle.name)
-            os.replace(temp_path, AI_CONFIG_PATH)
-            persisted = json.loads(AI_CONFIG_PATH.read_text(encoding="utf-8"))
+            os.replace(temp_path, target_path)
+            persisted = json.loads(target_path.read_text(encoding="utf-8"))
             if persisted != config:
                 raise OSError("AI config write verification failed")
             try:
                 os.chmod(
-                    str(AI_CONFIG_PATH),
+                    str(target_path),
                     stat.S_IRUSR | stat.S_IWUSR,
                 )
             except OSError:
@@ -105,8 +107,63 @@ def _save_ai_config(config: dict) -> None:
         except Exception:
             if temp_path is not None and temp_path.exists():
                 temp_path.unlink(missing_ok=True)
-            logger.exception("AI config save failed: %s", AI_CONFIG_PATH)
+            logger.exception("AI config save failed: %s", target_path)
             raise
+
+
+def _connection_test_path() -> Path:
+    return AI_CONFIG_PATH.with_name(f"{AI_CONFIG_PATH.stem}.connection-tests.json")
+
+
+def _config_fingerprint(cfg: dict) -> str:
+    # Operational timestamps and the enable switch do not change the tested
+    # request. Every provider, endpoint, authentication and generation setting
+    # does, including the resolved secret. Only its digest is persisted.
+    values = {key: cfg.get(key, default) for key, default in _DEFAULT_AI_CONFIG.items()
+              if key not in ("version", "updated_at", "enabled")}
+    values["service_url"] = str(values["service_url"]).strip().rstrip("/")
+    values["model"] = cfg.get("model") or _default_model(str(cfg.get("provider", "openai_compatible")))
+    return hashlib.sha256(json.dumps(values, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _load_connection_tests() -> dict:
+    path = _connection_test_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data["results"] if isinstance(data, dict) and isinstance(data.get("results"), dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _record_connection_test(cfg: dict, *, success: bool) -> None:
+    with _CONFIG_LOCK:
+        records = _load_connection_tests()
+        fingerprint = _config_fingerprint(cfg)
+        records.pop(fingerprint, None)
+        records[fingerprint] = {"success": success, "tested_at": datetime.now(timezone.utc).isoformat()}
+        saved_fingerprint = _config_fingerprint(_load_ai_config())
+        while len(records) > 8:
+            oldest_other = next(key for key in records if key not in (fingerprint, saved_fingerprint))
+            records.pop(oldest_other)
+        _save_ai_config({"version": 1, "results": records}, path=_connection_test_path())
+
+
+def get_ai_connection_test_status(cfg: dict) -> dict:
+    """Return proof for this exact request configuration without any network I/O."""
+    with _CONFIG_LOCK:
+        record = _load_connection_tests().get(_config_fingerprint(cfg))
+    if not isinstance(record, dict) or not isinstance(record.get("success"), bool):
+        return {"status": "untested", "tested_at": None}
+    try:
+        tested = datetime.fromisoformat(str(record["tested_at"]).replace("Z", "+00:00"))
+        tested = tested.replace(tzinfo=timezone.utc) if tested.tzinfo is None else tested.astimezone(timezone.utc)
+        age = datetime.now(timezone.utc) - tested
+        if age < timedelta(0):
+            return {"status": "untested", "tested_at": None}
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return {"status": "untested", "tested_at": None}
+    status = "failed" if not record["success"] else "passed" if age <= timedelta(days=7) else "expired"
+    return {"status": status, "tested_at": tested.isoformat()}
 
 
 # ── Schemas ────────────────────────────────────────────────
@@ -145,6 +202,7 @@ class AiConfigRead(AiConfigFields):
     api_key_set: bool = False
     persisted: bool = False
     updated_at: str | None = None
+    connection_test: dict = Field(default_factory=lambda: {"status": "untested", "tested_at": None})
 
 
 class AiConfigUpdate(AiConfigFields):
@@ -562,6 +620,7 @@ def get_ai_config():
         api_key_set=bool(api_key),
         persisted=AI_CONFIG_PATH.exists(),
         updated_at=cfg.get("updated_at"),
+        connection_test=get_ai_connection_test_status(cfg),
     )
 
 
@@ -606,21 +665,25 @@ def test_ai_connection(req: TestConnectionRequest):
         with httpx.Client(timeout=base_timeout) as client:
             resp = client.post(endpoint, json=payload, headers=headers)
         if resp.status_code >= 400:
-            return {"success": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
-        return {
-            "success": True,
-            "message": "连接成功",
-            "provider": cfg["provider"],
-            "endpoint": endpoint,
-        }
+            result = {"success": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+        elif not _extract_ai_reply(resp.json()).strip():
+            result = {"success": False, "message": "服务未返回有效的模型回复"}
+        else:
+            result = {"success": True, "message": "连接成功", "provider": cfg["provider"], "endpoint": endpoint}
     except httpx.TimeoutException:
-        return {"success": False, "message": "请求超时，请检查服务地址"}
+        result = {"success": False, "message": "请求超时，请检查服务地址"}
     except httpx.RequestError as exc:
         logger.warning("AI connection test request failed: %s", exc)
-        return {"success": False, "message": f"连接失败：{str(exc)[:100]}"}
+        result = {"success": False, "message": f"连接失败：{str(exc)[:100]}"}
     except Exception as e:
         logger.exception("AI 连接测试失败")
-        return {"success": False, "message": f"连接失败：{str(e)[:100]}"}
+        result = {"success": False, "message": f"连接失败：{str(e)[:100]}"}
+    try:
+        _record_connection_test(cfg, success=bool(result["success"]))
+    except Exception:
+        logger.exception("AI connection test proof could not be persisted")
+        return {"success": False, "message": "连接测试完成，但测试结果未能持久化，请重试。"}
+    return {**result, "connection_test": get_ai_connection_test_status(cfg)}
 
 
 def _fetch_ai_models(cfg: dict) -> dict:

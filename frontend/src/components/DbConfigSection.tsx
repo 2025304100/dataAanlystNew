@@ -93,7 +93,7 @@ export default function DbConfigSection() {
         try {
           const status = await dbConfigApi.migrationStatus();
           setMigration(status);
-          if (status.status === "completed" || status.status === "failed") {
+          if (["completed", "failed", "partial"].includes(status.status)) {
             if (migrationPollRef.current) {
               clearInterval(migrationPollRef.current);
             }
@@ -128,6 +128,9 @@ export default function DbConfigSection() {
     }
     if (migration.status === "failed") {
       return template(t("dbMigrateFailed"), { error: migration.error || "Unknown" });
+    }
+    if (migration.status === "partial") {
+      return template(t("dbMigratePartial"), { rows: migration.rows_migrated, tables: migration.failed_tables?.join(", ") || migration.error || t("unknown") });
     }
     return "";
   };
@@ -258,7 +261,7 @@ export default function DbConfigSection() {
                   icon={<SyncOutlined spin={migrating} />}
                   disabled={migrating}
                 >
-                  {t("dbMigrate")}
+                  {t(migration?.status === "partial" || migration?.status === "failed" ? "dbMigrateRetry" : "dbMigrate")}
                 </Button>
               </Popconfirm>
 
@@ -266,8 +269,8 @@ export default function DbConfigSection() {
                 <div style={{ marginTop: 16, maxWidth: 500 }}>
                   <Progress
                     percent={migrationPercent}
-                    status={migration.status === "failed" ? "exception" : migration.status === "completed" ? "success" : "active"}
-                    strokeColor={migration.status === "failed" ? "#b42318" : "#0f766e"}
+                    status={migration.status === "failed" || migration.status === "partial" ? "exception" : migration.status === "completed" ? "success" : "active"}
+                    strokeColor={migration.status === "partial" ? "#d97706" : migration.status === "failed" ? "#b42318" : "#0f766e"}
                   />
                   <div
                     style={{

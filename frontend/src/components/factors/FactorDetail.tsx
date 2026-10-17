@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import { t, factorLabel, factorCategoryLabel, factorDirectionLabel } from "../../i18n";
 import {
@@ -6,6 +6,7 @@ import {
   type FactorDefinition,
   type FactorReferenceInfo,
   type FactorTransitionAudit,
+  type FactorVersionListItem,
 } from "../../api/client";
 import {
   Card,
@@ -28,21 +29,7 @@ type FactorDetailProps = {
   factorCode: string;
   onOpenEditor: (code: string) => void;
   onBack: () => void;
-};
-
-// 版本列表端点返回结构（与 FactorVersionDefinition 略有差异：无 id、无 validation_status，
-// is_latest 为布尔值）。该端点目前未在 client.ts 中封装，故直接使用 requestJson 调用。
-type FactorVersionListItem = {
-  factor_code: string;
-  version: number;
-  formula_expr: string;
-  params: Record<string, unknown>;
-  direction: string;
-  source_mapping: Record<string, unknown>;
-  effective_from: string | null;
-  change_note: string;
-  is_latest: boolean;
-  created_at: string | null;
+  onChanged?: () => void;
 };
 
 type TransitionModalState = {
@@ -51,6 +38,7 @@ type TransitionModalState = {
   label: string;
   danger?: boolean;
   reason: string;
+  requestId?: string;
 };
 
 const INITIAL_MODAL: TransitionModalState = {
@@ -60,7 +48,7 @@ const INITIAL_MODAL: TransitionModalState = {
   reason: "",
 };
 
-export default function FactorDetail({ factorCode, onOpenEditor, onBack }: FactorDetailProps) {
+export default function FactorDetail({ factorCode, onOpenEditor, onBack, onChanged }: FactorDetailProps) {
   const ctx = useApp();
   const { message } = App.useApp();
   const isZh = ctx.locale.startsWith("zh");
@@ -72,6 +60,11 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
   const [references, setReferences] = useState<FactorReferenceInfo | null>(null);
   const [transitions, setTransitions] = useState<FactorTransitionAudit[]>([]);
   const [modalState, setModalState] = useState<TransitionModalState>(INITIAL_MODAL);
+  const requestSequence = useRef(0);
+  const currentCode = useRef(factorCode);
+  currentCode.current = factorCode;
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [referenceError, setReferenceError] = useState(false);
 
   // —— 标签 / 颜色映射辅助函数（与 FactorLibrary 保持一致）——
 
@@ -124,7 +117,14 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
 
   // —— 数据加载 ——
   const loadAll = useCallback(async () => {
+    const request = ++requestSequence.current;
     setLoading(true);
+    setLoadError(null);
+    setFactor(null);
+    setVersions([]);
+    setReferences(null);
+    setTransitions([]);
+    setReferenceError(false);
     try {
       const [f, v, tr] = await Promise.all([
         // Factor-domain internal - DO NOT USE outside factor center
@@ -132,31 +132,36 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
         api.listFactorVersions(factorCode),
         api.getFactorTransitionHistory(factorCode),
       ]);
+      if (request !== requestSequence.current || currentCode.current !== factorCode) return;
       setFactor(f);
-      setVersions(Array.isArray(v) ? v : []);
+      const versionList = Array.isArray(v) ? v : [];
+      setVersions(versionList);
       setTransitions(Array.isArray(tr) ? tr : []);
 
-      // 引用信息：优先使用 active_version_id，回退 shadow_version_id
-      const versionId = f.active_version_id ?? f.shadow_version_id;
+      // References belong to the version shown as latest, including drafts.
+      const versionId = f.latest_version_id ?? versionList.find((version) => version.is_latest)?.id ?? f.active_version_id ?? f.shadow_version_id;
       if (versionId) {
         try {
           const ref = await api.getFactorReferences(factorCode, versionId);
-          setReferences(ref);
+          if (request === requestSequence.current) setReferences(ref);
         } catch {
-          setReferences(null);
+          if (request === requestSequence.current) setReferenceError(true);
         }
       } else {
         setReferences(null);
       }
     } catch (err: any) {
-      message.error(err?.message || t("factorDetailLoadFailed"));
+      if (request === requestSequence.current) setLoadError(err?.message || t("factorDetailLoadFailed"));
     } finally {
-      setLoading(false);
+      if (request === requestSequence.current) setLoading(false);
     }
-  }, [factorCode, message]);
+  }, [factorCode]);
 
   useEffect(() => {
-    loadAll();
+    void loadAll();
+    setModalState(INITIAL_MODAL);
+    setTransitioning(false);
+    return () => { requestSequence.current += 1; };
   }, [loadAll]);
 
   // —— 状态迁移 ——
@@ -182,28 +187,35 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
   };
 
   const openTransitionModal = (action: string, label: string, danger?: boolean) => {
-    setModalState({ open: true, action, label, danger, reason: "" });
+    setModalState({ open: true, action, label, danger, reason: "", requestId:crypto.randomUUID() });
   };
 
   const handleTransitionSubmit = async () => {
+    if (transitioning) return;
     const { action, reason } = modalState;
+    const code = factorCode;
+    const request = requestSequence.current;
     setTransitioning(true);
     try {
-      const result = await api.executeFactorTransition(factorCode, {
+      const result = await api.executeFactorTransition(code, {
         action: action as "submit_candidate" | "start_testing" | "reject" | "revoke_to_draft" | "deprecate",
         reason: reason || undefined,
+        request_id: modalState.requestId,
       });
+      if (result && result.success !== false) onChanged?.();
+      if (request !== requestSequence.current || currentCode.current !== code) return;
       if (result && result.success === false) {
         message.error(result.error || t("factorTransitionFailed"));
+        return;
       } else {
         message.success(t("factorTransitionSuccess"));
       }
       setModalState(INITIAL_MODAL);
       await loadAll();
     } catch (err: any) {
-      message.error(err?.message || t("factorTransitionFailed"));
+      if (request === requestSequence.current) message.error(err?.message || t("factorTransitionFailed"));
     } finally {
-      setTransitioning(false);
+      if (currentCode.current === code) setTransitioning(false);
     }
   };
 
@@ -222,6 +234,7 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
   if (!factor) {
     return (
       <Card>
+        {loadError && <Alert type="error" showIcon message={loadError} action={<Button onClick={loadAll}>{t("factorCenterLibraryRetry")}</Button>} />}
         <Empty description={t("factorDetailNotFound")}>
           <Button onClick={onBack}>{t("factorDetailBack")}</Button>
         </Empty>
@@ -230,11 +243,12 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
   }
 
   const lifecycleStatus = factor.lifecycle_status;
+  const servicePending = !Object.prototype.hasOwnProperty.call(factor, "latest_version_id");
   const availableActions = lifecycleStatus ? TRANSITION_ACTIONS[lifecycleStatus] || [] : [];
 
   // 版本列表列定义
   const versionColumns = [
-    { title: t("factorDetailVersionCol"), dataIndex: "version", key: "version", width: 80 },
+    { title: t("factorDetailVersionCol"), dataIndex: "version", key: "version", width: 80, render:(version:number)=>`v${version}` },
     {
       title: t("factorDetailFormulaCol"),
       dataIndex: "formula_expr",
@@ -257,7 +271,7 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
       title: t("factorDetailValidationStatusCol"),
       key: "validation_status",
       width: 120,
-      render: () => "-",
+      render: (_:unknown, version:FactorVersionListItem) => version.validation_status ? <Tag color={version.validation_status === "valid" ? "green" : "orange"}>{t(`factorValidation_${version.validation_status}`)}</Tag> : t("factorCenterDetailNoValidation"),
     },
     {
       title: t("factorDetailChangeNoteCol"),
@@ -325,6 +339,12 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
         </Button>
       </div>
 
+      {servicePending && <Alert style={{marginBottom:16}} type="warning" showIcon message={t("factorCenterLibraryServicePending")} description={t("factorCenterLibraryServicePendingDesc")}/>}
+      <Alert className="factor-center-detail-guide" type="info" showIcon
+        message={t("factorCenterDetailNextStep")}
+        description={t(`factorCenterDetailGuide_${lifecycleStatus === "draft" ? "draft" : lifecycleStatus === "candidate" ? "candidate" : lifecycleStatus === "rejected" || lifecycleStatus === "deprecated" ? "revise" : "evaluate"}`)}
+        action={(lifecycleStatus === "testing" || lifecycleStatus === "active" || lifecycleStatus === "shadow") && factor.latest_version_id ? <Button type="primary" onClick={() => window.dispatchEvent(new CustomEvent("factor-center:navigate",{detail:{target:"evaluation",factor_code:factor.code,version_id:factor.latest_version_id}}))}>{t("factorCenterLibraryEvaluate")}</Button> : undefined} />
+
       {/* 风险提示：版本被引用时不可变 */}
       {references && references.is_immutable ? (
         <Alert
@@ -371,6 +391,7 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
               <Button
                 key={act.action}
                 danger={act.danger}
+                type={act.danger ? "default" : "primary"}
                 loading={transitioning}
                 onClick={() => openTransitionModal(act.action, act.label, act.danger)}
               >
@@ -395,7 +416,7 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
 
       {/* 3. 引用信息 */}
       <Card title={t("factorDetailReferences")} style={{ marginBottom: 16 }} size="small">
-        {references ? (
+        {referenceError || (servicePending && versions.length > 0 && !references) ? <Alert type="warning" showIcon message={t("factorCenterDetailReferencesFailed")} action={<Button onClick={loadAll}>{t("factorCenterLibraryRetry")}</Button>}/> : references ? (
           <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" bordered>
             <Descriptions.Item label={t("factorDetailReferenceVersion")}>
               {references.factor_version}
@@ -441,15 +462,20 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
         title={`${t("factorTransitionConfirm")} - ${modalState.label}`}
         open={modalState.open}
         onOk={handleTransitionSubmit}
-        onCancel={() => setModalState(INITIAL_MODAL)}
+        onCancel={() => { if (!transitioning) setModalState(INITIAL_MODAL); }}
+        closable={!transitioning}
+        maskClosable={!transitioning}
+        keyboard={!transitioning}
         okText={t("factorTransitionOk")}
         cancelText={t("factorTransitionCancel")}
+        cancelButtonProps={{disabled:transitioning}}
         okButtonProps={{ danger: modalState.danger, loading: transitioning }}
         destroyOnHidden
       >
         <Input.TextArea
           placeholder={t("factorTransitionReasonPlaceholder")}
           value={modalState.reason}
+          disabled={transitioning}
           onChange={(e) => setModalState((prev) => ({ ...prev, reason: e.target.value }))}
           rows={4}
           maxLength={500}

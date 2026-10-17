@@ -10,9 +10,29 @@ project_memory 硬约束：
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+import re
+from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _validate_quiet_hours(value: dict[str, Any] | None):
+    if not value:
+        return value
+    for flag in ("bypass_for_critical", "trading_days_only"):
+        if flag in value and not isinstance(value[flag], bool):
+            raise ValueError("免打扰开关必须为布尔值")
+    start, end = value.get("start"), value.get("end")
+    if not start and not end:
+        return value
+    if not all(isinstance(clock, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", clock) for clock in (start, end)):
+        raise ValueError("免打扰开始与结束时间必须同时填写，格式为 HH:mm")
+    try:
+        ZoneInfo(value.get("timezone") or "Asia/Shanghai")
+    except (KeyError, ValueError, TypeError):
+        raise ValueError("免打扰时区无效")
+    return value
 
 
 # ── 渠道 Channels ────────────────────────────────────────────
@@ -36,6 +56,7 @@ class ChannelUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=64)
     enabled: bool | None = None
     config: dict[str, Any] | None = None
+    clear_config_keys: list[str] = Field(default_factory=list)
 
 
 class ChannelRead(BaseModel):
@@ -89,13 +110,25 @@ class PolicyCreate(BaseModel):
     min_severity: str = "info"
     scope_type: str = "all"
     scope_ids: list[int] | None = None
-    delivery_mode: str = "instant"
+    delivery_mode: Literal["instant"] = "instant"
     digest_schedule: str | None = None
     quiet_hours: dict[str, Any] | None = None
     cooldown_minutes: int = 0
     dedup_window_minutes: int = 0
     template_id: int | None = None
     channel_ids: list[int] = Field(default_factory=list)
+
+    _valid_quiet_hours = field_validator("quiet_hours")(_validate_quiet_hours)
+
+    @model_validator(mode="after")
+    def valid_executable_scope(self):
+        if self.scope_type not in {"all", "portfolio", "watchlist", "symbol"}:
+            raise ValueError("不支持的通知范围")
+        if self.scope_type != "all" and not self.scope_ids:
+            raise ValueError("限定范围必须选择至少一个对象")
+        if self.scope_ids and any(value <= 0 for value in self.scope_ids):
+            raise ValueError("范围对象 ID 必须为正整数")
+        return self
 
 
 class PolicyUpdate(BaseModel):
@@ -107,13 +140,15 @@ class PolicyUpdate(BaseModel):
     min_severity: str | None = None
     scope_type: str | None = None
     scope_ids: list[int] | None = None
-    delivery_mode: str | None = None
+    delivery_mode: Literal["instant"] | None = None
     digest_schedule: str | None = None
     quiet_hours: dict[str, Any] | None = None
     cooldown_minutes: int | None = None
     dedup_window_minutes: int | None = None
     template_id: int | None = None
     channel_ids: list[int] | None = None
+
+    _valid_quiet_hours = field_validator("quiet_hours")(_validate_quiet_hours)
 
 
 class PolicyRead(BaseModel):

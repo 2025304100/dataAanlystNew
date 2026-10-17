@@ -67,7 +67,7 @@ def _compute_draft_content_hash(draft: FactorDraftSchema) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def _validate_with_factor_compiler(formula_expr: str, params: dict[str, Any]) -> tuple[bool, list[dict[str, Any]], dict[str, Any] | None]:
+def _validate_with_factor_compiler(formula_expr: str, params: dict[str, Any], *, direction: str = "higher_better", postprocess: dict[str, Any] | None = None) -> tuple[bool, list[dict[str, Any]], dict[str, Any] | None]:
     """使用 WP2-04 编译器校验公式，返回 (is_valid, errors, execution_plan)。
 
     errors 每项：{"error_code": str, "message": str}
@@ -78,6 +78,8 @@ def _validate_with_factor_compiler(formula_expr: str, params: dict[str, Any]) ->
         result: CompilationResult = compile_formula(
             formula=formula_expr,
             params=params,
+            direction=direction,
+            postprocess=postprocess,
             strict_fields=True,
         )
         if result.is_valid:
@@ -201,7 +203,9 @@ def preview_factor(db: Session, suggested_payload: dict[str, Any]) -> dict[str, 
     params = suggested_payload.get("params", {})
     if formula_expr and draft_schema is not None:
         is_valid_ast, ast_errors, execution_plan = _validate_with_factor_compiler(
-            formula_expr, params if isinstance(params, dict) else {}
+            formula_expr, params if isinstance(params, dict) else {},
+            direction=draft_schema.direction,
+            postprocess=draft_schema.postprocess,
         )
         if not is_valid_ast:
             for err in ast_errors:
@@ -260,6 +264,23 @@ def execute_factor(db: Session, audit_id: int) -> dict[str, Any]:
     if err == "action_type_mismatch":
         return {"success": False, "error": "action_type_mismatch", "message": "动作类型不匹配"}
 
+    if audit.final_result:
+        try:
+            prior = json.loads(audit.final_result)
+            if isinstance(prior, dict) and prior.get("success") is True:
+                return {**prior, "idempotent": True}
+        except (TypeError, ValueError):
+            pass
+
+    # Re-check the exact confirmed payload at the execution boundary. A caller
+    # can reach this endpoint without using the browser preview button.
+    preview = preview_factor(db, payload)
+    if not preview["is_valid"]:
+        result = {"success": False, "error": "validation_failed",
+                  "message": "；".join(preview.get("errors") or ["因子草案校验未通过"])}
+        record_final_result(db, audit_id, result)
+        return result
+
     try:
         from app.schemas.factor_library import FactorDraftCreate, FactorVersionCreate
         from app.services.factors.factor_registry import (
@@ -277,13 +298,12 @@ def execute_factor(db: Session, audit_id: int) -> dict[str, Any]:
 
         existing = get_factor_by_code(db, code)
         if existing is not None:
-            # 幂等：若已有同 code 因子且最新版本 execution_plan_hash 匹配，直接返回成功
+            # Another writer may claim the code between preview and creation.
+            # Only this audit's successful final_result is idempotency proof.
             result = {
-                "success": True,
-                "factor_id": existing.id,
-                "factor_code": existing.code,
-                "message": f"因子已存在（幂等）: {existing.code}",
-                "idempotent": True,
+                "success": False,
+                "error": "factor_code_conflict",
+                "message": f"因子代码已存在，请修改代码后重试: {existing.code}",
             }
             record_final_result(db, audit_id, result)
             return result

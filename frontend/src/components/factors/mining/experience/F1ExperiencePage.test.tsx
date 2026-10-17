@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 
 /**
@@ -31,9 +31,13 @@ vi.mock("../../../../api/factorExperience", () => ({
 
 import { factorExperienceApi } from "../../../../api/factorExperience";
 import F1ExperiencePage from "./F1ExperiencePage";
+import { setLocale } from "../../../../i18n";
+
+afterEach(() => setLocale("zh-CN"));
 
 describe("F1ExperiencePage（B3）", () => {
   beforeEach(() => {
+    setLocale("zh-CN");
     vi.clearAllMocks();
   });
 
@@ -45,8 +49,30 @@ describe("F1ExperiencePage（B3）", () => {
     const rows = document.querySelectorAll("[data-f1-exp-table] tbody tr");
     expect(rows.length).toBe(3);
     expect(rows[0].textContent).toContain("mean(close,{n1})");
-    expect(rows[0].textContent).toContain("trend");
+    expect(rows[0].textContent).toContain("趋势");
     expect(document.querySelectorAll("[data-f1-exp-negative]").length).toBe(1);
+  });
+
+  it("切换语言后翻译类别、来源和状态，保留公式与未知枚举", async () => {
+    const fixture = await factorExperienceApi.list();
+    vi.mocked(factorExperienceApi.list).mockResolvedValueOnce({ ...fixture, items: [
+      { ...fixture.items[0], source: "manual" },
+      { ...fixture.items[1], category: "custom_category", source: "custom_source", status: "custom_status" },
+    ] });
+    const page = render(<F1ExperiencePage active />);
+    await waitFor(() => expect(page.getByText("人工录入")).toBeTruthy());
+    expect(page.getByText("趋势")).toBeTruthy();
+    expect(page.getByText("正常")).toBeTruthy();
+    setLocale("en-US");
+    page.rerender(<F1ExperiencePage active />);
+    expect(page.getByText("Manual entry")).toBeTruthy();
+    expect(page.getByText("Trend")).toBeTruthy();
+    expect(page.getByText("Normal")).toBeTruthy();
+    expect(page.getByText("mean(close,{n1})")).toBeTruthy();
+    expect(page.getByText("custom_category")).toBeTruthy();
+    expect(page.getByText("custom_source")).toBeTruthy();
+    expect(page.getByText("custom_status")).toBeTruthy();
+    expect(factorExperienceApi.archive).not.toHaveBeenCalled();
   });
 
   it("渲染使用次数与成功率（含 0 与 null 的区分）", async () => {

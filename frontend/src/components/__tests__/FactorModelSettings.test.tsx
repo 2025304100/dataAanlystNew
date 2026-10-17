@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { mockApi, showToast } = vi.hoisted(() => ({
   showToast: vi.fn(),
@@ -117,6 +117,7 @@ const { mockApi, showToast } = vi.hoisted(() => ({
     scoringCreateTask: vi.fn(async () => ({})),
     scoringFallbackToManual: vi.fn(async () => ({})),
     scoringGetModelRelations: vi.fn(async () => ({})),
+    getFactorModel: vi.fn(async (id: string) => ({ id, hyperparameters: {} })),
     scoringGetPipelineEta: vi.fn(async () => ({})),
     scoringGetTask: vi.fn(async () => ({})),
     scoringInitializeWarehouse: vi.fn(async () => ({})),
@@ -251,6 +252,9 @@ describe("FactorModelSettings", () => {
 
     mockApi.scoringActivateModel.mockResolvedValue({ weight_mode: "shadow", active_model_run_id: "ridge-20260714", version: 2 } as any);
     fireEvent.click(screen.getByRole("button", { name: /影子运行/ }));
+    const activationReview = await screen.findByRole("dialog", { name: "确认启用模型" });
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    fireEvent.click(within(activationReview).getByRole("button", { name: "确认启用并生成评分" }));
     await waitFor(() => {
       expect(mockApi.scoringActivateModel).toHaveBeenCalledWith(
         "ridge-20260714",
@@ -285,6 +289,9 @@ describe("FactorModelSettings", () => {
     render(<FactorModelSettings />);
     fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
     fireEvent.click(await screen.findByRole("button", { name: /正式启用|生产运行|生产激活|Ridge/ }));
+    const activationReview = await screen.findByRole("dialog", { name: "确认启用模型" });
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    fireEvent.click(within(activationReview).getByRole("button", { name: "确认启用并生成评分" }));
     await screen.findByText(/模型已激活，评分生成未启动.*PIPELINE_BUSY/);
     await waitFor(() => expect(screen.getByTestId("wizard-page-score")).toHaveTextContent("ridge-20260714"));
     expect(mockApi.scoringGetOverviewAsFactor).toHaveBeenCalledTimes(2);

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
+import { setLocale } from "../../../../../i18n";
 
 /**
  * T30 Step3 字段与校验 UI 测试（向导 §5 / §5.1，设计 §9.2）。
@@ -61,6 +62,31 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  setLocale("zh-CN");
+});
+
+it("英文模式按稳定分组与结论码翻译，保留自定义字段和解释", () => {
+  setLocale("en-US");
+  render(<MiningFieldStep
+    fields={[
+      { code: "close", name_zh: "用户字段名", group: "quote", category_label_zh: "后台行情分组" },
+      { code: "custom", name_zh: "自定义字段", group: "custom", category_label_zh: "用户自定义分组" },
+    ]}
+    validationStatus={{
+      task_id: "localized-validation", status: "blocked", verdict: "block",
+      verdict_label_zh: "后台中文结论", progress: { done: 2, total: 2 },
+      blocked: [{ field: "close", issue: "校验未通过" }, { field: "custom", issue: "用户自定义解释" }],
+      warnings: [], passed: false,
+    }}
+  />);
+  expect(document.querySelector('[data-field-group="quote"]')?.textContent).toContain("Market data");
+  expect(document.querySelector('[data-field-group="quote"]')?.textContent).not.toContain("后台行情分组");
+  expect(document.querySelector('[data-field-group="custom"]')?.textContent).toContain("用户自定义分组");
+  expect(document.body.textContent).toContain("用户字段名");
+  expect(document.querySelector("[data-field-verdict]")?.textContent).toContain("Blocked");
+  expect(document.querySelector("[data-field-verdict]")?.textContent).not.toContain("后台中文结论");
+  expect(document.querySelectorAll("[data-field-blocked-item]")[0]?.textContent).toContain("Validation failed");
+  expect(document.querySelectorAll("[data-field-blocked-item]")[1]?.textContent).toContain("用户自定义解释");
 });
 
 describe("MiningFieldStep 字段勾选", () => {

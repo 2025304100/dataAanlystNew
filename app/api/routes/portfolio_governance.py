@@ -224,6 +224,8 @@ class ReconciliationResponse(BaseModel):
     zero_sum_check_passed: bool = False
     items: list[dict[str, Any]] = Field(default_factory=list)
     correlation_id: str | None = None
+    read_only: bool = False
+    cash_audit: dict[str, Any] | None = None
 
 
 class PortfolioStatusResponse(BaseModel):
@@ -396,6 +398,26 @@ def reconcile_portfolio(
     # 先 commit 以刷新 last_reconciled_trade_date 列
     db.commit()
     db.refresh(p)
+    return _reconciliation_response(report, p, corr)
+
+
+@router.get('/portfolios/{portfolio_id}/reconciliation-preview', response_model=ReconciliationResponse)
+def preview_portfolio_reconciliation(
+    portfolio_id: int,
+    trade_date: date | None = None,
+    db: Session = Depends(get_db),
+) -> ReconciliationResponse:
+    """Read-only current-book diagnosis; never advances cursors or writes audit/state."""
+    with db.no_autoflush:
+        p = _load_portfolio(db, portfolio_id)
+        effective_date = trade_date or p.last_decision_trade_date or _previous_closed_trade_date(db)
+        report = reconcile_trade_date(db, portfolio_id, effective_date, persist=False)
+        response = _reconciliation_response(report, p, None)
+        response.read_only = True
+        return response
+
+
+def _reconciliation_response(report: ReconciliationReport, p: Portfolio, corr: str | None) -> ReconciliationResponse:
     # —— Meta 种类列表：对账服务在这些分支里直接 short-circuit，
     #    expected/actual 本身就不会被填数值（例如未执行当日 auto_simulation）。
     #    这些种类的 diff_value 必须输出 null（而不是被 pydantic 转成 0.00），
@@ -443,6 +465,7 @@ def reconcile_portfolio(
         zero_sum_check_passed=report.status == "PASSED" and not report.differences,
         items=items,
         correlation_id=corr,
+        cash_audit=report.cash_audit,
     )
 
 

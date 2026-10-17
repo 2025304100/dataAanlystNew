@@ -19,6 +19,8 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
+  Checkbox,
   Modal,
   Popconfirm,
   Select,
@@ -38,6 +40,8 @@ import {
 } from "@ant-design/icons";
 import { requestJson } from "../../api/client";
 import { t } from "../../i18n";
+import { CHANNEL_STATUS_TONE, semanticTagStyle, type OutboxTone } from "./notificationTheme";
+import { channelFields, channelFormConfig, channelEditValues } from "./channelFields";
 
 // 通知渠道（对齐 app.models.notification.NotificationChannel）
 interface Channel {
@@ -76,66 +80,15 @@ const CHANNEL_TYPE_LABELS: Record<string, string> = {
   webhook: "channelTypeWebhook",
 };
 
-// 渠道状态展示配置
-const CHANNEL_STATUS_CONFIG: Record<string, { color: string; labelKey: string }> = {
-  unconfigured: { color: "default", labelKey: "channelStatusUnconfigured" },
-  pending_test: { color: "orange", labelKey: "channelStatusPendingTest" },
-  test_success: { color: "blue", labelKey: "channelStatusTestSuccess" },
-  test_failed: { color: "red", labelKey: "channelStatusTestFailed" },
-  enabled: { color: "green", labelKey: "channelStatusEnabled" },
-  disabled: { color: "default", labelKey: "channelStatusDisabled" },
+// 渠道状态展示配置（色板统一走 notificationTheme，禁 antd 预设杂色）
+const CHANNEL_STATUS_CONFIG: Record<string, { tone: OutboxTone; labelKey: string }> = {
+  unconfigured: { tone: "neutral", labelKey: "channelStatusUnconfigured" },
+  pending_test: { tone: "warning", labelKey: "channelStatusPendingTest" },
+  test_success: { tone: "info", labelKey: "channelStatusTestSuccess" },
+  test_failed: { tone: "error", labelKey: "channelStatusTestFailed" },
+  enabled: { tone: "success", labelKey: "channelStatusEnabled" },
+  disabled: { tone: "neutral", labelKey: "channelStatusDisabled" },
 };
-
-// 不同渠道类型的配置字段定义（脱敏字段名）
-const CHANNEL_CONFIG_FIELDS: Record<
-  string,
-  Array<{ key: string; labelKey: string; required?: boolean; placeholderKey?: string }>
-> = {
-  in_app: [],
-  wxpusher: [
-    { key: "app_token", labelKey: "channelConfigAppToken", required: true, placeholderKey: "channelConfigAppTokenPlaceholder" },
-    { key: "uid", labelKey: "channelConfigUid", required: true, placeholderKey: "channelConfigUidPlaceholder" },
-  ],
-  dingtalk: [
-    { key: "webhook", labelKey: "channelConfigWebhookUrl", required: true, placeholderKey: "channelConfigWebhookUrlPlaceholder" },
-    { key: "secret", labelKey: "channelConfigSecret", placeholderKey: "channelConfigSecretPlaceholder" },
-  ],
-  onebot: [
-    { key: "base_url", labelKey: "channelConfigBaseUrl", required: true, placeholderKey: "channelConfigBaseUrlPlaceholder" },
-    { key: "token", labelKey: "channelConfigToken", required: true, placeholderKey: "channelConfigTokenPlaceholder" },
-    { key: "user_id", labelKey: "channelConfigUserId", required: true, placeholderKey: "channelConfigUserIdPlaceholder" },
-  ],
-  email: [
-    { key: "smtp_host", labelKey: "channelConfigSmtpHost", required: true, placeholderKey: "channelConfigSmtpHostPlaceholder" },
-    { key: "smtp_port", labelKey: "channelConfigSmtpPort", required: true, placeholderKey: "channelConfigSmtpPortPlaceholder" },
-    { key: "username", labelKey: "channelConfigUsername", required: true, placeholderKey: "channelConfigUsernamePlaceholder" },
-    { key: "password", labelKey: "channelConfigPassword", required: true, placeholderKey: "channelConfigPasswordPlaceholder" },
-    { key: "from_addr", labelKey: "channelConfigFromAddr", required: true, placeholderKey: "channelConfigFromAddrPlaceholder" },
-    { key: "to_addrs", labelKey: "channelConfigToAddrs", required: true, placeholderKey: "channelConfigToAddrsPlaceholder" },
-  ],
-  webhook: [
-    { key: "url", labelKey: "channelConfigWebhookUrl", required: true, placeholderKey: "channelConfigWebhookUrlPlaceholder" },
-    { key: "secret", labelKey: "channelConfigSecret", placeholderKey: "channelConfigSecretPlaceholder" },
-  ],
-};
-
-// 解析脱敏配置 JSON
-function parseMaskConfig(json: string | null): Record<string, string> {
-  if (!json) return {};
-  try {
-    const parsed = JSON.parse(json);
-    if (parsed && typeof parsed === "object") {
-      const result: Record<string, string> = {};
-      Object.entries(parsed).forEach(([k, v]) => {
-        result[k] = v == null ? "" : String(v);
-      });
-      return result;
-    }
-  } catch {
-    // 解析失败返回空对象，不抛异常
-  }
-  return {};
-}
 
 export const ChannelConfig: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -233,7 +186,8 @@ export const ChannelConfig: React.FC = () => {
   const handleEdit = useCallback(
     (channel: Channel) => {
       setEditingChannel(channel);
-      const config = parseMaskConfig(channel.config_mask_json);
+      editForm.resetFields();
+      const config = channelEditValues(channel.channel_type, channel.config_mask_json);
       editForm.setFieldsValue({
         name: channel.name,
         channel_type: channel.channel_type,
@@ -249,12 +203,8 @@ export const ChannelConfig: React.FC = () => {
     try {
       const values = await createForm.validateFields();
       setSubmitting(true);
-      // 收集配置字段（除 name/channel_type 之外的字段都作为 config）
-      const { name, channel_type, ...rest } = values as Record<string, unknown>;
-      const config: Record<string, unknown> = {};
-      Object.entries(rest).forEach(([k, v]) => {
-        if (v != null && v !== "") config[k] = v;
-      });
+      const { name, channel_type } = values;
+      const { config } = channelFormConfig(channel_type, values, false);
       await requestJson<Channel>("/api/v1/notifications/channels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -286,18 +236,15 @@ export const ChannelConfig: React.FC = () => {
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
-      const { name, channel_type, ...rest } = values as Record<string, unknown>;
-      const config: Record<string, unknown> = {};
-      Object.entries(rest).forEach(([k, v]) => {
-        if (v != null && v !== "") config[k] = v;
-      });
+      const { name } = values;
+      const { config, clear_config_keys } = channelFormConfig(editingChannel.channel_type, values, true);
       await requestJson<Channel>(`/api/v1/notifications/channels/${editingChannel.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          channel_type,
           config,
+          clear_config_keys,
         }),
       });
       message.success(t("channelUpdated"));
@@ -317,7 +264,7 @@ export const ChannelConfig: React.FC = () => {
 
   // 渲染渠道配置表单字段
   const renderConfigFields = (channelType: string, form: "create" | "edit") => {
-    const fields = CHANNEL_CONFIG_FIELDS[channelType] || [];
+    const fields = channelFields[channelType] || [];
     if (fields.length === 0) {
       return (
         <Alert
@@ -329,17 +276,31 @@ export const ChannelConfig: React.FC = () => {
       );
     }
     return fields.map((field) => (
-      <Form.Item
-        key={field.key}
-        name={field.key}
-        label={t(field.labelKey)}
-        rules={field.required ? [{ required: true }] : undefined}
-      >
-        <Input
-          placeholder={field.placeholderKey ? t(field.placeholderKey) : ""}
-          autoComplete="off"
-        />
-      </Form.Item>
+      <div key={field.key}>
+        <Form.Item
+          name={field.key}
+          label={t(field.labelKey)}
+          valuePropName={field.kind === "boolean" ? "checked" : "value"}
+          initialValue={form === "create" ? (field.key === "transport" ? "ssl" : field.key === "target_type" ? "group" : field.key === "smtp_port" ? 465 : undefined) : undefined}
+          rules={[
+            ...(field.required && !(form === "edit" && field.kind === "secret") ? [{ required: true }] : []),
+            ...(field.key === "topic_ids" ? [{ validator: async (_: unknown, values: string[] = []) => {
+              if (values.some((value) => !/^[1-9]\d*$/.test(String(value)))) throw new Error(t("channelConfigPositiveIds"));
+            } }] : []),
+          ]}
+        >
+          {field.kind === "list" ? <Select mode="tags" tokenSeparators={[",", "，", ";"]} placeholder={t("settingsNotificationTargets")} open={false} />
+            : field.kind === "number" ? <InputNumber min={1} max={65535} style={{ width: "100%" }} />
+            : field.kind === "boolean" ? <Switch />
+            : field.kind === "transport" ? <Select options={[{ value: "ssl", label: "SSL/TLS" }, { value: "starttls", label: "STARTTLS" }, { value: "plain", label: t("settingsNotificationTransportPlain") }]} />
+            : field.kind === "target" ? <Select options={[{ value: "group", label: t("settingsNotificationTargetGroup") }, { value: "user", label: t("settingsNotificationTargetUser") }]} />
+            : field.kind === "secret" ? <Input.Password autoComplete="new-password" placeholder={form === "edit" ? t("settingsNotificationSecretUnchanged") : undefined} />
+            : <Input autoComplete="off" />}
+        </Form.Item>
+        {form === "edit" && field.kind === "secret" && !field.required && <Form.Item name={`clear_${field.key}`} valuePropName="checked" style={{ marginTop: -16 }}>
+          <Checkbox>{t("settingsNotificationClearSecret")}</Checkbox>
+        </Form.Item>}
+      </div>
     ));
   };
 
@@ -368,8 +329,8 @@ export const ChannelConfig: React.FC = () => {
         const cfg = CHANNEL_STATUS_CONFIG[record.status] || CHANNEL_STATUS_CONFIG.unconfigured;
         return (
           <Space size="small">
-            <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag>
-            {record.enabled && <Tag color="green">{t("enabled")}</Tag>}
+            <Tag style={semanticTagStyle(cfg.tone)}>{t(cfg.labelKey)}</Tag>
+            {record.enabled && <Tag style={semanticTagStyle("success")}>{t("enabled")}</Tag>}
           </Space>
         );
       },
@@ -388,7 +349,7 @@ export const ChannelConfig: React.FC = () => {
             <span style={{ fontSize: 12, color: "var(--muted)" }}>-</span>
           )}
           {record.last_test_success === false && record.last_error_message && (
-            <span style={{ color: "var(--danger, #ff4d4f)", fontSize: 12 }}>
+            <span style={{ color: "#dc2626", fontSize: 12 }}>
               {record.last_error_message}
             </span>
           )}

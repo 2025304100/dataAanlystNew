@@ -66,15 +66,15 @@ def test_reset_control_plane_cache_rebuilds_from_current_engine(tmp_path):
         assert factory_a is not None
         assert str(factory_a.kw["bind"].url) == url_a
 
-        # 进程内改绑 dm.engine 后、未失效缓存：控制面仍冻结在旧 URL（根因语义）
+        # URL 改变后，公开读取入口也会自动失效旧控制面，避免读写分库。
         mgr._engine = eng_b
-        frozen = db_session.get_control_session_local()
-        assert frozen is factory_a
-        assert str(frozen.kw["bind"].url) == url_a
+        rebound = db_session.get_control_session_local()
+        assert rebound is not factory_a
+        assert str(rebound.kw["bind"].url) == url_b
 
         # 官方失效接口：返回旧引擎 + 置空缓存
         stale = db_session.reset_control_plane_cache()
-        assert stale is factory_a.kw["bind"]
+        assert stale is rebound.kw["bind"]
         assert db_session._cp_engine is None
         assert db_session._cp_factory is None
 

@@ -5,7 +5,7 @@ from functools import lru_cache
 import akshare as ak
 
 from app.models.symbol import Symbol
-from app.services.akshare_utils import quiet_akshare_output
+from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
 
 
 def _is_placeholder_name(symbol: str, name: str | None) -> bool:
@@ -29,7 +29,7 @@ def _should_use_official_cn_name(symbol: str, current_name: str | None, official
 @lru_cache(maxsize=1)
 def _cn_stock_name_map() -> dict[str, str]:
     with quiet_akshare_output():
-        frame = ak.stock_info_a_code_name()
+        frame = call_akshare_with_retry(ak.stock_info_a_code_name, api_key="stock_info_a_code_name")
     return {
         str(row["code"]).zfill(6): str(row["name"]).strip()
         for row in frame.to_dict("records")
@@ -40,7 +40,7 @@ def _cn_stock_name_map() -> dict[str, str]:
 @lru_cache(maxsize=1)
 def _fund_name_map() -> dict[str, str]:
     with quiet_akshare_output():
-        frame = ak.fund_name_em()
+        frame = call_akshare_with_retry(ak.fund_name_em, api_key="fund_name_em")
     return {
         str(row["基金代码"]).zfill(6): str(row["基金简称"]).strip()
         for row in frame.to_dict("records")

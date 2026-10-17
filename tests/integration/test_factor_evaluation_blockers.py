@@ -38,15 +38,13 @@ class SyntheticMockBase:
     @staticmethod
     def _base_payload(factor_code: str = "close", target_horizon: int = 5) -> dict[str, Any]:
         import uuid as _uuid
-        import random as _rand
         uniq = _uuid.uuid4().hex[:6]
-        # factor_version_id 必须是唯一的，因为它在 _IDEMPOTENCY_KEYS 里（created_by 不在）
-        # 使用 [50000, 99999] 范围随机数，避免与真实因子版本 ID 冲突
-        rand_version_id = 50000 + _rand.randint(0, 49999)
+        # Each fixture has an isolated database. Resolve its real latest
+        # version; invented ids must fail rather than silently falling back.
         return {
             "factor_code": factor_code,
             "factor_kind": "continuous",
-            "factor_version_id": rand_version_id,
+            "factor_version_id": None,
             "universe": "all_a_shares",
             "start_date": None,
             "end_date": None,
@@ -846,7 +844,12 @@ def test_blocker_idempotent_no_duplicate_task(client, isolated_db_session, seed_
             f"5 次响应返回不同 task_id: {returned_ids}"
         )
 
-        fp = compute_payload_fingerprint(payload)
+        # The server pins an omitted version to the immutable version used.
+        # The returned accepted payload is the task identity, not a moving
+        # "latest version" alias from the original request.
+        accepted_payload = json.loads(td["payload_json"])
+        assert accepted_payload["factor_version_id"] is not None
+        fp = compute_payload_fingerprint(accepted_payload)
         # 注意：使用独立 Session 查询，避免事务隔离导致看不到 Worker 提交的数据
         from app.db.session import SessionLocal as _SL
         from app.models.async_task import AsyncTaskRecord

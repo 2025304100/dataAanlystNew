@@ -230,7 +230,7 @@ def test_wxpusher_send_message_success(monkeypatch):
     captured: dict = {}
     response = _MockResponse(
         status_code=200,
-        json_data={"code": 0, "msg": "ok", "data": {"messageId": "m-1"}},
+        json_data={"code": 1000, "msg": "ok", "data": {"messageId": "m-1"}},
     )
     context = _make_httpx_client_mock(response, captured)
     monkeypatch.setattr("app.services.notifications.wxpusher.httpx.Client", lambda **kw: context)
@@ -276,7 +276,7 @@ def test_wxpusher_send_message_failure(monkeypatch):
 def test_wxpusher_send_message_uses_timeout(monkeypatch):
     """【WP-MSG.2】WxPusher.send_message：默认超时 10.0 秒传给 httpx.Client。"""
     captured: dict = {}
-    response = _MockResponse(status_code=200, json_data={"code": 0})
+    response = _MockResponse(status_code=200, json_data={"code": 1000})
     context = _make_httpx_client_mock(response, captured)
     captured_client_kw: dict = {}
 
@@ -1027,7 +1027,7 @@ def test_send_uses_configured_timeout(monkeypatch):
         captured_kw.update(kw)
         response = _MockResponse(
             status_code=200,
-            json_data={"code": 0, "msg": "ok"},
+            json_data={"code": 1000, "msg": "ok"},
         )
         return _make_httpx_client_mock(response)
 
@@ -1146,7 +1146,7 @@ def test_wxpusher_response_summary_no_token(monkeypatch):
     response = _MockResponse(
         status_code=200,
         json_data={
-            "code": 0,
+            "code": 1000,
             "msg": "ok",
             "appToken": "AT_secret_should_not_leak",
             "data": {"messageId": "m-1"},

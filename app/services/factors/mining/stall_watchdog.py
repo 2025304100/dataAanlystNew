@@ -13,7 +13,8 @@
   用户此时**没有任何自救手段**（批次列表里那个 running 也点不出停止效果）。
 
 因此本模块按**推进时间**判定：`status='running'` 且 `updated_at` 长时间不动 →
-置 `failed` + `error_code='STALLED'` + 释放它占的双锁，让功能入口恢复可用。
+置 `failed` + `error_code='STALLED'` 并请求协作取消；活 worker 退出时才释放
+双锁，无活 worker 的残留锁则直接回收，避免旧线程和新任务同时写仓库。
 
 接入方式：由 `app.main._mining_lock_patrol_loop`（60s）与锁巡检同一个 tick 调用。
 """
@@ -26,8 +27,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.async_task import AsyncTaskRecord
 from app.models.factor_mining import FactorMiningRun
 from app.models.task_lock import TaskLock
+from app.services.async_tasks import is_worker_running
 from app.services.factors.mining import task_lock as TL
 
 logger = logging.getLogger(__name__)
@@ -109,7 +112,7 @@ def reap_stalled_runs(
     - 只处理 `status == 'running'`（终态幂等跳过，不重写历史）；
     - 只释放 `owner_run_id` 恰好等于该 run 的锁 —— 绝不误放他人/其他批次的锁；
     - 释放走 `task_lock.release_lock`（同一事务语义，duckdb_write 有队列时拉起队首）；
-    - 放锁后对 worker 任务请求取消（DEF-12：不停 worker 的 reap = 僵尸评估线程）。
+    - 先请求取消；活线程保留双锁直至 finally，不能用终态记录代替线程退出。
     """
     run_ids = find_stalled_runs(db, threshold_seconds=threshold_seconds)
     if not run_ids:
@@ -135,19 +138,22 @@ def reap_stalled_runs(
             if lock is None or lock.owner_run_id != run_id:
                 continue
             owner = lock.owner_task_id
-            if owner:
+            if owner and owner not in owner_task_ids:
                 owner_task_ids.add(str(owner))
-            TL.release_lock(db, lock_key=lock_key, task_id=owner)
+                _request_worker_stop(owner)
+            if is_worker_running(owner):
+                logger.warning(
+                    "Stall watchdog: keeping %s for live task %s until worker exits",
+                    lock_key, owner,
+                )
+                continue
+            TL.release_lock_and_wake(db, lock_key=lock_key, task_id=owner)
             logger.warning(
                 "Stall watchdog: released %s held by stalled run %s (task %s)",
                 lock_key, run_id, owner,
             )
         reaped.append(run_id)
 
-    # DEF-12：对仍存活的任务请求取消，让 worker 在下一个检查点自止
-    # （不 join/kill 线程——协作式退出，worker finally 会做幂等清理）。
-    for task_id in owner_task_ids:
-        _request_worker_stop(task_id)
     return reaped
 
 
@@ -161,11 +167,19 @@ def release_orphan_locks(db: Session) -> list[str]:
     - `reap_stalled_runs` 也不处理（它只看 `running`）。
     结果 `POST /runs` 永久 409，功能入口彻底关闭。
 
-    判据是「锁的存在是否还有正当性」：批次已终态（或根本不存在）⇒ 锁是孤儿。
+    终态/不存在的批次且无活 worker 才能回收；共享写锁还需检查镜像任务生命周期。
     """
     released: list[str] = []
     rows = db.execute(select(TaskLock)).scalars().all()
     for lock in rows:
+        # duckdb_write is shared with data mirroring, which has no mining run.
+        # Its owner_run_id is the async task id; a missing FactorMiningRun is
+        # therefore expected and must not make a live mirror's lock orphaned.
+        task = db.get(AsyncTaskRecord, lock.owner_task_id)
+        if (lock.lock_key == TL.LOCK_DUCKDB_WRITE and task is not None
+                and task.task_type == "data_mirror"
+                and task.status in {"queued", "running"}):
+            continue
         run_id = lock.owner_run_id
         if not run_id:
             continue
@@ -174,8 +188,11 @@ def release_orphan_locks(db: Session) -> list[str]:
         if run is not None and status not in _TERMINAL_STATUSES:
             continue  # running/draft 等仍属正当持有
         owner = lock.owner_task_id
+        if is_worker_running(owner):
+            _request_worker_stop(owner)
+            continue  # terminal run/task can still have a writer winding down
         reason = "批次已终态" if run is not None else "批次不存在"
-        TL.release_lock(db, lock_key=lock.lock_key, task_id=owner)
+        TL.release_lock_and_wake(db, lock_key=lock.lock_key, task_id=owner)
         logger.warning(
             "Orphan lock released: %s held by %s (%s, status=%s)",
             lock.lock_key, run_id, reason, status or "-",
@@ -221,7 +238,10 @@ def reap_on_boot(db: Session) -> list[str]:
             lock = db.get(TaskLock, lock_key)
             if lock is None or lock.owner_run_id != row.id:
                 continue
-            TL.release_lock(db, lock_key=lock_key, task_id=lock.owner_task_id)
+            if is_worker_running(lock.owner_task_id):
+                _request_worker_stop(lock.owner_task_id)
+                continue
+            TL.release_lock_and_wake(db, lock_key=lock_key, task_id=lock.owner_task_id)
             logger.warning("Boot cleanup: released %s held by %s", lock_key, row.id)
         reaped.append(row.id)
     return reaped

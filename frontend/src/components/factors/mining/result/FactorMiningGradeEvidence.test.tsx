@@ -86,6 +86,15 @@ describe("GradeEvidenceDrawer Tab 结构", () => {
 });
 
 describe("Tab1 定级证据", () => {
+  it("缺少评级与维度判据时显示未定级和未计算，不伪装为D或未达标", () => {
+    render(<GradeEvidenceDrawer evidence={e({ grade: null, dimensions: [
+      { key: "stat_significance", current: null, threshold: 0.01, passed: null },
+    ] })} />);
+    expect(document.querySelector("[data-evidence-grade]")?.textContent).toBe("未定级");
+    const row = document.querySelector("[data-evidence-dimension]");
+    expect(row?.textContent).toContain("未计算");
+    expect(row?.textContent).not.toContain("未达标");
+  });
   it("显示等级大标签与一句话定级理由", () => {
     render(<GradeEvidenceDrawer evidence={DAILY} />);
     expect(document.querySelector("[data-evidence-grade]")?.textContent).toBe("B");
@@ -112,6 +121,44 @@ describe("Tab1 定级证据", () => {
 });
 
 describe("Tab2 统计检验证据", () => {
+  it("旧接口没有统计阈值时只作参考，不能用前端臆造的p阈值判通过", () => {
+    render(<GradeEvidenceDrawer evidence={DAILY} />);
+    fireEvent.click(document.querySelector('[data-evidence-tab="stats"]') as HTMLElement);
+    const row = document.querySelector('[data-evidence-stat="t_test"]');
+    expect(row?.lastElementChild?.textContent).toBe("仅参考");
+    expect(row?.textContent).not.toContain("p<0.05");
+  });
+
+  it("区间与比例采用服务端阈值且边界比较符保持一致", () => {
+    render(<GradeEvidenceDrawer evidence={e({ stat_thresholds: {
+      bootstrap: { operator: "gt", value: 0.12, label: "lower>0.12" },
+      walk_forward: { operator: "gte", value: 0.75, label: "ratio>=0.75" },
+      decay: { operator: "gte", value: 0.67, label: "decay>=0.67" },
+    }, stats: { ...DAILY.stats, walk_forward: { windows: 4, same_direction: 3 } } })} />);
+    fireEvent.click(document.querySelector('[data-evidence-tab="stats"]') as HTMLElement);
+    const status = (key: string) => document.querySelector(`[data-evidence-stat="${key}"]`)?.lastElementChild?.textContent;
+    expect(status("bootstrap")).toBe("未通过");
+    expect(status("walk_forward")).toBe("通过");
+    expect(status("decay")).toBe("通过");
+  });
+  it("依据服务端实际阈值区分通过、未通过、未计算和仅参考", () => {
+    render(<GradeEvidenceDrawer evidence={e({
+      stat_thresholds: {
+        t_test: { operator: "lt", value: 0.01, label: "p<0.01" },
+        bonferroni: { operator: "lt", value: 0.01, label: "p_adj<0.01" },
+        permutation: { operator: "lt", value: 0.01, label: "p<0.01" },
+      },
+      stats: { ...DAILY.stats, permutation_p: null },
+    })} />);
+    fireEvent.click(document.querySelector('[data-evidence-tab="stats"]') as HTMLElement);
+    const status = (key: string) => document.querySelector(`[data-evidence-stat="${key}"]`)?.lastElementChild?.textContent;
+    expect(status("t_test")).toBe("通过");
+    expect(status("bonferroni")).toBe("未通过");
+    expect(status("permutation")).toBe("未计算");
+    expect(status("dsr")).toBe("仅参考");
+    expect(document.querySelector('[data-evidence-stat="t_test"]')?.textContent).toContain("p<0.01");
+  });
+
   it("渲染 8 项统计检验", () => {
     render(<GradeEvidenceDrawer evidence={DAILY} />);
     fireEvent.click(document.querySelector('[data-evidence-tab="stats"]') as HTMLElement);
@@ -154,6 +201,11 @@ describe("Tab2 统计检验证据", () => {
     expect(
       document.querySelector('[data-evidence-stat="bootstrap"]')?.getAttribute("data-disabled"),
     ).not.toBe("true");
+  });
+
+  it("日频缺少统计证据时不能误提示月频最高B", () => {
+    render(<GradeEvidenceDrawer evidence={e({ stats: { ...DAILY.stats, degraded: true } })} />);
+    expect(document.querySelector("[data-evidence-monthly-tip]")).toBeNull();
   });
 });
 

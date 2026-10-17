@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { t } from "../../../../../i18n";
-import { DatePicker, InputNumber } from "antd";
-import type { SplitBudget, SplitMode, SplitRatios } from "./splitTypes";
+import { InputNumber } from "antd";
+import type { SplitBudget, SplitRatios } from "./splitTypes";
 
 /**
  * 三段切分面板（向导 §4，设计 §7.2）—— **只收集配置 + 原样展示预算**。
@@ -13,7 +13,7 @@ import type { SplitBudget, SplitMode, SplitRatios } from "./splitTypes";
  * pitfalls 落点：
  * - purge / embargo **同时展示「调仓点数」与「折算交易日数」** —— 否则用户会把
  *   `purge=5` 误读成 5 个交易日；
- * - 月频（`statistically_degraded`）→ 显示「最高 B 级」降级提示；
+ * - 测试样本不足（`statistically_degraded`，不限频率）→ 显示「最高 B 级」提示；
  * - 未达最低样本量（`meets_floor=false`）→ 显示门槛值与调整方向。
  */
 export interface MiningSplitPanelProps {
@@ -36,16 +36,19 @@ export default function MiningSplitPanel({
   onChange,
 }: MiningSplitPanelProps) {
   const [ratios, setRatios] = useState<SplitRatios>(external ?? DEFAULT_RATIOS);
-  const [mode, setMode] = useState<SplitMode>("ratio");
 
-  const current = external ?? ratios;
+  const configured = external ?? ratios;
+  // 服务端接受 train/val，测试集为余量；界面使用相同口径，避免显示和执行分歧。
+  const current = { ...configured, test: 100 - configured.train - configured.val };
   const sum = current.train + current.val + current.test;
-  const invalid = sum !== 100;
+  const invalid = [current.train, current.val, current.test].some((value) => !Number.isFinite(value) || value <= 0);
   const totalForWidth = sum > 0 ? sum : 1;
 
   const update = (key: keyof SplitRatios, value: string) => {
+    if (key === "test") return;
     const parsed = Number.parseInt(value, 10);
     const next = { ...current, [key]: Number.isNaN(parsed) ? 0 : parsed };
+    next.test = 100 - next.train - next.val;
     setRatios(next);
     onChange?.(next);
   };
@@ -75,22 +78,23 @@ export default function MiningSplitPanel({
         <div className="mining-segmented">
           <button
             type="button"
-            className={`sub-tab ${mode === "ratio" ? "active" : ""}`}
+            className="sub-tab active"
             data-split-mode-ratio
-            onClick={() => setMode("ratio")}
           >
             {t("miningSplitModeRatio")}
           </button>
           <button
             type="button"
-            className={`sub-tab ${mode === "custom" ? "active" : ""}`}
+            className="sub-tab"
             data-split-mode-custom
-            onClick={() => setMode("custom")}
+            disabled
+            title={t("miningSplitCustomUnavailable")}
           >
             {t("miningSplitModeCustom")}
           </button>
         </div>
       </div>
+      <p className="mining-hint" data-split-custom-unavailable>{t("miningSplitCustomUnavailable")}</p>
 
       {/* 三段比例可视化条（宽度取自当前比例；段内日期只来自后端 budget） */}
       <div className="mining-split-bar" data-split-bar aria-label={t("miningSplitBarTitle")}>
@@ -119,7 +123,7 @@ export default function MiningSplitPanel({
         )}
       </div>
 
-      {mode === "ratio" ? (
+      {(
         <div className="mining-split-ratios">
           {(["train", "val", "test"] as const).map((key) => (
             <label key={key}>
@@ -129,6 +133,8 @@ export default function MiningSplitPanel({
                 min={0}
                 max={100}
                 value={current[key]}
+                readOnly={key === "test"}
+                controls={key !== "test"}
                 style={{ width: 104 }}
                 onChange={(v) => update(key, v == null ? "0" : String(v))}
               />
@@ -142,30 +148,12 @@ export default function MiningSplitPanel({
           </span>
           {invalid && (
             <span className="mining-split-error" data-split-error role="alert">
-              {t("miningSplitSumError").replace("{sum}", String(sum))}
+              {t("miningSplitPositiveError")}
             </span>
           )}
         </div>
-      ) : (
-        <div className="mining-split-custom">
-          <label>
-            <span>{t("miningSplitCustomTrainEnd")}</span>
-            <DatePicker
-              data-split-custom-train-end
-              format="YYYY-MM-DD"
-              allowClear
-            />
-          </label>
-          <label>
-            <span>{t("miningSplitCustomValEnd")}</span>
-            <DatePicker
-              data-split-custom-val-end
-              format="YYYY-MM-DD"
-              allowClear
-            />
-          </label>
-        </div>
       )}
+      <p className="mining-hint" data-split-test-remainder>{t("miningSplitTestRemainder")}</p>
 
       {!budget && (
         <p className="mining-split-nobudget">{t("miningSplitNoBudget")}</p>

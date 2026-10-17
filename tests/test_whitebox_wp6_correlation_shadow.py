@@ -1290,8 +1290,8 @@ class TestActivationApproval:
         assert result.to_status == "active"
         assert result.valid_days == 25
 
-    def test_approve_activation_executes_transition(self, db_session):
-        """批准激活执行状态迁移 shadow → active。"""
+    def test_approve_activation_requires_connected_observation_collection(self, db_session):
+        """手工回填的历史观察不能作为生产上线依据。"""
         factor, version = _make_factor_and_version(db_session)
         _ensure_evidence_run(db_session, version.id)
         db_session.commit()
@@ -1310,21 +1310,20 @@ class TestActivationApproval:
             evidence_run_id="eval-1-abc-20260801",
         )
         # execute_transition 内部会 commit
-        assert result.success is True
-        assert result.from_status == "shadow"
-        assert result.to_status == "active"
-        assert result.audit_id is not None
+        assert result.success is False
+        assert result.error == "shadow_collection_not_connected"
+        assert result.audit_id is None
 
         # 验证状态已迁移
         db_session.expire_all()
         refreshed_factor = db_session.get(Factor, factor.id)
-        assert refreshed_factor.lifecycle_status == "active"
+        assert refreshed_factor.lifecycle_status == "shadow"
 
         # 验证审计记录
         audits = db_session.query(TransitionAudit).filter_by(
             factor_id=factor.id
         ).all()
-        assert any(a.to_status == "active" for a in audits)
+        assert not any(a.to_status == "active" for a in audits)
 
     def test_approve_activation_blocked_by_insufficient_days(self, db_session):
         """天数不足时批准失败。"""
@@ -1477,10 +1476,10 @@ class TestActivationApproval:
             evidence_run_id="eval-1-abc-20260801",
             request_id=request_id,
         )
-        assert result1.success is True
+        assert result1.success is False
+        assert result1.error == "shadow_collection_not_connected"
 
-        # 第二次因状态已变为 active，门禁检查会失败（not_in_shadow）
-        # 这是预期行为：request_id 幂等主要在 execute_transition 层
+        # Repeated attempts cannot bypass the missing trusted collector.
         result2 = approve_activation(
             db_session,
             factor_id=factor.id,
@@ -1491,6 +1490,7 @@ class TestActivationApproval:
         )
         # 状态已迁移，第二次应失败
         assert result2.success is False
+        assert result2.error == "shadow_collection_not_connected"
 
 
 # ══════════════════════════════════════════════════════════
@@ -1513,9 +1513,8 @@ class TestLifecycleStateMachineWP6:
             actor="user_a",
             reason="start shadow observation",
         )
-        result = execute_transition(db_session, factor_id=factor.id, request=req)
-        assert result.success is True
-        assert result.to_status == "shadow"
+        with pytest.raises(ValueError, match="shadow_collection_not_connected"):
+            execute_transition(db_session, factor_id=factor.id, request=req)
 
     def test_shadow_to_active_via_activate(self, db_session):
         """shadow → active 迁移。"""
@@ -1527,9 +1526,8 @@ class TestLifecycleStateMachineWP6:
             actor="user_a",
             reason="approved",
         )
-        result = execute_transition(db_session, factor_id=factor.id, request=req)
-        assert result.success is True
-        assert result.to_status == "active"
+        with pytest.raises(ValueError, match="shadow_collection_not_connected"):
+            execute_transition(db_session, factor_id=factor.id, request=req)
 
     def test_active_to_quarantined(self, db_session):
         """active → quarantined 迁移。"""
@@ -1559,9 +1557,8 @@ class TestLifecycleStateMachineWP6:
             actor="user_a",
             reason="data issue resolved",
         )
-        result = execute_transition(db_session, factor_id=factor.id, request=req)
-        assert result.success is True
-        assert result.to_status == "shadow"
+        with pytest.raises(ValueError, match="shadow_collection_not_connected"):
+            execute_transition(db_session, factor_id=factor.id, request=req)
 
     def test_start_shadow_blocked_from_draft(self, db_session):
         """draft 状态不能直接进入 shadow。"""

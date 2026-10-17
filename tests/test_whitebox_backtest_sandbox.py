@@ -85,15 +85,15 @@ def test_sandbox_rejects_lambda_and_comprehension():
 
 # ---------- 运算异常处理 ----------
 
-def test_sandbox_zero_division_returns_none():
-    """除零应被捕获，返回 None 而非抛异常。"""
-    assert _eval("10 / 0") is None
-    assert _eval("10 % 0") is None
+def test_sandbox_zero_division_is_an_explicit_computation_error():
+    for expression in ("10 / 0", "10 % 0"):
+        with pytest.raises(backtest.FormulaEvaluationError):
+            _eval(expression)
 
 
-def test_sandbox_type_error_returns_none():
-    """类型不匹配运算应返回 None。"""
-    assert _eval("'a' + 1", variables={}) is None
+def test_sandbox_type_error_is_an_explicit_computation_error():
+    with pytest.raises(backtest.FormulaEvaluationError):
+        _eval("'a' + 1", variables={})
 
 
 # ---------- [H-1] Pow 幂运算 DoS 风险 ----------
@@ -133,7 +133,8 @@ def test_sandbox_variable_lookup():
     """变量应从 variables 字典中查找。"""
     assert _eval("close", variables={"close": 10.5}) == 10.5
     assert _eval("close + open", variables={"close": 10.0, "open": 5.0}) == 15.0
-    assert _eval("missing_var", variables={}) is None
+    with pytest.raises(backtest.FormulaDataUnavailable):
+        _eval("missing_var", variables={})
 
 
 def test_sandbox_function_call():
@@ -149,7 +150,7 @@ def test_sandbox_unknown_function_returns_none():
     assert _eval("os.system('rm -rf')", functions={}) in (None, "__REJECTED__")
 
 
-def test_sandbox_function_exception_returns_none():
-    """函数内部抛异常应返回 None。"""
+def test_sandbox_function_exception_is_an_explicit_computation_error():
     funcs = {"raise_fn": lambda: 1 / 0}
-    assert _eval("raise_fn()", functions=funcs) is None
+    with pytest.raises(backtest.FormulaEvaluationError):
+        _eval("raise_fn()", functions=funcs)

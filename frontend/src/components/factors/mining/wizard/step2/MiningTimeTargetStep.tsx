@@ -104,12 +104,34 @@ export default function MiningTimeTargetStep({
 
   const startDayjs = startDate ? dayjs(startDate) : null;
   const endDayjs = endDate ? dayjs(endDate) : null;
+  const mirrorStart = mirroredFrom ? dayjs(mirroredFrom.slice(0, 10), "YYYY-MM-DD", true) : null;
+  const mirrorEnd = mirroredTo ? dayjs(mirroredTo.slice(0, 10), "YYYY-MM-DD", true) : null;
+  const cutoffDay = dataCutoffAt ? dayjs(dataCutoffAt.slice(0, 10), "YYYY-MM-DD", true) : null;
+  const availableEnd = cutoffDay?.isValid() && mirrorEnd && cutoffDay.isBefore(mirrorEnd, "day") ? cutoffDay : mirrorEnd;
+  const availableRange = mirrorStart?.isValid() && availableEnd?.isValid()
+    && (!dataCutoffAt || cutoffDay?.isValid()) && !mirrorStart.isAfter(availableEnd, "day")
+    ? { start_date: mirrorStart.format("YYYY-MM-DD"), end_date: availableEnd.format("YYYY-MM-DD") }
+    : null;
 
   return (
     <div className="mining-time-target-step" data-time-target-step>
       <div className="mining-time-grid">
         <div className="mining-time-grid-head">
           <span className="mining-card-title">{t("miningTimeCardTitle")}</span>
+          <button
+            type="button"
+            className="mining-pool-btn"
+            data-time-use-mirror-range
+            disabled={!availableRange}
+            onClick={() => {
+              if (!availableRange) return;
+              setStartDate(availableRange.start_date);
+              setEndDate(availableRange.end_date);
+              emit(availableRange);
+            }}
+          >
+            {t("miningTimeUseMirrorRange")}
+          </button>
         </div>
         <label>
           <span>{t("miningTimeStart")}</span>
@@ -183,16 +205,16 @@ export default function MiningTimeTargetStep({
             value={targetType}
             options={[
               { value: "simple", label: t("miningTargetSimple") },
-              { value: "log", label: t("miningTargetLog") },
-              { value: "excess", label: t("miningTargetExcess") },
-              { value: "rank", label: t("miningTargetRank") },
+              { value: "log", label: t("miningTargetLog"), disabled: true },
+              { value: "excess", label: t("miningTargetExcess"), disabled: true },
+              { value: "rank", label: t("miningTargetRank"), disabled: true },
             ]}
             onChange={(v: MiningTargetType) => {
               setTargetType(v);
               emit({ target_type: v });
             }}
           />
-          <span className="mining-time-hint">{t("miningTimeHintTarget")}</span>
+          <span className="mining-time-hint" data-time-target-supported-only>{t("miningTargetSupportedOnly")}</span>
         </label>
       </div>
 

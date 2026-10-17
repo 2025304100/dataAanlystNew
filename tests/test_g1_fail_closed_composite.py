@@ -4,7 +4,7 @@
 - T-A4-C1：正式模式（production / strict_pit）单成员缺 Score → 全组合 BLOCKED
 - T-A4-C2：研究模式（research）单成员缺 Score → 不阻断，只 WARN + DEGRADED_DATA
 - T-A4-C3：全 PASS 场景 → composite_level=PASS，is_result_production_eligible=True
-- T-A4-B0：基线前后回退（不传新参数则等价于旧行为，PASS）
+- T-A4-B0：省略新参数仍可研究预检；缺少评分时保留生产阻断
 """
 from __future__ import annotations
 
@@ -207,11 +207,10 @@ class TestFailClosedComposite:
         assert result["per_member_rejections_research_only"] == []
 
     # ------------------------------------------------------------------
-    # B0: 基线回退（旧 evaluate 不传 coverage_result 等 → 行为不变 PASS）
+    # B0: 省略 coverage_result 等仍可研究预检，不绕过已有数据门禁
     # ------------------------------------------------------------------
     def test_b0_backward_compat_without_fail_closed_params(self, tmp_alembic_db):
-        """T-A4-B0: 不传 4 个新参数 → EvaluateResult 默认 is_prod_eligible=True，
-        fail_closed_result=None，等价于旧行为。"""
+        """T-A4-B0: 省略 4 个新参数不会崩溃；缺评分仍不可用于生产。"""
         from app.services.decision_engine import DecisionEngine
         db = tmp_alembic_db
 
@@ -281,12 +280,14 @@ class TestFailClosedComposite:
             # 显式不传 coverage_result / key_member_result / staleness_result / per_member_score_avail
         )
 
-        # 默认值（向后兼容）
-        assert result.is_result_production_eligible is True, (
-            "不传 fail-closed 参数时，默认应 True 兼容旧路径"
-        )
+        assert result.is_result_production_eligible is False
         assert result.fail_closed_result is None
-        # blocking_status 是旧逻辑结果（这里 skeleton 无 Score，可能 READY 或 DATA_INCOMPLETE），
-        # 关键在于：不因为新字段缺失而崩溃
+        assert result.blocking_status == "DATA_INCOMPLETE_PAUSED"
+        coverage_reason = next((reason for reason in result.blocking_reasons
+            if reason.get("code") == "SCORE_COVERAGE_BELOW_SLA"), None)
+        assert coverage_reason is not None, result.blocking_reasons
+        assert coverage_reason["detail"]["expected"] == 2
+        assert coverage_reason["detail"]["actual"] == 0
+        # 新参数可以省略，已有模型/评分资格不会因此被跳过。
         assert result.decision_run_id and len(result.decision_run_id) == 64
         assert len(result.evidence) == 2

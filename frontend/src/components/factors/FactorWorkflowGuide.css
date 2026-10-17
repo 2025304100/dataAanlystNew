@@ -311,8 +311,8 @@
 }
 
 .factor-workflow-guide .factor-workflow-guide__step--blocked .factor-workflow-guide__step-button {
-  border-color: #ecd9ad;
-  background: #fffaf0;
+  border-color: rgba(180, 83, 9, 0.28);
+  background: rgba(180, 83, 9, 0.06);
 }
 
 .factor-workflow-guide .factor-workflow-guide__step--blocked .factor-workflow-guide__step-icon {

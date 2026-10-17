@@ -40,8 +40,7 @@ def get_sim_account_snapshot(
     db: Session = Depends(get_db),
 ):
     portfolio = _get_portfolio_or_404(db, portfolio_id)
-    summary = SimAccountSummary(**build_sim_account_summary(db, portfolio))
-    db.flush()
+    summary = SimAccountSummary(**build_sim_account_summary(db, portfolio, update_positions=False))
     recent_ledger = db.execute(
         select(CashLedger)
         .where(CashLedger.portfolio_id == portfolio_id)

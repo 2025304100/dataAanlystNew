@@ -266,7 +266,7 @@ class TestB0BackwardCompat:
     # ------------------------------------------------------------------
     def test_b0_evaluate_without_legacy_param_backward_compat(self, tmp_alembic_db):
         """B0: DecisionEngine.evaluate() 不传 allow_legacy_fallback 新参数
-        → 不抛，旧路径不崩（DecisionEngine 原 8 tests GREEN 基线）。
+        → 不抛；缺评分的研究预检仍不能声称具备生产资格。
         """
         from app.services.decision_engine import DecisionEngine
         db = tmp_alembic_db
@@ -337,10 +337,14 @@ class TestB0BackwardCompat:
             dry_run=True,
         )
 
-        assert result.is_result_production_eligible is True, (
-            "不传 fail-closed 参数时，默认应 True 兼容旧路径"
-        )
+        assert result.is_result_production_eligible is False
         assert result.fail_closed_result is None
+        assert result.blocking_status == "DATA_INCOMPLETE_PAUSED"
+        coverage_reason = next((reason for reason in result.blocking_reasons
+            if reason.get("code") == "SCORE_COVERAGE_BELOW_SLA"), None)
+        assert coverage_reason is not None, result.blocking_reasons
+        assert coverage_reason["detail"]["expected"] == 2
+        assert coverage_reason["detail"]["actual"] == 0
         assert result.decision_run_id and len(result.decision_run_id) == 64
         # 关键：不因为 allow_legacy_fallback 缺失而崩溃
         assert len(result.evidence) == 2

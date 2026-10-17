@@ -17,6 +17,18 @@ from app.services.financial_data import (
 
 pytestmark = pytest.mark.whitebox
 
+def test_financial_sync_accepts_current_f10_names_without_losing_amounts(db_session):
+    symbol=Symbol(symbol='000001',name='bank',asset_type='stock',market='sz')
+    db_session.add(symbol);db_session.flush()
+    frame=pd.DataFrame([dict(REPORT_DATE='2026-06-30',NOTICE_DATE='2026-08-15',ROEJQ=5.22,
+        PARENTNETPROFIT=25696000000,TOTALOPERATEREVE=70617000000,
+        PARENTNETPROFITTZ=3.32,TOTALOPERATEREVETZ=1.77)])
+    with patch('app.services.financial_data.call_akshare_with_retry',return_value=frame):
+        assert sync_symbol_financial_reports(db_session,symbol)==1
+    row=db_session.scalar(select(StockFinancialReport).where(StockFinancialReport.symbol_id==symbol.id))
+    assert row.net_profit==25696000000 and row.revenue==70617000000
+    assert row.net_profit_yoy==3.32 and row.revenue_yoy==1.77
+
 
 def test_financial_sync_preserves_versions_and_is_idempotent(db_session):
     symbol = Symbol(

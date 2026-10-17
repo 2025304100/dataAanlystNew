@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.services.ai.context_pack import ContextPack
+from app.services.alert_capabilities import SUPPORTED_ALERT_TYPES
 from app.services.ai.drafts._common import (
     build_draft_result,
     build_preview_result,
@@ -28,10 +29,7 @@ logger = logging.getLogger(__name__)
 
 DRAFT_TYPE = "draft_alert"
 
-_VALID_ALERT_TYPES = (
-    "score_drop", "data_stale", "indicator_trigger",
-    "task_failed", "watchlist_signal", "price_alert",
-)
+_VALID_ALERT_TYPES = tuple(sorted(SUPPORTED_ALERT_TYPES))
 _VALID_SEVERITIES = ("info", "warn", "error")
 
 
@@ -41,7 +39,7 @@ def draft_alert(
     """第一步：AI 建议告警规则。"""
     suggested_payload = {
         "name": ai_suggestion.get("name", ""),
-        "alert_type": ai_suggestion.get("alert_type", "price_alert"),
+        "alert_type": ai_suggestion.get("alert_type", "score_drop"),
         "severity": ai_suggestion.get("severity", "warn"),
         "config_json": ai_suggestion.get("config_json", "{}"),
         "cooldown_minutes": ai_suggestion.get("cooldown_minutes", 60),
@@ -115,6 +113,10 @@ def execute_alert(db: Session, audit_id: int) -> dict[str, Any]:
     if err == "action_type_mismatch":
         return {"success": False, "error": "action_type_mismatch", "message": "动作类型不匹配"}
 
+    validation = preview_alert(db, payload)
+    if not validation["is_valid"]:
+        return {"success": False, "error": "validation_failed", "message": "; ".join(validation["errors"])}
+
     try:
         from app.models.alert import AlertRule
         config_json = payload.get("config_json", "{}")
@@ -123,7 +125,7 @@ def execute_alert(db: Session, audit_id: int) -> dict[str, Any]:
 
         rule = AlertRule(
             name=payload.get("name", ""),
-            alert_type=payload.get("alert_type", "price_alert"),
+            alert_type=payload.get("alert_type", "score_drop"),
             enabled=1 if payload.get("enabled", True) else 0,
             severity=payload.get("severity", "warn"),
             config_json=config_json,

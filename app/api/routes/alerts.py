@@ -15,6 +15,9 @@ from app.services.alerts import (
     evaluate_all_rules,
     get_active_alerts,
 )
+from app.services.alert_capabilities import (
+    ALERT_EVALUATION_MODE, SUPPORTED_ALERT_TYPES, UNSUPPORTED_ALERT_REASON,
+)
 
 router = APIRouter()
 
@@ -30,6 +33,8 @@ def list_alert_rules(db: Session = Depends(get_db)):
 
 @router.post("/alerts/rules", response_model=AlertRuleRead)
 def create_alert_rule(payload: AlertRuleCreate, db: Session = Depends(get_db)):
+    if payload.alert_type not in SUPPORTED_ALERT_TYPES:
+        raise HTTPException(400, UNSUPPORTED_ALERT_REASON)
     rule = AlertRule(
         name=payload.name,
         alert_type=payload.alert_type,
@@ -49,6 +54,9 @@ def update_alert_rule(rule_id: int, payload: AlertRuleUpdate, db: Session = Depe
     rule = db.get(AlertRule, rule_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
+    next_enabled = rule.enabled if payload.enabled is None else payload.enabled
+    if next_enabled and rule.alert_type not in SUPPORTED_ALERT_TYPES:
+        raise HTTPException(400, UNSUPPORTED_ALERT_REASON)
     for key, value in payload.model_dump(exclude_unset=True).items():
         if key == "config":
             setattr(rule, "config_json", json.dumps(value, ensure_ascii=False) if value else None)
@@ -125,7 +133,9 @@ def list_alert_events(
 def trigger_evaluation():
     """手动触发一次告警评估。"""
     new_events = evaluate_all_rules()
-    return {"evaluated": True, "new_events": len(new_events), "events": new_events}
+    return {"evaluated": True, "evaluation_mode": ALERT_EVALUATION_MODE,
+            "supported_types": sorted(SUPPORTED_ALERT_TYPES),
+            "new_events": len(new_events), "events": new_events}
 
 
 @router.get("/alerts/active")

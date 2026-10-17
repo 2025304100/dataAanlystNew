@@ -40,6 +40,11 @@ export default function AiChatDrawer({
   const inputRef = useRef<any>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (open) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,6 +81,7 @@ export default function AiChatDrawer({
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const isCurrent = () => abortRef.current === controller && !controller.signal.aborted;
 
     try {
       await api.streamAIChat(
@@ -89,8 +95,11 @@ export default function AiChatDrawer({
           factor_params_text: factorContext?.paramsText,
         },
         {
-          onDelta: (content) => updateLastAssistant((current) => `${current}${content}`),
+          onDelta: (content) => {
+            if (isCurrent()) updateLastAssistant((current) => `${current}${content}`);
+          },
           onDone: (result) => {
+            if (!isCurrent()) return;
             updateLastAssistant((current) => {
               if (!result.ok && result.error) return current ? `${current}\n\n${result.error}` : result.error;
               // Some gateways ignore stream=true and return only the final reply.
@@ -103,7 +112,7 @@ export default function AiChatDrawer({
         controller.signal,
       );
     } catch (error: any) {
-      if (error?.name === "AbortError") return;
+      if (!isCurrent() || error?.name === "AbortError") return;
       const errMsg = error?.message || t("aiChatFailed");
       message.error(errMsg);
       updateLastAssistant((current) => (current ? `${current}\n\n${errMsg}` : errMsg));

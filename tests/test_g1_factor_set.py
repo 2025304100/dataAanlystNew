@@ -39,9 +39,12 @@ def _make_factor(db: "Session", code: str, v: int = 1) -> tuple[Factor, FactorVe
                direction="higher_better", status="active",
                source_type="manual", is_active=1, description="")
     db.add(f); db.flush()
-    fv = FactorVersion(factor_id=f.id, version=v, formula_expr="", params_json="{}",
-                       created_by="qa")
-    db.add(fv); db.flush()
+    from app.schemas.factor_library import FactorVersionCreate
+    from app.services.factors.factor_registry import create_factor_version
+    fv = create_factor_version(db, factor_id=f.id,
+        request=FactorVersionCreate(formula_expr="close", created_by="qa"))
+    fv.version = v
+    db.flush()
     db.refresh(f); db.refresh(fv)
     return f, fv
 

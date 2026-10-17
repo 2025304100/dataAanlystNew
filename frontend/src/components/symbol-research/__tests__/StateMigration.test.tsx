@@ -372,11 +372,11 @@ describe("WP5.2 状态迁移测试", () => {
 
     // 验证 payload 包含必要字段
     const payload = mockApi.createAlertRule.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.alert_type).toBe("indicator_trigger");
+    expect(payload.alert_type).toBe("score_drop");
     expect(payload.severity).toBe("warn");
     expect(payload.enabled).toBe(true);
-    expect((payload.config as Record<string, unknown>).symbol_id).toBe(42);
-    expect((payload.config as Record<string, unknown>).source).toBe("research");
+    expect((payload.config as Record<string, unknown>).symbol_ids).toEqual([42]);
+    expect((payload.config as Record<string, unknown>).threshold).toBe(40);
   });
 
   // 6. RiskReferencePanel 显示"研究情景参数" Tag + "前往组合风控配置" 按钮

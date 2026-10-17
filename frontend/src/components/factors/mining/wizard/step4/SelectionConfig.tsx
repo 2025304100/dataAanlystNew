@@ -11,6 +11,8 @@ export interface SelectionConfigProps {
   weakGenerations?: number;
   crossCategoryRatio?: number;
   tournamentK?: number;
+  trackReadOnly?: boolean;
+  crossCategoryReadOnly?: boolean;
   onChange?: (patch: Record<string, unknown>) => void;
 }
 
@@ -20,6 +22,8 @@ export default function SelectionConfig({
   weakGenerations = 3,
   crossCategoryRatio = 0.2,
   tournamentK = 3,
+  trackReadOnly = false,
+  crossCategoryReadOnly = false,
   onChange,
 }: SelectionConfigProps) {
   const emit = (patch: Record<string, unknown>) => onChange?.(patch);
@@ -31,6 +35,7 @@ export default function SelectionConfig({
         <span className="mining-evo-field-label">{t("miningEvoTrackEnabled")}</span>
         <div data-evo-track-enabled>
           <Checkbox
+            disabled={trackReadOnly}
             checked={trackEnabled}
             onChange={(e) => emit({ track_enabled: e.target.checked })}
           />
@@ -41,6 +46,7 @@ export default function SelectionConfig({
         <span className="mining-evo-field-label">{t("miningEvoTrackFloor")}</span>
         <InputNumber
           data-evo-track-floor
+          disabled={trackReadOnly}
           min={0}
           max={1}
           step={0.05}
@@ -53,6 +59,7 @@ export default function SelectionConfig({
         <span className="mining-evo-field-label">{t("miningEvoWeakGenerations")}</span>
         <InputNumber
           data-evo-weak-generations
+          disabled={trackReadOnly}
           min={1}
           value={weakGenerations}
           onChange={(v) => emit({ weak_generations: typeof v === "number" ? v : weakGenerations })}
@@ -63,12 +70,18 @@ export default function SelectionConfig({
         <span className="mining-evo-field-label">{t("miningEvoCrossCategory")}</span>
         <InputNumber
           data-evo-cross-category
+          disabled={crossCategoryReadOnly}
           min={0}
           max={1}
           step={0.05}
           value={crossCategoryRatio}
           onChange={(v) => emit({ cross_category_ratio: typeof v === "number" ? v : crossCategoryRatio })}
         />
+        {crossCategoryReadOnly && (
+          <span className="mining-evo-muted" data-evo-cross-category-auto-hint>
+            {t("miningEvoCrossCategoryAutoHint")}
+          </span>
+        )}
       </div>
 
       <div className="mining-evo-row">

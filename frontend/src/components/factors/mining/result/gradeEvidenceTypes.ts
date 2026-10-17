@@ -12,7 +12,7 @@ export interface DimensionEvidence {
   key: string;
   current: number | null;
   threshold: number | null;
-  passed: boolean;
+  passed: boolean | null;
   gap?: number | null;
 }
 
@@ -60,12 +60,14 @@ export interface QuarterChange {
 export interface GradeEvidence {
   candidate_id: string;
   formula: string;
-  grade: Grade;
+  grade: Grade | null;
   reason_zh: string;
   thresholds_source: "default" | "custom";
   frequency: "daily" | "weekly" | "monthly" | string;
   dimensions: DimensionEvidence[];
   stats: StatsEvidence;
+  /** 实际自动评级口径；未下发的统计量只作参考。walk_forward值为同向比例。 */
+  stat_thresholds?: Partial<Record<string, { operator: "lt" | "gt" | "gte"; value: number; label: string }>>;
   lineage: LineageEvidence;
   manual_adjusted: boolean;
   grade_history?: GradeHistoryItem[];

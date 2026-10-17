@@ -200,7 +200,16 @@ def _mirror_valuations(
         if _cancelled(should_cancel):
             break
         rows = db.execute(
-            select(StockValuation, Symbol)
+            select(
+                StockValuation.id,
+                Symbol.symbol.label("symbol_code"),
+                StockValuation.trade_date,
+                StockValuation.pe_ttm,
+                StockValuation.pb,
+                StockValuation.total_market_cap,
+                StockValuation.circulating_market_cap,
+                StockValuation.source,
+            )
             .join(Symbol, Symbol.id == StockValuation.symbol_id)
             .where(
                 StockValuation.id > cursor,
@@ -211,38 +220,39 @@ def _mirror_valuations(
             )
             .order_by(StockValuation.id)
             .limit(batch_size)
-        ).all()
+        ).mappings().all()
         if not rows:
             break
         if _cancelled(should_cancel):
             break
         ingested_at = _utcnow_naive()
         records = []
-        for valuation, symbol in rows:
+        # Mirror only the normalized warehouse fields. Loading the full ORM
+        # entities also transfers large provider JSON and industry histories
+        # which neither the content hash nor this mirror uses.
+        for valuation in rows:
             fallback = {
-                "pe_ttm": valuation.pe_ttm,
-                "pb": valuation.pb,
-                "total_market_cap": valuation.total_market_cap,
-                "circulating_market_cap": valuation.circulating_market_cap,
+                "pe_ttm": valuation["pe_ttm"],
+                "pb": valuation["pb"],
+                "total_market_cap": valuation["total_market_cap"],
+                "circulating_market_cap": valuation["circulating_market_cap"],
             }
             records.append(
                 {
-                    "symbol": _symbol_code(symbol.symbol),
-                    "trade_date": valuation.trade_date,
-                    "pe_ttm": valuation.pe_ttm,
-                    "pb": valuation.pb,
+                    "symbol": _symbol_code(valuation["symbol_code"]),
+                    "trade_date": valuation["trade_date"],
+                    "pe_ttm": valuation["pe_ttm"],
+                    "pb": valuation["pb"],
                     "dividend_yield": None,
-                    "total_market_cap": valuation.total_market_cap,
-                    "circulating_market_cap": valuation.circulating_market_cap,
-                    "source": valuation.source or "business_sql",
-                    "source_hash": _source_hash(
-                        valuation.raw_json, fallback
-                    ),
+                    "total_market_cap": valuation["total_market_cap"],
+                    "circulating_market_cap": valuation["circulating_market_cap"],
+                    "source": valuation["source"] or "business_sql",
+                    "source_hash": _source_hash(None, fallback),
                     "ingested_at": ingested_at,
                     "batch_id": result.batch_id,
                 }
             )
-        cursor = int(rows[-1][0].id)
+        cursor = int(rows[-1]["id"])
         result.valuation_rows += warehouse.upsert_records(
             "raw_valuation_snapshots",
             records,

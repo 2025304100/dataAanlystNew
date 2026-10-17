@@ -907,7 +907,7 @@ const ReconciliationPanel: React.FC<{
     if (!portfolioId) return;
     setLoading(true);
     try {
-      const r = await api.triggerPortfolioReconcile(portfolioId);
+      const r = await api.previewPortfolioReconciliation(portfolioId);
       setResp(r);
       // 提示与结论卡共用同一套分诊：同一件事不该在横幅和 toast 里说成两种。
       const v = classifyReconVerdict({
@@ -1068,6 +1068,21 @@ const ReconciliationPanel: React.FC<{
         </div>
 
         {/* 10 列差异表 */}
+        {resp?.read_only && (
+          <div role="note" style={{ color: "var(--pt-muted-foreground)", fontSize: 12 }}>
+            {t("governance.reconcile.previewHint")}
+          </div>
+        )}
+        {resp?.cash_audit?.status === "BROKEN" && (
+          <div role="alert" className="pt-panel" style={{ padding: 14 }}>
+            <b>{t("governance.reconcile.cashGap")}</b>
+            <p>{t("governance.reconcile.cashExpected")}: {fmtNum(resp.cash_audit.expected_cash)} · {t("governance.reconcile.cashActual")}: {fmtNum(resp.cash_audit.actual_cash)} · Δ {fmtNum(resp.cash_audit.delta)}</p>
+            {resp.cash_audit.differences.map((row) => (
+              <div key={row.ledger_id}>#{row.ledger_id} · {fmtNum(row.expected)} → {fmtNum(row.actual)} · Δ {fmtNum(row.delta, 4)}</div>
+            ))}
+            <p>{t("governance.reconcile.cashReview")}</p>
+          </div>
+        )}
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 780 }}>
             <thead>
@@ -1084,11 +1099,14 @@ const ReconciliationPanel: React.FC<{
               {diffs.length === 0 && (
                 <tr>
                   <td colSpan={6} style={{ padding: 16, textAlign: "center", color: "var(--pt-muted-foreground)" }}>
-                    {t("governance.reconcile.noDiff")}
+                    {loading ? t("governance.reconcile.previewLoading") : resp ? t("governance.reconcile.noDiff") : "—"}
                   </td>
                 </tr>
               )}
-              {diffs.map((d, i) => {
+              {diffs.map((raw, i) => {
+                const cash = raw.dimension === "NAV_BROKEN" ? resp?.cash_audit : null;
+                const d = cash ? { ...raw, expected_value: cash.expected_cash ?? null,
+                  actual_value: cash.actual_cash ?? null, diff_value: cash.delta ?? null } : raw;
                 const dim = d.dimension;
                 // 维度列不再把后端枚举原值拼给用户看（「自定义维度 (DECISION_RUN_NOT_FOUND)」
                 // 这种行没人读得懂）；内部 code 只留在 tooltip 里。
@@ -1105,7 +1123,7 @@ const ReconciliationPanel: React.FC<{
                 //    改为 info 色底 + N/A + 小字说明，整行视觉上和「数值差异红底」区分开。
                 const metaKinds: Array<string> = ["DECISION_RUN_NOT_FOUND", "NOT_CHECKED", "NAV_BROKEN"];
                 const isMetaRow =
-                  typeof dim === "string" && metaKinds.some((k) => dim.indexOf(k) >= 0);
+                  !cash && typeof dim === "string" && metaKinds.some((k) => dim.indexOf(k) >= 0);
 
                 const qtyApplicable =
                   Number.isFinite(expected) && Number.isFinite(actual) &&

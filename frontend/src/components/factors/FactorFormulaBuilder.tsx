@@ -9,6 +9,7 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useMemo, useState } from "react";
+import { useUnsupportedFeatures } from "../settings/UnsupportedFeaturesToggle";
 import type {
   FactorFormulaCatalog,
   FactorFormulaCatalogField,
@@ -79,6 +80,7 @@ export default function FactorFormulaBuilder({
   onInspect,
 }: FactorFormulaBuilderProps) {
   const [keyword, setKeyword] = useState("");
+  const showUnsupported = useUnsupportedFeatures();
   const normalizedKeyword = keyword.trim().toLowerCase();
 
   const fields = useMemo(
@@ -97,6 +99,7 @@ export default function FactorFormulaBuilder({
 
   const functions = useMemo(
     () => [...(catalog?.functions ?? []), ...(catalog?.disabled_functions ?? [])].filter((item) =>
+      (showUnsupported || item.enabled !== false) &&
       containsKeyword([
         item.key,
         item.label_zh,
@@ -105,7 +108,7 @@ export default function FactorFormulaBuilder({
         item.signature,
         item.category,
       ], normalizedKeyword)),
-    [catalog, normalizedKeyword],
+    [catalog, normalizedKeyword, showUnsupported],
   );
 
   const operators = useMemo(
@@ -218,6 +221,7 @@ export default function FactorFormulaBuilder({
               className={`formula-catalog-item ${disabled ? "disabled" : ""}`}
               aria-label={`${item.key} ${isZh ? item.label_zh : item.label_en}`}
               aria-disabled={disabled}
+              disabled={disabled}
               onMouseEnter={() => inspect(inspector)}
               onFocus={() => inspect(inspector)}
               onClick={() => {
@@ -229,6 +233,7 @@ export default function FactorFormulaBuilder({
               <span className="formula-catalog-item-copy">
                 <strong>{isZh ? item.label_zh : item.label_en}</strong>
                 <code>{item.signature}</code>
+                {disabled && item.disabled_reason ? <small>{item.disabled_reason}</small> : null}
               </span>
               {disabled ? <Tag>{isZh ? "暂不可用" : "Unavailable"}</Tag> : <Tag color="green">{item.category}</Tag>}
             </button>
@@ -297,7 +302,7 @@ export default function FactorFormulaBuilder({
         className="formula-catalog-tabs"
         items={[
           { key: "fields", label: `${isZh ? "字段" : "Fields"} (${catalog?.fields.length ?? 0})`, children: fieldPanel },
-          { key: "functions", label: `${isZh ? "函数" : "Functions"} (${(catalog?.functions.length ?? 0) + (catalog?.disabled_functions.length ?? 0)})`, children: functionPanel },
+          { key: "functions", label: `${isZh ? "函数" : "Functions"} (${functions.length})`, children: functionPanel },
           { key: "operators", label: isZh ? "运算" : "Operators", children: operatorPanel },
           { key: "templates", label: isZh ? "模板" : "Templates", children: templatePanel },
         ]}

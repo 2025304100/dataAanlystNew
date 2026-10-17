@@ -2,6 +2,23 @@ import { Checkbox } from "antd";
 import { t } from "../../../../../i18n";
 import type { PoolMember } from "./poolApi";
 
+function memberMarketLabel(value: string | null | undefined): string | null | undefined {
+  const keys: Record<string, string> = { sh: "miningPoolMarketSh", sz: "miningPoolMarketSz", bj: "miningPoolMarketBj" };
+  return value && keys[value] ? t(keys[value]) : value;
+}
+
+function memberBoardLabel(value: string | null | undefined): string | null | undefined {
+  const keys: Record<string, string> = { main: "universeBoardMain", sh_main: "miningPoolBoardMainSh",
+    sz_main: "miningPoolBoardMainSz", gem: "miningPoolBoardChinext", star: "miningPoolBoardStar", bj: "miningPoolBoardBj" };
+  return value && keys[value] ? t(keys[value]) : value;
+}
+
+function memberSourceLabel(value: string | null | undefined): string {
+  const keys: Record<string, string> = { manual: "miningOriginManual",
+    filter: "miningPoolTabFilter", import: "miningPoolTabImport" };
+  return value && keys[value] ? t(keys[value]) : value ?? "-";
+}
+
 /**
  * 候选列表（向导 §3.6）。
  *
@@ -83,7 +100,7 @@ export default function PoolMemberTable({
           <tr>
             <th style={{ width: 40 }}>
               <Checkbox
-                aria-label="select all"
+                aria-label={t("miningPoolSelectAll")}
                 disabled={locked}
                 onChange={onToggleAll}
               />
@@ -112,7 +129,7 @@ export default function PoolMemberTable({
               : m.is_st === 1
                 ? "ST"
                 : null;
-            const marketText = [m.market, m.board].filter(Boolean).join(" / ");
+            const marketText = [memberMarketLabel(m.market), memberBoardLabel(m.board)].filter(Boolean).join(" / ");
             return (
               <tr key={`${m.symbol}-${idx}`}>
                 <td>
@@ -137,7 +154,7 @@ export default function PoolMemberTable({
                 {showMarket && (
                   <td>{marketText || <span className="mining-cell-muted">-</span>}</td>
                 )}
-                {showSource && <td>{m.source ?? "-"}</td>}
+                {showSource && <td>{memberSourceLabel(m.source)}</td>}
                 {showIntegrity && (
                   <td>
                     {m.integrity ? (

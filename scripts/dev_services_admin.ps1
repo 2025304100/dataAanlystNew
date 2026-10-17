@@ -107,25 +107,42 @@ function Write-AdminOutput {
     }
 }
 
-# State can be missing after an interrupted stop. Clean the exact project
-# process commands first, then verify both managed ports are really released.
+function Test-ConfirmedAdminTarget {
+    param([object]$Original, [object]$Record)
+    $pidValue = [int]$Original.ProcessId
+    $currentProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$pidValue"
+    if ($null -eq $currentProcess) { return $false }
+    if (-not (Test-ProjectServiceProcess -Process $currentProcess -ProjectRoot $root -ManagedRecord $Record) -or
+        ($Original.CreationDate -and $currentProcess.CreationDate -ne $Original.CreationDate)) {
+        throw "refusing to stop PID ${pidValue}: process identity changed since inspection"
+    }
+    return $true
+}
+
+# A port or generic uvicorn/vite command is not project identity. Relative
+# commands require a matching managed record; missing identity is preserved.
+. (Join-Path $PSScriptRoot "dev_services_process_policy.ps1")
+$stateFile = Join-Path $runtimeDir "state.json"
 try {
+    $managedRecords = @()
+    if (Test-Path -LiteralPath $stateFile) {
+        $managedState = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($serviceName in @("backend", "frontend")) {
+            if ($managedState.$serviceName) { $managedRecords += $managedState.$serviceName }
+        }
+    }
+    else {
+        Write-AdminLog "No managed state. Only exact absolute project service commands may be selected."
+    }
     $orphanProcesses = @(Get-CimInstance Win32_Process | Where-Object {
-        $commandLine = [string]$_.CommandLine
-        $isBackend = $_.Name -ieq "python.exe" -and
-            $commandLine -match "-m\s+uvicorn\s+app\.main:app" -and
-            $commandLine -match "--port\s+8000"
-        $isVite = $_.Name -ieq "node.exe" -and
-            $commandLine -match "node_modules[\\/]vite[\\/]bin[\\/]vite\.js" -and
-            $commandLine -match "vite\.codex\.config\.ts" -and
-            $commandLine -match "--port\s+5173"
-        $isStandalone = $_.Name -ieq "node.exe" -and
-            $commandLine -match "universe-standalone-server\.mjs"
-        $isBackend -or $isVite -or $isStandalone
+        $inspected = $_
+        $matchingRecords = @($managedRecords | Where-Object { $_.pid -eq $inspected.ProcessId })
+        $record = if ($matchingRecords.Count -eq 1) { $matchingRecords[0] } else { $null }
+        Test-ProjectServiceProcess -Process $inspected -ProjectRoot $root -ManagedRecord $record
     })
 
-    # Some elevated/detached Windows processes expose an empty CommandLine.
-    # Fall back only for the dedicated project ports and expected executable type.
+    # Validate every occupied port before terminating anything. An unrelated or
+    # unreadable owner is retained, even when its executable is python/node.
     $knownPids = @($orphanProcesses | ForEach-Object { [int]$_.ProcessId })
     $portOwners = @(Get-NetTCPConnection -State Listen -LocalPort 8000, 5173 -ErrorAction SilentlyContinue)
     foreach ($connection in $portOwners) {
@@ -133,34 +150,28 @@ try {
         if ($knownPids -contains $ownerPid) {
             continue
         }
-        $ownerProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerPid"
-        if ($null -eq $ownerProcess) {
-            throw "could not inspect process $ownerPid on port $($connection.LocalPort)"
-        }
-        $isExpectedOwner =
-            ($connection.LocalPort -eq 5173 -and $ownerProcess.Name -ieq "node.exe") -or
-            ($connection.LocalPort -eq 8000 -and $ownerProcess.Name -ieq "python.exe")
-        if (-not $isExpectedOwner) {
-            throw "refusing to stop unexpected $($ownerProcess.Name) process $ownerPid on port $($connection.LocalPort)"
-        }
-        $orphanProcesses += $ownerProcess
-        $knownPids += $ownerPid
+        throw "refusing to stop unconfirmed process PID $ownerPid on port $($connection.LocalPort); project identity could not be verified. Preserve it and use the normal dev_services.py stop command with a verified managed record."
     }
     foreach ($orphan in $orphanProcesses) {
         $pidValue = [int]$orphan.ProcessId
+        $matchingRecords = @($managedRecords | Where-Object { $_.pid -eq $pidValue })
+        $record = if ($matchingRecords.Count -eq 1) { $matchingRecords[0] } else { $null }
+        if (-not (Test-ConfirmedAdminTarget -Original $orphan -Record $record)) { continue }
         $message = "Stopping stale project process PID $pidValue..."
         Write-Host $message -ForegroundColor Yellow
         Write-AdminLog $message
         $previousErrorAction = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        $killOutput = @(& taskkill.exe /PID $pidValue /T /F 2>&1)
+        # Stop only the confirmed PID. Descendants need their own identity check.
+        $killOutput = @(& taskkill.exe /PID $pidValue /F 2>&1)
         $killExitCode = $LASTEXITCODE
         $ErrorActionPreference = $previousErrorAction
         Write-AdminOutput -Lines $killOutput
         if ($killExitCode -ne 0) {
             $targetStillRunning = $null -ne (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)
             if ($targetStillRunning) {
-                $retryMessage = "Process-tree termination was incomplete; retrying target PID $pidValue directly..."
+                if (-not (Test-ConfirmedAdminTarget -Original $orphan -Record $record)) { continue }
+                $retryMessage = "PID termination was incomplete; retrying confirmed target PID $pidValue..."
                 Write-Host $retryMessage -ForegroundColor Yellow
                 Write-AdminLog $retryMessage
                 $ErrorActionPreference = "Continue"
@@ -171,6 +182,7 @@ try {
                 $targetStillRunning = $null -ne (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)
                 if ($retryExitCode -ne 0 -and $targetStillRunning) {
                     try {
+                        if (-not (Test-ConfirmedAdminTarget -Original $orphan -Record $record)) { continue }
                         Stop-Process -Id $pidValue -Force -ErrorAction Stop
                         Start-Sleep -Milliseconds 250
                     }
@@ -206,7 +218,6 @@ catch {
     exit 1
 }
 
-$stateFile = Join-Path $runtimeDir "state.json"
 if (Test-Path -LiteralPath $stateFile) {
     Remove-Item -LiteralPath $stateFile -Force
     Write-AdminLog "Removed stale service state."

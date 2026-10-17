@@ -119,6 +119,7 @@ describe("T13⑧：设置页 0 集合 → Select disabled（TR-8.3 的额外断�
   it("0 frozen sets 时 factor-set-select 有 disabled class 或 aria-disabled=true，并出现『暂无已冻结集合』文案", async () => {
     mockApi.scoringListFactorSetsAsFactor.mockResolvedValue([]);
     render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", {name:/第 2 步：训练模型/}));
     const select = await screen.findByTestId("factor-set-select");
     expect(select).toBeInTheDocument();
 
@@ -183,6 +184,7 @@ describe("T13⑨：Settings 只读关联列点击跳转 query set_id 存在", ()
     });
 
     render(<FactorModelSettings initialTrainModel={false} />);
+    fireEvent.click(await screen.findByRole("button", {name:/第 3 步：验证与启用/}));
     const cell = await waitFor(() => screen.getByTestId("linked-fs-cell-MR-T13-LINK"));
     expect(cell).toBeInTheDocument();
     // cell 内应该显示集合名 + n_members（不显示『—』）
@@ -211,6 +213,9 @@ describe("T13⑩：Usage 子 Tab 切换 activeKey 正确变化", () => {
       items: [
         {
           code: "F-T13-USAGE",
+          latest_version_id: 12,
+          latest_version_no: 1,
+          latest_evaluation: null,
           factor_name: "T13 切换",
           category: "value",
           coverage: 0.9,
@@ -222,7 +227,7 @@ describe("T13⑩：Usage 子 Tab 切换 activeKey 正确变化", () => {
       ],
       total: 1, page: 1, page_size: 50,
     });
-    mockApi["scoringGetFactorUsage"] = vi.fn().mockImplementation((code: string) => {
+    mockApi["scoringGetFactorUsage"] = vi.fn().mockImplementation(async (code: string) => {
       if (code === "F-T13-USAGE") {
         return {
           code, name: "T13 切换", status: "active", lifecycle_status: "production",

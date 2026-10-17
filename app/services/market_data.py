@@ -33,6 +33,17 @@ from app.services.trade_plans import upsert_trade_setup
 from app.db.session import get_session_local
 from app.schemas.async_task import AsyncTaskRead
 from app.services.async_tasks import _set_task, _start_worker, create_async_task, get_async_task, list_async_tasks
+from app.services.market_data_sources.sources._normalize import (
+    attach_cn_stock_history_contract,
+    normalize_cn_stock_em_history,
+    cn_prefixed_symbol as canonical_cn_prefixed_symbol,
+)
+from app.services.market_history_contract import tencent_quantity_to_shares_multiplier
+from app.services.market_data_sources.sources.tencent_history import fetch_tencent_history_raw
+from app.services.market_data_sources.sources.sina_history_http import fetch_sina_history_raw
+from app.services.market_history_contract import (
+    is_cn_stock_history, mark_cn_stock_production_mode, production_history_source_tag, require_cn_stock_qfq,
+)
 
 
 @contextmanager
@@ -73,13 +84,7 @@ def _is_bj_stock_code(code: str) -> bool:
 
 
 def _cn_prefixed_symbol(symbol: Symbol) -> str:
-    market = (symbol.market or "").lower()
-    # 北交所标的用 "bj" 前缀（akshare 部分接口支持）
-    # 同时检查代码前缀，防止 DB 中 market 字段过时（旧数据可能为 'sh'）
-    if market == "bj" or (market in {"sh", "cn"} and _is_bj_stock_code(symbol.symbol)):
-        return f"bj{symbol.symbol}"
-    prefix = "sh" if market in {"sh", "cn"} or symbol.symbol.startswith(("5", "6", "9")) else "sz"
-    return f"{prefix}{symbol.symbol}"
+    return canonical_cn_prefixed_symbol(symbol)
 
 
 def _standard_history_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -136,33 +141,23 @@ def _normalize_us_history(frame: pd.DataFrame, start_date: date, end_date: date)
 
 
 def _safe_stock_zh_a_daily(symbol: str, start_date: str, end_date: str, adjust: str) -> pd.DataFrame:
-    """安全调用 stock_zh_a_daily，处理北交所空数据导致的 KeyError。
-
-    新浪 stock_zh_a_daily 对无数据的北交所标的（老代码 430xxx/830xxx）返回空 dict_list，
-    pd.DataFrame([]) 创建空 DataFrame，访问 'date' 列时触发 KeyError。
-    这里在调用前 patch akshare 函数，捕获空数据并返回空 DataFrame。
-    """
+    """Strict Sina bundle; retain the configured endpoint retry policy."""
     from app.services.akshare_utils import call_akshare_with_retry
-    try:
-        return call_akshare_with_retry(
-            ak.stock_zh_a_daily,
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-            adjust=adjust,
-            api_key="stock_zh_a_daily",
-            max_attempts=2,
-        )
-    except KeyError as e:
-        if "date" in str(e):
-            logger.info("stock_zh_a_daily returned empty data for %s (likely unsupported BJ code)", symbol)
-            return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "amount", "turnover"])
-        raise
+    return call_akshare_with_retry(
+        fetch_sina_history_raw,
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        adjust=adjust,
+        api_key="stock_zh_a_daily",
+        max_attempts=2,
+    )
 
 
 def _normalize_cn_stock_sina_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+    """Normalize Sina turnover ratios to the shared percentage-point unit."""
     if frame.empty:
-        return frame
+        return attach_cn_stock_history_contract(frame, "sina")
     normalized = frame.rename(
         columns={
             "date": "trade_date",
@@ -179,12 +174,25 @@ def _normalize_cn_stock_sina_history(frame: pd.DataFrame, start_date: date, end_
     normalized = normalized[
         (normalized["trade_date"] >= pd.Timestamp(start_date)) & (normalized["trade_date"] <= pd.Timestamp(end_date))
     ]
-    return _standard_history_frame(normalized)
+    # Sina returns a ratio (0.02 means 2%); EM already returns percentage
+    # points. This legacy fetch path must use the same unit as source adapters.
+    if "turnover_rate" in normalized:
+        normalized["turnover_rate"] = pd.to_numeric(
+            normalized["turnover_rate"], errors="coerce"
+        ) * 100.0
+    return attach_cn_stock_history_contract(_standard_history_frame(normalized), "sina")
 
 
 def _normalize_cn_stock_tx_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+    """Map the SDK's misnamed quantity field; cash amount is unavailable."""
+    # Only the verified legacy SDK schema uses "amount" for lots. Newer SDK
+    # schemas expose volume/turnover and may use "amount" for actual CNY.
+    # Reject structural changes before interpreting a field's numeric value.
+    legacy_columns = {"date", "open", "close", "high", "low", "amount"}
+    if not frame.columns.is_unique or not set(frame.columns).issubset(legacy_columns):
+        raise ValueError("unsupported Tencent history schema")
     if frame.empty:
-        return frame
+        return attach_cn_stock_history_contract(frame, "tencent")
     normalized = frame.rename(
         columns={
             "date": "trade_date",
@@ -199,9 +207,13 @@ def _normalize_cn_stock_tx_history(frame: pd.DataFrame, start_date: date, end_da
     normalized = normalized[
         (normalized["trade_date"] >= pd.Timestamp(start_date)) & (normalized["trade_date"] <= pd.Timestamp(end_date))
     ]
-    normalized["volume"] = None
+    # stock_zh_a_hist_tx names daily-K field 6 "amount", but Tencent returns
+    # traded quantity in lots here. Convert to shares; never invent cash
+    # turnover from quantity or price. Missing/invalid quantity remains unknown.
+    normalized["volume"] = pd.to_numeric(normalized.get("amount"), errors="coerce") * tencent_quantity_to_shares_multiplier(frame)
+    normalized["amount"] = None
     normalized["turnover_rate"] = None
-    return _standard_history_frame(normalized)
+    return attach_cn_stock_history_contract(_standard_history_frame(normalized), "tencent")
 
 
 def _normalize_cn_etf_sina_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
@@ -227,6 +239,7 @@ def _normalize_cn_etf_sina_history(frame: pd.DataFrame, start_date: date, end_da
 
 
 def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
+    require_cn_stock_qfq(symbol, adjust)
     start = start_date.strftime("%Y%m%d")
     end = end_date.strftime("%Y%m%d")
     if symbol.asset_type not in {"stock", "etf"}:
@@ -246,23 +259,15 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                     if region == "cn" and symbol.asset_type == "stock":
                         # 北交所标的（market="bj"）：东财 stock_zh_a_hist 不支持，
                         # 优先用新浪 stock_zh_a_daily（已验证 bj920xxx 前缀可用）
-                        # 注意：新浪对部分北交所标的（老代码 430xxx/830xxx）返回空数据会触发 KeyError，
-                        # 需用 _safe_stock_zh_a_daily 包装处理空 DataFrame
+                        # 严格原文解析拒绝错证券/坏日期，缺失数据交给下游处理。
                         if (symbol.market or "").lower() == "bj" or _is_bj_stock_code(symbol.symbol):
                             try:
-                                return _normalize_cn_stock_sina_history(
-                                    _safe_stock_zh_a_daily(
-                                        _cn_prefixed_symbol(symbol),
-                                        start, end, adjust,
-                                    ),
-                                    start_date=start_date,
-                                    end_date=end_date,
-                                )
+                                return _safe_stock_zh_a_daily(_cn_prefixed_symbol(symbol), start, end, adjust)
                             except Exception:
                                 logger.info("AKShare sina source failed for BJ %s, trying tx fallback", symbol.symbol, exc_info=True)
                                 return _normalize_cn_stock_tx_history(
                                     call_akshare_with_retry(
-                                        ak.stock_zh_a_hist_tx,
+                                        fetch_tencent_history_raw,
                                         symbol=_cn_prefixed_symbol(symbol),
                                         start_date=start,
                                         end_date=end,
@@ -275,7 +280,7 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                 )
                         # 沪深股票：东财 → 新浪 → 腾讯
                         try:
-                            return _normalize_cn_em_history(
+                            return normalize_cn_stock_em_history(
                                 call_akshare_with_retry(
                                     ak.stock_zh_a_hist,
                                     symbol=symbol.symbol,
@@ -290,24 +295,12 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                         except Exception:
                             logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             try:
-                                return _normalize_cn_stock_sina_history(
-                                    call_akshare_with_retry(
-                                        ak.stock_zh_a_daily,
-                                        symbol=_cn_prefixed_symbol(symbol),
-                                        start_date=start,
-                                        end_date=end,
-                                        adjust=adjust,
-                                        api_key="stock_zh_a_daily",
-                                        max_attempts=2,
-                                    ),
-                                    start_date=start_date,
-                                    end_date=end_date,
-                                )
+                                return _safe_stock_zh_a_daily(_cn_prefixed_symbol(symbol), start, end, adjust)
                             except Exception:
                                 logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                                 return _normalize_cn_stock_tx_history(
                                     call_akshare_with_retry(
-                                        ak.stock_zh_a_hist_tx,
+                                        fetch_tencent_history_raw,
                                         symbol=_cn_prefixed_symbol(symbol),
                                         start_date=start,
                                         end_date=end,
@@ -381,6 +374,7 @@ def _dedupe_history_rows(frame: pd.DataFrame) -> list[dict]:
     return list(deduped.values())
 
 def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int, int]:
+    source = production_history_source_tag(frame, cn_stock=is_cn_stock_history(symbol))
     inserted = 0
     updated = 0
 
@@ -442,7 +436,7 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
                     ("volume", volume),
                     ("amount", amount),
                     ("turnover_rate", turnover_rate),
-                    ("source", "akshare"),
+                    ("source", source),
                 )
             )
             if payload_changed:
@@ -455,7 +449,7 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
         existing.volume = volume
         existing.amount = amount
         existing.turnover_rate = turnover_rate
-        existing.source = "akshare"
+        existing.source = source
 
     return inserted, updated
 
@@ -467,6 +461,7 @@ def sync_symbol_daily_bars(
     end_date: date | None = None,
     adjust: str = "qfq",
 ) -> dict:
+    require_cn_stock_qfq(symbol, adjust)
     latest_bar = db.execute(
         select(DailyBar).where(DailyBar.symbol_id == symbol.id).order_by(DailyBar.trade_date.desc())
     ).scalars().first()
@@ -483,7 +478,8 @@ def sync_symbol_daily_bars(
     # latest_bar 是只读查询，commit 安全；后续 _upsert_bars 会重新从池获取连接（触发 pre_ping）
     db.commit()
 
-    frame = _fetch_history(symbol=symbol, start_date=resolved_start, end_date=resolved_end, adjust=adjust)
+    frame = mark_cn_stock_production_mode(
+        _fetch_history(symbol=symbol, start_date=resolved_start, end_date=resolved_end, adjust=adjust), symbol, adjust)
     if frame.empty:
         return {
             "symbol_id": symbol.id,
@@ -532,6 +528,10 @@ def sync_market_data(
         symbol_ids=symbol_ids,
         asset_types=asset_types,
     )
+    # Reject a mixed request containing unsupported CN modes before optional
+    # portfolio/name/score work can mutate unrelated business state.
+    for symbol in symbols:
+        require_cn_stock_qfq(symbol, adjust)
 
     results = []
     scored_count = 0
@@ -549,6 +549,7 @@ def sync_market_data(
 
     for symbol in symbols:
         try:
+            require_cn_stock_qfq(symbol, adjust)
             refresh_symbol_name(symbol)
             result = sync_symbol_daily_bars(
                 db=db,
@@ -800,6 +801,8 @@ def _history_task_result_payload(task: dict) -> dict:
 def _history_status_to_async_status(status: str | None) -> str:
     if status == "completed":
         return "done"
+    if status == "partial":
+        return "partial"
     if status == "failed":
         return "failed"
     if status == "cancelled":
@@ -815,7 +818,7 @@ def _history_active_stage(task: dict) -> dict | None:
         if stage.get("status") == "running":
             return stage
     for stage in reversed(stages):
-        if stage.get("status") in {"failed", "completed", "cancelled"}:
+        if stage.get("status") in {"failed", "partial", "completed", "cancelled"}:
             return stage
     return stages[0] if stages else None
 
@@ -824,6 +827,8 @@ def _history_async_stage(task: dict) -> str:
     status = task.get("status")
     if status == "completed":
         return "done"
+    if status == "partial":
+        return "partial"
     if status == "failed":
         failed_stage = _history_active_stage(task)
         return (failed_stage or {}).get("key") or "failed"
@@ -859,8 +864,8 @@ def _persist_history_task_snapshot(task: dict) -> None:
             message=snapshot.get("message") or "",
             total=int(active_stage.get("total") or 0),
             processed=int(active_stage.get("done") or 0),
-            ok_count=int(summary.get("sync_ok_count") or 0),
-            failed_count=int(summary.get("sync_failed_count") or 0),
+            ok_count=int(summary.get("sync_ok_count") or 0) + int(summary.get("score_days_completed") or 0),
+            failed_count=int(summary.get("sync_failed_count") or 0) + int(summary.get("empty_count") or 0) + sum(max(1, int(item.get("failed_days") or 0)) for item in snapshot.get("failed_items", []) if item.get("stage") == "calc_scores"),
             current_item=None,
             started_at=_history_db_datetime(snapshot.get("started_at")),
             finished_at=_history_db_datetime(snapshot.get("finished_at")),
@@ -878,7 +883,7 @@ def _history_run_record(task: AsyncTaskRead) -> dict:
     if not status:
         if task.status == "done":
             status = "completed"
-        elif task.status in {"running", "failed", "cancelled"}:
+        elif task.status in {"running", "partial", "failed", "cancelled"}:
             status = task.status
         else:
             status = "idle"
@@ -889,7 +894,7 @@ def _history_run_record(task: AsyncTaskRead) -> dict:
         "task_id": snapshot.get("task_id") or task.id,
         "status": status,
         "preset": snapshot.get("preset") or "1y",
-        "adjust": snapshot.get("adjust") or "qfq",
+        "adjust": "qfq" if snapshot.get("adjust") is None else snapshot["adjust"],
         "repair_mode": snapshot.get("repair_mode") or "both",
         "asset_types": deepcopy(snapshot.get("asset_types") or ["stock", "etf"]),
         "symbol_ids": deepcopy(snapshot.get("symbol_ids") or []),
@@ -1160,6 +1165,8 @@ def start_history_initialization_task(
     resolved_symbol_ids = [int(item) for item in (symbol_ids or []) if item is not None]
     resolved_repair_mode = repair_mode if repair_mode in HISTORY_INIT_REPAIR_MODES else "both"
     resolved_source = symbol_source if symbol_source in HISTORY_INIT_SYMBOL_SOURCES else "all"
+    if resolved_source == "cn-stock" and resolved_repair_mode != "scores" and adjust != "qfq":
+        raise ValueError("cn_stock_production_requires_qfq")
     resolved_portfolio_id = int(portfolio_id) if portfolio_id is not None else None
     resolved_watchlist_id = int(watchlist_id) if watchlist_id is not None else None
 
@@ -1286,17 +1293,24 @@ def _update_history_stage(
 
 def _complete_history_task(task_id: str, message: str) -> dict:
     def _apply(task: dict) -> None:
-        task["status"] = "completed"
-        task["message"] = message
+        if task.get("status") != "running":
+            return
+        summary = task.get("summary") or {}
+        successful = int(summary.get("sync_ok_count") or 0) + int(summary.get("score_days_completed") or 0)
+        has_errors = bool(task.get("failed_items")) or int(summary.get("empty_count") or 0) > 0 or any(stage.get("status") == "failed" for stage in task.get("stages", []))
+        status = "partial" if has_errors and successful > 0 else "failed" if has_errors or successful == 0 else "completed"
+        task["status"] = status
+        final_message = message if status == "completed" else message.replace("Initialization complete:", f"Initialization {status}:")
+        task["message"] = final_message
         task["finished_at"] = _now_iso()
         finalize_stage = _history_stage(task, "finalize")
         if finalize_stage is not None:
             finalize_stage.update({
-                "status": "completed",
+                "status": status,
                 "done": 1,
                 "total": 1,
                 "percent": 100,
-                "message": message,
+                "message": final_message,
             })
         _recompute_history_progress(task)
         task["progress_pct"] = 100
@@ -1330,7 +1344,7 @@ def run_history_initialization_task(task_id: str) -> None:
     try:
         start_date = snapshot.get("start_date")
         end_date = snapshot.get("end_date")
-        adjust = snapshot.get("adjust") or "qfq"
+        adjust = "qfq" if snapshot.get("adjust") is None else snapshot["adjust"]
         repair_mode = snapshot.get("repair_mode") or "both"
         asset_types = snapshot.get("asset_types") or ["stock", "etf"]
         symbol_ids = [int(item) for item in (snapshot.get("symbol_ids") or []) if item is not None]
@@ -1347,6 +1361,9 @@ def run_history_initialization_task(task_id: str) -> None:
             portfolio_id=portfolio_id,
             watchlist_id=watchlist_id,
         )
+        if repair_mode != "scores":
+            for symbol in symbols:
+                require_cn_stock_qfq(symbol, adjust)
 
         _update_history_stage(
             task_id,
@@ -1385,6 +1402,7 @@ def run_history_initialization_task(task_id: str) -> None:
                     cancel_history_initialization_task(force_task_id=task_id, from_worker=True)
                     return
                 try:
+                    require_cn_stock_qfq(symbol, adjust)
                     refresh_symbol_name(symbol)
                     result = sync_symbol_daily_bars(
                         db=db,
@@ -1410,6 +1428,7 @@ def run_history_initialization_task(task_id: str) -> None:
                         summary["sync_ok_count"] += 1
                     elif sync_result.get("status") == "empty":
                         summary["empty_count"] += 1
+                        _upsert_history_failure(task, symbol=current_symbol, stage="sync_bars", message="Supplier returned no data for the requested date range")
                     else:
                         summary["sync_failed_count"] += 1
                         _upsert_history_failure(
@@ -1427,10 +1446,13 @@ def run_history_initialization_task(task_id: str) -> None:
                     message=f"Syncing bars {index}/{sync_total}: {symbol.symbol}",
                 )
 
+            sync_summary = get_history_initialization_status().get("summary", {})
+            sync_errors = int(sync_summary.get("sync_failed_count") or 0) + int(sync_summary.get("empty_count") or 0)
+            sync_status = "completed" if not sync_errors else "partial" if sync_summary.get("sync_ok_count") else "failed"
             _update_history_stage(
                 task_id,
                 "sync_bars",
-                status="completed",
+                status=sync_status,
                 done=sync_total,
                 total=sync_total,
                 message="Bar sync complete. Calculating scores.",
@@ -1519,6 +1541,9 @@ def run_history_initialization_task(task_id: str) -> None:
                     end_date,
                 )
                 if not trade_dates:
+                    def _missing_score_data(task: dict, current_symbol: Symbol = symbol) -> None:
+                        _upsert_history_failure(task, symbol=current_symbol, stage="calc_scores", message="No local daily bars available for score calculation", failed_days=0)
+                    _mutate_history_task(task_id, _missing_score_data)
                     continue
                 symbol_failed = False
                 score_failed_days = 0
@@ -1535,6 +1560,10 @@ def run_history_initialization_task(task_id: str) -> None:
                                 symbol,
                                 trade_date,
                             )
+                        # A count is successful only after its transaction is
+                        # committed. A later day's failure must not roll back
+                        # earlier days that have already been reported as done.
+                        db.commit()
                         score_done += 1
                     except Exception as exc:
                         db.rollback()
@@ -1554,11 +1583,6 @@ def run_history_initialization_task(task_id: str) -> None:
                             last_trade_date=failed_date,
                         )
                     _mutate_history_task(task_id, _score_failure)
-                try:
-                    db.commit()
-                except Exception:
-                    db.rollback()
-
                 def _score_summary(task: dict) -> None:
                     task["summary"]["score_days_completed"] = score_done
                 _mutate_history_task(task_id, _score_summary)
@@ -1570,10 +1594,11 @@ def run_history_initialization_task(task_id: str) -> None:
                     message=f"Calculating scores {score_done}/{score_total}: {symbol.symbol}",
                 )
 
+            score_errors = any(item.get("stage") == "calc_scores" for item in get_history_initialization_status().get("failed_items", []))
             _update_history_stage(
                 task_id,
                 "calc_scores",
-                status="completed",
+                status="completed" if not score_errors else "partial" if score_done else "failed",
                 done=score_done,
                 total=score_total,
                 message="Score calculation complete. Finalizing summary.",
@@ -1636,10 +1661,10 @@ def run_history_initialization_task(task_id: str) -> None:
                 _update_history_stage(
                     task_id,
                     "scan",
-                    status="completed",
+                    status="failed",
                     done=1,
                     total=1,
-                    message=f"Scan skipped: {scan_exc}",
+                    message=f"Scan failed: {scan_exc}",
                 )
         else:
             _update_history_stage(
@@ -1719,7 +1744,7 @@ def retry_history_initialization_failed_items(source_task_id: str) -> dict:
     end_date = _history_parse_date(snapshot.get("end_date"))
     return create_history_initialization_task(
         preset=snapshot.get("preset") or "1y",
-        adjust=snapshot.get("adjust") or "qfq",
+        adjust="qfq" if snapshot.get("adjust") is None else snapshot["adjust"],
         asset_types=snapshot.get("asset_types") or ["stock", "etf"],
         symbol_ids=symbol_ids,
         start_date=start_date,

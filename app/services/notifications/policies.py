@@ -74,6 +74,9 @@ def match_policies(
     matched: list[tuple[NotificationPolicy, list[NotificationChannel]]] = []
 
     for policy in policies:
+        # Legacy digest rows remain inspectable but must not send instantly.
+        if policy.delivery_mode != "instant":
+            continue
         # 1. 检查 source_type
         source_types = (
             json.loads(policy.source_types_json) if policy.source_types_json else []
@@ -92,7 +95,7 @@ def match_policies(
             scope_ids = (
                 json.loads(policy.scope_ids_json) if policy.scope_ids_json else []
             )
-            if scope_id is not None and scope_id not in scope_ids:
+            if scope_id is None or scope_id not in scope_ids:
                 continue
 
         # 4. 获取关联渠道

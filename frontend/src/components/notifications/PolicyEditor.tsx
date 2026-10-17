@@ -49,6 +49,9 @@ import {
 } from "@ant-design/icons";
 import { requestJson } from "../../api/client";
 import { t } from "../../i18n";
+import { NOTIF, SEVERITY_TONE, semanticTagStyle, type OutboxTone } from "./notificationTheme";
+import { useUnsupportedFeatures } from "../settings/UnsupportedFeaturesToggle";
+import NotificationScopeSelect from "./NotificationScopeSelect";
 
 // 策略（对齐 app.models.notification.NotificationPolicy）
 interface Policy {
@@ -119,6 +122,9 @@ const MESSAGE_SOURCE_GROUPS: Array<{
     group: "system",
     labelKey: "sourceGroupSystem",
     events: [
+      { type: "score_drop", labelKey: "alertTypeScoreDrop", default_severity: "warn" },
+      { type: "data_stale", labelKey: "alertTypeDataStale", default_severity: "warn" },
+      { type: "task_failed", labelKey: "alertTypeTaskFailed", default_severity: "error" },
       { type: "system_error", labelKey: "sourceEventSystemError", default_severity: "error" },
       { type: "system_warning", labelKey: "sourceEventSystemWarning", default_severity: "warn" },
       { type: "task_complete", labelKey: "sourceEventTaskComplete", default_severity: "info" },
@@ -216,6 +222,7 @@ interface QuietHours {
   end?: string;
   timezone?: string;
   bypass_for_critical?: boolean;
+  trading_days_only?: boolean;
 }
 function parseQuietHours(json: string | null): QuietHours {
   if (!json) return {};
@@ -228,7 +235,31 @@ function parseQuietHours(json: string | null): QuietHours {
   return {};
 }
 
+type NotificationCapabilities = {
+  sources: Record<string, { supported: boolean; events: Array<{ type: string; supported: boolean }> }>;
+  delivery_modes: string[];
+  scope_types: string[];
+};
+
 export const PolicyEditor: React.FC = () => {
+  const showUnsupported = useUnsupportedFeatures();
+  const [capabilities, setCapabilities] = useState<NotificationCapabilities | null>(null);
+  const [capabilityError, setCapabilityError] = useState("");
+  const [capabilityRevision, setCapabilityRevision] = useState(0);
+  useEffect(() => {
+    let current = true;
+    setCapabilityError("");
+    requestJson<NotificationCapabilities>("/api/v1/notifications/capabilities")
+      .then((data) => { if (current) setCapabilities(data); })
+      .catch((reason) => { if (current) setCapabilityError(reason instanceof Error ? reason.message : t("loadFailed")); });
+    return () => { current = false; };
+  }, [capabilityRevision]);
+  const supportedSources = useMemo(() => new Set(Object.entries(capabilities?.sources ?? {}).flatMap(([group, definition]) => [
+    ...(definition.supported ? [group] : []), ...definition.events.filter((event) => event.supported).map((event) => event.type),
+  ])), [capabilities]);
+  const isExecutable = (policy: Policy) => !!capabilities && policy.delivery_mode === "instant"
+    && capabilities.scope_types.includes(policy.scope_type)
+    && parseJsonArray(policy.source_types_json).every((source) => supportedSources.has(source));
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
@@ -315,16 +346,15 @@ export const PolicyEditor: React.FC = () => {
   }, [channels]);
 
   // 消息来源多选项（按分组展开为事件类型）
-  const sourceSelectOptions = useMemo(() => {
-    return MESSAGE_SOURCE_GROUPS.map((group) => ({
-      label: t(group.labelKey),
-      title: t(group.labelKey),
-      options: group.events.map((ev) => ({
-        value: ev.type,
-        label: `${t(ev.labelKey)} (${ev.type})`,
+  const sourceSelectOptions = useMemo(() => MESSAGE_SOURCE_GROUPS.map((group) => ({
+    label: t(group.labelKey), title: t(group.labelKey),
+    options: [
+      ...(supportedSources.has(group.group) ? [{ value: group.group, label: t("settingsNotificationAllSourceEvents"), disabled: false }] : []),
+      ...group.events.filter((event) => showUnsupported || supportedSources.has(event.type)).map((event) => ({
+        value: event.type, label: t(event.labelKey), disabled: !supportedSources.has(event.type),
       })),
-    }));
-  }, []);
+    ],
+  })).filter((group) => group.options.length > 0), [supportedSources, showUnsupported]);
 
   // 创建策略
   const handleCreateSubmit = useCallback(async () => {
@@ -422,10 +452,11 @@ export const PolicyEditor: React.FC = () => {
       const quietHours = parseQuietHours(policy.quiet_hours_json);
       editForm.setFieldsValue({
         name: policy.name,
-        enabled: policy.enabled,
+        enabled: isExecutable(policy) && policy.enabled,
         source_types: sourceTypes,
         min_severity: policy.min_severity,
         scope_type: policy.scope_type,
+        scope_ids: parseJsonArray(policy.scope_ids_json).map(Number),
         delivery_mode: policy.delivery_mode,
         cooldown_minutes: policy.cooldown_minutes,
         dedup_window_minutes: policy.dedup_window_minutes,
@@ -434,10 +465,12 @@ export const PolicyEditor: React.FC = () => {
         quiet_start: quietHours.start,
         quiet_end: quietHours.end,
         quiet_bypass_critical: quietHours.bypass_for_critical ?? false,
+        quiet_weekdays_only: quietHours.trading_days_only ?? false,
+        quiet_timezone: quietHours.timezone || "Asia/Shanghai",
       });
       setEditModalVisible(true);
     },
-    [editForm],
+    [editForm, capabilities, supportedSources],
   );
 
   const columns: ColumnsType<Policy> = [
@@ -452,11 +485,11 @@ export const PolicyEditor: React.FC = () => {
       key: "enabled",
       width: 90,
       render: (_v: unknown, record: Policy) => (
-        <Switch
-          size="small"
-          checked={record.enabled}
-          onChange={(checked) => handleToggleEnabled(record.id, checked)}
-        />
+        isExecutable(record) ? <Switch size="small" checked={record.enabled} onChange={(checked) => handleToggleEnabled(record.id, checked)} />
+          : <Space direction="vertical" size={2}>
+            <Tag style={semanticTagStyle("warning")}>{t("settingsNotificationLegacyUnsupported")}</Tag>
+            {record.enabled && <Button size="small" onClick={() => handleToggleEnabled(record.id, false)}>{t("disable")}</Button>}
+          </Space>
       ),
     },
     {
@@ -471,7 +504,7 @@ export const PolicyEditor: React.FC = () => {
         return (
           <Space size={[2, 2]} wrap>
             {types.slice(0, 3).map((tp) => (
-              <Tag key={tp}>{tp}</Tag>
+              <Tag key={tp}>{t(MESSAGE_SOURCE_GROUPS.flatMap((group) => group.events).find((event) => event.type === tp)?.labelKey || MESSAGE_SOURCE_GROUPS.find((group) => group.group === tp)?.labelKey || tp)}</Tag>
             ))}
             {types.length > 3 && <Tag>+{types.length - 3}</Tag>}
           </Space>
@@ -484,19 +517,14 @@ export const PolicyEditor: React.FC = () => {
       key: "min_severity",
       width: 100,
       render: (sev: string) => {
-        const colorMap: Record<string, string> = {
-          info: "blue",
-          warn: "orange",
-          error: "red",
-          critical: "magenta",
-        };
+        const tone = (SEVERITY_TONE[sev] || "neutral") as OutboxTone;
         const labelKeyMap: Record<string, string> = {
           info: "severityInfo",
           warn: "severityWarn",
           error: "severityError",
           critical: "severityCritical",
         };
-        return <Tag color={colorMap[sev] || "default"}>{t(labelKeyMap[sev] || sev)}</Tag>;
+        return <Tag style={semanticTagStyle(tone)}>{t(labelKeyMap[sev] || sev)}</Tag>;
       },
     },
     {
@@ -558,12 +586,13 @@ export const PolicyEditor: React.FC = () => {
         }}
       >
         <Space size="small" wrap>
-          <Button icon={<ReloadOutlined />} onClick={fetchPolicies} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={() => { setCapabilityRevision((value) => value + 1); void fetchPolicies(); void fetchChannels(); void fetchTemplates(); }} loading={loading}>
             {t("refresh")}
           </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}
+            disabled={!capabilities}
             onClick={() => {
               createForm.resetFields();
               setCreateModalVisible(true);
@@ -577,6 +606,7 @@ export const PolicyEditor: React.FC = () => {
         </span>
       </div>
 
+      {capabilityError && <Alert type="error" message={capabilityError} action={<Button onClick={() => setCapabilityRevision((value) => value + 1)}>{t("refresh")}</Button>} />}
       {/* 渠道不可选提示 */}
       {channels.some((ch) => !isChannelSelectable(ch)) && channels.length > 0 && (
         <Alert
@@ -640,6 +670,8 @@ export const PolicyEditor: React.FC = () => {
           channelSelectOptions={channelSelectOptions}
           sourceSelectOptions={sourceSelectOptions}
           templates={templates}
+          showUnsupported={showUnsupported}
+          scopeTypes={capabilities?.scope_types ?? ["all"]}
         />
       </Modal>
 
@@ -663,6 +695,8 @@ export const PolicyEditor: React.FC = () => {
           channelSelectOptions={channelSelectOptions}
           sourceSelectOptions={sourceSelectOptions}
           templates={templates}
+          showUnsupported={showUnsupported}
+          scopeTypes={capabilities?.scope_types ?? ["all"]}
         />
       </Modal>
     </div>
@@ -677,18 +711,21 @@ function buildPolicyPayload(values: Record<string, unknown>): Record<string, unk
   if (values.quiet_start) quietHours.start = String(values.quiet_start);
   if (values.quiet_end) quietHours.end = String(values.quiet_end);
   quietHours.bypass_for_critical = Boolean(values.quiet_bypass_critical);
+  quietHours.trading_days_only = Boolean(values.quiet_weekdays_only);
+  quietHours.timezone = String(values.quiet_timezone || "Asia/Shanghai");
   return {
     name: values.name,
     enabled: Boolean(values.enabled ?? false),
     source_types: sourceTypes,
     min_severity: values.min_severity || "info",
     scope_type: values.scope_type || "all",
+    scope_ids: values.scope_type === "all" ? [] : values.scope_ids ?? [],
     delivery_mode: values.delivery_mode || "instant",
     cooldown_minutes: Number(values.cooldown_minutes ?? 0),
     dedup_window_minutes: Number(values.dedup_window_minutes ?? 0),
     template_id: values.template_id ?? null,
     channel_ids: channelIds,
-    quiet_hours: Object.keys(quietHours).length > 0 ? quietHours : null,
+    quiet_hours: quietHours.start || quietHours.end ? quietHours : null,
   };
 }
 
@@ -709,6 +746,8 @@ interface PolicyFormFieldsProps {
     options: Array<{ value: string; label: string }>;
   }>;
   templates: TemplateOption[];
+  showUnsupported: boolean;
+  scopeTypes: string[];
 }
 
 const PolicyFormFields: React.FC<PolicyFormFieldsProps> = ({
@@ -716,9 +755,18 @@ const PolicyFormFields: React.FC<PolicyFormFieldsProps> = ({
   channelSelectOptions,
   sourceSelectOptions,
   templates,
+  showUnsupported,
+  scopeTypes,
 }) => {
+  const scopeType = Form.useWatch("scope_type", form) || "all";
+  const deliveryMode = Form.useWatch("delivery_mode", form) || "instant";
+  const validateClock = (other: string) => ({ validator: async (_: unknown, value: string | undefined) => {
+    const paired = form.getFieldValue(other);
+    if (!value && !paired) return;
+    if (!value || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(t("settingsNotificationClockInvalid"));
+  } });
   return (
-    <Form form={form} layout="vertical" preserve={false} initialValues={{ enabled: false, min_severity: "info", scope_type: "all", delivery_mode: "instant", cooldown_minutes: 0, dedup_window_minutes: 0 }}>
+    <Form form={form} layout="vertical" preserve={false} initialValues={{ enabled: false, min_severity: "info", scope_type: "all", delivery_mode: "instant", cooldown_minutes: 0, dedup_window_minutes: 0, quiet_timezone: "Asia/Shanghai" }}>
       <Form.Item name="name" label={t("policyColumnName")} rules={[{ required: true }]}>
         <Input placeholder={t("policyColumnNamePlaceholder")} autoComplete="off" />
       </Form.Item>
@@ -764,7 +812,7 @@ const PolicyFormFields: React.FC<PolicyFormFieldsProps> = ({
                 <span>{opt.label}</span>
                 {!opt.selectable && (
                   <Tooltip title={opt.hint}>
-                    <span style={{ fontSize: 11, color: "var(--warning, #faad14)" }}>
+                    <span style={{ fontSize: 11, color: NOTIF.warning }}>
                       <SettingOutlined /> {opt.hint}
                     </span>
                   </Tooltip>
@@ -775,11 +823,15 @@ const PolicyFormFields: React.FC<PolicyFormFieldsProps> = ({
         </Select>
       </Form.Item>
       <Form.Item name="scope_type" label={t("policyScopeType")}>
-        <Select options={SCOPE_OPTIONS.map((s) => ({ value: s.value, label: t(s.labelKey) }))} />
+        <Select onChange={() => form.setFieldValue("scope_ids", [])} options={SCOPE_OPTIONS.filter((option) => showUnsupported || scopeTypes.includes(option.value) || option.value === scopeType).map((option) => ({ value: option.value, label: t(option.labelKey), disabled: !scopeTypes.includes(option.value) }))} />
       </Form.Item>
+      {scopeType !== "all" && scopeTypes.includes(scopeType) && <Form.Item name="scope_ids" label={t("settingsNotificationScopeIds")} rules={[{ required: true }]}>
+        <NotificationScopeSelect scope={scopeType} />
+      </Form.Item>}
       <Form.Item name="delivery_mode" label={t("policyDeliveryMode")}>
-        <Select options={DELIVERY_MODE_OPTIONS.map((s) => ({ value: s.value, label: t(s.labelKey) }))} />
+        <Select options={DELIVERY_MODE_OPTIONS.filter((option) => showUnsupported || option.value === "instant" || option.value === deliveryMode).map((option) => ({ value: option.value, label: t(option.labelKey), disabled: option.value !== "instant" }))} />
       </Form.Item>
+      {deliveryMode !== "instant" && <Alert type="warning" message={t("settingsNotificationInstantOnly")} />}
       <Form.Item name="template_id" label={t("policyEditorTemplate")}>
         <Select
           allowClear
@@ -791,14 +843,20 @@ const PolicyFormFields: React.FC<PolicyFormFieldsProps> = ({
         />
       </Form.Item>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Form.Item name="quiet_start" label={t("policyEditorQuietHoursStart")}>
+        <Form.Item name="quiet_start" label={t("policyEditorQuietHoursStart")} dependencies={["quiet_end"]} rules={[validateClock("quiet_end")]}>
           <Input placeholder="22:00" autoComplete="off" />
         </Form.Item>
-        <Form.Item name="quiet_end" label={t("policyEditorQuietHoursEnd")}>
+        <Form.Item name="quiet_end" label={t("policyEditorQuietHoursEnd")} dependencies={["quiet_start"]} rules={[validateClock("quiet_start")]}>
           <Input placeholder="08:00" autoComplete="off" />
         </Form.Item>
       </div>
+      <Form.Item name="quiet_timezone" label={t("settingsNotificationTimeZone")}>
+        <Select options={["Asia/Shanghai", "Asia/Hong_Kong", "Asia/Tokyo", "UTC", "America/New_York", "Europe/London"].map((zone) => ({ value: zone, label: zone }))} />
+      </Form.Item>
       <Form.Item name="quiet_bypass_critical" label={t("policyQuietBypassCritical")} valuePropName="checked">
+        <Switch />
+      </Form.Item>
+      <Form.Item name="quiet_weekdays_only" label={t("settingsNotificationQuietWeekdaysOnly")} valuePropName="checked">
         <Switch />
       </Form.Item>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

@@ -423,4 +423,18 @@ describe("TodayDecision 待修复样本交互测试", () => {
       expect(mockApi.getDataHealth).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("首页采用真实模型因子覆盖率，不混入观察因子或旧平均值", async () => {
+    mockApi.scoringGetOverview.mockResolvedValueOnce({ feature_enabled: true,
+      factor_coverage: [.740159, .990791, .108342, 0, .874503].map((coverage, i) => ({
+        factor_code: String(i), coverage, model_enabled: true,
+      })).concat([{ factor_code: "optional", coverage: 0, model_enabled: false }]),
+      model_factor_coverage_count: 5, model_factor_avg_coverage: .542759,
+      active_factor_avg_coverage: .342452,
+    } as any);
+    render(<TodayDecision />);
+    await waitFor(() => expect(screen.getByText("54.3%")).toBeVisible());
+    expect(screen.queryByText("34.2%")).not.toBeInTheDocument();
+    expect(screen.getByText("tdHealthFactorGuide")).toBeVisible();
+  });
 });

@@ -1,8 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../../../../i18n";
-import { Badge, Button, Checkbox, Collapse, InputNumber, Select, Tag, Tooltip } from "antd";
+import { Badge, Button, Checkbox, Collapse, InputNumber, Select, Switch, Tag, Tooltip } from "antd";
 import { fetchFilterFields, fetchFilterPresets } from "./poolApi";
 import type { FilterField, FilterPreset } from "./poolApi";
+import PoolMetricHelp, { metricDisplayLabel } from "./PoolMetricHelp";
 
 /**
  * 条件筛选面板（向导 §3.2 完整分层布局，antd 控件重制版）。
@@ -46,6 +47,20 @@ const BOOLEAN_FIELDS = new Set(["exclude_st", "exclude_delisting"]);
 
 /** 已由 markets/boards 多选控件承载的字段（避免在分类内重复渲染为灰行） */
 const MULTI_HOSTED_FIELDS = new Set(["board", "market"]);
+const SHOW_UNSUPPORTED_KEY = "quant-workbench:mining:pool-filter:show-unsupported:v1";
+
+function fieldUnavailable(field: FilterField): boolean {
+  return field.availability === "blocked" || field.data_mode === "blocked" ||
+    Boolean(field.availability && field.availability !== "available") ||
+    !(RANGE_SLOT[field.field] || BOOLEAN_FIELDS.has(field.field) || MULTI_HOSTED_FIELDS.has(field.field));
+}
+
+function hasSavedValue(value: unknown): boolean {
+  if (value == null || value === false || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.values(value as Record<string, unknown>).some(hasSavedValue);
+  return true;
+}
 
 const MARKET_OPTIONS = [
   { code: "sh", labelKey: "miningPoolMarketSh" },
@@ -68,6 +83,10 @@ function asObj(v: unknown): Record<string, unknown> {
 }
 
 export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterPanelProps) {
+  const [showUnsupported, setShowUnsupported] = useState(() => {
+    try { return localStorage.getItem(SHOW_UNSUPPORTED_KEY) === "true"; } catch { return false; }
+  });
+  const [showSavedDetails, setShowSavedDetails] = useState(false);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [groups, setGroups] = useState<Array<{ group: string; label_zh: string }>>([]);
   const [fields, setFields] = useState<FilterField[]>([]);
@@ -122,7 +141,7 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   useEffect(() => loadPresetsAndFields(), [loadPresetsAndFields]);
 
   // ── 写入 filter_config ──────────────────────────────────────────
-  const patch = (next: Record<string, unknown>) => onChange({ ...value, ...next });
+  const patch = (next: Record<string, unknown>) => { if (!locked) onChange({ ...value, ...next }); };
 
   const patchRange = (slot: string, fieldName: string, cond: Record<string, unknown>) => {
     // B2：预设有应用该字段 → 任何手工修改（min/max/缺失处理）都标记为自定义态
@@ -141,7 +160,7 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   };
 
   const applyPreset = (p: FilterPreset) => {
-    if (locked || p.applyable === false || !p.field) return;
+    if (locked || presetUnavailable(p) || !p.field) return;
     const fieldName: string = p.field;
     const slot = RANGE_SLOT[fieldName];
     if (!slot) return;
@@ -189,10 +208,44 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
 
   function extendsCondition(f: FilterField): boolean {
     const slot = RANGE_SLOT[f.field];
-    if (!slot) return false;
-    const cond = asObj(asObj(value[slot])[f.field]);
-    return cond.min != null || cond.max != null;
+    if (slot) return hasSavedValue(asObj(value[slot])[f.field]);
+    if (MULTI_HOSTED_FIELDS.has(f.field)) return false;
+    if (BOOLEAN_FIELDS.has(f.field)) return false;
+    return hasSavedValue(value[f.field] ?? asObj(value[f.category])[f.field]);
   }
+
+  function selectedValue(f: FilterField): unknown {
+    if (MULTI_HOSTED_FIELDS.has(f.field)) return value[f.field === "market" ? "markets" : "boards"];
+    const slot = RANGE_SLOT[f.field];
+    return slot ? asObj(value[slot])[f.field] : value[f.field] ?? asObj(value[f.category])[f.field];
+  }
+
+  function presetUnavailable(p: FilterPreset): boolean {
+    const binding = fields.find((field) => field.field === p.field);
+    return p.applyable === false || Boolean(p.availability && p.availability !== "available") ||
+      !p.field || !RANGE_SLOT[p.field] || Boolean(binding && fieldUnavailable(binding));
+  }
+
+  const toggleUnsupported = (show: boolean) => {
+    setShowUnsupported(show);
+    try { localStorage.setItem(SHOW_UNSUPPORTED_KEY, String(show)); } catch { /* preference is optional */ }
+  };
+
+  const savedUnsupported = fieldsState !== "ready" ? [] : Object.entries(value).flatMap(([key, saved]) => {
+    if (["valuation", "liquidity", "profitability"].includes(key)) {
+      return Object.entries(asObj(saved)).flatMap(([fieldName, condition]) => {
+        // A supported slot parameter is not a field-directory entry.
+        if (key === "liquidity" && fieldName === "window_days") return [];
+        const binding = fields.find((field) => field.field === fieldName && (RANGE_SLOT[fieldName] === key || field.category === key));
+        return hasSavedValue(condition) && (!binding || fieldUnavailable(binding))
+          ? [{ key: `${key}.${fieldName}`, metric: fieldName, label: binding?.label_zh ?? fieldName, value: condition }] : [];
+      });
+    }
+    const binding = fields.find((field) => field.field === key || (key === "markets" && field.field === "market") || (key === "boards" && field.field === "board"));
+    const core = ["markets", "boards", "exclude_st", "exclude_delisting"].includes(key);
+    return hasSavedValue(saved) && (binding ? fieldUnavailable(binding) : !core)
+      ? [{ key, metric: binding?.field ?? key, label: binding?.label_zh ?? key, value: saved }] : [];
+  });
 
   const activeKeys = useMemo(() => {
     const open = new Set(openKeys);
@@ -202,12 +255,15 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   }, [categories, categoryCount, openKeys]);
 
   // ── 左栏：预设按分组平铺（原型：市值/估值/流动性/上市时间纵向堆叠）──
-  const presetGroups = groups.length > 0 ? groups : [{ group: "market_cap", label_zh: "市值" }];
+  const visiblePresets = presets.filter((preset) => showUnsupported || !presetUnavailable(preset));
+  const presetGroups = (groups.length > 0 ? groups : [{ group: "market_cap", label_zh: "市值" }])
+    .filter((group) => visiblePresets.some((preset) => preset.group === group.group));
 
   // ── 右栏控件渲染 ────────────────────────────────────────────────
   const rangeControl = (f: FilterField) => {
     const slot = RANGE_SLOT[f.field];
-    const blocked = f.availability === "blocked" || f.data_mode === "blocked";
+    const blocked = fieldUnavailable(f);
+    const label = metricDisplayLabel(f.field, f.label_zh);
     const cond = asObj(asObj(value[slot])[f.field]);
     const min =
       typeof cond.min === "number" ? (cond.min as number) : undefined;
@@ -215,13 +271,16 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
       typeof cond.max === "number" ? (cond.max as number) : undefined;
     return (
       <div className={`mining-filter-row ${blocked ? "is-disabled" : ""}`} data-filter-range={f.field}>
-        <span className="mining-filter-row-label">{f.label_zh}</span>
+        <span className="mining-filter-row-label">{label}<PoolMetricHelp metric={f.field} fallbackLabel={f.label_zh} />
+          {blocked && hasSavedValue(selectedValue(f)) && <Tag>{t("miningPoolSelectedUnavailable")}</Tag>}
+        </span>
         <div className="mining-filter-range-inputs">
           <div data-pool-filter-input={f.field === "total_market_cap" ? "" : undefined}>
             <InputNumber
               value={min}
               min={0}
               placeholder={t("miningPoolRangeMin")}
+              aria-label={`${label} · ${t("miningPoolRangeMin")}`}
               disabled={locked || blocked}
               onChange={(v) => patchRange(slot, f.field, { min: v ?? null })}
             />
@@ -231,11 +290,13 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
             value={max}
             min={0}
             placeholder={t("miningPoolRangeMax")}
+            aria-label={`${label} · ${t("miningPoolRangeMax")}`}
             disabled={locked || blocked}
             onChange={(v) => patchRange(slot, f.field, { max: v ?? null })}
           />
           <Select
             value={String(cond.missing ?? "exclude")}
+            aria-label={`${label} · ${t("miningPoolMissingPolicy")}`}
             disabled={locked || blocked}
             style={{ width: 110 }}
             options={[
@@ -245,20 +306,23 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
             onChange={(v) => patchRange(slot, f.field, { missing: v })}
           />
         </div>
-        {blocked && f.blocked_reason_zh ? (
+        {blocked ? (
           // 正文只给用户句；开发口径（表名/实测行数）放悬浮，避免界面泄漏内部标识
           <span
             className="mining-filter-blocked-hint"
             title={f.blocked_detail_zh ?? undefined}
           >
-            {f.blocked_reason_zh}
+            {f.blocked_reason_zh ?? t("miningPoolFieldUnavailable")}
           </span>
         ) : null}
       </div>
     );
   };
 
-  const booleanControl = (fieldName: string, label: string) => {
+  const booleanControl = (f: FilterField) => {
+    const fieldName = f.field;
+    const label = metricDisplayLabel(fieldName, f.label_zh);
+    const blocked = fieldUnavailable(f);
     const on = Boolean(value[fieldName]);
     return (
       // DEF-7：本控件在 `catFields.map()` 里返回 —— 此前**没有 key**，
@@ -270,26 +334,34 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
       >
         <Checkbox
           checked={on}
-          disabled={locked}
+          disabled={locked || blocked}
           onChange={(e) => patch({ [fieldName]: e.target.checked })}
         >
           {label}
         </Checkbox>
+        <PoolMetricHelp metric={fieldName} fallbackLabel={f.label_zh} />
+        {blocked && on && <Tag>{t("miningPoolSelectedUnavailable")}</Tag>}
+        {blocked && <span className="mining-filter-blocked-hint">{f.blocked_reason_zh ?? t("miningPoolFieldUnavailable")}</span>}
       </div>
     );
   };
 
   const multiControl = (key: string, label: string, options: Array<{ code: string; labelKey: string }>) => {
+    const metric = key === "markets" ? "market" : "board";
+    const binding = fields.find((field) => field.field === metric);
+    const blocked = Boolean(binding && fieldUnavailable(binding));
+    if (blocked && !showUnsupported && !hasSavedValue(value[key])) return null;
     const current = Array.isArray(value[key]) ? (value[key] as string[]) : [];
     return (
       <div className="mining-filter-row" data-filter-multi={key}>
-        <span className="mining-filter-row-label">{label}</span>
+        <span className="mining-filter-row-label">{metricDisplayLabel(metric, label)}<PoolMetricHelp metric={metric} fallbackLabel={label} /></span>
         <Checkbox.Group
           value={current}
-          disabled={locked}
+          disabled={locked || blocked}
           options={options.map((o) => ({ value: o.code, label: t(o.labelKey) }))}
           onChange={(vals) => patch({ [key]: vals })}
         />
+        {blocked && <span className="mining-filter-blocked-hint">{binding?.blocked_reason_zh ?? t("miningPoolFieldUnavailable")}</span>}
       </div>
     );
   };
@@ -297,13 +369,20 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   // 已选条件数（B3：分类标题行 Tag）
   const countFor = (cat: string) => categoryCount[cat] ?? 0;
 
-  const collapseItems = categories.map((cat) => {
-    const catFields = fields.filter((f) => f.category === cat.category);
+  const collapseItems = categories.flatMap((cat) => {
+    const catFields = fields.filter((f) => f.category === cat.category &&
+      (showUnsupported || !fieldUnavailable(f) || hasSavedValue(selectedValue(f))));
     // 分类 key 与后端 filter-fields.categories 对齐：市场与交易状态 = market_status
     // （此前误写为 universe，导致 markets/boards 多选永不渲染）
     const isMarketStatus = cat.category === "market_status";
+    const marketControls = isMarketStatus && <>{multiControl("markets", t("miningPoolMarkets"), MARKET_OPTIONS)}{multiControl("boards", t("miningPoolBoards"), BOARD_OPTIONS)}</>;
+    const hasMarketControl = isMarketStatus && ["market", "board"].some((name) => {
+      const binding = fields.find((field) => field.field === name);
+      return !binding || showUnsupported || !fieldUnavailable(binding) || hasSavedValue(selectedValue(binding));
+    });
+    if (!hasMarketControl && !catFields.some((field) => !MULTI_HOSTED_FIELDS.has(field.field))) return [];
     const count = countFor(cat.category);
-    return {
+    return [{
       key: cat.category,
       label: (
         <span className="mining-filter-cat-head">
@@ -327,8 +406,7 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
       ),
       children: (
         <div data-filter-category={cat.category}>
-          {isMarketStatus && multiControl("markets", t("miningPoolMarkets"), MARKET_OPTIONS)}
-          {isMarketStatus && multiControl("boards", t("miningPoolBoards"), BOARD_OPTIONS)}
+          {marketControls}
           {catFields.map((f, idx) => {
             // DEF-7：key 带下标后缀 —— 后端字段目录若把同一字段归到多个分类
             // （或返回重复项），纯 field 做 key 会撞车 → React 重复 key 警告。
@@ -336,7 +414,7 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
             // board/market 已由上方 markets/boards 多选控件承载，不再重复渲染
             if (MULTI_HOSTED_FIELDS.has(f.field)) return null;
             // 布尔开关按后端分类归属渲染（exclude_st→风险标记、exclude_delisting→市场与交易状态）
-            if (BOOLEAN_FIELDS.has(f.field)) return booleanControl(f.field, f.label_zh);
+            if (BOOLEAN_FIELDS.has(f.field)) return booleanControl(f);
             if (RANGE_SLOT[f.field]) {
               return (
                 <Fragment key={rowKey}>{rangeControl(f)}</Fragment>
@@ -348,7 +426,8 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
                 data-filter-blocked={f.field}
                 key={rowKey}
               >
-                <span className="mining-filter-row-label">{f.label_zh}</span>
+                <span className="mining-filter-row-label">{metricDisplayLabel(f.field, f.label_zh)}<PoolMetricHelp metric={f.field} fallbackLabel={f.label_zh} /></span>
+                {hasSavedValue(selectedValue(f)) && <Tag>{t("miningPoolSelectedUnavailable")}</Tag>}
                 <span
                   className="mining-filter-blocked-hint"
                   title={f.blocked_detail_zh ?? undefined}
@@ -360,10 +439,11 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
           })}
         </div>
       ),
-    };
+    }];
   });
 
   function clearCategory(cat: string) {
+    if (locked) return;
     const next = { ...value };
     if (cat === "market_status") {
       delete next.markets;
@@ -374,6 +454,10 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
     } else {
       delete next[cat];
     }
+    // Older configurations can store unsupported catalog fields at the root.
+    // A deliberate category clear removes those too; merely hiding never does.
+    for (const field of fields) if (field.category === cat) delete next[field.field];
+    delete next[cat];
     // B2：清除该分类下字段的预设标记（已应用/自定义一并复位）
     setAppliedPreset((prev) => {
       const rest = { ...prev };
@@ -385,11 +469,21 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
       for (const f of fields) if (RANGE_SLOT[f.field] === cat) delete rest[f.field];
       return rest;
     });
-    patch(next);
+    onChange(next);
   }
 
   return (
     <div className="mining-pool-filter" data-pool-filter-panel>
+      <div className="mining-filter-view-settings" data-filter-view-settings>
+        <span>{t("miningPoolShowUnsupported")}</span>
+        <Switch data-filter-show-unsupported aria-label={t("miningPoolShowUnsupported")} disabled={false} checked={showUnsupported} onChange={toggleUnsupported} />
+        <span className="mining-card-sub">{t("miningPoolShowUnsupportedHint")}</span>
+      </div>
+      {savedUnsupported.length > 0 && <div className="mining-filter-saved-warning" data-filter-hidden-selected role="status">
+        <span>{t("miningPoolSavedUnsupported").replace("{count}", String(savedUnsupported.length))}</span>
+        <button type="button" className="mining-pool-btn" onClick={() => { toggleUnsupported(true); setShowSavedDetails((show) => !show); }}>{t("miningPoolViewSavedUnsupported")}</button>
+        {showSavedDetails && <ul data-filter-saved-details>{savedUnsupported.map((saved) => <li key={saved.key}>{metricDisplayLabel(saved.metric, saved.label)}: <code>{JSON.stringify(saved.value)}</code></li>)}</ul>}
+      </div>}
       <div className="mining-pool-filter-layout">
         {/* 左栏：常用区间预设 */}
         <aside className="mining-pool-filter-left" data-filter-left>
@@ -415,15 +509,15 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
           {presetsState === "ready" && (
             <div className="mining-filter-preset-groups">
               {presetGroups.map((g, gi) => {
-                const groupPresets = presets.filter((p) => p.group === g.group);
+                const groupPresets = visiblePresets.filter((p) => p.group === g.group);
                 if (groupPresets.length === 0) return null;
                 return (
                   <Fragment key={g.group}>
                     {gi > 0 && <div className="mining-filter-preset-divider" aria-hidden="true" />}
-                    <div className="mining-filter-preset-group-title">{g.label_zh}</div>
+                    <div className="mining-filter-preset-group-title">{g.label_zh}<PoolMetricHelp metric={g.group} fallbackLabel={g.label_zh} /></div>
                     <div className="mining-filter-preset-list">
                       {groupPresets.map((p) => {
-                        const blocked = p.applyable === false || p.availability === "blocked";
+                        const blocked = presetUnavailable(p);
                         // B2：预设态 —— applied=已应用（primary 高亮 + 已应用 Tag），
                         // customized=自定义（默认按钮 + 自定义 Tag，不得再显示为已应用）
                         const fieldName: string | null = p.field;
@@ -476,7 +570,7 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
                   </Fragment>
                 );
               })}
-              {presets.length === 0 && (
+              {visiblePresets.length === 0 && (
                 <p className="mining-filter-empty" data-filter-no-preset>
                   {t("miningPoolPresetEmpty")}
                 </p>

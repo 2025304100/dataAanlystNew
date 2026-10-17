@@ -108,6 +108,50 @@ def get_factor(db: Session, factor_id: int) -> Factor | None:
     return db.get(Factor, factor_id)
 
 
+def factor_definition_rows(db: Session, factors: list[Factor]) -> list[dict[str, Any]]:
+    """Batch-load actual version and evaluation evidence for library rows.
+
+    A lifecycle label is a workflow state, never a substitute for evaluation.
+    Only evaluation of the latest version is shown as the current conclusion.
+    """
+    from app.schemas.factor_library import FactorRead
+    if not factors:
+        return []
+    versions = db.execute(select(FactorVersion).where(
+        FactorVersion.factor_id.in_([f.id for f in factors]),
+    ).order_by(FactorVersion.version.desc(), FactorVersion.id.desc())).scalars().all()
+    latest: dict[int, FactorVersion] = {}
+    for version in versions:
+        latest.setdefault(version.factor_id, version)
+    evaluations: dict[int, EvaluationRun] = {}
+    if latest:
+        rows = db.execute(select(EvaluationRun).where(
+            EvaluationRun.factor_version_id.in_([v.id for v in latest.values()]),
+        ).order_by(EvaluationRun.created_at.desc(), EvaluationRun.id.desc())).scalars().all()
+        for run in rows:
+            evaluations.setdefault(run.factor_version_id, run)
+    result = []
+    for factor in factors:
+        item = FactorRead.model_validate(factor).model_dump(mode="json")
+        version = latest.get(factor.id)
+        run = evaluations.get(version.id) if version else None
+        item.update({
+            "latest_version_id": version.id if version else None,
+            "latest_version_no": version.version if version else None,
+            "latest_version_validation_status": version.validation_status if version else None,
+            "latest_evaluation": ({
+                "run_id": run.id, "factor_version_id": run.factor_version_id,
+                "gate_result": run.gate_result,
+                "production_fidelity": bool(run.production_fidelity),
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+                "metrics": _loads(run.metrics_json, {}),
+                "rejection_reasons": _loads(run.rejection_reasons_json, []),
+            } if run else None),
+        })
+        result.append(item)
+    return result
+
+
 def get_factor_by_code(db: Session, code: str) -> Factor | None:
     """按 code 获取因子。"""
     return db.execute(
@@ -231,7 +275,7 @@ def create_factor_version(
         params=request.params,
         direction=request.direction,
         postprocess=request.postprocess,
-        strict_fields=False,  # 版本创建允许未知字段（可能是参数引用）
+        strict_fields=True,  # Declared params remain allowed; unknown data fields are invalid.
     )
 
     # 计算 content_hash（编译成功用执行计划哈希，失败用基础哈希）
@@ -267,6 +311,25 @@ def create_factor_version(
     # 对旧版本（无 execution_plan_hash）回退到基础 content_hash
     existing_versions = list_factor_versions(db, factor_id)
     for existing in existing_versions:
+        # Saving a legacy row again is also the user's re-validation path.
+        # A matching old hash without compiler evidence cannot be reused as a
+        # verified version. Create a new immutable row and retain old evidence.
+        if compile_result.is_valid and (
+            existing.validation_status != "valid"
+            or existing.compiler_version != COMPILER_VERSION
+            or not existing.formula_ast_json
+            or not existing.data_dependencies_json
+        ):
+            continue
+        # The compiled plan hash does not include external mapping/schema;
+        # the legacy fallback hash also omits postprocessing. These persisted
+        # settings are part of the saved version even when formulas coincide.
+        if (
+            _loads(existing.source_mapping_json, {}) != request.source_mapping
+            or _loads(existing.postprocess_json, None) != request.postprocess
+            or _loads(existing.parameter_schema_json, None) != request.parameter_schema
+        ):
+            continue
         if existing.execution_plan_hash and existing.execution_plan_hash == new_content_hash:
             return existing
         existing_params = _loads(existing.params_json, {})
@@ -485,6 +548,9 @@ def get_factor_references(
     factor = get_factor(db, factor_id)
     if factor is None:
         raise ValueError("factor_not_found")
+
+    if version.factor_id != factor.id:
+        raise ValueError("factor_version_mismatch")
 
     eval_count = int(
         db.execute(

@@ -205,7 +205,7 @@ export const FACTOR_NAME_LABELS: Record<string, Record<string, string>> = {
     lhb_institution_net_ratio: "龙虎榜机构净买入 / 成交额",
     turnover_z20: "20日换手率 Z 分数",
     hot_rank_attention: "东方财富热度排名关注度",
-    tail_accumulation_proxy: "尾盘 accumulation 代理指标",
+    tail_accumulation_proxy: "尾盘资金聚集代理指标",
   },
   "en-US": {
     ep_ttm: "E/P (TTM)",
@@ -220,8 +220,8 @@ export const FACTOR_NAME_LABELS: Record<string, Record<string, string>> = {
 };
 
 export const FACTOR_CATEGORY_LABELS: Record<string, Record<string, string>> = {
-  "zh-CN": { fundamental: "基本面", capital_flow: "资金面", sentiment: "情绪面", technical: "技术面" },
-  "en-US": { fundamental: "Fundamental", capital_flow: "Capital Flow", sentiment: "Sentiment", technical: "Technical" },
+  "zh-CN": { fundamental: "基本面", capital_flow: "资金面", sentiment: "情绪面", technical: "技术面", trend: "趋势", momentum: "动量", reversal: "反转", volatility: "波动", volume_price: "量价", value: "价值", valuation: "估值", quality: "质量", liquidity: "流动性", event: "事件", custom: "自定义" },
+  "en-US": { fundamental: "Fundamental", capital_flow: "Capital Flow", sentiment: "Sentiment", technical: "Technical", trend: "Trend", momentum: "Momentum", reversal: "Reversal", volatility: "Volatility", volume_price: "Price and volume", value: "Value", valuation: "Valuation", quality: "Quality", liquidity: "Liquidity", event: "Event", custom: "Custom" },
 };
 
 export const FACTOR_DIRECTION_LABELS: Record<string, Record<string, string>> = {

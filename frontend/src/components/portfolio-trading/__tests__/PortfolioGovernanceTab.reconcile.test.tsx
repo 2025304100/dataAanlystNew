@@ -4,13 +4,14 @@
 // 把 t() 换成"返回键名"的假实现，就永远验不到字典是否真的补齐了
 // （返回 reconDimDecisionRunNotFound 同样算泄露）。
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 const { mockApi, mockToast } = vi.hoisted(() => ({
   mockApi: {
     getPortfolioStatus: vi.fn(),
     triggerPortfolioReconcile: vi.fn(),
+    previewPortfolioReconciliation: vi.fn(),
     getPortfolioActionItems: vi.fn().mockResolvedValue({
       items: [],
       summary: { blockers: 0, warnings: 0, info: 0, ready: true },
@@ -83,13 +84,31 @@ describe("对账守恒子 Tab", () => {
     });
   });
 
+  it("缺少执行记录时仍展示真实现金差额，刷新只读核对不执行写入对账", async () => {
+    mockApi.previewPortfolioReconciliation.mockResolvedValue({ ...NO_DECISION_RESP, read_only: true,
+      cash_audit: { status: "BROKEN", expected_cash: 434752.27, actual_cash: 434752.01, delta: -.26,
+        differences: [{ledger_id:13,expected:174714.37,actual:174714.19,delta:-.18}] },
+      items: [...NO_DECISION_RESP.items, {dimension:"NAV_BROKEN",expected_value:{cash:434752.27},
+        actual_value:{cash:434752.01},diff_value:null,explain_note:"历史余额不连续"}] });
+    render(<PortfolioGovernanceTab portfolioId={1} />);openReconcileTab();
+    expect(await screen.findByTestId("recon-verdict")).toHaveTextContent("账实不符");
+    expect(panelText()).toContain("434,752.27");
+    expect(panelText()).toContain("-0.26");
+    expect(panelText()).toContain("仅预览当前账本");
+    await act(async () => { fireEvent.click(screen.getByRole('button',{name:'刷新只读核对'})); });
+    expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledTimes(2);
+    expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
+  });
+
   it("当日无决策时说清「无账可对」，不再说成「加减和 ≠ 0」，也不泄露后端枚举", async () => {
-    mockApi.triggerPortfolioReconcile.mockResolvedValue(NO_DECISION_RESP);
+    mockApi.previewPortfolioReconciliation.mockResolvedValue(NO_DECISION_RESP);
 
     render(<PortfolioGovernanceTab portfolioId={1} />);
     openReconcileTab();
 
     const card = await screen.findByTestId("recon-verdict");
+    expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledWith(1);
+    expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
     expect(card).toHaveTextContent("当日没有决策，无账可对");
 
     // 走查里最刺眼的那一行（「自定义维度 (DECISION_RUN_NOT_FOUND)」）必须说人话
@@ -106,7 +125,7 @@ describe("对账守恒子 Tab", () => {
   });
 
   it("人工解锁区默认收起，点开后才出现勾选框（避免一进来就被推着点确认）", async () => {
-    mockApi.triggerPortfolioReconcile.mockResolvedValue(NO_DECISION_RESP);
+    mockApi.previewPortfolioReconciliation.mockResolvedValue(NO_DECISION_RESP);
 
     render(<PortfolioGovernanceTab portfolioId={1} />);
     openReconcileTab();
@@ -118,7 +137,7 @@ describe("对账守恒子 Tab", () => {
   });
 
   it("对账通过时给正向结论，且不出现人工解锁入口", async () => {
-    mockApi.triggerPortfolioReconcile.mockResolvedValue({
+    mockApi.previewPortfolioReconciliation.mockResolvedValue({
       portfolio_id: 1,
       trade_date: "2026-09-29",
       as_of_at: "2026-10-01T07:41:00",
@@ -138,7 +157,7 @@ describe("对账守恒子 Tab", () => {
   });
 
   it("真实差异时报「账实不符，自动交易已暂停」并给出中文维度名", async () => {
-    mockApi.triggerPortfolioReconcile.mockResolvedValue({
+    mockApi.previewPortfolioReconciliation.mockResolvedValue({
       portfolio_id: 1,
       trade_date: "2026-09-29",
       as_of_at: "2026-10-01T07:41:00",

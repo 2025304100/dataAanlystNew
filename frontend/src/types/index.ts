@@ -854,6 +854,7 @@ export interface DiscoveryIndicatorEvaluation {
   scan_result_id: number;
   symbol_id: number;
   values: Record<string, boolean | number | null>;
+  errors?: Record<string, string>;
 }
 
 export interface NewsEvent {
@@ -1489,18 +1490,20 @@ export interface TestConnectionResult {
 }
 
 export interface MigrationProgress {
-  status: "idle" | "running" | "completed" | "failed" | "cancelled";
+  status: "idle" | "running" | "completed" | "failed" | "partial" | "cancelled";
   current_table?: string;
   tables_done: number;
   tables_total: number;
   rows_migrated: number;
+  failed_tables?: string[];
+  fk_checks_restored?: boolean;
   error?: string;
 }
 
 
 export interface HistoryInitializationStage {
   key: "prepare" | "sync_bars" | "calc_scores" | "scan" | "finalize" | string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: "pending" | "running" | "completed" | "partial" | "failed" | "cancelled";
   percent: number;
   done: number;
   total: number;
@@ -1535,7 +1538,7 @@ export interface HistoryInitializationFailureItem {
 
 export interface HistoryInitializationRunRecord {
   task_id?: string | null;
-  status: "idle" | "running" | "completed" | "failed" | "cancelled";
+  status: "idle" | "running" | "completed" | "partial" | "failed" | "cancelled";
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
   repair_mode?: "both" | "bars" | "scores";
@@ -1558,7 +1561,7 @@ export interface HistoryInitializationRunRecord {
 
 export interface HistoryInitializationTask {
   task_id?: string | null;
-  status: "idle" | "running" | "completed" | "failed" | "cancelled";
+  status: "idle" | "running" | "completed" | "partial" | "failed" | "cancelled";
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
   repair_mode?: "both" | "bars" | "scores";
@@ -2161,6 +2164,14 @@ export interface ReconciliationDiffItem {
   explain_note?: string | null;
 }
 export interface ReconciliationResponse {
+  read_only?: boolean;
+  cash_audit?: {
+    status: string;
+    expected_cash?: number;
+    actual_cash?: number;
+    delta?: number;
+    differences: { ledger_id: number; expected: number; actual: number; delta: number }[];
+  } | null;
   portfolio_id: number;
   trade_date: string;                                      // ISO date
   as_of_at: string;                                        // ISO datetime

@@ -59,6 +59,7 @@ type FactorEditorProps = {
     category?: string;
     formula_expr?: string;
     params?: Record<string, unknown>;
+    postprocess?: Record<string, unknown> | null;
     direction?: Direction;
     factor_kind?: FactorKind;
     risk_level?: RiskLevel;
@@ -133,19 +134,45 @@ const MISSING_POLICY_OPTIONS: { value: MissingPolicy; label: string }[] = [
   { value: "ignore", label: t("factorEditorMissingIgnore") },
 ];
 
-function buildPostprocess(config: PostprocessConfig): Record<string, unknown> | null {
-  const result: Record<string, unknown> = {};
+function postprocessObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function restorePostprocess(value: unknown, missingPolicy: unknown = "exclude"): PostprocessConfig {
+  const original = postprocessObject(value);
+  const winsorize = postprocessObject(original.winsorize);
+  const rank = postprocessObject(original.rank);
+  const zscore = postprocessObject(original.zscore);
+  const missing = original.missing_policy ?? missingPolicy;
+  return {
+    ...DEFAULT_POSTPROCESS,
+    winsorizeMethod: winsorize.method === "mad" || winsorize.method === "quantile" ? winsorize.method : "none",
+    madMultiplier: typeof winsorize.mad_multiplier === "number" ? winsorize.mad_multiplier : DEFAULT_POSTPROCESS.madMultiplier,
+    lowerQ: typeof winsorize.lower_quantile === "number" ? winsorize.lower_quantile : DEFAULT_POSTPROCESS.lowerQ,
+    upperQ: typeof winsorize.upper_quantile === "number" ? winsorize.upper_quantile : DEFAULT_POSTPROCESS.upperQ,
+    normalizeMethod: original.rank ? "rank" : original.zscore ? "zscore" : "none",
+    zscoreDdof: typeof zscore.ddof === "number" ? zscore.ddof : DEFAULT_POSTPROCESS.zscoreDdof,
+    rankAscending: typeof rank.ascending === "boolean" ? rank.ascending : DEFAULT_POSTPROCESS.rankAscending,
+    missingPolicy: missing === "ignore" || missing === "impute_zero" ? missing : "exclude",
+  };
+}
+
+function buildPostprocess(config: PostprocessConfig, original?: Record<string, unknown> | null): Record<string, unknown> | null {
+  const result: Record<string, unknown> = { ...original };
+  delete result.winsorize;
+  delete result.zscore;
+  delete result.rank;
   if (config.winsorizeMethod !== "none") {
     if (config.winsorizeMethod === "mad") {
-      result.winsorize = { method: "mad", mad_multiplier: config.madMultiplier };
+      result.winsorize = { ...postprocessObject(original?.winsorize), method: "mad", mad_multiplier: config.madMultiplier };
     } else {
-      result.winsorize = { method: "quantile", lower_quantile: config.lowerQ, upper_quantile: config.upperQ };
+      result.winsorize = { ...postprocessObject(original?.winsorize), method: "quantile", lower_quantile: config.lowerQ, upper_quantile: config.upperQ };
     }
   }
   if (config.normalizeMethod === "zscore") {
-    result.zscore = { ddof: config.zscoreDdof };
+    result.zscore = { ...postprocessObject(original?.zscore), ddof: config.zscoreDdof };
   } else if (config.normalizeMethod === "rank") {
-    result.rank = { ascending: config.rankAscending };
+    result.rank = { ...postprocessObject(original?.rank), ascending: config.rankAscending };
   }
   result.missing_policy = config.missingPolicy;
   return Object.keys(result).length > 0 ? result : null;
@@ -181,7 +208,11 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
   const isNewDraft = factorCode === null;
 
   const [loadingFactor, setLoadingFactor] = useState(false);
+  const [factorLoadError, setFactorLoadError] = useState<string | null>(null);
+  const [factorReload, setFactorReload] = useState(0);
   const [factor, setFactor] = useState<FactorDefinition | null>(null);
+  const [createdDraftCode, setCreatedDraftCode] = useState<string | null>(null);
+  const [aiSession, setAiSession] = useState(0);
 
   // 基本信息（仅新建草稿时使用）
   const [code, setCode] = useState("");
@@ -216,6 +247,10 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   // 后处理
   const [postprocess, setPostprocess] = useState<PostprocessConfig>(DEFAULT_POSTPROCESS);
+  const [originalPostprocess, setOriginalPostprocess] = useState<Record<string, unknown> | null | undefined>(undefined);
+  const [postprocessEdited, setPostprocessEdited] = useState(false);
+  const currentPostprocess = () => !postprocessEdited && originalPostprocess !== undefined
+    ? originalPostprocess : buildPostprocess(postprocess, originalPostprocess);
 
   // 校验
   const [validating, setValidating] = useState(false);
@@ -227,26 +262,61 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   // 保存
   const [saving, setSaving] = useState(false);
+  const editorSession = useRef(0);
+  const validationRequest = useRef(0);
+  const previewRequest = useRef(0);
+  const inputSignature = JSON.stringify([formulaExpr, paramsText, versionDirection, currentPostprocess()]);
+  const latestInputSignature = useRef(inputSignature);
+  latestInputSignature.current = inputSignature;
+
+  useEffect(() => {
+    editorSession.current += 1;
+    setAiSession(value => value + 1);
+    setCreatedDraftCode(null);
+    setValidating(false);
+    setPreviewing(false);
+    setSaving(false);
+    setFormulaCatalogLoading(false);
+    setFormulaEditorOpen(false);
+    setAiFormulaOpen(false);
+    formulaEditorSnapshotRef.current = null;
+    return () => { editorSession.current += 1; };
+  }, [factorCode, factorCode === null ? initialPayload : null]);
 
   const loadFormulaCatalog = () => {
+    const session = editorSession.current;
     setFormulaCatalogLoading(true);
     setFormulaCatalogError(null);
     api
       .getFactorFormulaCatalog()
-      .then(setFormulaCatalog)
+      .then((catalog) => { if (session === editorSession.current) setFormulaCatalog(catalog); })
       .catch((err: unknown) => {
+        if (session !== editorSession.current) return;
         setFormulaCatalogError(err instanceof Error ? err.message : String(err));
       })
-      .finally(() => setFormulaCatalogLoading(false));
+      .finally(() => { if (session === editorSession.current) setFormulaCatalogLoading(false); });
   };
 
   // 加载已有因子基本信息（只读展示 + 默认值预填）
   useEffect(() => {
     if (factorCode === null) {
       setFactor(null);
+      setFactorLoadError(null);
+      setLoadingFactor(false);
       return;
     }
     let cancelled = false;
+    setFactor(null);
+    setFactorLoadError(null);
+    setFormulaExpr("");
+    setParamsText("{}");
+    setChangeNote("");
+    setVersionDirection("higher_better");
+    setPostprocess({ ...DEFAULT_POSTPROCESS });
+    setOriginalPostprocess(undefined);
+    setPostprocessEdited(false);
+    setValidateResult(null);
+    setPreviewResult(null);
     setLoadingFactor(true);
     Promise.all([
       // Factor-domain internal - DO NOT USE outside factor center
@@ -256,6 +326,9 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
       .then(([def, versions]) => {
         if (cancelled) return;
         const latestVersion = versions.find((version) => version.is_latest) ?? versions[versions.length - 1];
+        if (latestVersion && !Object.prototype.hasOwnProperty.call(latestVersion, "postprocess")) {
+          throw new Error(t("factorEditorPostprocessUnavailable"));
+        }
         setFactor(def);
         if (
           latestVersion?.direction === "higher_better" ||
@@ -277,20 +350,14 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         if (latestVersion?.params) {
           setParamsText(JSON.stringify(latestVersion.params, null, 2));
         }
-        if (
-          def.default_missing_policy === "exclude" ||
-          def.default_missing_policy === "impute_zero" ||
-          def.default_missing_policy === "ignore"
-        ) {
-          setPostprocess((prev) => ({
-            ...prev,
-            missingPolicy: def.default_missing_policy as MissingPolicy,
-          }));
-        }
+        setOriginalPostprocess(latestVersion?.postprocess ?? null);
+        setPostprocess(restorePostprocess(latestVersion?.postprocess, def.default_missing_policy));
+        setPostprocessEdited(false);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
+        setFactorLoadError(msg);
         message.error(isZh ? `加载因子失败: ${msg}` : `Failed to load factor: ${msg}`);
       })
       .finally(() => {
@@ -299,40 +366,40 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     return () => {
       cancelled = true;
     };
-  }, [factorCode, isZh, message]);
+  }, [factorCode, isZh, message, factorReload]);
 
   // WP4-05: AI 草案应用到编辑器时预填表单（仅新建草稿时生效）
   useEffect(() => {
-    if (factorCode !== null || !initialPayload) return;
-    if (initialPayload.code) setCode(initialPayload.code);
-    if (initialPayload.name) setName(initialPayload.name);
-    if (initialPayload.category) setCategory(initialPayload.category);
-    if (initialPayload.formula_expr) setFormulaExpr(initialPayload.formula_expr);
-    if (initialPayload.params) {
-      try {
-        setParamsText(JSON.stringify(initialPayload.params, null, 2));
-      } catch {
-        // ignore
-      }
-    }
-    if (initialPayload.direction) {
-      setDirection(initialPayload.direction);
-      setVersionDirection(initialPayload.direction);
-    }
-    if (initialPayload.factor_kind) setFactorKind(initialPayload.factor_kind);
-    if (initialPayload.risk_level) setRiskLevel(initialPayload.risk_level);
-    if (initialPayload.description) setDescription(initialPayload.description);
-    if (initialPayload.thesis) setThesis(initialPayload.thesis);
-    if (initialPayload.change_note) setChangeNote(initialPayload.change_note);
+    if (factorCode !== null) return;
+    setCode(initialPayload?.code ?? "");
+    setName(initialPayload?.name ?? "");
+    setCategory(initialPayload?.category ?? "");
+    setFormulaExpr(initialPayload?.formula_expr ?? "");
+    setParamsText(JSON.stringify(initialPayload?.params ?? {}, null, 2));
+    setDirection(initialPayload?.direction ?? "higher_better");
+    setVersionDirection(initialPayload?.direction ?? "higher_better");
+    setFactorKind(initialPayload?.factor_kind ?? "continuous");
+    setRiskLevel(initialPayload?.risk_level ?? "low");
+    setDescription(initialPayload?.description ?? "");
+    setThesis(initialPayload?.thesis ?? "");
+    setChangeNote(initialPayload?.change_note ?? "");
+    setOriginalPostprocess(initialPayload?.postprocess);
+    setPostprocess(restorePostprocess(initialPayload?.postprocess));
+    setPostprocessEdited(false);
+    setValidateResult(null);
+    setPreviewResult(null);
     // 仅在首次应用时提示
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPayload]);
+  }, [factorCode, initialPayload]);
 
   const updatePostprocess = <K extends keyof PostprocessConfig>(
     key: K,
     value: PostprocessConfig[K],
   ) => {
+    setPostprocessEdited(true);
     setPostprocess((prev) => ({ ...prev, [key]: value }));
+    setValidateResult(null);
+    setPreviewResult(null);
   };
 
   // 解析 params JSON
@@ -353,13 +420,18 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   // 校验公式
   const handleValidate = () => {
+    if (loadingFactor) return;
     if (!formulaExpr.trim()) {
       message.warning(isZh ? "请输入公式" : "Please enter formula");
       return;
     }
     const params = parseParams();
     if (params === null) return;
-    const postprocessConfig = buildPostprocess(postprocess);
+    const postprocessConfig = currentPostprocess();
+    const session = editorSession.current;
+    const signature = inputSignature;
+    const request = ++validationRequest.current;
+    const isCurrent = () => session === editorSession.current && signature === latestInputSignature.current && request === validationRequest.current;
     setValidating(true);
     api
       .validateFactorFormula({
@@ -369,6 +441,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         postprocess: postprocessConfig,
       })
       .then((res) => {
+        if (!isCurrent()) return;
         setValidateResult(res);
         if (res.is_valid) {
           message.success(isZh ? "校验通过" : "Validation passed");
@@ -381,21 +454,27 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         }
       })
       .catch((err: unknown) => {
+        if (!isCurrent()) return;
         const msg = err instanceof Error ? err.message : String(err);
         message.error(isZh ? `校验请求失败: ${msg}` : `Validate request failed: ${msg}`);
       })
-      .finally(() => setValidating(false));
+      .finally(() => { if (session === editorSession.current && request === validationRequest.current) setValidating(false); });
   };
 
   // 预览
   const handlePreview = () => {
+    if (loadingFactor) return;
     if (!formulaExpr.trim()) {
       message.warning(isZh ? "请输入公式" : "Please enter formula");
       return;
     }
     const params = parseParams();
     if (params === null) return;
-    const postprocessConfig = buildPostprocess(postprocess);
+    const postprocessConfig = currentPostprocess();
+    const session = editorSession.current;
+    const signature = inputSignature;
+    const request = ++previewRequest.current;
+    const isCurrent = () => session === editorSession.current && signature === latestInputSignature.current && request === previewRequest.current;
     setPreviewing(true);
     api
       .previewFactorFormula({
@@ -405,6 +484,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         postprocess: postprocessConfig,
       })
       .then((res) => {
+        if (!isCurrent()) return;
         setPreviewResult(res);
         if (!res.is_valid) {
           message.warning(
@@ -419,14 +499,20 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         }
       })
       .catch((err: unknown) => {
+        if (!isCurrent()) return;
         const msg = err instanceof Error ? err.message : String(err);
         message.error(isZh ? `预览请求失败: ${msg}` : `Preview request failed: ${msg}`);
       })
-      .finally(() => setPreviewing(false));
+      .finally(() => { if (session === editorSession.current && request === previewRequest.current) setPreviewing(false); });
   };
 
   // 保存
   const handleSave = () => {
+    if (loadingFactor || saving || (!isNewDraft && !factor)) return;
+    if (createdDraftCode) {
+      message.warning(t("factorLabEditorPartialSaved"));
+      return;
+    }
     if (!formulaExpr.trim()) {
       message.warning(isZh ? "请输入公式" : "Please enter formula");
       return;
@@ -439,7 +525,10 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     }
     const params = parseParams();
     if (params === null) return;
-    const postprocessConfig = buildPostprocess(postprocess);
+    const postprocessConfig = currentPostprocess();
+    const session = editorSession.current;
+    const signature = inputSignature;
+    const isCurrent = () => session === editorSession.current && signature === latestInputSignature.current;
 
     setSaving(true);
 
@@ -457,6 +546,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         // Factor-domain internal - DO NOT USE outside factor center
         .createFactorVersion(targetCode, versionPayload)
         .then(() => {
+          if (!isCurrent()) return;
           message.success(isZh ? "保存成功" : "Saved successfully");
           onSaved(targetCode);
         });
@@ -471,7 +561,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         code: code.trim(),
         name: name.trim(),
         category: category.trim(),
-        direction,
+        direction: versionDirection,
         factor_kind: factorKind,
         risk_level: riskLevel,
         description: description || undefined,
@@ -481,15 +571,19 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
       };
       // 草稿创建成功后再创建版本，失败时明确提示是"版本"失败还是"草稿"失败，避免误导
       let draftCreated = false;
+      let createdCode = "";
       api
         .createFactorDraft(draftPayload)
         .then((def) => {
           draftCreated = true;
+          createdCode = def.code;
           return finish(def.code);
         })
         .catch((err: unknown) => {
+          if (!isCurrent()) return;
           const msg = err instanceof Error ? err.message : String(err);
           if (draftCreated) {
+            setCreatedDraftCode(createdCode);
             // 草稿已经建成功，是创建版本时失败；提示用户草稿已存在可进入详情再追加版本
             message.error(
               isZh
@@ -500,14 +594,15 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
             message.error(isZh ? `创建因子失败: ${msg}` : `Create factor failed: ${msg}`);
           }
         })
-        .finally(() => setSaving(false));
+        .finally(() => { if (session === editorSession.current) setSaving(false); });
     } else {
       finish(factorCode as string)
         .catch((err: unknown) => {
+          if (!isCurrent()) return;
           const msg = err instanceof Error ? err.message : String(err);
           message.error(isZh ? `创建版本失败: ${msg}` : `Create version failed: ${msg}`);
         })
-        .finally(() => setSaving(false));
+        .finally(() => { if (session === editorSession.current) setSaving(false); });
     }
   };
 
@@ -537,6 +632,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     if (snapshot) {
       setFormulaExpr(snapshot.formulaExpr);
       setVersionDirection(snapshot.versionDirection);
+      if (isNewDraft) setDirection(snapshot.versionDirection);
       setChangeNote(snapshot.changeNote);
       setParamsText(snapshot.paramsText);
       setValidateResult(snapshot.validateResult);
@@ -718,14 +814,14 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   return (
     <div className="factor-editor-redesign">
-      <Spin spinning={loadingFactor}>
+      <Spin spinning={loadingFactor || saving}>
         {/* 顶部操作栏 */}
         <div className="factor-editor-header">
           <div className="factor-editor-header-left">
             <Button
               className="factor-editor-back-btn"
               icon={<ArrowLeftOutlined />}
-              onClick={onBack}
+              onClick={() => { editorSession.current += 1; onBack(); }}
               type="text"
             >
               {t("factorEditorBack")}
@@ -747,12 +843,20 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
             type="primary"
             icon={<SaveOutlined />}
             loading={saving}
+            disabled={!!createdDraftCode || (!isNewDraft && !factor) || !validateResult?.is_valid || validating || previewing}
             onClick={handleSave}
             className="factor-editor-save-btn"
           >
             {t("factorEditorSave")}
           </Button>
         </div>
+        {createdDraftCode ? <Alert type="warning" showIcon message={t("factorLabEditorPartialSaved")}
+          description={createdDraftCode} action={<Button onClick={() => { editorSession.current += 1; onSaved(createdDraftCode); }}>{t("factorLabEditorOpenCreatedDraft")}</Button>}
+          style={{ marginBottom: 16 }} /> : <Alert type="info" showIcon message={t("factorLabEditorGuide")}
+          style={{ marginBottom: 16 }} />}
+        {factorLoadError ? <Alert type="error" showIcon message={t("factorLabEditorLoadFailed")} description={factorLoadError}
+          action={<Button onClick={() => setFactorReload(value => value + 1)}>{t("factorLabRetryCheck")}</Button>}
+          style={{ marginBottom: 16 }} /> : null}
 
         {/* 已有因子只读信息（非新建草稿时显示） */}
         {!isNewDraft && factor ? (
@@ -816,7 +920,12 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                     <Form.Item label={t("factorEditorDirection")}>
                       <Select
                         value={direction}
-                        onChange={(v: Direction) => setDirection(v)}
+                        onChange={(v: Direction) => {
+                          setDirection(v);
+                          setVersionDirection(v);
+                          setValidateResult(null);
+                          setPreviewResult(null);
+                        }}
                         options={DIRECTION_OPTIONS}
                       />
                     </Form.Item>
@@ -1197,6 +1306,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         onRememberSelection={rememberFormulaSelection}
         onDirectionChange={(value) => {
           setVersionDirection(value);
+          if (isNewDraft) setDirection(value);
           setValidateResult(null);
           setPreviewResult(null);
         }}
@@ -1208,6 +1318,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         }}
       />
       <AiChatDrawer
+        key={aiSession}
         open={aiFormulaOpen}
         formula={formulaExpr}
         formulaMode="factor"

@@ -44,9 +44,12 @@ pytestmark = pytest.mark.blackbox
 
 
 @pytest.fixture(autouse=True)
-def _reset_singletons():
+def _reset_singletons(tmp_path, monkeypatch):
     """每个测试前后重置 AI 单例，避免相互污染。"""
     reset_secret_store()
+    from app.services.secret_store import SecretStore
+    isolated_store = SecretStore(secrets_path=tmp_path / "secrets.enc")
+    monkeypatch.setattr(ai_profile_service, "get_secret_store", lambda: isolated_store)
     reset_ai_cache()
     reset_failover_manager()
     yield

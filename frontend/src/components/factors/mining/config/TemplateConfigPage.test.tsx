@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 
 /**
@@ -54,6 +54,7 @@ vi.mock("../../../../api/factorTemplates", () => ({
 
 import { factorTemplatesApi } from "../../../../api/factorTemplates";
 import TemplateConfigPage from "./TemplateConfigPage";
+import { setLocale } from "../../../../i18n";
 
 /** 等表格出现并取行（默认排序：优先级升序 → tp-1(1) / tp-3(2) / tp-2(3)） */
 async function renderReady(): Promise<Element[]> {
@@ -71,14 +72,16 @@ function cellOf(row: Element, key: string): string {
 describe("TemplateConfigPage（C2 / B4）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setLocale("zh-CN");
   });
+  afterEach(() => setLocale("zh-CN"));
 
   it("未激活不拉取（门控）", () => {
     render(<TemplateConfigPage active={false} />);
     expect(factorTemplatesApi.list).not.toHaveBeenCalled();
   });
 
-  it("渲染列表：类型译名 + 公式结构 + 优先级 + scope/enabled 原值", async () => {
+  it("渲染列表：类型、范围、启停译名以及原始公式与优先级", async () => {
     const rows = await renderReady();
     expect(rows.length).toBe(3);
 
@@ -100,11 +103,59 @@ describe("TemplateConfigPage（C2 / B4）", () => {
     expect(cellOf(rows[0], "formula")).toBe("ema(close,{n1})-ema(close,{n2})");
     expect(cellOf(rows[1], "priority")).toBe("2");
 
-    // scope 保持后端原值（审计按原值核对），enabled 走译名
-    expect(rows[0].textContent).toContain("system");
+    expect(rows[0].textContent).toContain("系统预设");
     expect(rows[0].textContent).toContain("已启用");
-    expect(rows[2].textContent).toContain("personal");
+    expect(rows[2].textContent).toContain("个人模板");
     expect(rows[2].textContent).toContain("已停用");
+  });
+
+  it("英文展示和搜索系统预设译名，经济逻辑本地化且个人内容保持原样", async () => {
+    setLocale("en-US");
+    vi.mocked(factorTemplatesApi.list).mockResolvedValueOnce({ items: [
+      { template_id: "system-ma", name: "均线趋势", scope: "system", owner: "system", enabled: 1,
+        created_at: "2026-09-20T15:55:35", rule_config: { category: "trend",
+          formula: "mean(close,{n1})/mean(close,{n2})-1", params: { n1: [5, 10], n2: [20] },
+          economy_logic_zh: "短期均线上穿长期均线，捕捉趋势启动" } },
+      { template_id: "my-ma", name: "均线趋势", scope: "personal", owner: "local_user", enabled: 1,
+        description: "我的自定义说明，不应被翻译", rule_config: { formula: "close" } },
+    ], total: 2 });
+    await renderReady();
+    expect(document.querySelector("[data-tpl-table]")?.textContent).toContain("Moving average trend");
+    fireEvent.change(document.querySelector("[data-tpl-search]") as HTMLElement, { target: { value: "moving average" } });
+    await waitFor(() => expect(document.querySelectorAll("[data-tpl-table] tbody tr").length).toBe(1));
+    const created = cellOf(document.querySelector("[data-tpl-table] tbody tr") as Element, "created");
+    expect(created).toContain("2026");
+    expect(created).not.toContain("T15:55:35");
+    fireEvent.click(document.querySelector('[data-tpl-detail="system-ma"]') as HTMLElement);
+    const modal = document.querySelector("[data-tpl-detail-modal]") as HTMLElement;
+    expect(modal.textContent).toContain("System preset");
+    expect(modal.textContent).not.toContain("system");
+    expect(modal.textContent).toContain(created);
+    expect(modal.querySelector("[data-tpl-detail-economy]")?.textContent).toBe("A short moving average crossing above a long moving average signals the start of a trend.");
+    expect(modal.querySelector("[data-tpl-detail-formula]")?.textContent).toBe("mean(close,{n1})/mean(close,{n2})-1");
+    expect(modal.querySelector("[data-tpl-detail-params]")?.textContent).toBe("n1: 5~10 · n2: 20");
+    fireEvent.click(modal.querySelector("[data-tpl-detail-close]") as HTMLElement);
+    fireEvent.change(document.querySelector("[data-tpl-search]") as HTMLElement, { target: { value: "" } });
+    fireEvent.click(document.querySelector('[data-tpl-detail="my-ma"]') as HTMLElement);
+    expect(document.querySelector("[data-tpl-detail-modal]")?.textContent).toContain("均线趋势");
+    expect(document.querySelector("[data-tpl-detail-economy]")?.textContent).toBe("我的自定义说明，不应被翻译");
+    expect(document.querySelector("[data-tpl-detail-modal]")?.textContent).toContain("local_user");
+  });
+
+  it("中文预设保持中文，未知范围和未知系统模板保留原值", async () => {
+    vi.mocked(factorTemplatesApi.list).mockResolvedValueOnce({ items: [
+      { template_id: "system-ma", name: "均线趋势", scope: "system", enabled: 1,
+        rule_config: { economy_logic_zh: "短期均线上穿长期均线，捕捉趋势启动" } },
+      { template_id: "unknown", name: "自定义系统模板", scope: "team", enabled: 1,
+        description: "自定义说明" },
+    ], total: 2 });
+    await renderReady();
+    expect(document.querySelector("[data-tpl-table]")?.textContent).toContain("均线趋势");
+    expect(document.querySelector("[data-tpl-table]")?.textContent).toContain("team");
+    fireEvent.click(document.querySelector('[data-tpl-detail="unknown"]') as HTMLElement);
+    expect(document.querySelector("[data-tpl-detail-modal]")?.textContent).toContain("自定义系统模板");
+    expect(document.querySelector("[data-tpl-detail-modal]")?.textContent).toContain("team");
+    expect(document.querySelector("[data-tpl-detail-modal]")?.textContent).not.toContain("个人模板");
   });
 
   it("按名称搜索（同时命中公式）", async () => {

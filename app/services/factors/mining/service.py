@@ -335,6 +335,9 @@ def compute_split_budget_preview(
     train_ratio: float = 0.6,
     validation_ratio: float = 0.2,
     warehouse_path: str | None = None,
+    data_cutoff_at: Any = None,
+    candidate_pool_snapshot_id: str | None = None,
+    db: Any = None,
 ) -> dict[str, Any]:
     """Step2 切分预算预览（向导 §4）：取区间交易日 → 频率重采样调仓点 → 预算。
 
@@ -344,6 +347,7 @@ def compute_split_budget_preview(
       日频即全部交易日）——与向导「同一调仓频率下只保留一个调仓点」一致；
     - 点数/边界由 `evaluation_adapter.compute_split_budget`（**纯函数**）产出，
       本函数**不做任何切分计算**（R5）。
+    - 可选数据截止日只约束标签成熟度；周/月末仍按完整行情日历确定。
 
     数仓不可用/区间内无交易日 → 返回 `available=False` 的降级结构，
     前端据此展示「预算暂不可用」而非空白或崩溃。
@@ -390,6 +394,9 @@ def compute_split_budget_preview(
         return {"available": False, "reason_zh": "时间区间无效，无法计算切分预算。"}
     if lo > hi:
         return {"available": False, "reason_zh": "开始日不能晚于结束日。"}
+    cutoff = _as_date(data_cutoff_at) if data_cutoff_at is not None else None
+    if data_cutoff_at is not None and cutoff is None:
+        return {"available": False, "reason_zh": "数据截止日无效，无法计算切分预算。"}
 
     in_range = sorted(
         d for d in (_as_date(v) for v in raw)
@@ -405,9 +412,21 @@ def compute_split_budget_preview(
     # mature signals. Truncating first invents week/month-end trading dates.
     calendar = sorted({d for value in raw if (d := _as_date(value)) is not None})
     horizon = int(target_horizon)
-    mature_end = calendar[-horizon - 1] if len(calendar) > horizon else None
+    known_calendar = calendar if cutoff is None else [d for d in calendar if d <= cutoff]
+    mature_end = known_calendar[-horizon - 1] if len(known_calendar) > horizon else None
     points = [d for d in EVA.select_signal_dates(calendar, frequency)
               if mature_end is not None and lo <= d <= hi and d <= mature_end]
+    candidate_symbols = None
+    if candidate_pool_snapshot_id is not None:
+        from app.services.factors.mining.data_scope import scoped_target_preview
+
+        if cutoff is None:
+            return {"available": False, "reason_zh": "冻结候选池预检需要数据截止日。"}
+        candidate_symbols, usable = scoped_target_preview(db, wh,
+            snapshot_id=candidate_pool_snapshot_id, start_date=lo, end_date=hi,
+            data_cutoff_at=cutoff, target_horizon=horizon, frequency=frequency)
+        available_dates = {_as_date(v) for v in usable["signal_date"].tolist()}
+        points = [d for d in points if d in available_dates]
 
     purge = EVA.normalize_purge_points(
         target_horizon_days=int(target_horizon), frequency=frequency)
@@ -428,6 +447,8 @@ def compute_split_budget_preview(
     )
     return {
         "available": True,
+        "scope": "frozen_pool" if candidate_symbols is not None else "warehouse_calendar",
+        "candidate_symbol_count": len(candidate_symbols) if candidate_symbols is not None else None,
         "frequency": frequency,
         "total_points": budget.total_points,
         "train_points": budget.train_points,
@@ -445,6 +466,40 @@ def compute_split_budget_preview(
         "train_end": points[train_idx].isoformat() if points else None,
         "val_end": points[val_idx].isoformat() if points else None,
     }
+
+
+def validate_run_preflight(db: Any, *, snapshot_id: str, selected_fields: list[str],
+                           start_date: Any, end_date: Any, data_cutoff_at: Any,
+                           frequency: str, target_horizon: int,
+                           train_ratio: float, validation_ratio: float,
+                           warehouse_path: str | None = None) -> dict[str, Any]:
+    """Read-only authoritative checks, before a run row or task/lock is created."""
+    from app.schemas.errors import factor_structured_error
+    from app.services.factors.mining import validation_service as VS
+
+    budget = compute_split_budget_preview(db=db, candidate_pool_snapshot_id=snapshot_id,
+        start_date=start_date, end_date=end_date, data_cutoff_at=data_cutoff_at,
+        frequency=frequency, target_horizon=target_horizon, train_ratio=train_ratio,
+        validation_ratio=validation_ratio, warehouse_path=warehouse_path)
+    if not budget.get("available") or not budget.get("meets_floor"):
+        raise factor_structured_error("MINING_PREFLIGHT_BUDGET_BLOCKED",
+            title_zh="冻结候选池样本不足", detail_zh=budget.get("reason_zh") or
+                f"当前冻结候选池只有 {budget.get('total_points', 0)} 个成熟调仓点，"
+                f"需要至少 {budget.get('frequency_floor', 0)} 个。请回到第二步调整时间范围、频率或候选池。",
+            impact="未创建任务、未占锁，也未补写任何标签。",
+            fix_link="/settings/factor-mining?step=2", retryable=True,
+            extras={"split_budget": budget})
+    config = {"candidate_pool_snapshot_id": snapshot_id, "start_date": str(start_date),
+        "end_date": str(end_date), "data_cutoff_at": str(data_cutoff_at),
+        "rebalance_frequency": frequency, "target_horizon": target_horizon,
+        "warehouse_path": warehouse_path}
+    report = VS.check_fields(db, config=config, fields=selected_fields)
+    if not selected_fields or report["verdict"] == VS.VERDICT_BLOCK:
+        raise factor_structured_error("MINING_PREFLIGHT_FIELDS_BLOCKED",
+            title_zh="字段校验未通过", detail_zh=report["summary_zh"] or "请重新选择并校验字段。",
+            impact="未创建任务、未占锁。", fix_link="/settings/factor-mining?step=3",
+            retryable=True, extras={"field_report": report})
+    return {"split_budget": budget, "field_report": report}
 
 
 def finalize_run(
@@ -1091,6 +1146,7 @@ def _grade_metrics_after_evaluation(db: Any, outcome: Any, cand: Any) -> dict[st
         "complexity": int(cand.generation_complexity or 0),
         "decay_ratio": DN.to_db_float((stats or {}).get("decay_ratio")),
         "degraded": bool((stats or {}).get("degraded")),
+        "correlation": DN.to_db_float(m.get("correlation")),
     }
     run_row = load_run(db, cand.run_id)
     if run_row is not None:
@@ -1193,7 +1249,21 @@ def _grade_and_govern_outcome(db: Any, *, cand: Any, outcome: Any) -> None:
 
     if not cand.factor_version_id:
         return
+    from app.models.factor_model import FactorVersion
+
+    version = db.get(FactorVersion, int(cand.factor_version_id))
+    if version is not None and bool(version.grade_manual_adjusted):
+        # Formula/version creation is idempotent across mining runs. A new
+        # immutable evaluation may be stored for this version, but only the
+        # explicit restore-auto action may replace its manual grade/snapshot
+        # or apply automatic D-grade governance.
+        return
     grade_metrics = _grade_metrics_after_evaluation(db, outcome, cand)
+    if grade_metrics.get("correlation") is None:
+        persist_grade_to_version(db, factor_version_id=cand.factor_version_id,
+            grade_value=None, reason="与已有因子的相关性证据未完成，暂未定级；请补齐参考因子数据后重新评估。",
+            metrics=grade_metrics, manual_adjusted=0)
+        return
     grade_value, reason = FG.grade(grade_metrics)
     persist_grade_to_version(
         db, factor_version_id=cand.factor_version_id,
@@ -1211,7 +1281,7 @@ def _grade_and_govern_outcome(db: Any, *, cand: Any, outcome: Any) -> None:
 
 
 def persist_grade_to_version(
-    db: Any, *, factor_version_id: int | str, grade_value: str, reason: str,
+    db: Any, *, factor_version_id: int | str, grade_value: str | None, reason: str,
     metrics: Mapping[str, Any] | None = None, manual_adjusted: int = 0,
 ) -> dict[str, Any]:
     """把 grade() 评定结果（等级/证据/人工标记）落到 `factor_versions`（B1 4 列）。
@@ -1233,7 +1303,7 @@ def persist_grade_to_version(
     cols = FactorVersion.__table__.columns.keys()
     if "quality_grade" not in cols:
         return {"factor_version_id": int(factor_version_id), "persisted": False}
-    grade_value = str(grade_value).upper()
+    grade_value = str(grade_value).upper() if grade_value is not None else None
     version.quality_grade = grade_value
     version.grade_updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     version.grade_metrics_json = _json.dumps(
@@ -1270,6 +1340,7 @@ def apply_manual_grade(db: Any, *, candidate_id: str, grade: str,
             "CANDIDATE_NOT_SUBMITTED",
             detail_zh="候选尚未提交为正式因子版本，无法人工调整等级。请先执行提交。",
         )
+    current_evidence = get_grade_evidence(db, candidate_id=candidate_id)
     prev = db.execute(
         select(FactorGradeHistory).where(
             FactorGradeHistory.factor_version_id == cand.factor_version_id)
@@ -1280,7 +1351,7 @@ def apply_manual_grade(db: Any, *, candidate_id: str, grade: str,
         factor_version_id=cand.factor_version_id,
         grade=str(grade).upper(),
         previous_grade=(prev.grade if prev else None),
-        metrics_snapshot_json="{}",
+        metrics_snapshot_json=json.dumps(current_evidence["metrics"], ensure_ascii=False),
         source="manual",
         reason=str(reason).strip(),
     )
@@ -1289,15 +1360,19 @@ def apply_manual_grade(db: Any, *, candidate_id: str, grade: str,
     persist_grade_to_version(
         db, factor_version_id=cand.factor_version_id,
         grade_value=hist.grade, reason=str(reason).strip(),
-        metrics={}, manual_adjusted=1,
+        metrics=current_evidence["metrics"], manual_adjusted=1,
     )
     return {"grade": str(grade).upper(), "candidate_id": candidate_id,
             "history_id": hist.id, "manual_adjusted": 1}
 
 
 def set_manual_grade_auto(db: Any, *, candidate_id: str) -> dict[str, Any]:
-    """恢复自动评定：置 `grade_manual_adjusted=0`（B1 迁移后写 factor_versions 列）。"""
+    """Recompute from the saved final evaluation, without rerunning the test segment."""
+    from types import SimpleNamespace
+    from app.models.factor_evaluation import EvaluationRun
+    from app.models.factor_grade_history import FactorGradeHistory
     from app.models.factor_model import FactorVersion
+    from app.services.factors.mining import factor_grading as FG
 
     cand = db.get(FactorMiningCandidate, str(candidate_id))
     if cand is None:
@@ -1305,11 +1380,31 @@ def set_manual_grade_auto(db: Any, *, candidate_id: str) -> dict[str, Any]:
     if not cand.factor_version_id:
         raise ValueError("candidate_not_submitted")
     version = db.get(FactorVersion, cand.factor_version_id)
-    if version is not None and "grade_manual_adjusted" in \
-            FactorVersion.__table__.columns.keys():
-        setattr(version, "grade_manual_adjusted", 0)
+    if version is None:
+        raise ValueError("factor_version_not_found")
+    evaluation = db.get(EvaluationRun, cand.latest_evaluation_id) if cand.latest_evaluation_id else None
+    actual = {}
+    if evaluation is not None and evaluation.factor_version_id == cand.factor_version_id:
+        try:
+            actual = json.loads(evaluation.metrics_json or "{}")
+        except (TypeError, ValueError):
+            actual = {}
+    metrics = _grade_metrics_after_evaluation(db, SimpleNamespace(metrics=actual), cand)
+    previous = version.quality_grade
+    if metrics.get("correlation") is None:
+        grade, reason = None, "缺少完整的最终评估或相关性证据，已解除人工评级，暂未定级。"
+    else:
+        grade, reason = FG.grade(metrics)
+        db.add(FactorGradeHistory(id=uuid.uuid4().hex,
+            factor_version_id=str(version.id), grade=grade, previous_grade=previous,
+            metrics_snapshot_json=json.dumps(metrics, ensure_ascii=False),
+            source="auto", reason=reason))
+    persist_grade_to_version(db, factor_version_id=version.id, grade_value=grade,
+        reason=reason, metrics=metrics, manual_adjusted=0)
+    if grade == "D":
+        _remove_factor_from_all_sets(db, factor_version_id=version.id)
         db.commit()
-    return {"candidate_id": candidate_id, "manual_adjusted": 0}
+    return {"candidate_id": candidate_id, "manual_adjusted": 0, "grade": grade}
 
 
 def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
@@ -1327,16 +1422,33 @@ def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
     cand = db.get(FactorMiningCandidate, str(candidate_id))
     if cand is None:
         raise ValueError(f"candidate_not_found:{candidate_id}")
-    metrics = {
-        "icir": DN.to_db_float(cand.generation_icir)
-        if cand.generation_icir is not None else None,
-        "coverage": DN.to_db_float(cand.generation_coverage)
-        if cand.generation_coverage is not None else None,
-        "turnover": DN.to_db_float(cand.generation_turnover)
-        if cand.generation_turnover is not None else 0.0,
-        "complexity": int(cand.generation_complexity or 0),
-    }
-    grade, reason = FG.grade(metrics)
+    from types import SimpleNamespace
+    from app.models.factor_evaluation import EvaluationRun
+    from app.models.factor_model import FactorVersion
+
+    def _json_object(value: Any) -> dict[str, Any]:
+        try:
+            decoded = json.loads(value or "{}")
+        except (TypeError, ValueError):
+            return {}
+        return DN.clean_json_tree(decoded) if isinstance(decoded, dict) else {}
+
+    version_id = getattr(cand, "factor_version_id", None)
+    version = db.get(FactorVersion, int(version_id)) if version_id else None
+    evaluation = db.get(EvaluationRun, str(cand.latest_evaluation_id)) if cand.latest_evaluation_id else None
+    if evaluation is not None and evaluation.factor_version_id != version_id:
+        evaluation = None
+    actual = _json_object(evaluation.metrics_json) if evaluation is not None else {}
+    saved = _json_object(version.grade_metrics_json) if version is not None else {}
+    metrics = saved.get("metrics") if isinstance(saved.get("metrics"), dict) else {}
+    if not metrics and actual:
+        metrics = _grade_metrics_after_evaluation(db, SimpleNamespace(metrics=actual), cand)
+    grade = getattr(version, "quality_grade", None)
+    reason = str(saved.get("reason") or "")
+    if grade not in ("S", "A", "B", "C", "D"):
+        grade = None
+        reason = reason or "缺少完整的最终评级证据，暂未定级；请查看缺失指标。"
+    stats = actual.get("stats") if isinstance(actual.get("stats"), dict) else {}
     lineage = get_candidate_lineage(db, cand.run_id, cand.id)
 
     # frequency：run 的调仓频率（前端月频灰显 Bootstrap/置换的依据）
@@ -1346,19 +1458,26 @@ def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
         frequency = str(getattr(run, "rebalance_frequency", None) or "daily")
 
     # dimensions：当前等级阈值列逐维对比；缺数据维度 current/passed=null（如实呈现）
-    _UPPER_BOUND = {"turnover", "complexity"}   # ≤阈值 为达标；其余为 ≥阈值
+    comparison_grade = grade if grade in ("S", "A", "B", "C") else "C"
+    aliases = {"p_adj": "p_adj_bonferroni", "p_raw": "p_value", "perm_p": "perm_p_value",
+               "oos_icir_min": "oos_icir", "oos_icir_max": "oos_icir"}
+    less_than = {"p_adj", "p_raw", "perm_p", "correlation", "turnover", "oos_icir_max"}
+    greater_than = {"ci_lower", "oos_icir_min"}
     dims: list[dict[str, Any]] = []
     for key, by_grade in FG.DEFAULT_THRESHOLDS.items():
-        th = by_grade.get(grade)
-        cur = metrics.get(key)
+        th = by_grade.get(comparison_grade)
+        cur = DN.to_db_float(metrics.get(aliases.get(key, key)))
         passed: bool | None = None
         gap: float | None = None
         if th is not None and cur is not None:
-            if key in _UPPER_BOUND:
+            if key in less_than:
+                passed = float(cur) < float(th)
+                gap = round(float(cur) - float(th), 6)
+            elif key == "complexity":
                 passed = float(cur) <= float(th)
                 gap = round(float(cur) - float(th), 6)
             else:
-                passed = float(cur) >= float(th)
+                passed = float(cur) > float(th) if key in greater_than else float(cur) >= float(th)
                 gap = round(float(cur) - float(th), 6)
         dims.append({"key": key, "current": cur, "threshold": th,
                      "passed": passed, "gap": gap})
@@ -1366,7 +1485,6 @@ def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
     # manual_adjusted / grade_history：经候选提交的因子版本查当前态与历史
     manual_adjusted = 0
     history: list[dict[str, Any]] = []
-    version_id = getattr(cand, "factor_version_id", None)
     if version_id:
         try:
             from app.models.factor_grade_history import FactorGradeHistory
@@ -1402,18 +1520,44 @@ def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
         "frequency": frequency,
         "dimensions": dims,
         "lineage": lineage,
-        "stats": None,
-        # 统计检验未落库：给降级占位（前端 8 行灰显「样本不足，未计算」）
+        "evaluation_run_id": evaluation.id if evaluation is not None else None,
+        "stats": stats or None,
+        "stat_thresholds": grade_stat_thresholds(comparison_grade),
         "stats_view": {
-            "t_test_p": None, "bonferroni_p": None, "fdr_q": None,
-            "bootstrap_ci": None, "permutation_p": None,
-            "dsr_icir": None, "decay_ratio": None,
-            "walk_forward": {}, "total_trials": None,
-            "degraded": True,
+            "t_test_p": DN.to_db_float(stats.get("p_value")),
+            "bonferroni_p": DN.to_db_float(stats.get("p_adj_bonferroni")),
+            "fdr_q": DN.to_db_float(stats.get("q_value_fdr")),
+            "bootstrap_ci": [stats["ci_lower"], stats["ci_upper"]]
+                if stats.get("ci_lower") is not None and stats.get("ci_upper") is not None else None,
+            "permutation_p": DN.to_db_float(stats.get("perm_p_value")),
+            "dsr_icir": DN.to_db_float(stats.get("dsr_icir")),
+            "decay_ratio": DN.to_db_float(stats.get("decay_ratio")),
+            "walk_forward": stats.get("walk_forward") or {},
+            "total_trials": stats.get("total_trials"),
+            "degraded": bool(stats.get("degraded")) if stats else True,
         },
         "manual_adjusted": bool(manual_adjusted),
         "grade_history": history,
     }
+
+
+def grade_stat_thresholds(grade: str) -> dict[str, Any]:
+    """Only publish thresholds actually used by automatic grading."""
+    from app.services.factors.mining.factor_grading import DEFAULT_THRESHOLDS, DECAY_FLOOR
+
+    thresholds: dict[str, Any] = {}
+    for stat_key, grade_key, operator in (
+        ("t_test", "p_raw", "lt"), ("bonferroni", "p_adj", "lt"),
+        ("bootstrap", "ci_lower", "gt"), ("permutation", "perm_p", "lt"),
+    ):
+        value = DEFAULT_THRESHOLDS[grade_key].get(grade)
+        if value is not None:
+            symbol = "<" if operator == "lt" else ">"
+            thresholds[stat_key] = {"operator": operator, "value": value,
+                                    "label": f"{symbol}{value:g}"}
+    thresholds["decay"] = {"operator": "gte", "value": DECAY_FLOOR,
+                            "label": f"≥{DECAY_FLOOR:g}"}
+    return thresholds
 
 
 def cleanup_run_data(db: Any, *, run_id: str) -> dict[str, Any]:

@@ -5,6 +5,8 @@ import MiningChart, {
 } from "../../charts/MiningChart";
 import type { PoolAnalysis, PoolSnapshot } from "./poolApi";
 import type { EChartsOption } from "echarts";
+import { categoryLabel } from "../../factorCategory";
+import { formatMiningDateTime } from "../../miningDisplay";
 
 /**
  * 候选池分析看板弹窗（向导 §3.7.4）——**只读，不可编辑**。
@@ -29,22 +31,50 @@ export interface PoolAnalysisModalProps {
 }
 
 /** 后端因子类型枚举 → 展示名（未知值原样展示） */
-const FACTOR_TYPE_LABEL: Record<string, string> = {
-  trend: "趋势",
-  reversal: "反转",
-  volatility: "波动率",
-  valuation: "估值",
-  quality: "质量",
-  volume_price: "量价",
-  momentum: "动量",
-  vol_contraction: "波动率收缩",
-  breakout: "突破",
+const FACTOR_TYPE_KEY: Record<string, string> = {
+  momentum: "miningPoolBoardTypeMomentum",
+  vol_contraction: "miningPoolBoardTypeVolContraction",
+  breakout: "miningPoolBoardTypeBreakout",
+};
+
+const STYLE_KEY: Record<string, string> = {
+  growth: "miningPoolBoardStyleGrowth",
+  value: "miningPoolBoardStyleValue",
+  momentum: "miningPoolBoardTypeMomentum",
+};
+const CAP_KEY: Record<string, string> = {
+  large: "miningPoolBoardCapLarge", mid: "miningPoolBoardCapMid",
+  small: "miningPoolBoardCapSmall", unknown: "miningPoolBoardCapUnknown",
+};
+const REGIME_KEY: Record<string, string> = {
+  bull: "miningPoolBoardPhaseBull", bear: "miningPoolBoardPhaseBear",
+  sideways: "miningPoolBoardPhaseSideways", unavailable: "miningPoolBoardUnavailable",
+};
+const VOL_KEY: Record<string, string> = {
+  high: "miningPoolBoardBandHigh", mid: "miningPoolBoardBandMid",
+  low: "miningPoolBoardBandLow", unavailable: "miningPoolBoardUnavailable",
+};
+const TREND_KEY: Record<string, string> = {
+  strong: "miningPoolBoardTrendStrong", mid: "miningPoolBoardBandMid",
+  weak: "miningPoolBoardTrendWeak", unavailable: "miningPoolBoardUnavailable",
 };
 
 const STYLE_ORDER = ["growth", "value", "quality", "momentum", "volatility"];
 
 function typeLabel(key: string): string {
-  return FACTOR_TYPE_LABEL[key] ?? key;
+  return FACTOR_TYPE_KEY[key] ? t(FACTOR_TYPE_KEY[key]) : categoryLabel(key, t);
+}
+
+function styleLabel(key: string, fallback?: string | null): string {
+  if (STYLE_KEY[key]) return t(STYLE_KEY[key]);
+  const label = categoryLabel(key, t);
+  return label === key ? fallback ?? key : label;
+}
+
+function boardEnumLabel(
+  keys: Record<string, string>, key?: string | null, fallback?: string | null,
+): string {
+  return key && keys[key] ? t(keys[key]) : fallback ?? key ?? "-";
 }
 
 /** 百分比数值（后端 ratio/coverage 均为 0~1） */
@@ -144,14 +174,15 @@ export default function PoolAnalysisModal({
   const warnings = analysis?.warnings ?? [];
   const hasAnalysis = analysis != null && Object.keys(analysis).length > 0;
 
-  const capRows = capTiers.map((c) => ({ label: c.label_zh, ratio: c.ratio }));
+  const capRows = capTiers.map((c) => ({ label: boardEnumLabel(CAP_KEY, c.key, c.label_zh), ratio: c.ratio }));
+  const averageCapTier = capTiers.find((c) => c.label_zh === overview.market_cap_band_zh);
   const industryRows = industries.map((i) => ({ label: i.industry, ratio: i.ratio }));
 
   const styleRows = STYLE_ORDER.map((key) => {
     const dim = styleDims[key];
     return {
       key,
-      label: dim?.label_zh ?? key,
+      label: styleLabel(key, dim?.label_zh),
       score: dim?.available && dim.score != null ? dim.score : null,
       reason: dim?.reason_zh ?? null,
       coverage: dim?.coverage ?? null,
@@ -185,7 +216,7 @@ export default function PoolAnalysisModal({
             </span>
             <span>
               {t("miningPoolBoardAnalyzedAt")}:{" "}
-              {analysis?.generated_at ?? snapshot?.analyzed_at ?? "-"}
+              {formatMiningDateTime(analysis?.generated_at ?? snapshot?.analyzed_at)}
             </span>
           </div>
           <button
@@ -211,7 +242,9 @@ export default function PoolAnalysisModal({
                 ? `${overview.avg_market_cap_yi} ${t("miningPoolBoardYi")}`
                 : "-"
             }
-            note={overview.market_cap_band_zh}
+            note={overview.market_cap_band_zh
+              ? boardEnumLabel(CAP_KEY, averageCapTier?.key, overview.market_cap_band_zh)
+              : null}
           />
           <Card
             label={t("miningPoolBoardRange")}
@@ -264,7 +297,7 @@ export default function PoolAnalysisModal({
               <div className="mining-pool-board-suggest">
                 {dominantDim?.label_zh && (
                   <span className="mining-pool-board-suggest-item">
-                    {t("miningPoolBoardDominantStyle")}：{dominantDim.label_zh}
+                    {t("miningPoolBoardDominantStyle")}: {styleLabel(dominantKey ?? "", dominantDim.label_zh)}
                     {analysis?.style_exposure?.dominant_score != null
                       ? ` ${pct(analysis.style_exposure.dominant_score, 0)}`
                       : ""}
@@ -295,30 +328,30 @@ export default function PoolAnalysisModal({
               <div className="mining-pool-board-env">
                 <div className="mining-pool-board-env-row">
                   <span>{t("miningPoolBoardEnvStage")}</span>
-                  <span>{env.market_regime?.label_zh ?? "-"}</span>
+                  <span>{boardEnumLabel(REGIME_KEY, env.market_regime?.stage, env.market_regime?.label_zh)}</span>
                 </div>
                 <div className="mining-pool-board-env-row">
                   <span>{t("miningPoolBoardEnvVol")}</span>
                   <span>
-                    {env.volatility?.label_zh ?? "-"}
+                    {boardEnumLabel(VOL_KEY, env.volatility?.band, env.volatility?.label_zh)}
                     {env.volatility?.annualized != null
-                      ? `（年化 ${pct(env.volatility.annualized)}）`
+                      ? t("miningPoolBoardAnnualized").replace("{value}", pct(env.volatility.annualized))
                       : ""}
                   </span>
                 </div>
                 <div className="mining-pool-board-env-row">
                   <span>{t("miningPoolBoardEnvTrend")}</span>
-                  <span>{env.trend_strength?.label_zh ?? "-"}</span>
+                  <span>{boardEnumLabel(TREND_KEY, env.trend_strength?.band, env.trend_strength?.label_zh)}</span>
                 </div>
                 {env.market_regime?.cumulative_return != null && (
                   <div className="mining-pool-board-env-row">
-                    <span>区间累计收益</span>
+                    <span>{t("miningPoolBoardCumulativeReturn")}</span>
                     <span>{pct(env.market_regime.cumulative_return, 2)}</span>
                   </div>
                 )}
                 {env.market_regime?.max_drawdown != null && (
                   <div className="mining-pool-board-env-row">
-                    <span>最大回撤</span>
+                    <span>{t("miningPoolBoardMaxDrawdown")}</span>
                     <span>{pct(env.market_regime.max_drawdown, 2)}</span>
                   </div>
                 )}

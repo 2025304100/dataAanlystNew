@@ -299,6 +299,13 @@ def freeze_factor_set(
             f"FactorSet {factor_set_id} 无成员，不允许冻结",
         )
 
+    # Both native and scoring entry points must enforce the same training
+    # qualification, including versions that changed after a member was added.
+    from app.services.factor_set_service import factor_set_readiness
+    readiness = factor_set_readiness(db, factor_set_id, require_frozen=False)
+    if not readiness["ready"]:
+        raise FactorSetError(str(readiness["code"]).lower(), readiness["message"])
+
     content_hash = compute_set_content_hash(members)
 
     # 唯一性检查：同 content_hash 的 frozen 集合已存在则拒绝
@@ -343,6 +350,12 @@ def deprecate_factor_set(
             "cannot_deprecate",
             f"FactorSet {factor_set_id} 状态异常: {factor_set.status}",
         )
+
+    from app.services.factor_set_service import assert_factor_set_not_in_use, FactorSetStatusError
+    try:
+        assert_factor_set_not_in_use(db, factor_set_id)
+    except FactorSetStatusError as exc:
+        raise FactorSetError("set_in_use", exc.message) from exc
 
     factor_set.status = "deprecated"
     factor_set.updated_at = _utcnow()
@@ -398,10 +411,29 @@ def get_factor_set_members(
 
 def to_read_dict(factor_set: FactorSet) -> dict[str, Any]:
     """转换为字典（含成员）。"""
+    from sqlalchemy.orm import object_session
+    from app.services.factor_set_service import _factor_version_trainable
     members = sorted(
         factor_set.members,
         key=lambda m: (m.display_order, m.factor_code),
     )
+    session = object_session(factor_set)
+    version_ids = {member.factor_version_id for member in members}
+    versions_by_id = {
+        version.id: version for version in session.execute(
+            select(FactorVersion).where(FactorVersion.id.in_(version_ids))
+        ).scalars()
+    } if session is not None and version_ids else {}
+
+    def qualification(member: FactorSetMember) -> dict[str, Any]:
+        version = versions_by_id.get(member.factor_version_id)
+        return {
+            "version_status": version.validation_status if version is not None else "missing",
+            "version_trainable": bool(version is not None
+                and version.factor_id == member.factor_id
+                and version.version == member.factor_version
+                and _factor_version_trainable(version, factor_code=member.factor_code)),
+        }
     return {
         "id": factor_set.id,
         "name": factor_set.name,
@@ -426,6 +458,7 @@ def to_read_dict(factor_set: FactorSet) -> dict[str, Any]:
                 "display_order": m.display_order,
                 "missing_policy": m.missing_policy,
                 "excluded_reason": m.excluded_reason,
+                **qualification(m),
             }
             for m in members
         ],

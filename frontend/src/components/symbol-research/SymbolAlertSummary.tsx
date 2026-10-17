@@ -15,7 +15,7 @@
 // - 即时提醒标注"未持久化" Tag
 // - 新增"创建正式告警规则"按钮 + Modal，通过 POST /alerts/rules 持久化
 import { useState } from "react";
-import { Button, Input, InputNumber, Modal, Select, Switch, Tag, message } from "antd";
+import { Alert, Button, Input, InputNumber, Modal, Select, Switch, Tag, message } from "antd";
 import { t, template } from "../../i18n";
 import { api } from "../../api/client";
 import type { SymbolAlertSummaryProps } from "./types";
@@ -24,9 +24,6 @@ import type { SymbolAlertSummaryProps } from "./types";
 const ALERT_TYPE_OPTIONS = [
   { value: "score_drop", labelKey: "alertTypeScoreDrop" },
   { value: "data_stale", labelKey: "alertTypeDataStale" },
-  { value: "indicator_trigger", labelKey: "alertTypeIndicatorTrigger" },
-  { value: "task_failed", labelKey: "alertTypeTaskFailed" },
-  { value: "watchlist_signal", labelKey: "alertTypeWatchlistSignal" },
 ];
 
 const SEVERITY_OPTIONS = [
@@ -51,7 +48,9 @@ export default function SymbolAlertSummary({
 }: SymbolAlertSummaryProps) {
   const [createRuleModalOpen, setCreateRuleModalOpen] = useState(false);
   const [ruleName, setRuleName] = useState("");
-  const [ruleType, setRuleType] = useState<string>("indicator_trigger");
+  const [ruleType, setRuleType] = useState<string>("score_drop");
+  const [ruleThreshold, setRuleThreshold] = useState(40);
+  const [staleDays, setStaleDays] = useState(7);
   const [ruleSeverity, setRuleSeverity] = useState<string>("warn");
   const [ruleCooldown, setRuleCooldown] = useState<number>(30);
   const [creating, setCreating] = useState(false);
@@ -81,17 +80,9 @@ export default function SymbolAlertSummary({
         severity: ruleSeverity,
         cooldown_minutes: ruleCooldown,
         config: {
-          symbol_id: symbolId,
+          symbol_ids: [symbolId],
           source: "research",
-          // 透传当前研究态告警阈值（便于后端复现触发条件）
-          stop_near_pct: alertSettings.stopNearPct,
-          target_near_pct: alertSettings.targetNearPct,
-          rsi_overbought: alertSettings.rsiOverbought,
-          rsi_oversold: alertSettings.rsiOversold,
-          enable_stop_loss: alertSettings.enableStopLoss,
-          enable_target: alertSettings.enableTarget,
-          enable_rsi: alertSettings.enableRsi,
-          enable_macd: alertSettings.enableMacd,
+          ...(ruleType === "score_drop" ? { threshold: ruleThreshold } : { stale_days: staleDays }),
         },
       };
       const result = await api.createAlertRule(payload);
@@ -248,6 +239,8 @@ export default function SymbolAlertSummary({
         data-testid="create-alert-rule-modal"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "12px 0" }}>
+          <Alert type="info" message={t("settingsResearchAlertSeparate")} />
+          <Alert type="info" message={t("settingsAlertManualMode")} />
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span>{t("symbolResearchAlertRuleNameLabel")}</span>
             <Input
@@ -280,6 +273,12 @@ export default function SymbolAlertSummary({
               }))}
               data-testid="alert-rule-severity-select"
             />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>{t(ruleType === "score_drop" ? "alertThreshold" : "alertStaleDays")}</span>
+            <InputNumber min={ruleType === "score_drop" ? 0 : 1} max={ruleType === "score_drop" ? 100 : 90}
+              value={ruleType === "score_drop" ? ruleThreshold : staleDays}
+              onChange={(value) => ruleType === "score_drop" ? setRuleThreshold(value ?? 40) : setStaleDays(value ?? 7)} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span>{t("alertCooldown")}</span>

@@ -114,7 +114,8 @@ SPLIT_MINIMUMS: dict[str, tuple[int, int, int]] = {
 }
 
 #: 月频（及任何 test 点不足 24 的频率）不做 Bootstrap / 置换，最高评 B 级
-DEGRADED_TEST_THRESHOLD = 24
+from app.services.factors.mining.statistical_tests import MIN_RESAMPLING_POINTS
+DEGRADED_TEST_THRESHOLD = MIN_RESAMPLING_POINTS
 
 #: 切分算法版本——参数变更会改变历史任务的可复现区间，必须随快照落库
 SPLIT_ALGORITHM_VERSION = "split-1.0.0"
@@ -752,7 +753,8 @@ def _stat_result_dict(stats: Any) -> dict[str, Any]:
     }
 
 
-def _stats_provider_for(db: Any, ctx: Any, train_icir: float | None = None):
+def _stats_provider_for(db: Any, ctx: Any, train_icir: float | None = None,
+                        novelty: dict[str, Any] | None = None):
     """B2：把统计层 8 方法 + 「原始/校正 ICIR」并入评估 metrics（run_evaluation 钩子）。
 
     - `train_icir`：候选 train 段 ICIR（GA 阶段 `generation_icir` 口径），
@@ -781,11 +783,14 @@ def _stats_provider_for(db: Any, ctx: Any, train_icir: float | None = None):
             return_panel=return_panel,
             n_resamples=200,
         )
-        return {
+        result = {
             "stats": _stat_result_dict(stats),
             "icir_raw": icir,
             "icir_adjusted": icir,
         }
+        if novelty is not None:
+            result.update(novelty=novelty, correlation=novelty.get("max_abs_correlation"))
+        return result
 
     return _provide
 
@@ -931,8 +936,11 @@ def evaluate_full(
     # 注入的自定义 runner（测试桩）不接 stats_provider，保持原签名兼容。
     runner_kwargs: dict[str, Any] = {}
     if runner is _default_run_evaluator:
+        from app.services.factors.mining.library_correlation import compare_active_library
+        novelty = compare_active_library(db, ctx=ctx, candidate_panel=factor_values,
+            candidate_factor_version_id=int(factor_version_id))
         runner_kwargs["stats_provider"] = _stats_provider_for(
-            db, ctx, train_icir=train_icir)
+            db, ctx, train_icir=train_icir, novelty=novelty)
     outcome = runner(db, factor_version_id=int(factor_version_id),
                      factor_values=factor_values,
                      forward_returns=forward_returns, config=config,

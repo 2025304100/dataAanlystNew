@@ -289,7 +289,7 @@ def test_policy_crud_with_selectable_channel(client):
         json={
             "name": "qa-policy",
             "enabled": True,
-            "source_types": ["system", "alert"],
+            "source_types": ["system", "score_drop"],
             "min_severity": "warn",
             "scope_type": "all",
             "delivery_mode": "instant",
@@ -301,7 +301,7 @@ def test_policy_crud_with_selectable_channel(client):
     pol = resp.json()
     assert pol["name"] == "qa-policy"
     assert pol["channel_ids"] == [cid]
-    assert json.loads(pol["source_types_json"]) == ["system", "alert"]
+    assert json.loads(pol["source_types_json"]) == ["system", "score_drop"]
     pid = pol["id"]
 
     # 列表

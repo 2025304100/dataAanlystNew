@@ -177,6 +177,12 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "impact": "请修改后重试",
         "retryable": False,
     },
+    "TRUSTED_HISTORY_INVALID": {
+        "user_message": "可信历史研究数据集校验失败，请核实原始证据及完整样本",
+        "impact": "未发布评分、启用模型或修改默认因子仓库；原有任务保留",
+        "retryable": False,
+        "next_actions": [{"label": "检查研究数据集证据", "action_type": "view_details"}],
+    },
     "UNKNOWN_ERROR": {
         "user_message": "服务暂时不可用，请稍后重试",
         "impact": "本次操作未完成",

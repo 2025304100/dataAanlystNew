@@ -35,6 +35,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { api } from "../../api/client";
 import { t } from "../../i18n";
+import { useUnsupportedFeatures } from "../settings/UnsupportedFeaturesToggle";
 import type {
   AIProfile,
   AIProfileTestResult,
@@ -46,9 +47,9 @@ const { Text } = Typography;
 
 const getProviderOptions = () => [
   { label: "OpenAI", value: "openai" },
-  { label: "Anthropic", value: "anthropic" },
-  { label: "Ollama", value: "ollama" },
-  { label: "Azure", value: "azure" },
+  { label: "Anthropic", value: "anthropic", disabled: true },
+  { label: t("aiProfileOllamaCompatible"), value: "ollama" },
+  { label: "Azure", value: "azure", disabled: true },
   { label: t("aiProviderOpenAICompatible"), value: "openai_compatible" },
 ];
 
@@ -61,10 +62,16 @@ const getAuthTypeOptions = () => [
 
 const getPurposeOptions = () => [
   { label: t("aiPurposeAll"), value: "all" },
-  { label: t("aiPurposeExplanation"), value: "explanation" },
-  { label: t("aiPurposeDraft"), value: "draft" },
+  { label: t("aiPurposeExplanation"), value: "explanation", disabled: true },
+  { label: t("aiPurposeDraft"), value: "draft", disabled: true },
   { label: t("aiPurposeChat"), value: "chat" },
+  { label: t("aiProfilePurposeMining"), value: "factor_mining_ai_generate" },
 ];
+
+function executableProfile(profile: AIProfile): boolean {
+  return ["openai", "openai_compatible"].includes(profile.provider)
+    || (profile.provider === "ollama" && /\/v1\/?$/.test(profile.base_url || ""));
+}
 
 function healthTag(status: string): { color: string; label: string } {
   switch (status) {
@@ -103,6 +110,7 @@ interface AISettingsProps {
 }
 
 export default function AISettings({ embedded = false }: AISettingsProps) {
+  const showUnsupported = useUnsupportedFeatures();
   const [profiles, setProfiles] = useState<AIProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -110,6 +118,14 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<ProfileFormValues>();
+  const selectedProvider = Form.useWatch("provider", form);
+  const selectedPurpose = Form.useWatch("purpose", form);
+  const providerOptions = getProviderOptions();
+  const purposeOptions = getPurposeOptions();
+  const unsupportedSelection = Boolean(
+    (selectedProvider && !providerOptions.some((option) => option.value === selectedProvider && !option.disabled))
+    || (selectedPurpose && !purposeOptions.some((option) => option.value === selectedPurpose && !option.disabled)),
+  );
 
   // 测试连接状态
   const [testingId, setTestingId] = useState<number | null>(null);
@@ -328,6 +344,7 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
           <Space size={4}>
             {record.is_enabled ? <Tag color="green">{t("aiEnabled")}</Tag> : <Tag>{t("aiDisabled")}</Tag>}
             {record.is_fallback && <Tag color="purple">{t("aiSettings.isFallback")}</Tag>}
+            {!executableProfile(record) && <Tag color="warning">{t("aiProfileUnsupportedProtocol")}</Tag>}
           </Space>
         </Space>
       ),
@@ -355,6 +372,7 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
           min={0}
           max={1000}
           value={priority}
+          disabled={!executableProfile(record)}
           onChange={(val) => handlePriorityChange(record.id, val ?? 0)}
           style={{ width: 70 }}
         />
@@ -402,6 +420,7 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
             size="small"
             icon={<ApiOutlined />}
             loading={testingId === record.id}
+            disabled={!executableProfile(record)}
             onClick={() => handleTest(record)}
           >
             {t("aiSettings.testConnection")}
@@ -409,6 +428,7 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
           <Button
             size="small"
             icon={<ExperimentOutlined />}
+            disabled={!executableProfile(record)}
             onClick={() => handleDiscoverModels(record)}
           >
             {t("aiSettings.discoverModels")}
@@ -559,6 +579,8 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
         width={600}
       >
         <Form form={form} layout="vertical" preserve={false}>
+          <Alert type="info" showIcon message={t("aiProfileProtocolHelp")} description={t("aiProfilePurposeHelp")} style={{ marginBottom: 16 }} />
+          {unsupportedSelection && <Alert type="warning" showIcon message={t("settingsUnsupportedReason")} style={{ marginBottom: 16 }} />}
           <Form.Item
             name="name"
             label={t("aiSettings.profileName")}
@@ -571,7 +593,7 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
             label={t("aiSettings.provider")}
             rules={[{ required: true }]}
           >
-            <Select options={getProviderOptions()} />
+            <Select options={providerOptions.filter((option) => showUnsupported || !option.disabled || option.value === selectedProvider)} />
           </Form.Item>
           <Form.Item name="base_url" label={t("aiSettings.baseUrl")}>
             <Input placeholder="https://api.openai.com/v1" />
@@ -615,7 +637,7 @@ export default function AISettings({ embedded = false }: AISettingsProps) {
               <InputNumber min={0} max={1000} />
             </Form.Item>
             <Form.Item name="purpose" label={t("aiSettings.purpose")}>
-              <Select options={getPurposeOptions()} style={{ width: 120 }} />
+              <Select options={purposeOptions.filter((option) => showUnsupported || !option.disabled || option.value === selectedPurpose)} style={{ width: 120 }} />
             </Form.Item>
           </Space>
           <Space>

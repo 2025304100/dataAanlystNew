@@ -63,6 +63,23 @@ def is_worker_stop_requested(task_id=None):
     return bool(WORKER_STOP_EVENT.is_set())
 
 
+def is_worker_running(task_id: str) -> bool:
+    """Read the in-process worker's real lifetime without waiting or stopping it.
+
+    A terminal database record does not mean a cooperative worker has exited.
+    Resource patrols must retain its write locks until its finally block runs.
+    """
+    with _WORKER_THREADS_GUARD:
+        worker = _WORKER_THREADS.get(task_id)
+        return worker is not None and worker.is_alive()
+
+
+def has_active_workers() -> bool:
+    """Include workers still exiting after their task record became terminal."""
+    with _WORKER_THREADS_GUARD:
+        return any(worker.is_alive() for worker in _WORKER_THREADS.values())
+
+
 
 def _gen_correlation_id() -> str:
     return uuid4().hex[:8]
@@ -492,14 +509,14 @@ def _set_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord:
             return task
     else:
         # 非锁定：如果原有 status 已是终态（虽 is_terminal_locked 未锁），仍按旧逻辑保护 status/stage
-        if task.status in ("done", "failed", "cancelled"):
+        if task.status in ("done", "partial", "failed", "cancelled"):
             updates = {k: v for k, v in updates.items() if k not in ("status", "stage")}
 
     for key, value in updates.items():
         setattr(task, key, value)
 
     # 自动锁终态：进入 done/failed/cancelled 即 is_terminal_locked=1，并归档 correlation_id
-    if task.status in ("done", "failed", "cancelled"):
+    if task.status in ("done", "partial", "failed", "cancelled"):
         if int(getattr(task, "is_terminal_locked", 0) or 0) != 1:
             task.is_terminal_locked = 1
         if not task.correlation_id:
@@ -566,7 +583,7 @@ def _start_worker(task_id: str, worker_func) -> None:
                 db = SessionLocal()
                 try:
                     task = db.get(AsyncTaskRecord, task_id)
-                    if task and int(getattr(task, "is_terminal_locked", 0) or 0) != 1 and task.status not in ("done", "failed", "cancelled"):
+                    if task and int(getattr(task, "is_terminal_locked", 0) or 0) != 1 and task.status not in ("done", "partial", "failed", "cancelled"):
                         code, category, title_zh = _classify_exception_code(exc)
                         msg_limited = str(exc)
                         if len(msg_limited) > 4000:
@@ -764,6 +781,44 @@ def create_async_task(
         db.close()
 
 
+def create_async_task_once(task_type: str, payload: dict, *, task_id: str,
+                           request_fingerprint: str) -> tuple[AsyncTaskRead, bool]:
+    """Create a stable request's task once, including failed/cancelled results.
+
+    The primary key arbitrates across processes. Only the inserting caller may
+    start its worker; replays never run patrols or silently requeue a terminal task.
+    """
+    if not re.fullmatch(r'[a-f0-9]{32}', task_id) or not re.fullmatch(r'[a-f0-9]{64}', request_fingerprint):
+        raise ValueError('async_task_request_identity_invalid')
+    db = _pick_session_factory(False)()
+    key = 'request:' + request_fingerprint
+    def existing_result(row):
+        if row.task_type != task_type or row.idempotency_key != key:
+            raise ValueError('async_task_request_conflict')
+        return _task_to_read(row), False
+    try:
+        with _IDEMPOTENT_CREATE_LOCK:
+            existing = db.get(AsyncTaskRecord, task_id)
+            if existing is not None:
+                return existing_result(existing)
+            row = AsyncTaskRecord(id=task_id, task_type=task_type, status='queued', stage='queued',
+                percent=0, message='Task created', payload_json=json.dumps(payload, ensure_ascii=False, default=str),
+                correlation_id=_gen_correlation_id(), idempotency_key=key, is_terminal_locked=0)
+            db.add(row)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                existing = db.get(AsyncTaskRecord, task_id)
+                if existing is None:
+                    raise
+                return existing_result(existing)
+            db.refresh(row)
+            return _task_to_read(row), True
+    finally:
+        db.close()
+
+
 def get_async_task(
     task_id: str,
     *,
@@ -853,7 +908,7 @@ def cancel_async_task(task_id: str, *, timeout_seconds: int = 60) -> AsyncTaskRe
         # 终态硬锁：不改动 status/stage
         if int(getattr(task, "is_terminal_locked", 0) or 0) == 1:
             return _task_to_read(task)
-        if task.status in ("done", "failed", "cancelled"):
+        if task.status in ("done", "partial", "failed", "cancelled"):
             return _task_to_read(task)
 
         cid = task.correlation_id or _gen_correlation_id()

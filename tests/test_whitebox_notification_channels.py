@@ -814,7 +814,7 @@ def test_channel_full_workflow_config_test_enable_selectable(db_session):
             self.text = ""
 
         def json(self):
-            return {"code": 0, "msg": "ok", "data": {"messageId": "m-1"}}
+            return {"code": 1000, "msg": "ok", "data": {"messageId": "m-1"}}
 
     class _MockClient:
         def __init__(self, **kw):

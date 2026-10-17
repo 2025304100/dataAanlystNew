@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Alert,
   Button,
+  Descriptions,
   Drawer,
   Empty,
   Input,
@@ -42,8 +43,14 @@ import { useApp } from "../context/AppContext";
 import { navigate as navigateApp, openSettingsSection } from "../utils/navigate";
 import { enumLabel, t, template } from "../i18n";
 import ChainStepsBar, { type ChainState } from "./factors/ChainStepsBar";
+import FactorModelTrainingEvidence, { FactorModelResearchWarning, isObservedResearchComparison } from "./factors/FactorModelTrainingEvidence";
+import { hydrateResearchModelPresentation, isTrustedResearchDataset, researchValidationPassed } from "../utils/factorModelResearch";
+import useFactorModelReviewEvidence, { FactorModelReviewEvidenceNotice } from "./factors/useFactorModelReviewEvidence";
 import FactorPipelineWizardNav, { type FactorPipelineWizardStep } from "./factors/FactorPipelineWizardNav";
 import FactorPipelinePrepareStep from "./factors/FactorPipelinePrepareStep";
+import ResearchRetrainModal from "./factors/ResearchRetrainModal";
+import ProductionAdmissionModal from "./factors/ProductionAdmissionModal";
+import FactorCoverageSummary from "./factors/FactorCoverageSummary";
 import "./FactorModelSettings.css";
 import {
   type RatedCell,
@@ -53,14 +60,19 @@ import {
   formatDateTime,
   rateCoverage,
   rateDataCutoff,
-  rateLatestTradeDate,
   rateModeConsistency,
-  rateSampleCount,
   rateValidationIC,
   ratedColorFg,
 } from "../utils/factorRating";
 
 const TERMINAL_TASK_STATES = new Set(["done", "completed", "failed", "cancelled"]);
+
+function readableModelReadiness(model: FactorModelRun, fallback: React.ReactNode): React.ReactNode {
+  if (researchValidationPassed(model)) return t("factorModelResearchIndependentRequired");
+  if (model.readiness_code !== "MODEL_NOT_VALIDATED") return fallback;
+  const evidence = [model.rejection_reason, model.readiness_message].filter(Boolean).join("\n");
+  return <Tooltip title={evidence || undefined}><span>{t("factorModelValidationNotPassed")}</span></Tooltip>;
+}
 
 // 流水线阶段以任务状态和已提交结果为准。
 // 每种态 4 类：wait=浅灰圆圈 / ready=绿对勾 / running=蓝色圆环旋转 / blocked=红感叹号
@@ -93,8 +105,11 @@ function pipelineOutcome(task: FactorPipelineTask): { label: string; detail: str
   if (task.status === "failed") return { label: "任务失败", detail: task.message || "请查看失败原因后重试。", color: "red", progress: "exception" };
   if (task.status === "cancelled") return { label: "已取消", detail: "本次任务已停止，请确认已有输入后再决定是否重试。", color: "default", progress: "normal" };
   if (!TERMINAL_TASK_STATES.has(task.status)) return { label: task.status === "queued" ? "已排队，等待执行" : stageLabel(task.stage), detail: task.message || "等待后台任务执行。", color: "blue", progress: "active" };
-  const model = task.result?.model as { status?: string; model_run_id?: string } | undefined;
+  const model = task.result?.model as { status?: string; model_run_id?: string; research_model_gate_status?: string } | undefined;
   const bridge = task.result?.scoring_bridge as { status?: string; materialized_count?: number } | undefined;
+  if (researchValidationPassed(model, task.result?.trusted_history_dataset)) return {
+    label: t("factorModelResearchValidatedPending"), detail: t("factorModelResearchIndependentRequired"), color: "gold", progress: "normal",
+  };
   if (task.result?.completion_status === "TRAINING_REJECTED" || model?.status === "rejected") return { label: "模型未通过验证", detail: "训练已结束，候选模型未达到验证门槛；评分未生成。请查看模型的验证结果。", color: "orange", progress: "normal" };
   if (task.result?.completion_status === "AWAITING_MODEL_ACTIVATION" || bridge?.status === "SKIPPED") return {
     label: model?.status === "validated" ? "训练验证完成，等待激活" : "输入计算完成，等待激活",
@@ -115,15 +130,16 @@ function PipelineStepsBar(props: PipelineStepsBarProps) {
   const payload = taskPayload(task);
   const trainingRequested = typeof payload.train_model === "boolean" ? payload.train_model : trainEnabled;
   const result = task?.result;
-  const model = result?.model as { status?: string } | undefined;
+  const model = result?.model as { status?: string; research_model_gate_status?: string } | undefined;
+  const researchPassed = researchValidationPassed(model, result?.trusted_history_dataset);
   const bridge = result?.scoring_bridge as { status?: string; materialized_count?: number } | undefined;
   const phase = ["mirror", "factors", "targets", "train", "score"].indexOf(task?.stage ?? "");
   const completed = task?.status === "done" || task?.status === "completed";
-  const evidence = [Boolean(result?.bar_mirror && result?.input_mirror), Boolean(result?.factors), Boolean(result?.targets), model?.status === "validated", completed && (bridge?.materialized_count ?? 0) > 0];
+  const evidence = [Boolean(result?.bar_mirror && result?.input_mirror), Boolean(result?.factors), Boolean(result?.targets), model?.status === "validated" || researchPassed, completed && (bridge?.materialized_count ?? 0) > 0];
   const statuses: PipelineStepStatus[] = evidence.map((done, index) => done ? "ready" : task?.status === "running" && phase > index ? "ready" : "wait");
   if (task?.status === "running" && phase >= 0) statuses[phase] = "running";
   if (!trainingRequested) statuses[3] = "skipped";
-  if (model?.status === "rejected") statuses[3] = "blocked";
+  if (model?.status === "rejected" && !researchPassed) statuses[3] = "blocked";
   if (bridge?.status === "SKIPPED" || bridge?.status === "PARTIAL") statuses[4] = "blocked";
   else if (payload.materialize_scores === false) statuses[4] = "skipped";
   if (task?.status === "failed") {
@@ -141,7 +157,7 @@ function PipelineStepsBar(props: PipelineStepsBarProps) {
     { idx: 1, label: "整理本地数据", hint: "把已同步行情与输入写入因子仓库", status: statuses[0], emoji: "⚡" },
     { idx: 2, label: "因子计算", hint: "对集合计算指标、缺失与标准化", status: statuses[1], emoji: "🧮" },
     { idx: 3, label: "目标生成", hint: "生成真实训练和验证收益标签", status: statuses[2], emoji: "🎯" },
-    { idx: 4, label: trainingRequested ? "训练模型" : "训练模型（跳过）", hint: "训练新候选；由本人确认激活", status: statuses[3], emoji: "🏋" },
+    { idx: 4, label: trainingRequested ? researchPassed ? t("factorModelResearchValidatedPending") : "训练模型" : "训练模型（跳过）", hint: researchPassed ? t("factorModelResearchIndependentRequired") : "训练新候选；由本人确认激活", status: statuses[3], emoji: "🏋" },
     { idx: 5, label: "生成评分", hint: "用已激活模型发布评分", status: statuses[4], emoji: "📊" },
   ];
   return (
@@ -307,9 +323,14 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   const [overview, setOverview] = useState<FactorOverview | null>(null);
   const [models, setModels] = useState<FactorModelRun[]>([]);
   const [activeTask, setActiveTask] = useState<FactorPipelineTask | null>(null);
+  const [researchRetrainId, setResearchRetrainId] = useState<string | null>(null);
+  const [productionAdmissionId, setProductionAdmissionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const activationInFlightRef = useRef(false);
+  const activationReviewRef = useRef(false);
+  const [activationReview, setActivationReview] = useState<{ modelId: string; factorSetId: string; mode: "shadow" | "ridge"; runtimeIdentity: string } | null>(null);
+  const activationEvidence = useFactorModelReviewEvidence();
   const [error, setError] = useState<string | null>(null);
   const [stateReadError, setStateReadError] = useState<string | null>(null);
   const [activationScoreError, setActivationScoreError] = useState<string | null>(null);
@@ -330,8 +351,23 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   // Task 7: 关联详情只读 Drawer 状态
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerModelId, setDrawerModelId] = useState<string | null>(null);
+  const [drawerModelDetail, setDrawerModelDetail] = useState<FactorModelRun | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerData, setDrawerData] = useState<ScoringModelRelations | null>(null);
+  const [drawerReadError, setDrawerReadError] = useState<string | null>(null);
+  const pageMounted = useRef(true);
+  const loadRequest = useRef(0);
+  const relationsRequest = useRef(0);
+  const relationsTargetId = useRef<string | null>(null);
+  useEffect(() => {
+    pageMounted.current = true;
+    return () => {
+      pageMounted.current = false;
+      relationsRequest.current += 1;
+      relationsTargetId.current = null;
+      loadRequest.current += 1;
+    };
+  }, []);
   // 任务进度追踪：已运行秒数 + 进度停滞标志（percent 30 秒未变则标记为停滞）
   const [elapsed, setElapsed] = useState(0);
   const [stalled, setStalled] = useState(false);
@@ -355,6 +391,8 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   const submittedFullRefresh = submittedPayload.full_refresh === true;
 
   const loadAll = useCallback(async (showLoading = true) => {
+    if (!pageMounted.current) return;
+    const request = ++loadRequest.current;
     if (showLoading) setLoading(true);
     setError(null);
     try {
@@ -377,10 +415,12 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         api.scoringListTasks("factor_pipeline", 5),
         factorSetLoader,
       ]);
+      const displayModels = await hydrateResearchModelPresentation<FactorModelRun>(modelData.items, (id) => api.getFactorModel(id));
+      if (!pageMounted.current || request !== loadRequest.current) return;
       setOverview((current) => current?.runtime && current.runtime.version > overviewData.runtime?.version
         ? { ...overviewData, runtime: current.runtime } : overviewData);
       setStateReadError(null);
-      setModels(modelData.items);
+      setModels(displayModels);
       if (!modeChosenRef.current && props.initialTrainModel === undefined) {
         const currentModel = modelData.items.find((model: FactorModelRun) => model.id === overviewData.runtime?.active_model_run_id);
         if (["ridge", "shadow"].includes(overviewData.runtime?.weight_mode ?? "manual") && currentModel?.production_eligible === true && currentModel.status === "validated") {
@@ -439,10 +479,11 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         }
       }
     } catch (err: any) {
+      if (!pageMounted.current || request !== loadRequest.current) return;
       setStateReadError(err.message || t("factorModelLoadFailed"));
       setError(err.message || t("factorModelLoadFailed"));
     } finally {
-      if (showLoading) setLoading(false);
+      if (pageMounted.current && request === loadRequest.current) setLoading(false);
     }
   }, []);
 
@@ -528,6 +569,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   }, [activeTask?.percent, eta, elapsed]);
 
   const averageCoverage = useMemo(() => {
+    if (typeof overview?.model_average_coverage === "number") return overview.model_average_coverage;
     if (typeof overview?.average_coverage === "number") return overview.average_coverage;
     const rows = overview?.factor_coverage ?? [];
     if (!rows.length) return null;
@@ -687,6 +729,15 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     }
   };
 
+  const requestActivation = (model: FactorModelRun, mode: "shadow" | "ridge") => {
+    if (activationUnavailable || activationInFlightRef.current || activationReviewRef.current) return;
+    if (model.production_eligible !== true || model.status !== "validated") return;
+    activationReviewRef.current = true;
+    setActivationReview({ modelId: model.id, factorSetId: String(model.hyperparameters?.factor_set_id || ""), mode, runtimeIdentity: JSON.stringify([overview?.runtime?.active_model_run_id, overview?.runtime?.weight_mode, overview?.runtime?.version]) });
+    void activationEvidence.read(model.id, drawerOpen && !drawerLoading && drawerModelDetail?.id === model.id ? drawerModelDetail : null);
+  };
+  const closeActivationReview = () => { activationReviewRef.current = false; setActivationReview(null); activationEvidence.clear(); };
+
   const activate = async (model: FactorModelRun, mode: "shadow" | "ridge") => {
     if (activationUnavailable || activationInFlightRef.current) return;
     if (model.production_eligible !== true || model.status !== "validated") {
@@ -694,15 +745,20 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       return;
     }
     activationInFlightRef.current = true;
+    let viewRequest = relationsRequest.current;
+    const isCurrentView = () => pageMounted.current && viewRequest === relationsRequest.current;
     setActing(`${mode}:${model.id}`);
     setError(null);
     setActivationScoreError(null);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
       const newRuntime = await api.scoringActivateModel(model.id, mode, `settings:${mode}`);
-      setOverview((current) => current ? { ...current, runtime: newRuntime } : current);
-      setTrainingFactorSetId(String(model.hyperparameters?.factor_set_id ?? "").trim() || null);
-      chooseWizardStep("score");
+      if (pageMounted.current) setOverview((current) => current ? { ...current, runtime: newRuntime } : current);
+      if (isCurrentView()) {
+        setTrainingFactorSetId(String(model.hyperparameters?.factor_set_id ?? "").trim() || null);
+        chooseWizardStep("score");
+        viewRequest = relationsRequest.current;
+      }
       let submittedTask: FactorPipelineTask | null = null;
       try {
         const factorSetId = String(model.hyperparameters?.factor_set_id ?? "").trim();
@@ -720,21 +776,25 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
           },
           factor_scope: { factor_set_id: factorSetId, asset_type: "stock" },
         });
-        setActiveTask(submittedTask);
-        ctx.showToast("success", `模型已激活，评分任务已提交：${submittedTask.id}，${submittedTask.status === "queued" ? "已排队，等待生成" : "正在生成评分"}。`);
+        if (isCurrentView()) {
+          setActiveTask(submittedTask);
+          ctx.showToast("success", `模型已激活，评分任务已提交：${submittedTask.id}，${submittedTask.status === "queued" ? "已排队，等待生成" : "正在生成评分"}。`);
+        }
       } catch (err: any) {
         const notice = "模型已激活，评分生成未启动：" + (err.message || String(err));
-        setActivationScoreError(notice);
-        ctx.showToast("info", notice);
+        if (isCurrentView()) {
+          setActivationScoreError(notice);
+          ctx.showToast("info", notice);
+        }
       }
       await loadAll(false);
       // The task-list endpoint may lag behind the accepted submission.
-      if (submittedTask) setActiveTask(submittedTask);
+      if (submittedTask && isCurrentView()) setActiveTask(submittedTask);
     } catch (err: any) {
-      setError(err.message || t("factorModelActionFailed"));
+      if (isCurrentView()) setError(err.message || t("factorModelActionFailed"));
     } finally {
       activationInFlightRef.current = false;
-      setActing(null);
+      if (pageMounted.current) setActing(null);
     }
   };
 
@@ -761,29 +821,47 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
 
   // Task 7: 打开关联详情只读 Drawer
   const openRelationsDrawer = async (model: FactorModelRun) => {
+    const request = ++relationsRequest.current;
+    relationsTargetId.current = model.id;
+    const isCurrent = () => pageMounted.current && request === relationsRequest.current && relationsTargetId.current === model.id;
     setDrawerModelId(model.id);
     setDrawerOpen(true);
     setDrawerLoading(true);
     setDrawerData(null);
+    setDrawerModelDetail(null);
+    setDrawerReadError(null);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
-      const data = await api.scoringGetModelRelations(model.id);
+      const [relations, detail] = await Promise.allSettled([
+        api.scoringGetModelRelations(model.id),
+        api.getFactorModel(model.id),
+      ]);
+      if (!isCurrent()) return;
+      // The scoring brief omits sample parameters. Only this exact model's
+      // full detail can supply them; it does not replace scoring eligibility.
+      if (detail.status === "fulfilled" && detail.value?.id === model.id) setDrawerModelDetail(detail.value);
+      if (relations.status === "rejected") throw relations.reason;
+      const data = relations.value;
+      if (!data || data.model_id !== model.id) throw new Error(t("factorModelRelationsTargetMismatch"));
       setDrawerData(data);
     } catch (err: any) {
-      setDrawerData({
-        model_id: model.id,
-        status: model.status,
-        factor_set_id: null,
-        factor_set_name: null,
-        n_members: null,
-        factors: [],
-        data_cutoff_at: null,
-        created_at: null,
-        unbound_reason: err?.message || "加载关联详情失败，请稍后重试。",
-      });
+      if (!isCurrent()) return;
+      setDrawerData(null);
+      setDrawerReadError(err?.message || t("factorModelLoadFailed"));
     } finally {
-      setDrawerLoading(false);
+      if (isCurrent()) setDrawerLoading(false);
     }
+  };
+
+  const closeRelationsDrawer = () => {
+    relationsRequest.current += 1;
+    relationsTargetId.current = null;
+    setDrawerOpen(false);
+    setDrawerModelId(null);
+    setDrawerModelDetail(null);
+    setDrawerData(null);
+    setDrawerReadError(null);
+    setDrawerLoading(false);
   };
 
   const runtime = overview?.runtime;
@@ -820,7 +898,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     setWizardStep(step);
     setPipelineMode(step === "train" || step === "review" ? "train" : step === "score" ? "score" : "inputs");
     if (step !== wizardStep) setPrepareInputsOpen(false);
-    setDrawerOpen(false);
+    closeRelationsDrawer();
     window.requestAnimationFrame(() => {
       wizardPageRef.current?.closest(".factor-model-settings")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
       wizardPageRef.current?.focus?.({ preventScroll: true });
@@ -838,7 +916,11 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     if (candidate) void openRelationsDrawer(candidate);
   };
   const wizardModels = associatedModels;
-  const wizardCandidate = wizardModels.find((model) => model.status === "validated" && model.production_eligible === true);
+  const runModelId = (activeTask?.result?.model as { model_run_id?: string } | undefined)?.model_run_id;
+  const runModel = submittedTrainModel && ["done", "completed"].includes(activeTask?.status || "")
+    ? models.find(model => model.id === runModelId) : undefined;
+  const selectedTrainingModel = wizardModels.find(model => model.id === runModel?.id);
+  const wizardCandidate = selectedTrainingModel?.status === "validated" && selectedTrainingModel.production_eligible === true ? selectedTrainingModel : undefined;
   const hasTrainingRecord = Boolean(workflowFactorSetId) && wizardModels.some((model) => ["validated", "rejected", "trained", "done", "completed"].includes(model.status) && (model.production_eligible === true || model.training_mode === "warehouse"));
   const wizardActiveModel = !scoringModeIssue ? activeScoringModel : undefined;
   const bridge = activeTask?.result?.scoring_bridge as { model_run_id?: string; status?: string; materialized_count?: number } | undefined;
@@ -857,16 +939,23 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   const nextReason = wizardStep === "prepare" && !preparationReady ? "确认功能和仓库可用后继续。" : wizardStep === "train" && !hasTrainingRecord ? "先完成所选集合的训练，再查看验证结果。" : wizardStep === "train" && taskRunning ? "训练正在执行，完成后再查看验证结果。" : wizardStep === "review" && !wizardActiveModel ? "先查看候选结果，并明确选择影子运行或正式启用。" : "配置与运行记录会保留，可返回上一页。";
   const drawerModel = models.find((model) => model.id === drawerModelId);
   const drawerModelEligible = drawerModel?.status === "validated" && drawerModel.production_eligible === true;
+  const drawerResearchComparison = drawerModelDetail?.id === drawerModelId && isObservedResearchComparison(drawerModelDetail?.hyperparameters);
+  const reviewModel = activationReview ? models.find(model => model.id === activationReview.modelId) : undefined;
+  const reviewStillCurrent = !!reviewModel && reviewModel.status === "validated" && reviewModel.production_eligible === true
+    && String(reviewModel.hyperparameters?.factor_set_id || "") === activationReview?.factorSetId
+    && activationReview?.runtimeIdentity === JSON.stringify([runtime?.active_model_run_id, runtime?.weight_mode, runtime?.version]);
+  const drawerEvidenceReady = drawerOpen && !drawerLoading && drawerData?.model_id === drawerModelId && !drawerData?.unbound_reason;
   const drawerTrainingSetId = drawerModel?.hyperparameters?.factor_set_id;
   const drawerSetAvailable = typeof drawerTrainingSetId === "string" && frozenFactorSets.some((set) => set.id === drawerTrainingSetId);
-  const runModelId = (activeTask?.result?.model as { model_run_id?: string } | undefined)?.model_run_id;
-  const runModel = models.find((model) => model.id === runModelId);
+  const drawerTrustedResearch = isTrustedResearchDataset(drawerModel?.hyperparameters?.trusted_history_dataset)
+    || drawerModelDetail?.id === drawerModelId && isTrustedResearchDataset(drawerModelDetail.hyperparameters?.trusted_history_dataset);
   const runPublished = Boolean(bridge?.status === "PUBLISHED" && (bridge.materialized_count ?? 0) > 0 && ["done", "completed"].includes(activeTask?.status ?? ""));
   const runCandidate = runModel?.status === "validated" && runModel.production_eligible === true ? runModel : undefined;
   const runNext = runPublished
     ? { description: "评分已发布，可查看本次任务、范围与批次。", label: "查看任务与批次", action: () => openFactorData("tasks") }
-    : runCandidate && runCandidate.id !== runtime?.active_model_run_id
-      ? { description: "本次候选模型已通过资格检查，下一步由你查看验证结果并启用。", label: "查看本次模型验证", action: () => focusModels(runCandidate) }
+    : submittedTrainModel && activeTask && TERMINAL_TASK_STATES.has(activeTask.status)
+      ? runModel ? { description: researchValidationPassed(runModel) ? t("factorModelResearchIndependentRequired") : runCandidate ? "本次候选模型已通过资格检查，下一步由你查看验证结果并启用。" : "本次候选未通过启用资格，请查看该模型的真实验证结果。", label: t("factorModelReviewCurrentCandidate"), action: () => focusModels(runModel) }
+        : { description: t("factorModelCandidateEvidenceMissing"), label: t("factorModelCheckCurrentTrainingTask"), action: () => openFactorData("tasks") }
       : activeScoringModel && activeScoringFactorSetId
         ? { description: "已有可评分的活动模型，可以检查输入后更新模型评分。", label: "配置模型评分", action: () => focusPipeline("score") }
         : submittedPayload.materialize_scores === false && !submittedTrainModel
@@ -923,9 +1012,9 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       return;
     }
     if (stepIdx === 6 || stepIdx === 7) {
+      if (!selectedTrainingModel || (stepIdx === 7 && !wizardCandidate)) { setError(t("factorModelCandidateEvidenceMissing")); return; }
       chooseWizardStep("review");
-      const candidate = associatedModels.find((model) => model.production_eligible === true) ?? associatedModels[0];
-      if (stepIdx === 6 && candidate) void openRelationsDrawer(candidate);
+      void openRelationsDrawer(selectedTrainingModel);
       return;
     }
     if (stepIdx === 8) {
@@ -958,15 +1047,15 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       key: "status",
       render: (value: string, record: FactorModelRun) => (
         <Space direction="vertical" size={2}>
-          <Tooltip title={record.rejection_reason || undefined}>
-            <Tag color={value === "validated" ? "green" : "red"}>
-              {value === "validated" ? t("factorModelValidated") : value === "rejected" ? t("factorModelRejected") : value}
+          <Tooltip title={researchValidationPassed(record) ? t("factorModelResearchIndependentRequired") : record.rejection_reason || undefined}>
+            <Tag color={researchValidationPassed(record) || value === "pending_validation" ? "gold" : value === "validated" ? "green" : "red"}>
+              {researchValidationPassed(record) ? t("factorModelResearchValidatedPending") : value === "pending_validation" ? t("productionCandidate.modelPending") : value === "validated" ? t("factorModelValidated") : value === "rejected" ? t("factorModelRejected") : value}
             </Tag>
           </Tooltip>
           {record.production_eligible !== true && <Text type="warning" style={{ fontSize: 12 }}>
-            {record.readiness_code === "MODEL_FACTOR_VERSION_MISMATCH"
+            {readableModelReadiness(record, record.readiness_code === "MODEL_FACTOR_VERSION_MISMATCH"
               ? "冻结集合与模型权重版本不一致，请重新训练。"
-              : record.readiness_message || "正式运行资格尚未通过，请查看验证详情。"}
+              : record.readiness_message || "正式运行资格尚未通过，请查看验证详情。")}
           </Text>}
         </Space>
       ),
@@ -987,18 +1076,12 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       },
     },
     {
-      title: t("factorModelSamples"),
+      title: <Tooltip title={t("factorModelSamplesHelp")}><span>{t("factorModelSamples")} <QuestionCircleOutlined /></span></Tooltip>,
       width: 120,
       dataIndex: "sample_count",
       key: "sample_count",
-      render: (_: unknown, record: FactorModelRun) => {
-        const ic = Number(record.metrics?.validation_ic);
-        const rated = rateSampleCount(
-          typeof record.sample_count === "number" ? record.sample_count : null,
-          Number.isFinite(ic) ? ic : null,
-        );
-        return ratedCell(<span>{rated.text}</span>, rated, { align: "left" });
-      },
+      render: (_: unknown, record: FactorModelRun) => typeof record.sample_count === "number" && Number.isFinite(record.sample_count)
+        ? record.sample_count.toLocaleString() : t("factorModelEvidenceNotRecorded"),
     },
     {
       title: t("factorModelFactorSet"),
@@ -1021,7 +1104,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       },
     },
     {
-      title: t("factorModelCutoff"),
+      title: <Tooltip title={t("factorModelInputAvailableAtHelp")}><span>{t("factorModelInputAvailableAt")} <QuestionCircleOutlined /></span></Tooltip>,
       width: 170,
       dataIndex: "data_cutoff_at",
       key: "data_cutoff_at",
@@ -1037,13 +1120,14 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       fixed: "right" as const,
       render: (_: unknown, record: FactorModelRun) => (
         <Space size={4} wrap>
+          {isTrustedResearchDataset(record.hyperparameters?.trusted_history_dataset) && record.feature_versions?.turnover_z20 === 3 && Object.keys(record.feature_versions).length === 1 && <Button size="small" onClick={() => setProductionAdmissionId(record.id)}>{t("productionAdmission.title")}</Button>}
           <Button
             size="small"
             icon={<EyeOutlined />}
-            disabled={activationUnavailable || record.status !== "validated" || record.production_eligible !== true}
+            disabled={activationUnavailable || !!activationReview || record.status !== "validated" || record.production_eligible !== true}
             title={record.production_eligible === true ? undefined : record.readiness_message || "正式运行资格未通过"}
             loading={acting === `shadow:${record.id}`}
-            onClick={() => activate(record, "shadow")}
+            onClick={() => requestActivation(record, "shadow")}
           >
             {t("factorModelShadow")}
           </Button>
@@ -1051,10 +1135,10 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
             size="small"
             type="primary"
             icon={<CheckCircleOutlined />}
-            disabled={activationUnavailable || record.status !== "validated" || record.production_eligible !== true}
+            disabled={activationUnavailable || !!activationReview || record.status !== "validated" || record.production_eligible !== true}
             title={record.production_eligible === true ? undefined : record.readiness_message || "正式运行资格未通过"}
             loading={acting === `ridge:${record.id}`}
-            onClick={() => activate(record, "ridge")}
+            onClick={() => requestActivation(record, "ridge")}
           >
             {t("factorModelRidge")}
           </Button>
@@ -1399,21 +1483,10 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         </div>
         <div>
           <span>{t("factorModelLatestDate")}</span>
-          <strong>
-            {(() => {
-              const rated = rateLatestTradeDate(overview?.latest_trade_date ?? null);
-              return ratedCell(<>{rated.text}</>, rated, { align: "left" });
-            })()}
-          </strong>
+          <Tooltip title={t("factorCoverageLatestRecordHelp")}><strong>{overview?.latest_trade_date || "—"}</strong></Tooltip>
         </div>
         <div>
-          <span>{t("factorModelCoverage")}</span>
-          <strong>
-            {(() => {
-              const rated = rateCoverage(averageCoverage);
-              return ratedCell(<>{rated.text}</>, rated, { align: "left" });
-            })()}
-          </strong>
+          <FactorCoverageSummary overview={overview} />
         </div>
         <div>
           <span>{t("factorModelWarehousePath")}</span>
@@ -1425,7 +1498,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
           </Tooltip>
         </div>
       </div></div></Modal>
-      <Modal open={researchStepsOpen} title="完整研发步骤" footer={null} onCancel={() => setResearchStepsOpen(false)} width={1100} destroyOnHidden><ChainStepsBar state={chainState} onGoStep={(index) => { setResearchStepsOpen(false); handleChainGoStep(index); }} /></Modal>
+      <Modal open={researchStepsOpen} title="完整研发步骤" footer={null} onCancel={() => setResearchStepsOpen(false)} width={1100} destroyOnHidden><ChainStepsBar state={chainState} disabledSteps={{ ...(!selectedTrainingModel ? { 6: t("factorModelCandidateEvidenceMissing") } : {}), ...(!wizardCandidate ? { 7: t("factorModelCandidateEvidenceMissing") } : {}) }} onGoStep={(index) => { setResearchStepsOpen(false); handleChainGoStep(index); }} /></Modal>
 
       <Modal
         open={fallbackOpen}
@@ -1443,29 +1516,60 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         />
       </Modal>
 
+      <Modal title={t("factorModelEnableReviewTitle")} open={!!activationReview} onCancel={closeActivationReview}
+        okText={t("factorModelEnableReviewConfirm")} cancelText={t("cancel")} confirmLoading={!!acting}
+        okButtonProps={{ disabled: activationUnavailable || !reviewStillCurrent || !activationEvidence.readyFor(activationReview?.modelId) }}
+        onOk={() => { if (!activationReview || !reviewStillCurrent || activationUnavailable || !reviewModel || !activationEvidence.readyFor(activationReview.modelId)) return; const mode = activationReview.mode; closeActivationReview(); void activate(reviewModel, mode); }}>
+        {activationReview && <>
+          <FactorModelReviewEvidenceNotice state={activationEvidence.state} onRetry={activationEvidence.retry} />
+          <FactorModelResearchWarning hyperparameters={activationEvidence.readyFor(activationReview.modelId) ? activationEvidence.state?.model?.hyperparameters : null} />
+          <Descriptions size="small" column={1} bordered>
+            <Descriptions.Item label={t("factorModelModelId")}>{activationReview.modelId}</Descriptions.Item>
+            <Descriptions.Item label={t("factorModelFactorSet")}>{activationReview.factorSetId || t("factorModelEnableUnbound")}</Descriptions.Item>
+            <Descriptions.Item label={t("factorModelEnableCurrentModel")}>{runtime?.active_model_run_id || t("factorModelEnableNoActive")}</Descriptions.Item>
+            <Descriptions.Item label={t("factorModelEnableCurrentMode")}>{enumLabel("factorMode", runtime?.weight_mode || "manual")}</Descriptions.Item>
+            <Descriptions.Item label={t("factorModelEnableTargetMode")}>{enumLabel("factorMode", activationReview.mode)}</Descriptions.Item>
+            <Descriptions.Item label={t("factorModelEnableEligibility")}>{reviewModel?.production_eligible === true ? t("factorModelEnableEligible") : reviewModel?.readiness_message || t("factorModelEnableNotEligible")}</Descriptions.Item>
+          </Descriptions>
+          <Alert type="warning" showIcon message={t("factorModelEnableReviewEffects")} style={{ marginTop: 12 }} />
+          {!reviewStillCurrent && <Alert type="error" showIcon message={t("factorModelEnableReviewChanged")} style={{ marginTop: 12 }} />}
+        </>}
+      </Modal>
+
+      <ResearchRetrainModal modelId={researchRetrainId} onClose={() => setResearchRetrainId(null)} onSubmitted={task => {
+        setActiveTask(task); setResearchRetrainId(null); setWizardStep("train");
+        setTrainModel(true); setMaterializeScores(false);
+      }} />
+      <ProductionAdmissionModal modelId={productionAdmissionId} onClose={() => setProductionAdmissionId(null)} />
       {/* Task 7: 只读关联详情 Drawer */}
       <Drawer
         title={drawerModelId ? `模型「${drawerModelId}」关联详情（只读）` : "模型关联详情（只读）"}
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={closeRelationsDrawer}
         width={820}
         loading={drawerLoading}
         destroyOnHidden
         data-testid="relations-drawer"
       >
+        {drawerReadError && <Alert type="error" showIcon message={t("factorModelLoadFailed")} description={drawerReadError}
+          action={drawerModel ? <Button onClick={() => void openRelationsDrawer(drawerModel)}>{t("factorModelRetryRead")}</Button> : undefined} />}
         {drawerModel && <div className="factor-model-review-summary">
-          <Alert showIcon type={drawerModelEligible ? "success" : "warning"} message={drawerModelEligible ? "模型已通过启用资格检查" : "这个模型目前不能启用"} description={drawerModelEligible ? "请结合验证指标和因子版本确认本次候选；影子运行和正式启用均由你选择。" : drawerModel.readiness_code === "MODEL_FACTOR_VERSION_MISMATCH" ? "冻结集合与模型权重版本不一致，请使用此集合重新训练。" : drawerModel.readiness_message || "正式运行资格未通过，请先查看完整验证结果。"} />
+          <Alert showIcon type={drawerModelEligible ? drawerResearchComparison ? "info" : "success" : "warning"} message={researchValidationPassed(drawerModel) ? t("factorModelResearchValidatedPending") : drawerModelEligible ? drawerResearchComparison ? t("factorModelResearchFormalGatePassed") : "模型已通过启用资格检查" : "这个模型目前不能启用"} description={drawerModelEligible ? "请结合验证指标和因子版本确认本次候选；影子运行和正式启用均由你选择。" : readableModelReadiness(drawerModel, drawerModel.readiness_code === "MODEL_FACTOR_VERSION_MISMATCH" ? "冻结集合与模型权重版本不一致，请使用此集合重新训练。" : drawerModel.readiness_message || "正式运行资格未通过，请先查看完整验证结果。")} />
           <dl className="factor-model-review-facts">
-            <div><dt>验证 IC</dt><dd>{typeof drawerModel.metrics?.validation_ic === "number" ? drawerModel.metrics.validation_ic.toFixed(4) : "暂无"}</dd></div>
-            <div><dt>训练样本</dt><dd>{typeof drawerModel.sample_count === "number" ? drawerModel.sample_count.toLocaleString() : "暂无"}</dd></div>
+            <div><dt><Tooltip title={t("factorModelValidationIcHelp")}><span>{t("factorModelValidationIc")} <QuestionCircleOutlined /></span></Tooltip></dt><dd>{typeof drawerModel.metrics?.validation_ic === "number" ? drawerModel.metrics.validation_ic.toFixed(4) : "暂无"}</dd></div>
+            <div><dt><Tooltip title={t("factorModelSamplesHelp")}><span>{t("factorModelSamples")} <QuestionCircleOutlined /></span></Tooltip></dt><dd>{typeof drawerModel.sample_count === "number" ? drawerModel.sample_count.toLocaleString() : "暂无"}</dd></div>
             <div><dt>绑定集合</dt><dd>{String(drawerModel.hyperparameters?.factor_set_id || "尚未关联")}</dd></div>
+            <div><dt>{t("factorModelSampleCutoffDate")}</dt><dd>{drawerModelDetail?.id === drawerModel.id && typeof drawerModelDetail.hyperparameters?.data_cutoff_date === "string" ? drawerModelDetail.hyperparameters.data_cutoff_date : t("factorModelSampleCutoffNotRecorded")}</dd></div>
+            <div><dt><Tooltip title={t("factorModelInputAvailableAtHelp")}><span>{t("factorModelInputAvailableAt")} <QuestionCircleOutlined /></span></Tooltip></dt><dd>{formatDateTime(drawerModel.data_cutoff_at)}</dd></div>
           </dl>
-          <p>启用模型后会自动提交评分任务，评分固定使用你确认的模型版本。影子评分用于观察；正式启用后才用于模型决策。</p>
+          <FactorModelTrainingEvidence model={drawerModelDetail?.id === drawerModel.id ? drawerModelDetail : null} />
+          <p>{researchValidationPassed(drawerModel) ? t("factorModelResearchIndependentRequired") : "启用模型后会自动提交评分任务，评分固定使用你确认的模型版本。影子评分用于观察；正式启用后才用于模型决策。"}</p>
           <div className="factor-model-review-actions">
             {drawerModelEligible ? <>
-              <Button disabled={activationUnavailable} onClick={() => { setDrawerOpen(false); void activate(drawerModel, "shadow"); }} icon={<EyeOutlined />} loading={acting === `shadow:${drawerModel.id}`}>确认影子运行</Button>
-              <Button disabled={activationUnavailable} type="primary" onClick={() => { setDrawerOpen(false); void activate(drawerModel, "ridge"); }} icon={<CheckCircleOutlined />} loading={acting === `ridge:${drawerModel.id}`}>确认正式启用</Button>
-            </> : <Button onClick={() => { setDrawerOpen(false); focusPipeline("train"); setTrainingFactorSetId(drawerSetAvailable ? drawerTrainingSetId as string : null); }}>{drawerSetAvailable ? "使用此集合配置重新训练" : "选择冻结集合重新训练"}</Button>}
+              <Button disabled={activationUnavailable || !!activationReview || !drawerEvidenceReady} onClick={() => { if (!drawerEvidenceReady) return; closeRelationsDrawer(); requestActivation(drawerModel, "shadow"); }} icon={<EyeOutlined />} loading={acting === `shadow:${drawerModel.id}`}>确认影子运行</Button>
+              <Button disabled={activationUnavailable || !!activationReview || !drawerEvidenceReady} type="primary" onClick={() => { if (!drawerEvidenceReady) return; closeRelationsDrawer(); requestActivation(drawerModel, "ridge"); }} icon={<CheckCircleOutlined />} loading={acting === `ridge:${drawerModel.id}`}>确认正式启用</Button>
+            </> : drawerTrustedResearch ? <Button onClick={() => { setResearchRetrainId(drawerModel.id); closeRelationsDrawer(); }}>{t("factorResearchRetrainTitle")}</Button> : <Button onClick={() => { closeRelationsDrawer(); focusPipeline("train"); setTrainingFactorSetId(drawerSetAvailable ? drawerTrainingSetId as string : null); }}>{drawerSetAvailable ? "使用此集合配置重新训练" : "选择冻结集合重新训练"}</Button>}
+            {drawerTrustedResearch && drawerModel.feature_versions?.turnover_z20 === 3 && Object.keys(drawerModel.feature_versions).length === 1 && <Button onClick={() => {setProductionAdmissionId(drawerModel.id); closeRelationsDrawer();}}>{t("productionAdmission.title")}</Button>}
             <Button type="link" onClick={() => navigateApp(`/factors?model_id=${encodeURIComponent(drawerModel.id)}`)}>完整验证详情</Button>
           </div>
         </div>}
@@ -1498,32 +1602,32 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
             locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关联因子" /> }}
             data-testid="relations-details-table"
             columns={[
-              { title: "factor_code", dataIndex: "factor_code", key: "factor_code", width: 150 },
-              { title: "factor_version_id", dataIndex: "factor_version_id", key: "factor_version_id", width: 150,
+              { title: t("factorModelFactorCode"), dataIndex: "factor_code", key: "factor_code", width: 150 },
+              { title: t("factorModelFactorVersionId"), dataIndex: "factor_version_id", key: "factor_version_id", width: 150,
                 render: (v: unknown) => {
                   if (v == null) return <span className="na-cell" style={{ color: "#94a3b8", fontStyle: "italic" }}>N/A</span>;
                   return String(v);
                 },
               },
-              { title: "coef_raw", dataIndex: "coef_raw", key: "coef_raw", width: 110, align: "right",
+              { title: <Tooltip title={t("factorModelCoefficientHelp")}><span>{t("factorModelCoefficient")} <QuestionCircleOutlined /></span></Tooltip>, dataIndex: "coef_raw", key: "coef_raw", width: 110, align: "right",
                 render: (v: unknown) => {
                   if (v == null || Number.isNaN(Number(v))) return <span className="na-cell" data-testid="na-coef_raw" style={{ color: "#94a3b8", fontStyle: "italic" }}>N/A</span>;
                   return Number(v).toFixed(6);
                 },
               },
-              { title: "weight_norm", dataIndex: "weight_norm", key: "weight_norm", width: 110, align: "right",
+              { title: <Tooltip title={t("factorModelNormalizedWeightHelp")}><span>{t("factorModelNormalizedWeight")} <QuestionCircleOutlined /></span></Tooltip>, dataIndex: "weight_norm", key: "weight_norm", width: 110, align: "right",
                 render: (v: unknown) => {
                   if (v == null || Number.isNaN(Number(v))) return <span className="na-cell" style={{ color: "#94a3b8", fontStyle: "italic" }}>N/A</span>;
                   return Number(v).toFixed(6);
                 },
               },
-              { title: "validation_ic", dataIndex: "validation_ic", key: "validation_ic", width: 120, align: "right",
+              { title: <Tooltip title={t("factorModelFactorValidationIcHelp")}><span>{t("factorModelFactorValidationIc")} <QuestionCircleOutlined /></span></Tooltip>, dataIndex: "validation_ic", key: "validation_ic", width: 120, align: "right",
                 render: (v: unknown) => {
                   if (v == null || Number.isNaN(Number(v))) return <span className="na-cell" data-testid="na-validation_ic" style={{ color: "#94a3b8", fontStyle: "italic" }}>N/A</span>;
                   return Number(v).toFixed(4);
                 },
               },
-              { title: "coverage", dataIndex: "coverage", key: "coverage", width: 100, align: "right",
+              { title: <Tooltip title={t("factorModelTrainingCoverageHelp")}><span>{t("factorModelTrainingCoverage")} <QuestionCircleOutlined /></span></Tooltip>, dataIndex: "coverage", key: "coverage", width: 100, align: "right",
                 render: (v: unknown) => {
                   if (v == null || Number.isNaN(Number(v))) return <span className="na-cell" style={{ color: "#94a3b8", fontStyle: "italic" }}>N/A</span>;
                   return `${(Number(v) * 100).toFixed(1)}%`;

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { mockApi } = vi.hoisted(() => ({
@@ -79,5 +79,36 @@ describe("AiConfigSection persistence controls", () => {
         auth_type: "bearer",
       }),
     );
+  });
+
+  it("shows the saved configuration's verified connection status after reopening", async () => {
+    mockApi.getAiConfig.mockResolvedValueOnce({ service_url: "https://offline.example/v1", api_key: "****", model: "verified", enabled: true, auth_type: "bearer", persisted: true, connection_test: { status: "passed", tested_at: "2026-10-15T07:00:00Z" } });
+    render(<AiConfigSection />);
+    expect(await screen.findByText("aiConnectionTestPassed")).toBeInTheDocument();
+  });
+
+  it("clears verified status as soon as the displayed configuration changes", async () => {
+    mockApi.getAiConfig.mockResolvedValueOnce({ service_url: "https://offline.example/v1", api_key: "", model: "verified", enabled: true, auth_type: "none", persisted: true, connection_test: { status: "passed", tested_at: "2026-10-15T07:00:00Z" } });
+    render(<AiConfigSection />);
+    await screen.findByText("aiConnectionTestPassed");
+    fireEvent.change(screen.getByRole("combobox", { name: /aiModel/ }), { target: { value: "changed-model" } });
+    expect(screen.queryByText("aiConnectionTestPassed")).not.toBeInTheDocument();
+    expect(screen.getByText("aiConnectionTestChanged")).toBeInTheDocument();
+  });
+
+  it("does not show a late success for a model edited while its connection test was running", async () => {
+    mockApi.getAiConfig.mockResolvedValueOnce({ service_url: "https://offline.example/v1", api_key: "", model: "model-A", enabled: true, auth_type: "none", persisted: true });
+    let resolveTest!: (value: unknown) => void;
+    mockApi.testAiConnection.mockReturnValueOnce(new Promise((resolve) => { resolveTest = resolve; }));
+    render(<AiConfigSection />);
+    const model = await screen.findByRole("combobox", { name: /aiModel/ });
+    await waitFor(() => expect(model).toHaveValue("model-A"));
+    const testButton = screen.getByRole("button", { name: /aiTestConn/ });
+    await waitFor(() => expect(testButton).toBeEnabled());
+    fireEvent.click(testButton);
+    fireEvent.change(model, { target: { value: "model-B" } });
+    await act(async () => resolveTest({ success: true, message: "STALE_OK", connection_test: { status: "passed", tested_at: "2026-10-15T07:00:00Z" } }));
+    expect(screen.queryByText("STALE_OK")).not.toBeInTheDocument();
+    expect(screen.getByText("aiConnectionTestChanged")).toBeInTheDocument();
   });
 });

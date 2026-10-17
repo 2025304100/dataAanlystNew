@@ -32,6 +32,7 @@ const { mockApi, showToast, mockNavigate } = vi.hoisted(() => ({
     // (...args: any[]) => any so the mock's procedure normalizer doesn't reject a
     // narrower concrete implementation bound later via mockImplementation.
     scoringGetModelRelations: vi.fn(async (..._args: any[]): Promise<any> => null as any),
+    getFactorModel: vi.fn(async (id: string) => ({ id, hyperparameters: {} })),
   },
   showToast: vi.fn(), mockNavigate: vi.fn() as (u: string) => void,
 }));
@@ -97,7 +98,7 @@ it("TR-7.2 Drawer 6 列渲染 + coef_raw=null 显示 N/A 不出现 0 占位", as
   fireEvent.click(screen.getByTestId("view-relations-m72"));
   await waitFor(() => screen.getByTestId("relations-details-table"));
   const tbl = screen.getByTestId("relations-details-table");
-  ["factor_code","factor_version_id","coef_raw","weight_norm","validation_ic","coverage"].forEach(h => expect(tbl.textContent).toContain(h));
+  ["因子代码", "因子版本 ID", "系数", "归一化权重", "单因子验证 IC", "训练覆盖率"].forEach(h => expect(tbl.textContent).toContain(h));
   // ≥5 个 N/A（roe coef=null + momentum 4 个 null），绝不用 0 占位
   expect(screen.queryAllByText("N/A").length).toBeGreaterThanOrEqual(5);
   const exactlyZero = tbl.innerHTML.match(/>\s*0(?:\.0+)?\s*<\//g) ?? [];

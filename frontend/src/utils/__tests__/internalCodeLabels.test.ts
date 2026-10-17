@@ -65,6 +65,22 @@ describe("taskTypeLabel", () => {
     expect(label).toBe("外部数据同步");
   });
 
+  it("外部同步按真实数据集显示名称，估值不会显示成财报", () => {
+    const labels = {
+      fundamental: "同步股票估值",
+      financial: "同步财报历史",
+      lhb: "同步龙虎榜机构",
+      hot_rank: "同步今日人气榜",
+      tail_proxy: "同步候选尾盘代理",
+      capital_flow: "同步资金流",
+      etf: "同步 ETF 指标",
+    };
+    for (const [dataset, expected] of Object.entries(labels)) {
+      expect(taskTypeLabel(`external_sync_${dataset}`)).toBe(expected);
+      expect(taskTypeCodeForTooltip(`external_sync_${dataset}`)).toBeNull();
+    }
+  });
+
   it("未知类型显示为通用名称，原 code 只进 tooltip", () => {
     expect(taskTypeLabel("some_brand_new_type")).toBe("其他任务");
     expect(taskTypeLabel("")).toBe("其他任务");

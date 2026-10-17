@@ -117,7 +117,7 @@ def list_factors(
     向后兼容：不传任何参数时返回全部因子（仍用新分页结构）。
     """
     from app.schemas.factor_library import FactorRead
-    from app.services.factors.factor_registry import list_factors as _list_factors
+    from app.services.factors.factor_registry import list_factors as _list_factors, factor_definition_rows
 
     no_params = (
         lifecycle_status is None
@@ -144,9 +144,7 @@ def list_factors(
         )
 
     return {
-        'items': [
-            FactorRead.model_validate(row).model_dump(mode='json') for row in items
-        ],
+        'items': factor_definition_rows(db, items),
         'total': total,
         'page': page,
         'page_size': page_size,
@@ -170,12 +168,14 @@ def list_factor_versions(
     ).scalars().all()
     return [
         {
+            **FactorVersionRead.model_validate(item).model_dump(mode='json'),
             'factor_code': factor.code,
             'version': item.version,
             'formula_expr': item.formula_expr,
             'params': json.loads(item.params_json or '{}'),
             'direction': item.direction,
             'source_mapping': json.loads(item.source_mapping_json or '{}'),
+            'postprocess': FactorVersionRead.model_validate(item).postprocess,
             'effective_from': item.effective_from,
             'change_note': item.change_note,
             'is_latest': bool(item.is_latest),

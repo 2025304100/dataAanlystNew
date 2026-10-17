@@ -30,11 +30,13 @@ from app.services.market_data_sources.sources._normalize import (
     cn_prefixed_symbol,
     normalize_cn_em_history,
     normalize_cn_etf_sina_history,
-    normalize_cn_stock_sina_history,
+    normalize_cn_stock_em_history,
     normalize_cn_stock_tx_history,
     normalize_us_history,
 )
 from app.services.market_data_sources.sources.base import HistorySource, SourceUnavailable
+from app.services.market_data_sources.sources.tencent_history import fetch_tencent_history_raw
+from app.services.market_data_sources.sources.sina_history_http import fetch_sina_history_raw
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ class EMStockSource:
                 api_key="stock_zh_a_hist",
                 max_attempts=2,
             )
-            return normalize_cn_em_history(frame)
+            return normalize_cn_stock_em_history(frame)
         except Exception as e:
             raise SourceUnavailable(f"em_stock failed for {symbol.symbol}: {e}") from e
 
@@ -123,8 +125,8 @@ class SinaStockSource:
 
     def fetch(self, symbol, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
         try:
-            frame = call_akshare_with_retry(
-                ak.stock_zh_a_daily,
+            return call_akshare_with_retry(
+                fetch_sina_history_raw,
                 symbol=cn_prefixed_symbol(symbol),
                 start_date=_format_date(start_date),
                 end_date=_format_date(end_date),
@@ -132,7 +134,6 @@ class SinaStockSource:
                 api_key="stock_zh_a_daily",
                 max_attempts=2,
             )
-            return normalize_cn_stock_sina_history(frame, start_date=start_date, end_date=end_date)
         except Exception as e:
             raise SourceUnavailable(f"sina_stock failed for {symbol.symbol}: {e}") from e
 
@@ -164,7 +165,7 @@ class SinaETFSource:
 
 
 class TxStockSource:
-    """腾讯 A 股(stock_zh_a_hist_tx)。
+    """腾讯 A 股 daily-K；严格使用原始响应的目标复权键。
 
     腾讯源不支持北交所(BJ)股票,内部解析返回空列表导致 IndexError。
     920 开头是北交所代码(即使 market 字段标记为 sh),需要排除。
@@ -191,7 +192,7 @@ class TxStockSource:
     def fetch(self, symbol, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
         try:
             frame = call_akshare_with_retry(
-                ak.stock_zh_a_hist_tx,
+                fetch_tencent_history_raw,
                 symbol=cn_prefixed_symbol(symbol),
                 start_date=_format_date(start_date),
                 end_date=_format_date(end_date),

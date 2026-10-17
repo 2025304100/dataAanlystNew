@@ -59,6 +59,12 @@ TASK_HEARTBEAT_SECONDS = 15.0
 
 StageRunner = Callable[[Any], dict[str, Any]]
 
+# Explicitly injected runners belong to the submitted task, not to whichever
+# writer happens to release the slot (which may be a mirror).
+_submitted_stage_runners: dict[str, StageRunner] = {}
+_submitted_runner_guard = threading.Lock()
+_dispatch_guard = threading.Lock()
+
 
 # ══════════════════════════════════════════════════════════
 # 结果与上下文
@@ -224,6 +230,9 @@ def submit_mining_run(
 
     # ② 创建异步任务（只写 DB，不启线程 —— 任务卡点名的大坑）
     task = create_async_task(TASK_TYPE, dict(payload or {}), use_control_plane=True)
+    if stage_runner is not None:
+        with _submitted_runner_guard:
+            _submitted_stage_runners[task.id] = stage_runner
 
     # ③ mining_domain：peek 后仍可能被并发提交抢走 → 竞态兜底
     from app.db.session import get_session_local
@@ -243,13 +252,17 @@ def submit_mining_run(
             raise
         # ④ duckdb_write：空闲即持有（position=0），被占则排队
         _handle, position = TL.acquire_write_slot(db, task_id=task.id, run_id=run_id)
+    except Exception:
+        with _submitted_runner_guard:
+            _submitted_stage_runners.pop(task.id, None)
+        raise
     finally:
         db.close()
 
     # ⑤ 只有持锁者启动 worker；排队者等持有者释放时被拉起
     started = position == 0
     if started:
-        _start_worker(task.id, _make_worker(stage_runner))
+        wake_promoted_mining_task(task.id, stage_runner=stage_runner)
 
     return MiningSubmitResult(
         task_id=task.id,
@@ -405,7 +418,7 @@ def _sync_run_terminal(run_id: str, status: str, *, error_code: str | None = Non
     try:
         run = load_run(db, run_id)
         # Human pause/early-stop and a completed test stage are not overwritten by task cleanup.
-        if run is not None and run.status not in ("succeeded", "paused", "converged", "cancelled"):
+        if run is not None and run.status not in ("succeeded", "failed", "paused", "converged", "cancelled"):
             run.status = status
             if error_code and not run.error_code:
                 run.error_code = error_code
@@ -428,6 +441,7 @@ def _resolve_selection_mode(evo: Mapping[str, Any]) -> str:
     """推导 GA 选择路径（P0：让前端已提交的 M2 配置真实生效）。
 
     - 显式 `selection_mode`（"naive"/"advanced"）优先 —— 回退与复现基准；
+    - 显式跨赛道比例（包括 0）选择 `advanced`，None/缺失不改变默认路径；
     - 否则出现任一 M2 配置键且为真值（前端 Step4 默认提交 `adaptive: true`）
       → `advanced`（A1/B1/B2 + C1-C3 + D1-D3 全链路）；
     - 完全不带 M2 键的提交（API 脚本/既有测试）→ `naive`（M1 行为不变）。
@@ -435,6 +449,8 @@ def _resolve_selection_mode(evo: Mapping[str, Any]) -> str:
     explicit = str(evo.get("selection_mode") or "").strip().lower()
     if explicit in ("naive", "advanced"):
         return explicit
+    if evo.get("cross_category_ratio") is not None:
+        return "advanced"
     m2_keys = ("adaptive", "tournament_k", "objectives",
                "cross_category_ratio", "mutation_ops_enabled")
     if any(k in evo and evo.get(k) for k in m2_keys):
@@ -598,8 +614,8 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         subexpr_cache as SC,
     )
     from app.services.factors.mining.contracts import MiningContext
-    from app.services.factors.label_batch import resolve_label_batch
-    from app.services.factors.store import FactorWarehouse
+    from app.services.factors.target_engine import calculate_targets
+    from app.services.factors.store import FactorWarehouse, SHARED_TARGET_BATCH_ID
     from app.db.session import get_session_local
 
     db = get_session_local()()
@@ -633,31 +649,26 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         db.expunge(run)
         db.rollback()
 
-        # ① 目标标签：读常驻标签库，缺哪段就地补写回同一批次。
-        # 不再按 run 抄一份全窗口快照（VIZ-0930-27：实测 19 份逐字节同一的副本）；
-        # 窗口够不够由覆盖 gate 判定，不够直接失败并给出真实缺口，而不是静默用短面板。
+        # ① 与只读预检使用同一纯标签构造，只生成冻结池；同共享批次按键
+        # upsert，不创建 run 副本，也不要求或补写无关的全市场标签。
         wh = FactorWarehouse(str(
             payload.get("warehouse_path") or Settings().factor_warehouse_path))
         cutoff = EVA._as_date(run.data_cutoff_at)
-        resolved = resolve_label_batch(
-            wh,
-            start_date=run.start_date.date(),
-            end_date=run.end_date.date(),
-            as_of_exit_date=cutoff,
-            target_code=target_code, allow_horizon_backfill=True,
-        )
-        calc_batch = resolved.batch_id
+        calc_batch = (SHARED_TARGET_BATCH_ID if horizon == 5 else
+            f"{SHARED_TARGET_BATCH_ID}:{target_code}")
+        calculated = calculate_targets(wh, start_date=run.start_date.date(),
+            end_date=run.end_date.date(), calc_batch_id=calc_batch,
+            target_horizon=horizon, symbols=candidate_symbols)
         logger.info(
-            "mining labels run=%s batch=%s backfilled=%s rows=%s usable_end=%s",
-            ctx.run_id, calc_batch, resolved.backfilled,
-            resolved.rows_written, resolved.usable_end,
+            "mining labels run=%s batch=%s rows=%s symbols=%s",
+            ctx.run_id, calc_batch, calculated.rows_written, len(candidate_symbols),
         )
 
         # ② MiningContext（切分走归一化入口；候选池过滤留 A5）
         target_df, _bid, _tcode = wh.get_target_panel(
             calc_batch, target_code,
             start_date=run.start_date.date(),
-            end_date=resolved.usable_end,
+            end_date=run.end_date.date(),
             as_of_exit_date=cutoff,
         )
         target_df = target_df.loc[target_df["symbol"].isin(candidate_symbols)]
@@ -781,12 +792,14 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         # 进入前结束任何悬空事务（初始种群/AI 层可能已开隐式事务），
         # 确保评估阶段不持有 MySQL 连接（防 wait_timeout 2006）。
         db.rollback()
+        from app.services.factors.mining.evolution_config import validated_evolution_rates
+        fixed_rates = validated_evolution_rates(evo)
         ga_cfg = GA.GAConfig(
             population_size=pop_size, max_generations=max_gen,
             selection_ratio=max(0.05, float(evo.get("selection_ratio", 0.3) or 0.3)),
-            mutation_rate=float(evo.get("mutation_rate", 0.55) or 0.55),
-            crossover_rate=float(evo.get("crossover_rate", 0.25) or 0.25),
-            random_rate=float(evo.get("random_rate", 0.20) or 0.20),
+            mutation_rate=fixed_rates["mutation_rate"],
+            crossover_rate=fixed_rates["crossover_rate"],
+            random_rate=fixed_rates["random_rate"],
             convergence_threshold=float(evo.get("convergence_threshold", 1e-3) or 1e-3),
             convergence_generations=int(evo.get("convergence_generations", 2) or 2),
             seed=int(evo.get("random_seed", run.random_seed if run.random_seed is not None else 42)),
@@ -796,7 +809,8 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
                         if evo.get("objectives") else None),
             tournament_k=int(evo.get("tournament_k", 3) or 3),
             adaptive=bool(evo.get("adaptive")),
-            cross_category_ratio=float(evo.get("cross_category_ratio", 0.2) or 0.2),
+            cross_category_ratio=float(evo["cross_category_ratio"]
+                                       if evo.get("cross_category_ratio") is not None else 0.2),
             mutation_ops_enabled=(
                 tuple(str(k) for k in evo["mutation_ops_enabled"])
                 if evo.get("mutation_ops_enabled") else None),
@@ -1008,8 +1022,8 @@ def _start_heartbeat_pump(task_id: str) -> tuple[threading.Event, threading.Thre
 def _release_all_locks(task_id: str, *, resume_runner: StageRunner | None = None) -> str | None:
     """释放双锁；`duckdb_write` 拉起队首并**唤醒**它（启动其 worker）。
 
-    被拉起的任务沿用 `resume_runner`（缺省 = 真实阶段链）：同批提交注入的
-    runner 会透传到队首任务（测试注入骨架/自定义时保持语义一致）。
+    被拉起的任务优先使用它自己提交时的阶段 runner；`resume_runner` 只供旧的
+    直接排队调用方兜底（缺省为真实阶段链）。
     """
     from app.db.session import get_session_local
 
@@ -1018,17 +1032,43 @@ def _release_all_locks(task_id: str, *, resume_runner: StageRunner | None = None
     try:
         status = TL.get_lock_status(db)
         if status.duckdb_write.get("taskId") == task_id:
-            next_task_id = TL.release_lock(
-                db, lock_key=TL.LOCK_DUCKDB_WRITE, task_id=task_id
+            next_task_id = TL.release_lock_and_wake(
+                db, lock_key=TL.LOCK_DUCKDB_WRITE, task_id=task_id,
+                stage_runner=resume_runner,
             )
         if status.mining_domain.get("taskId") == task_id:
             TL.release_lock(db, lock_key=TL.LOCK_MINING_DOMAIN, task_id=task_id)
     finally:
         db.close()
-    if next_task_id:
-        logger.info("mining task %s finished; promoted %s", task_id, next_task_id)
-        _start_worker(next_task_id, _make_worker(resume_runner))
+        with _submitted_runner_guard:
+            _submitted_stage_runners.pop(task_id, None)
     return next_task_id
+
+
+def wake_promoted_mining_task(
+    task_id: str, *, stage_runner: StageRunner | None = None,
+) -> bool:
+    """Start a queued mining task only when it actually owns the writer slot."""
+    from app.db.session import get_session_local
+    from app.services.async_tasks import is_worker_running
+
+    with _dispatch_guard:
+        # The worker may exist before its queued->running transaction commits.
+        # Serialize recovery/normal dispatch and check the real registry first.
+        if is_worker_running(task_id):
+            return False
+        db = get_session_local()()
+        try:
+            task = db.get(AsyncTaskRecord, task_id)
+            if (task is None or task.task_type != TASK_TYPE or task.status != "queued"
+                    or not _verify_holds_write(db, task_id)):
+                return False
+        finally:
+            db.close()
+        with _submitted_runner_guard:
+            runner = _submitted_stage_runners.get(task_id, stage_runner)
+        _start_worker(task_id, _make_worker(runner))
+        return True
 
 
 def _verify_holds_write(db: Any, task_id: str) -> bool:
@@ -1060,8 +1100,7 @@ def resume_pending_mining_tasks(
             )
         ).scalars().all()
         for task in rows:
-            if _verify_holds_write(db, task.id):
-                _start_worker(task.id, _make_worker(stage_runner))
+            if wake_promoted_mining_task(task.id, stage_runner=stage_runner):
                 resumed.append(task.id)
     finally:
         db.close()
@@ -1091,4 +1130,5 @@ __all__ = [
     "heartbeat_mining",
     "touch_run_progress",
     "resume_pending_mining_tasks",
+    "wake_promoted_mining_task",
 ]

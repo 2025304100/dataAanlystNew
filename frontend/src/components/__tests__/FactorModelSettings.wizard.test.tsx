@@ -9,7 +9,7 @@ const { mockApi, showToast } = vi.hoisted(() => ({
     scoringListTasks: vi.fn(), scoringGetTask: vi.fn(), scoringGetPipelineEta: vi.fn(),
     scoringCreateTask: vi.fn(), scoringActivateModel: vi.fn(), scoringCancelTask: vi.fn(),
     scoringUpdateSystemConfig: vi.fn(), scoringInitializeWarehouse: vi.fn(),
-    scoringFallbackToManual: vi.fn(), scoringGetModelRelations: vi.fn(),
+    scoringFallbackToManual: vi.fn(), scoringGetModelRelations: vi.fn(), getFactorModel: vi.fn(),
   },
 }));
 
@@ -48,6 +48,12 @@ async function chooseSet() {
   fireEvent.click(await screen.findByText("价值集合（2 因子）"));
   await screen.findByText("集合训练资格已确认");
 }
+async function confirmModelActivation() {
+  const review = await screen.findByRole("dialog", { name: "确认启用模型" });
+  const confirm = within(review).getByRole("button", { name: "确认启用并生成评分" });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  fireEvent.click(confirm);
+}
 function onlyPage(name: "prepare" | "train" | "review" | "score") {
   for (const page of ["prepare", "train", "review", "score"]) {
     if (page === name) expect(screen.getByTestId(`wizard-page-${page}`)).toBeInTheDocument();
@@ -58,6 +64,7 @@ function onlyPage(name: "prepare" | "train" | "review" | "score") {
 describe("FactorModelSettings — one operation page per wizard step", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockApi.getFactorModel.mockImplementation(async (id: string) => ({ id, hyperparameters: {} }));
     window.localStorage.clear();
     mockApi.scoringGetOverviewAsFactor.mockResolvedValue(overview);
     mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [] });
@@ -91,6 +98,47 @@ describe("FactorModelSettings — one operation page per wizard step", () => {
     expect(screen.getByRole("button", { name: /第 2 步：训练模型/ })).toHaveAttribute("aria-current", "step");
     expect(screen.queryByRole("region", { name: "本次评分配置" })).not.toBeInTheDocument();
     expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
+  it("reviews the exact requested model and its runtime change before any activation or scoring write", async () => {
+    const model = candidate("new-turnover-model");
+    mockApi.scoringGetOverviewAsFactor.mockResolvedValue({ ...overview, runtime: { weight_mode: "shadow", score_weight_mode: "manual", active_model_run_id: "currently-active-model", version: 4 } });
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [model] });
+    mockApi.scoringActivateModel.mockResolvedValue({ weight_mode: "ridge", active_model_run_id: model.id, version: 5 });
+    render(<FactorModelSettings />);
+    await goPage(3);
+    const row = (await screen.findByText(model.id)).closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: /正式启用/ }));
+
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+    const review = await screen.findByRole("dialog", { name: "确认启用模型" });
+    await waitFor(() => expect(within(review).getByText(model.id)).toBeVisible());
+    expect(within(review).getByText("fs-B")).toBeVisible();
+    expect(within(review).getByText("currently-active-model")).toBeVisible();
+    expect(within(review).getByText(/启用后会自动提交评分任务/)).toBeVisible();
+    expect(within(review).getByText("已通过启用资格检查")).toBeVisible();
+    fireEvent.click(within(review).getByRole("button", { name: /取\s*消/ }));
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole("button", { name: /正式启用/ }));
+    const confirmation = await screen.findByRole("dialog", { name: "确认启用模型" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "确认启用并生成评分" }));
+    await waitFor(() => expect(mockApi.scoringActivateModel).toHaveBeenCalledWith(model.id, "ridge", "settings:ridge"));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ hyperparameters: expect.objectContaining({ expected_model_run_id: model.id }) })));
+  });
+
+  it("opens this training's rejected candidate for review instead of a prior eligible model", async () => {
+    const rejected = { ...candidate("new-rejected"), status: "rejected", production_eligible: false, readiness_message: "本次验证未通过" };
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [candidate("older-eligible"), rejected] });
+    mockApi.scoringListTasks.mockResolvedValue([{ id: "new-training", status: "done", stage: "done", percent: 100, payload_json: { train_model: true, materialize_scores: false, factor_set_id: "fs-B" }, result: { completion_status: "TRAINING_REJECTED", model: { model_run_id: rejected.id, status: "rejected" } } }]);
+    render(<FactorModelSettings />);
+    await goPage(2);
+    fireEvent.click(await screen.findByRole("button", { name: "查看本次模型验证" }));
+    await waitFor(() => expect(mockApi.scoringGetModelRelations).toHaveBeenCalledWith(rejected.id));
+    const drawer = await screen.findByTestId("relations-drawer");
+    expect(within(drawer).getByText("本次验证未通过")).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: /确认正式启用/ })).not.toBeInTheDocument();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
   });
 
   it("preserves the selected collection and both windows when using previous and next", async () => {
@@ -166,6 +214,8 @@ describe("FactorModelSettings — one operation page per wizard step", () => {
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /正式启用/ }));
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    await confirmModelActivation();
     await waitFor(() => expect(mockApi.scoringActivateModel).toHaveBeenCalledWith(trainedModel.id, "ridge", "settings:ridge"));
   }, 15000);
 
@@ -283,6 +333,11 @@ describe("FactorModelSettings — one operation page per wizard step", () => {
       fireEvent.click(second);
       fireEvent.click(first);
     });
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    const review = await screen.findByRole("dialog", { name: "确认启用模型" });
+    expect(within(review).getByText(modelB.id)).toBeInTheDocument();
+    expect(within(review).queryByText(modelC.id)).not.toBeInTheDocument();
+    await confirmModelActivation();
     expect(mockApi.scoringActivateModel).toHaveBeenCalledTimes(1);
     expect(mockApi.scoringActivateModel).toHaveBeenCalledWith(modelB.id, "ridge", "settings:ridge");
     expect(second).toBeDisabled();

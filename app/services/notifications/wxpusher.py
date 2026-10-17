@@ -9,9 +9,7 @@ WxPusher 是基于微信公众号的推送服务，通过 HTTP API 向指定用�
 - content_type：内容类型（默认 1=文本，可选 2=html、3=markdown）
 - timeout：超时秒数（可选，默认 10）
 
-API：https://wxpusher.zjiecloud.com/api/send/message
-（实际为 https://wxpusher.zjiecloud.com/api/send/message，
-官方文档根域名为 wxpusher.zjiecode.com，下面使用 zjiecloud.com）
+API：https://wxpusher.zjiecode.com/api/send/message（成功 code=1000）
 
 project_memory 硬约束：
 - 超时默认 10 秒，最大 60 秒
@@ -28,7 +26,8 @@ import httpx
 from app.services.notifications.base import ChannelAdapter, SendResult
 from app.utils.secret_mask import mask_token
 
-WXPUSHER_API_URL = "https://wxpusher.zjiecloud.com/api/send/message"
+# Provider contract: https://wxpusher.zjiecode.com/docs/api-reference.html
+WXPUSHER_API_URL = "https://wxpusher.zjiecode.com/api/send/message"
 
 
 class WxPusherAdapter(ChannelAdapter):
@@ -128,7 +127,7 @@ class WxPusherAdapter(ChannelAdapter):
             # 同步调用，超时由 httpx 控制；不建立永久线程
             with httpx.Client(timeout=timeout) as client:
                 resp = client.post(WXPUSHER_API_URL, json=request_body)
-            # WxPusher HTTP 200 且 code=0 表示成功
+            # WxPusher accepts a send task with business code 1000.
             status_code = resp.status_code
             try:
                 resp_data = resp.json()
@@ -137,7 +136,7 @@ class WxPusherAdapter(ChannelAdapter):
             ok = (
                 status_code == 200
                 and isinstance(resp_data, dict)
-                and resp_data.get("code") == 0
+                and resp_data.get("code") == 1000
             )
             # 响应摘要脱敏：移除可能的 token 字段
             safe_summary = self._safe_response_summary(resp_data)

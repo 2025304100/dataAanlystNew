@@ -168,6 +168,9 @@ def mark_sent(db: Session, *, outbox_id: int, delivery: NotificationDelivery) ->
     if outbox is None:
         return
     outbox.status = "sent"
+    # 成功也计一次尝试：此前只有 mark_failed 递增 attempt_count，导致已发送记录
+    # 在 UI「尝试次数」列恒显示 0/N（delivery.attempt_number=1 与 attempt_count=0 自相矛盾）
+    outbox.attempt_count += 1
     outbox.sent_at = _now_utc()
     outbox.updated_at = _now_utc()
     db.add(delivery)

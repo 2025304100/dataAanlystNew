@@ -1,24 +1,18 @@
 """QQ / OneBot 适配器（WP-MSG.2）。
 
-OneBot 11/12 标准的 HTTP POST 推送适配器，适用于 go-cqhttp / NapCat / Lagrange 等
+OneBot 11 标准的 HTTP POST 推送适配器，适用于 go-cqhttp / NapCat / Lagrange 等
 OneBot v11 实现。
 
 配置字段：
-- webhook：OneBot HTTP POST 上报地址（含 access_token 时由 header 携带）
+- webhook：OneBot HTTP API 基础地址（含 access_token 时由 header 携带）
 - access_token：鉴权 Token（敏感）
 - target_type：目标类型，"group" 或 "user"
 - target_id：群号或 QQ 号
-- message_type：消息类型，默认 "group"/"private"（依据 target_type 自动推断，可显式覆盖）
+- 消息类型由 target_type 唯一确定；旧 message_type 字段不再覆盖接收对象类型
 - timeout：超时秒数（默认 10）
 
-API：发送至 webhook URL，请求体 OneBot 标准：
-    {
-        "action": "send_group_msg",
-        "params": {
-            "group_id": 123456,
-            "message": [{"type": "text", "data": {"text": "..."}}]
-        }
-    }
+API：POST 基础地址/send_group_msg 或 /send_private_msg，使用平铺参数：
+    {"group_id": 123456, "message": [{"type": "text", "data": {"text": "..."}}]}
 
 project_memory 硬约束：
 - 超时默认 10 秒
@@ -28,6 +22,7 @@ project_memory 硬约束：
 from __future__ import annotations
 
 import json
+from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 import httpx
@@ -110,9 +105,7 @@ class OneBotAdapter(ChannelAdapter):
         target_id = config.get("target_id")
         # target_id 统一为 int
         target_id_int = int(target_id) if not isinstance(target_id, int) else target_id
-        message_type = config.get("message_type")
-        if not message_type:
-            message_type = "group" if target_type == "group" else "private"
+        message_type = "group" if target_type == "group" else "private"
 
         timeout = self._resolve_timeout(config)
 
@@ -121,16 +114,19 @@ class OneBotAdapter(ChannelAdapter):
         if title:
             text = f"{title}\n{text}"
 
-        # OneBot 11 标准请求体
+        # OneBot 11 HTTP calls /:action with flat parameters. The action/params
+        # envelope belongs to WebSocket and must not be posted as HTTP JSON.
         action = "send_group_msg" if message_type == "group" else "send_private_msg"
         params_key = "group_id" if message_type == "group" else "user_id"
         request_body: dict[str, Any] = {
-            "action": action,
-            "params": {
-                params_key: target_id_int,
-                "message": [{"type": "text", "data": {"text": text}}],
-            },
+            params_key: target_id_int,
+            "message": [{"type": "text", "data": {"text": text}}],
         }
+        url = urlsplit(webhook)
+        path = url.path.rstrip("/")
+        if path.endswith(("/send_group_msg", "/send_private_msg", "/send_msg")):
+            path = path.rsplit("/", 1)[0]
+        endpoint = urlunsplit((url.scheme, url.netloc, f"{path}/{action}", url.query, url.fragment))
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if access_token:
@@ -138,7 +134,7 @@ class OneBotAdapter(ChannelAdapter):
 
         def _send() -> SendResult:
             with httpx.Client(timeout=timeout) as client:
-                resp = client.post(webhook, json=request_body, headers=headers)
+                resp = client.post(endpoint, json=request_body, headers=headers)
             status_code = resp.status_code
             try:
                 resp_data = resp.json()

@@ -32,6 +32,8 @@ from app.models.ai_profile import (
     PURPOSE_ALL,
 )
 from app.services.secret_store import SecretStore, get_secret_store
+from app.services.ai.profile_capabilities import profile_protocol_error
+from app.services.ai.profile_execution import ProfileExecutionRejected, profile_request_slot
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,9 @@ def create_profile(
     """
     if not name or not provider or not model:
         raise ValueError("name, provider, model 不能为空")
+    protocol_error = profile_protocol_error(provider, base_url)
+    if protocol_error:
+        raise ValueError(protocol_error)
 
     profile = AIProfile(
         name=name,
@@ -148,6 +153,10 @@ def update_profile(
     if profile is None:
         return None
 
+    protocol_error = profile_protocol_error(provider or profile.provider, base_url if base_url is not None else profile.base_url)
+    if protocol_error and is_enabled is not False:
+        raise ValueError(protocol_error)
+
     if name is not None:
         profile.name = name
     if provider is not None:
@@ -197,6 +206,9 @@ def enable_profile(db: Session, profile_id: int) -> bool:
     profile = db.get(AIProfile, profile_id)
     if profile is None:
         return False
+    protocol_error = profile_protocol_error(profile.provider, profile.base_url)
+    if protocol_error:
+        raise ValueError(protocol_error)
     profile.is_enabled = True
     db.flush()
     return True
@@ -285,8 +297,16 @@ def test_connection(db: Session, profile_id: int) -> dict:
         return {"success": False, "error": "Profile 不存在", "latency_ms": 0}
     if not profile.base_url:
         return {"success": False, "error": "未配置 base_url", "latency_ms": 0}
+    protocol_error = profile_protocol_error(profile.provider, profile.base_url)
+    if protocol_error:
+        return {"success": False, "error": protocol_error, "latency_ms": 0}
 
     started = time.time()
+    def failed(message: str, error_type: str = "unknown") -> dict:
+        from app.services.ai_failover import get_failover_manager
+        get_failover_manager().record_failure(db, profile.id, error_type=error_type, error_msg=message)
+        return {"success": False, "latency_ms": int((time.time() - started) * 1000), "error": message, "model_info": None}
+
     try:
         headers = _auth_headers(profile, json_content=True)
         # 简单测试：发送 "Reply with OK." 单条消息
@@ -299,47 +319,38 @@ def test_connection(db: Session, profile_id: int) -> dict:
         endpoint = _endpoint_url(profile, "/chat/completions")
         # Profile 测试：至少给 60s 兜底
         base_timeout = max(float(profile.timeout_seconds), 60.0)
-        with httpx.Client(timeout=base_timeout) as client:
+        with profile_request_slot(db, profile), httpx.Client(timeout=base_timeout) as client:
             resp = client.post(endpoint, json=payload, headers=headers)
         latency_ms = int((time.time() - started) * 1000)
         if resp.status_code >= 400:
-            return {
-                "success": False,
-                "latency_ms": latency_ms,
-                "error": f"HTTP {resp.status_code}: {resp.text[:160]}",
-                "model_info": None,
-            }
+            from app.services.ai.llm_client import _classify_error
+            return failed(f"HTTP {resp.status_code}", _classify_error(resp.status_code))
+        data = resp.json()
+        choices = data.get("choices") if isinstance(data, dict) else None
+        content = (choices[0].get("message") or {}).get("content") if choices and isinstance(choices[0], dict) else None
+        if not isinstance(content, str) or not content.strip():
+            return failed("AI 服务未返回 OpenAI 兼容的回复，请检查协议、地址和模型", "protocol")
         # 更新健康状态
-        profile.health_status = HEALTH_HEALTHY
-        profile.last_health_check = _utcnow_naive()
-        db.flush()
+        from app.services.ai_failover import get_failover_manager
+        get_failover_manager().record_success(db, profile.id, latency_ms=latency_ms, count_request=False)
         return {
             "success": True,
             "latency_ms": latency_ms,
             "model_info": {"model": profile.model, "provider": profile.provider},
             "error": None,
         }
+    except ProfileExecutionRejected as exc:
+        return {"success": False, "latency_ms": 0, "error": str(exc), "model_info": None}
     except httpx.TimeoutException:
-        latency_ms = int((time.time() - started) * 1000)
-        return {"success": False, "latency_ms": latency_ms, "error": "请求超时", "model_info": None}
+        return failed("请求超时", "timeout")
     except httpx.RequestError as exc:
         latency_ms = int((time.time() - started) * 1000)
         logger.warning("AI connection test failed for profile %s: %s", profile_id, exc)
-        return {
-            "success": False,
-            "latency_ms": latency_ms,
-            "error": f"连接失败：{str(exc)[:120]}",
-            "model_info": None,
-        }
+        return failed("连接失败，请检查服务地址和网络", "connection")
     except Exception as exc:
         latency_ms = int((time.time() - started) * 1000)
         logger.exception("AI connection test error for profile %s", profile_id)
-        return {
-            "success": False,
-            "latency_ms": latency_ms,
-            "error": f"内部错误：{str(exc)[:120]}",
-            "model_info": None,
-        }
+        return failed("测试响应无法解析，请检查兼容协议与服务状态", "protocol")
 
 
 def discover_models(db: Session, profile_id: int) -> list[dict]:
@@ -352,11 +363,13 @@ def discover_models(db: Session, profile_id: int) -> list[dict]:
         return []
     if not profile.base_url:
         return []
+    if profile_protocol_error(profile.provider, profile.base_url):
+        return []
     try:
         endpoint = _endpoint_url(profile, "/models")
         # 发现模型：至少给 60s 兜底
         base_timeout = max(float(profile.timeout_seconds), 60.0)
-        with httpx.Client(timeout=base_timeout) as client:
+        with profile_request_slot(db, profile, count_daily=False), httpx.Client(timeout=base_timeout) as client:
             resp = client.get(endpoint, headers=_auth_headers(profile))
         if resp.status_code >= 400:
             logger.warning(

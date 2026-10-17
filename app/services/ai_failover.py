@@ -32,6 +32,7 @@ from app.models.ai_profile import (
     PURPOSE_ALL,
 )
 from app.services import ai_profile_service
+from app.services.ai.profile_capabilities import profile_protocol_error
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,16 @@ class AIFailoverManager:
         # 内存中的连续失败计数（profile_id -> count），不持久化
         self._consecutive_failures: dict[int, int] = {}
 
+    def profile_available(self, profile: AIProfile, purpose: str = PURPOSE_ALL) -> bool:
+        if not profile.is_enabled or profile.health_status == HEALTH_DOWN or profile_protocol_error(profile.provider, profile.base_url):
+            return False
+        if profile.purpose != PURPOSE_ALL and profile.purpose != purpose:
+            return False
+        reset_at = profile.daily_request_reset_at
+        if reset_at is not None and (_utcnow_naive() - reset_at).total_seconds() >= 86400:
+            return profile.daily_request_limit > 0
+        return profile.daily_request_count < profile.daily_request_limit
+
     # ── Profile 选择 ─────────────────────────────────────────
 
     def select_profile(
@@ -101,22 +112,7 @@ class AIFailoverManager:
         if not profiles:
             return None
 
-        now = _utcnow_naive()
-        candidates: list[AIProfile] = []
-        for p in profiles:
-            # purpose 匹配
-            if p.purpose != PURPOSE_ALL and p.purpose != purpose:
-                continue
-            # 检查日配额
-            if p.daily_request_reset_at is not None:
-                # 超过 24h 视为已重置，配额恢复
-                if (now - p.daily_request_reset_at).total_seconds() >= 86400:
-                    pass  # 配额已重置，可用
-                elif p.daily_request_count >= p.daily_request_limit:
-                    continue  # 配额已耗尽
-            else:
-                pass  # 未设置 reset_at，视为可用
-            candidates.append(p)
+        candidates = [p for p in profiles if self.profile_available(p, purpose)]
 
         if not candidates:
             return None
@@ -133,6 +129,7 @@ class AIFailoverManager:
         profile_id: int,
         latency_ms: int = 0,
         tokens: int = 0,
+        count_request: bool = True,
     ) -> None:
         """记录成功：重置连续失败计数，标记 healthy。"""
         try:
@@ -142,7 +139,8 @@ class AIFailoverManager:
             profile.health_status = HEALTH_HEALTHY
             profile.last_health_check = _utcnow_naive()
             # 增加当日请求计数
-            ai_profile_service.increment_daily_count(db, profile_id)
+            if count_request:
+                ai_profile_service.increment_daily_count(db, profile_id)
             db.flush()
         except Exception as exc:
             logger.warning("record_success failed for profile %s: %s", profile_id, exc)
@@ -199,59 +197,15 @@ class AIFailoverManager:
         返回 None 表示全部不可用，上层应 try/except 并使用默认消息。
         """
         try:
-            # 优先：is_fallback=True 的可用 Profile
-            stmt = select(AIProfile).where(
-                AIProfile.is_enabled.is_(True),
-                AIProfile.health_status != HEALTH_DOWN,
-                AIProfile.id != failed_profile_id,
-                AIProfile.is_fallback.is_(True),
-            )
-            if purpose != PURPOSE_ALL:
-                stmt = stmt.where(
-                    (AIProfile.purpose == purpose) | (AIProfile.purpose == PURPOSE_ALL)
-                )
-            stmt = stmt.order_by(AIProfile.priority.asc(), AIProfile.id.asc())
-            fallback = db.execute(stmt).scalars().first()
-            if fallback is not None:
-                logger.info(
-                    "Failover: profile %s → fallback profile %s",
-                    failed_profile_id, fallback.id,
-                )
-                return fallback
-
-            # 次优：优先级次高的可用 Profile（不限 is_fallback）
             stmt = select(AIProfile).where(
                 AIProfile.is_enabled.is_(True),
                 AIProfile.health_status != HEALTH_DOWN,
                 AIProfile.id != failed_profile_id,
             )
-            if purpose != PURPOSE_ALL:
-                stmt = stmt.where(
-                    (AIProfile.purpose == purpose) | (AIProfile.purpose == PURPOSE_ALL)
-                )
-            stmt = stmt.order_by(AIProfile.priority.asc(), AIProfile.id.asc())
-            next_profile = db.execute(stmt).scalars().first()
-            if next_profile is not None:
-                logger.info(
-                    "Failover: profile %s → next profile %s",
-                    failed_profile_id, next_profile.id,
-                )
-                return next_profile
-
-            # 最后：本地 Ollama
-            stmt = select(AIProfile).where(
-                AIProfile.is_enabled.is_(True),
-                AIProfile.provider == PROVIDER_OLLAMA,
-                AIProfile.id != failed_profile_id,
-            )
-            stmt = stmt.order_by(AIProfile.priority.asc(), AIProfile.id.asc())
-            ollama = db.execute(stmt).scalars().first()
-            if ollama is not None:
-                logger.info(
-                    "Failover: profile %s → local Ollama profile %s",
-                    failed_profile_id, ollama.id,
-                )
-                return ollama
+            candidates = [p for p in db.execute(stmt).scalars().all() if self.profile_available(p, purpose)]
+            candidates.sort(key=lambda p: (not p.is_fallback, p.priority, p.id))
+            if candidates:
+                return candidates[0]
 
             logger.warning(
                 "Failover: no available profile after %s failed", failed_profile_id

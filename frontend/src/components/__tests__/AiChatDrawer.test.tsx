@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { streamAIChat } = vi.hoisted(() => ({ streamAIChat: vi.fn() }));
@@ -70,5 +70,25 @@ describe("AiChatDrawer factor mode", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /aiSend/ }));
     await waitFor(() => expect(screen.getByText("最终回复")).toBeInTheDocument());
+  });
+
+  it("ignores callbacks from an aborted stream after closing and reopening the chat", async () => {
+    let oldHandlers: any;
+    let newHandlers: any;
+    streamAIChat.mockImplementationOnce((_payload: any, handlers: any) => { oldHandlers = handlers; return new Promise(() => {}); });
+    streamAIChat.mockImplementationOnce((_payload: any, handlers: any) => { newHandlers = handlers; return new Promise(() => {}); });
+    const props = { formula: "close", formulaMode: "factor" as const, onClose: vi.fn(), onInsertFormula: vi.fn() };
+    const chat = render(<AiChatDrawer {...props} open />);
+    fireEvent.change(screen.getByPlaceholderText("aiChatPlaceholder"), { target: { value: "old request" } });
+    fireEvent.click(screen.getByRole("button", { name: /aiSend/ }));
+    await waitFor(() => expect(streamAIChat).toHaveBeenCalledTimes(1));
+    chat.rerender(<AiChatDrawer {...props} open={false} />);
+    chat.rerender(<AiChatDrawer {...props} open />);
+    fireEvent.change(screen.getByPlaceholderText("aiChatPlaceholder"), { target: { value: "new request" } });
+    fireEvent.click(screen.getByRole("button", { name: /aiSend/ }));
+    await waitFor(() => expect(streamAIChat).toHaveBeenCalledTimes(2));
+    await act(async () => { newHandlers.onDelta("current answer"); oldHandlers.onDelta(" obsolete answer"); oldHandlers.onDone({ ok: false, error: "obsolete failure" }); });
+    expect(screen.getByText("current answer")).toBeInTheDocument();
+    expect(screen.queryByText(/obsolete answer|obsolete failure/)).not.toBeInTheDocument();
   });
 });

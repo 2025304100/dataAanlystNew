@@ -22,6 +22,8 @@ import httpx
 from app.models.ai_profile import AIProfile, PURPOSE_ALL
 from app.services import ai_profile_service
 from app.services.ai_failover import get_failover_manager
+from app.services.ai.profile_execution import ProfileExecutionRejected, profile_request_slot
+from app.services.ai.profile_capabilities import profile_protocol_error
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,8 @@ class LLMCallResult:
 
 def _classify_error(status_code: int | None, exc: Exception | None = None) -> str:
     """根据 HTTP 状态码/异常类型分类错误。"""
+    if status_code in ("quota", "concurrency", "unsupported_protocol", "storage"):
+        return status_code
     if status_code == 429:
         return "rate_limit"
     if status_code == 504:
@@ -63,6 +67,17 @@ def _classify_error(status_code: int | None, exc: Exception | None = None) -> st
     if exc is not None and isinstance(exc, httpx.RequestError):
         return "connection"
     return "unknown"
+
+
+def _token_usage(usage) -> tuple[int, int, int]:
+    if not isinstance(usage, dict):
+        raise ValueError("Invalid usage object")
+    pt = int(usage.get("prompt_tokens", 0) or 0)
+    ct = int(usage.get("completion_tokens", 0) or 0)
+    tt = int(usage.get("total_tokens", pt + ct) or 0)
+    if any(value < 0 or value > 2**31 - 1 for value in (pt, ct, tt)):
+        raise ValueError("Invalid token count")
+    return pt, ct, tt
 
 
 def _http_chat_completion(
@@ -124,22 +139,18 @@ def _http_chat_completion(
     except Exception:  # noqa: BLE001
         return (False, "", 0, 0, 0, status_code, "响应解析失败", latency_ms)
 
-    # OpenAI 兼容格式：choices[0].message.content
-    choices = data.get("choices") or []
-    raw_text = ""
-    if choices and isinstance(choices, list):
-        msg = choices[0].get("message") or {}
-        raw_text = msg.get("content") or ""
-    usage = data.get("usage") or {}
-    prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
-    completion_tokens = int(usage.get("completion_tokens", 0) or 0)
-    total_tokens = int(
-        usage.get("total_tokens", prompt_tokens + completion_tokens) or 0
-    )
+    try:
+        choices = data.get("choices") or []
+        raw_text = (choices[0].get("message") or {}).get("content") if choices else None
+        if not isinstance(raw_text, str) or not raw_text:
+            raise ValueError("Missing text content")
+        prompt_tokens, completion_tokens, total_tokens = _token_usage(data.get("usage") or {})
+    except (AttributeError, TypeError, ValueError, IndexError, KeyError, OverflowError):
+        return False, "", 0, 0, 0, status_code, "AI 服务响应格式异常，请检查兼容协议与模型", latency_ms
     return (True, raw_text, prompt_tokens, completion_tokens, total_tokens, status_code, None, latency_ms)
 
 
-def stream_llm_completion(
+def _stream_profile_completion(
     db,
     messages: list[dict[str, Any]],
     *,
@@ -161,6 +172,7 @@ def stream_llm_completion(
     started = time.time()
     chunks: list[str] = []
     usage: dict[str, Any] = {}
+    completed = False
     try:
         # 流式响应：connect/write 用配置超时，read 阶段不设上限
         base_timeout = float(profile.timeout_seconds)
@@ -181,6 +193,7 @@ def stream_llm_completion(
                         continue
                     data_text = line[5:].strip()
                     if data_text == "[DONE]":
+                        completed = True
                         break
                     try:
                         data = json.loads(data_text)
@@ -188,7 +201,11 @@ def stream_llm_completion(
                         continue
                     usage = data.get("usage") or usage
                     choices = data.get("choices") or []
+                    if choices and choices[0].get("finish_reason") is not None:
+                        completed = True
                     delta = ((choices[0].get("delta") or {}).get("content") or "") if choices else ""
+                    if delta and not isinstance(delta, str):
+                        raise ValueError("Unsupported stream content shape")
                     if delta:
                         chunks.append(delta)
                         yield {"type": "delta", "content": delta}
@@ -197,10 +214,69 @@ def stream_llm_completion(
         yield {"type": "result", "result": LLMCallResult(success=False, error_type=_classify_error(None, exc), error_message=type(exc).__name__, profile_used=profile, latency_ms=latency)}
         return
     latency = int((time.time() - started) * 1000)
-    pt = int(usage.get("prompt_tokens", 0) or 0)
-    ct = int(usage.get("completion_tokens", 0) or 0)
-    tt = int(usage.get("total_tokens", pt + ct) or 0)
+    if not completed:
+        yield {"type": "result", "result": LLMCallResult(success=False, error_type="stream_interrupted", error_message="AI 流式连接在完成标记前结束，回复可能不完整，请重试", profile_used=profile, latency_ms=latency)}
+        return
+    if not chunks:
+        yield {"type": "result", "result": LLMCallResult(success=False, error_type="protocol", error_message="AI 服务没有返回可解析的流式内容", profile_used=profile, latency_ms=latency)}
+        return
+    try:
+        pt, ct, tt = _token_usage(usage)
+    except (TypeError, ValueError, OverflowError):
+        yield {"type": "result", "result": LLMCallResult(success=False, error_type="protocol", error_message="AI 服务返回的用量信息格式异常，请检查兼容协议", profile_used=profile, latency_ms=latency)}
+        return
     yield {"type": "result", "result": LLMCallResult(success=True, raw_response="".join(chunks), profile_used=profile, latency_ms=latency, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt)}
+
+
+def _unavailable_result(profile, purpose):
+    protocol_error = profile_protocol_error(profile.provider, profile.base_url) if profile else None
+    return LLMCallResult(success=False, error_type="unsupported_protocol" if protocol_error else "quota", error_message=protocol_error or "AI Profile 不可用、用途不匹配或当日额度已用完，请检查配置或选择可用备用模型", profile_used=profile)
+
+
+def stream_llm_completion(db, messages, *, profile_id, max_tokens=None, temperature=0.2, purpose=PURPOSE_ALL):
+    """Apply the same quota and health policy to streamed assistant requests."""
+    manager = get_failover_manager()
+    profile = ai_profile_service.get_profile(db, profile_id)
+    primary_name = profile.name if profile else ""
+    for attempt in range(2):
+        result = _unavailable_result(profile, purpose)
+        emitted = False
+        if profile is not None and manager.profile_available(profile, purpose):
+            try:
+                with profile_request_slot(db, profile):
+                    for event in _stream_profile_completion(db, messages, profile_id=profile.id, max_tokens=max_tokens, temperature=temperature):
+                        if event["type"] == "delta":
+                            emitted = True
+                            yield event
+                        else:
+                            result = event["result"]
+            except ProfileExecutionRejected as exc:
+                result = LLMCallResult(success=False, error_type=exc.code, error_message=str(exc), profile_used=profile)
+            if result.success:
+                manager.record_success(db, profile.id, latency_ms=result.latency_ms, tokens=result.total_tokens, count_request=False)
+            elif result.error_type not in ("concurrency", "quota", "unsupported_protocol", "storage"):
+                manager.record_failure(db, profile.id, error_type=result.error_type or "unknown", error_msg=result.error_message or "")
+            db.commit()
+        if attempt:
+            result.failover_happened = True
+            result.failover_from = primary_name
+            result.failover_to = profile.name if profile else None
+        if result.success or emitted or attempt or profile is None:
+            yield {"type": "result", "result": result}
+            return
+        backup = manager.failover(db, profile.id, purpose=purpose)
+        if backup is None:
+            yield {"type": "result", "result": result}
+            return
+        profile = backup
+
+
+def _admitted_chat_completion(db, profile, messages, **kwargs):
+    try:
+        with profile_request_slot(db, profile):
+            return _http_chat_completion(profile, messages, **kwargs)
+    except ProfileExecutionRejected as exc:
+        return False, "", 0, 0, 0, exc.code, str(exc), 0
 
 
 def call_llm_with_failover(
@@ -212,131 +288,38 @@ def call_llm_with_failover(
     max_tokens: int | None = None,
     temperature: float = 0.2,
 ) -> LLMCallResult:
-    """调用 LLM，主备降级。
-
-    流程：
-    1. 选择 Profile：profile_id 指定则用之，否则 select_profile 选默认
-    2. 调用主 Profile：成功 → record_success → 返回
-    3. 失败（timeout/rate_limit/server_error/connection）→ record_failure → failover
-    4. 调用备用 Profile：成功 → record_success → 返回（标注 failover）
-    5. 备用也失败或无备用 → 返回失败结果
-
-    永不抛异常。
-    """
-    mgr = get_failover_manager()
-
-    # ── 1. 选择主 Profile ──
-    if profile_id is not None:
-        profile = ai_profile_service.get_profile(db, profile_id)
-        if profile is None or not profile.is_enabled:
-            return LLMCallResult(
-                success=False,
-                error_type="unknown",
-                error_message="指定的 AI Profile 不存在或未启用",
+    """Run at most one primary and one available backup under shared admission."""
+    manager = get_failover_manager()
+    profile = ai_profile_service.get_profile(db, profile_id) if profile_id is not None else manager.select_profile(db, purpose=purpose)
+    primary_name = profile.name if profile else ""
+    for attempt in range(2):
+        result = _unavailable_result(profile, purpose)
+        if profile is not None and manager.profile_available(profile, purpose):
+            ok, raw, pt, ct, tt, status, error, latency = _admitted_chat_completion(
+                db, profile, messages, max_tokens=max_tokens, temperature=temperature,
             )
-    else:
-        profile = mgr.select_profile(db, purpose=purpose)
-        if profile is None:
-            return LLMCallResult(
-                success=False,
-                error_type="unknown",
-                error_message="无可用 AI Profile",
+            error_type = None if ok else _classify_error(status)
+            result = LLMCallResult(
+                success=ok, raw_response=raw, profile_used=profile,
+                error_type=error_type, error_message=error,
+                latency_ms=latency, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt,
             )
-
-    primary_name = profile.name
-
-    # ── 2. 调用主 Profile ──
-    ok, raw, pt, ct, tt, sc, err, latency = _http_chat_completion(
-        profile, messages, max_tokens=max_tokens, temperature=temperature
-    )
-    if ok:
-        try:
-            mgr.record_success(db, profile.id, latency_ms=latency, tokens=tt)
+            if ok:
+                manager.record_success(db, profile.id, latency_ms=latency, tokens=tt, count_request=False)
+            elif error_type not in ("quota", "concurrency", "unsupported_protocol", "storage"):
+                manager.record_failure(db, profile.id, error_type=error_type or "unknown", error_msg=error or "")
             db.commit()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("record_success failed: %s", exc)
-        return LLMCallResult(
-            success=True,
-            raw_response=raw,
-            profile_used=profile,
-            failover_happened=False,
-            latency_ms=latency,
-            prompt_tokens=pt,
-            completion_tokens=ct,
-            total_tokens=tt,
-        )
-
-    # ── 3. 主 Profile 失败 → 记录 + failover ──
-    error_type = _classify_error(sc)
-    try:
-        mgr.record_failure(db, profile.id, error_type=error_type, error_msg=err or "")
-        db.commit()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("record_failure failed: %s", exc)
-
-    logger.warning(
-        "LLM primary profile %s failed: type=%s msg=%s, attempting failover",
-        primary_name, error_type, (err or "")[:120],
-    )
-
-    fallback = mgr.failover(db, profile.id, purpose=purpose)
-    if fallback is None:
-        return LLMCallResult(
-            success=False,
-            error_type=error_type,
-            error_message=err or "主备模型均不可用",
-            profile_used=profile,
-            failover_from=primary_name,
-            failover_happened=False,
-            latency_ms=latency,
-        )
-
-    fallback_name = fallback.name
-
-    # ── 4. 调用备用 Profile ──
-    ok2, raw2, pt2, ct2, tt2, sc2, err2, latency2 = _http_chat_completion(
-        fallback, messages, max_tokens=max_tokens, temperature=temperature
-    )
-    if ok2:
-        try:
-            mgr.record_success(db, fallback.id, latency_ms=latency2, tokens=tt2)
-            db.commit()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("record_success (fallback) failed: %s", exc)
-        return LLMCallResult(
-            success=True,
-            raw_response=raw2,
-            profile_used=fallback,
-            failover_from=primary_name,
-            failover_to=fallback_name,
-            failover_happened=True,
-            latency_ms=latency2,
-            prompt_tokens=pt2,
-            completion_tokens=ct2,
-            total_tokens=tt2,
-        )
-
-    # ── 5. 备用也失败 ──
-    error_type2 = _classify_error(sc2)
-    try:
-        mgr.record_failure(db, fallback.id, error_type=error_type2, error_msg=err2 or "")
-        db.commit()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("record_failure (fallback) failed: %s", exc)
-
-    return LLMCallResult(
-        success=False,
-        error_type=error_type2,
-        error_message=(
-            f"主备模型均不可用：主[{primary_name}] {err or '失败'}; "
-            f"备[{fallback_name}] {err2 or '失败'}"
-        ),
-        profile_used=fallback,
-        failover_from=primary_name,
-        failover_to=fallback_name,
-        failover_happened=True,
-        latency_ms=latency + latency2,
-    )
+        if attempt:
+            result.failover_happened = True
+            result.failover_from = primary_name
+            result.failover_to = profile.name if profile else None
+        if result.success or attempt or profile is None:
+            return result
+        backup = manager.failover(db, profile.id, purpose=purpose)
+        if backup is None:
+            return result
+        profile = backup
+    return result
 
 
 __all__ = [

@@ -865,7 +865,7 @@ def test_full_session_lifecycle_with_draft_and_audit(db_session):
     )
     suggestion = {
         "name": "生命周期_价格告警",
-        "alert_type": "price_alert",
+        "alert_type": "score_drop",
         "severity": "warn",
         "config_json": '{"threshold": 12.0}',
         "cooldown_minutes": 30,

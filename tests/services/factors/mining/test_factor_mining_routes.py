@@ -29,6 +29,7 @@ from app.models.factor_mining import (
 from app.api.routes import factor_mining as FM
 from app.api.routes.factor_mining import mining_runner
 from app.db.session import get_db
+from test_m1_closure import warehouse_path
 
 pytestmark = pytest.mark.whitebox
 
@@ -133,7 +134,8 @@ class TestRoutesContract:
 
 
 class TestRunsApi:
-    def test_create_run_submits_with_contract(self, db_session, monkeypatch):
+    def test_create_run_submits_with_contract(self, db_session, monkeypatch, warehouse_path):
+        monkeypatch.setenv("FACTOR_WAREHOUSE_PATH", warehouse_path)
         _seed_snapshot(db_session, "snap-c1")
 
         @dataclass
@@ -167,7 +169,8 @@ class TestRunsApi:
         for key in ("run_id", "task_id", "queue_position"):
             assert key in body
 
-    def test_create_run_finalize_top_k_resolution(self, db_session, monkeypatch):
+    def test_create_run_finalize_top_k_resolution(self, db_session, monkeypatch, warehouse_path):
+        monkeypatch.setenv("FACTOR_WAREHOUSE_PATH", warehouse_path)
         """DEF-9 回归：finalize_top_k 解析契约。
 
         真实缺陷：路由只认 evolution_params.finalize_top_k 且默认 0，而
@@ -361,6 +364,28 @@ class TestSplitBudgetApi:
         assert resp.status_code == 200, resp.text
         assert resp.json()["total_points"] == 1
 
+    @pytest.mark.parametrize("frequency,warehouse_points,cutoff_points", [
+        ("daily", 20, 15), ("weekly", 4, 3), ("monthly", 1, 0),
+    ])
+    def test_snapshot_cutoff_limits_mature_signals_without_inventing_period_ends(
+        self, db_session, monkeypatch, frequency, warehouse_points, cutoff_points,
+    ):
+        self._patch_trade_dates(monkeypatch, self._weekdays())
+        client = self._client(db_session)
+        request = {
+            "start_date": "2026-01-01T00:00:00", "end_date": "2026-01-31T00:00:00",
+            "frequency": frequency, "target_horizon": 5,
+        }
+        latest = client.post("/factor-mining/split-budget", json=request)
+        assert latest.status_code == 200, latest.text
+        assert latest.json()["total_points"] == warehouse_points
+        frozen = client.post("/factor-mining/split-budget", json={
+            **request, "data_cutoff_at": "2026-01-31T00:00:00",
+        })
+        assert frozen.status_code == 200, frozen.text
+        assert frozen.json()["total_points"] == cutoff_points
+        assert frozen.json()["tail_loss"] == 0
+
     def test_degraded_when_warehouse_empty(self, db_session, monkeypatch):
         self._patch_trade_dates(monkeypatch, [])
         resp = self._client(db_session).post("/factor-mining/split-budget", json={
@@ -481,7 +506,9 @@ class TestTemplateAndGradeApi:
 
         e = client.get("/factor-mining/candidates/cand-c1/grade/evidence")
         assert e.status_code == 200
-        assert e.json()["grade"] in ("S", "A", "B", "C", "D")
+        # A generation-only candidate has no final evaluation evidence yet.
+        assert e.json()["grade"] is None
+        assert all(dimension["passed"] is None for dimension in e.json()["dimensions"])
         assert e.json()["lineage"]["id"] == "cand-c1"
 
     def test_manual_grade_reason_required(self, db_session):

@@ -151,6 +151,10 @@ describe("normalizeValidation 三态映射（向导 §5.1）", () => {
     expect(normalizeValidation({ ...base, status: "running", report: null }).status).toBe("running");
     expect(normalizeValidation({ ...base, status: "failed", report: null }).status).toBe("failed");
   });
+  it("done 缺少报告或未知结论不能当作校验通过", () => {
+    expect(normalizeValidation({ ...base, report: null }).status).toBe("failed");
+    expect(normalizeValidation({ ...base, report: { verdict: "unknown" } }).passed).toBe(false);
+  });
 
   it("把分片实测元数据提取为 field_meta（Step3 覆盖率/最新日期/可用区间的唯一来源）", () => {
     const s = normalizeValidation({

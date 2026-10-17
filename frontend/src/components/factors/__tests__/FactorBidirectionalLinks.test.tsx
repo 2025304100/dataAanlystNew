@@ -507,6 +507,9 @@ describe("TR-6.4 因子详情 Usage Tab：sets/models 两个子 Tab 皆 ≥1 卡
       items: [
         {
           code: "F-TR64",
+          latest_version_id: 24,
+          latest_version_no: 2,
+          latest_evaluation: null,
           factor_name: "TR6.4 因子",
           category: "value",
           coverage: 0.9,

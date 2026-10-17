@@ -817,6 +817,13 @@ def _run_symbol_sync(
         "records": 0,
         "errors": [],
     }
+    if dataset == "fundamental":
+        missing_industry = [symbol.symbol for symbol in symbols if not symbol.industry]
+        result["field_coverage"] = {"industry": {
+            "source": "local_symbol_master", "total": len(symbols),
+            "available": len(symbols) - len(missing_industry),
+            "missing": len(missing_industry), "missing_sample": missing_industry[:20],
+        }}
     _update_task(
         db,
         task_id,
@@ -890,7 +897,10 @@ def _run_symbol_sync(
                 return sync_market_valuation_snapshot(active_db, symbols, range_end)
 
             def _single_symbol_sync(active_db: Session, symbol: Symbol) -> Any:
-                return sync_symbol_valuation(active_db, symbol, range_end)
+                return sync_symbol_valuation(
+                    active_db, symbol, range_end, skip_market_snapshot=True,
+                    refresh_industry=False, history_start_date=range_start,
+                )
 
         if _is_cancelled(db, task_id):
             return None
@@ -928,6 +938,9 @@ def _run_symbol_sync(
                     if worker_symbol is None:
                         return symbol_id, "failed", 0, "symbol not found", ()
                     item = _single_symbol_sync(worker_db, worker_symbol)
+                    if dataset == "fundamental" and item is None:
+                        worker_db.rollback()
+                        return symbol_id, "failed", 0, "估值历史接口未返回所选日期范围内的有效数据", ()
                     dates = getattr(item, "sync_written_dates", ()) or (getattr(item, "trade_date", None),)
                     count = int(getattr(item, "sync_rows_written", 1)) if item is not None else 0
                     worker_db.commit()

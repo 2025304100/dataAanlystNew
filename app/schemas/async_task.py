@@ -85,6 +85,10 @@ class FactorPipelineCreate(BaseModel):
     # dispatch time. Optionality remains for train_model=False and legacy
     # direct worker payloads during compatibility migration.
     factor_set_id: str | None = None
+    trusted_history_dataset_id: str | None = Field(
+        default=None, min_length=1, max_length=80,
+        pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$',
+    )
     # 审计/透传字段（Task 9 三处一致写入）
     actor: str = "settings:pipeline"
     source_hint: str = "settings_run"
@@ -103,6 +107,11 @@ class FactorPipelineCreate(BaseModel):
 
     @model_validator(mode='after')
     def validate_training_windows(self):
+        if self.trusted_history_dataset_id is not None and (
+            not self.train_model or self.materialize_scores or self.mirror_only
+            or self.universe_source is not None
+        ):
+            raise ValueError('可信历史研究数据集只支持训练，不支持评分发布、仅镜像或动态标的范围')
         if self.validation_days >= self.window_days:
             raise ValueError('validation_days must be less than window_days')
         if self.universe_source == 'watchlist':

@@ -146,6 +146,32 @@ def _percentile_scores(values: dict[str, float]) -> dict[str, float]:
     return ranks
 
 
+def evaluate_linear_factor_model(factor_rows, coefficients, intercept=0.0):
+    """Shared inference arithmetic; no runtime switch, model fit or SQL writes.
+
+    The returned 0..100 values are cohort percentiles, not return forecasts.
+    Incomplete/nonfinite feature vectors are excluded rather than zero-filled.
+    Callers own version checks and any production-publication gates.
+    """
+    if not coefficients or not all(math.isfinite(float(v)) for v in coefficients.values()) or not math.isfinite(float(intercept)):
+        raise ValueError('linear_model_invalid_coefficients')
+    def finite(value):
+        try:return math.isfinite(float(value))
+        except (ValueError,TypeError):return False
+    contributions, alpha_raw, quality_raw, timing_raw = {}, {}, {}, {}
+    for symbol, values in factor_rows.items():
+        if any(code not in values or not finite(values[code].get('normalized_value')) for code in coefficients):
+            continue
+        per_factor = {code: float(coef) * float(values[code]['normalized_value']) for code, coef in coefficients.items()}
+        contributions[symbol] = per_factor
+        quality_raw[symbol] = sum(v for code, v in per_factor.items() if _get_factor_category(code) in _QUALITY_CATEGORIES)
+        timing_raw[symbol] = sum(v for code, v in per_factor.items() if _get_factor_category(code) in _TIMING_CATEGORIES)
+        alpha_raw[symbol] = float(intercept) + sum(per_factor.values())
+    return dict(contributions=contributions, alpha_raw=alpha_raw, quality_raw=quality_raw, timing_raw=timing_raw,
+        quality_scores=_percentile_scores(quality_raw), timing_scores=_percentile_scores(timing_raw),
+        alpha_scores=_percentile_scores(alpha_raw))
+
+
 def _score_batch_id(
     *,
     mode: str,
@@ -563,31 +589,12 @@ def materialize_factor_scores(
         if target_set is None or score.symbol_id in target_symbol_ids
     )
 
-    quality_raw: dict[str, float] = {}
-    timing_raw: dict[str, float] = {}
-    alpha_raw: dict[str, float] = {}
-    contributions: dict[str, dict[str, float]] = {}
-    for symbol, values in complete.items():
-        per_factor = {
-            code: coefficients[code] * values[code]['normalized_value']
-            for code in feature_codes
-        }
-        contributions[symbol] = per_factor
-        quality_raw[symbol] = sum(
-            value
-            for code, value in per_factor.items()
-            if _get_factor_category(code) in _QUALITY_CATEGORIES
-        )
-        timing_raw[symbol] = sum(
-            value
-            for code, value in per_factor.items()
-            if _get_factor_category(code) in _TIMING_CATEGORIES
-        )
-        alpha_raw[symbol] = sum(per_factor.values()) + intercept
-
-    quality_scores = _percentile_scores(quality_raw)
-    timing_scores = _percentile_scores(timing_raw)
-    alpha_scores = _percentile_scores(alpha_raw)
+    inference = evaluate_linear_factor_model(complete, coefficients, intercept)
+    contributions = inference['contributions']
+    quality_raw, timing_raw, alpha_raw = inference['quality_raw'], inference['timing_raw'], inference['alpha_raw']
+    quality_scores = inference['quality_scores']
+    timing_scores = inference['timing_scores']
+    alpha_scores = inference['alpha_scores']
     macro_state = calculate_macro_regime(warehouse, as_of=trade_date)
     calc_batch_id = _score_batch_id(
         mode=active_mode,

@@ -8,6 +8,7 @@ import ResourceConfirmModal from "./ResourceConfirmModal";
 import SelectionConfig from "./SelectionConfig";
 import {
   DEFAULT_EVO_CONFIG,
+  PARAM_META,
   QUICK_TRIAL_PRESET,
   STRENGTH_ORDER,
   STRENGTH_TO_GENERATIONS,
@@ -55,23 +56,43 @@ export default function MiningEvoParamStep({
   const [population, setPopulation] = useState(DEFAULT_EVO_CONFIG.population_size);
   const [generations, setGenerations] = useState(DEFAULT_EVO_CONFIG.max_generations);
   // P1-7：高级折叠区（经典底座/探索/选择/繁殖）的 patch 汇总，随 emitConfig 上报
-  const [advanced, setAdvanced] = useState<Record<string, unknown>>({});
+  const [advanced, setAdvanced] = useState<Partial<EvoConfig>>({});
   const [showConfirm, setShowConfirm] = useState(false);
+  const rates = [advanced.mutation_rate ?? 0.55, advanced.crossover_rate ?? 0.25,
+    advanced.random_rate ?? 0.20];
+  const rateNames = ["mutation_rate", "crossover_rate", "random_rate"];
+  const rateError = rates.some((value, index) => !Number.isFinite(value)
+    || value < PARAM_META[rateNames[index]].min / 100
+    || value > PARAM_META[rateNames[index]].max / 100)
+    ? t("miningEvoRateBoundsError")
+    : Math.abs(rates.reduce((sum, value) => sum + value, 0) - 1) > 1e-6
+      ? t("miningEvoRateSumError") : null;
 
   // DEF-10：initial 引用变化（载入草稿）时同步内部受控态。
   useEffect(() => {
-    if (!initial) return;
-    if (initial.simple_mode !== undefined) setSimpleMode(Boolean(initial.simple_mode));
-    if (initial.strength !== undefined) setStrength(initial.strength as EvoStrength);
-    if (initial.preference !== undefined) setPreference(initial.preference as EvoPreference);
-    if (initial.ai_enabled !== undefined) setAiEnabled(Boolean(initial.ai_enabled));
-    if (initial.adaptive !== undefined) setAdaptive(Boolean(initial.adaptive));
-    if (initial.population_size !== undefined) setPopulation(Number(initial.population_size));
-    if (initial.max_generations !== undefined) setGenerations(Number(initial.max_generations));
+    const {
+      simple_mode, strength: nextStrength, preference: nextPreference,
+      ai_enabled, adaptive: nextAdaptive, population_size, max_generations,
+      ...nextAdvanced
+    } = { ...DEFAULT_EVO_CONFIG, ...initial };
+    setSimpleMode(Boolean(simple_mode));
+    setStrength(nextStrength);
+    setPreference(nextPreference);
+    setAiEnabled(Boolean(ai_enabled));
+    setAdaptive(Boolean(nextAdaptive));
+    setPopulation(Number(population_size));
+    setGenerations(Number(max_generations));
+    setAdvanced(nextAdvanced);
   }, [initial]);
 
-  const emitConfig = (patch: Partial<EvoConfig> = {}, advancedPatch?: Record<string, unknown>) => {
-    const nextAdvanced = advancedPatch ? { ...advanced, ...advancedPatch } : advanced;
+  const emitConfig = (patch: Partial<EvoConfig> = {}, advancedPatch?: Partial<EvoConfig>) => {
+    const nextAdvanced = advancedPatch ? {
+      ...advanced,
+      ...advancedPatch,
+      ...(advancedPatch.category_limits ? {
+        category_limits: { ...advanced.category_limits, ...advancedPatch.category_limits },
+      } : {}),
+    } : advanced;
     if (advancedPatch) setAdvanced(nextAdvanced);
     onConfig?.({
       simple_mode: patch.simple_mode ?? simpleMode,
@@ -137,6 +158,7 @@ export default function MiningEvoParamStep({
               const v = STRENGTH_ORDER[idx];
               if (!v) return;
               setStrength(v);
+              setGenerations(STRENGTH_TO_GENERATIONS[v]);
               emitConfig({ strength: v, max_generations: STRENGTH_TO_GENERATIONS[v] });
             }}
           />
@@ -146,6 +168,7 @@ export default function MiningEvoParamStep({
           <span className="mining-evo-field-label">{t("miningEvoPreference")}</span>
           <Select
             data-evo-preference
+            disabled
             value={preference}
             style={{ width: 220 }}
             onChange={(v) => {
@@ -159,6 +182,9 @@ export default function MiningEvoParamStep({
               { value: "simple", label: t("miningEvoPrefSimple") },
             ]}
           />
+          <span className="mining-evo-muted" data-evo-preference-unavailable-hint>
+            {t("miningEvoUnsupportedConfigHint")}
+          </span>
         </div>
         <div className="mining-evo-row">
           <span className="mining-evo-field-label">{t("miningEvoAiEnabled")}</span>
@@ -177,6 +203,7 @@ export default function MiningEvoParamStep({
       {!simpleMode && (
         <div className="mining-evo-advanced" data-evo-advanced-sections>
           <p className="mining-hint">{t("miningEvoAdvancedHint")}</p>
+          <p className="mining-hint" data-evo-unsupported-hint>{t("miningEvoUnsupportedConfigHint")}</p>
           <details className="mining-evo-section" data-evo-section="basic" open>
             <summary>{t("miningEvoBasicTitle")}</summary>
             <div className="mining-evo-row">
@@ -209,25 +236,48 @@ export default function MiningEvoParamStep({
             </div>
             <div className="mining-evo-row">
               <span className="mining-evo-field-label">{t("miningEvoQuickTrial")}</span>
-              <Switch data-evo-quick-trial onChange={applyQuickTrial} />
+              <button type="button" className="mining-pool-btn ghost" data-evo-quick-trial onClick={applyQuickTrial}>
+                {t("miningEvoApplyQuickTrial")}
+              </button>
             </div>
           </details>
 
-          <ClassicalBaseConfig onChange={(p) => emitConfig({}, p)} />
+          <ClassicalBaseConfig
+            readOnly
+            categoryLimits={advanced.category_limits}
+            coverageStrategy={advanced.coverage_strategy}
+            onChange={(p) => emitConfig({}, p)}
+          />
           <ExplorationConfig
+            ratiosReadOnly
             aiEnabled={aiEnabled}
+            aiRatio={advanced.ai_ratio}
+            randomRatio={advanced.random_ratio}
             onAiEnabledChange={(v) => { setAiEnabled(v); emitConfig({ ai_enabled: v }); }}
             onChange={(p) => emitConfig({}, p)}
           />
-          <SelectionConfig onChange={(p) => emitConfig({}, p)} />
+          <SelectionConfig
+            trackReadOnly
+            crossCategoryReadOnly={adaptive}
+            tournamentK={advanced.tournament_k}
+            trackEnabled={advanced.track_enabled}
+            trackFloorRatio={advanced.track_floor_ratio}
+            weakGenerations={advanced.weak_generations}
+            crossCategoryRatio={advanced.cross_category_ratio}
+            onChange={(p) => emitConfig({}, p)}
+          />
           <ReproductionConfig
             adaptive={adaptive}
+            mutationRate={advanced.mutation_rate}
+            crossoverRate={advanced.crossover_rate}
+            randomRate={advanced.random_rate}
             onAdaptiveChange={(v) => { setAdaptive(v); emitConfig({ adaptive: v }); }}
             onChange={(p) => emitConfig({}, p)}
           />
         </div>
       )}
 
+      {rateError && <p role="alert" className="mining-split-error" data-evo-rate-error>{rateError}</p>}
       <div className="mining-evo-actions">
         <span className="mining-hint" style={{ marginRight: "auto" }}>
           {t("miningEvoSubmitHint")}
@@ -241,7 +291,8 @@ export default function MiningEvoParamStep({
           type="button"
           className="mining-pool-btn primary"
           data-evo-submit
-          onClick={() => setShowConfirm(true)}
+          disabled={rateError != null}
+          onClick={() => { if (!rateError) setShowConfirm(true); }}
         >
           {t("miningEvoSubmit")}
         </button>
@@ -251,12 +302,12 @@ export default function MiningEvoParamStep({
         <ResourceConfirmModal
           lockStatus={lockStatus}
           etaSeconds={etaSeconds}
-          resourcesOk={resourcesOk}
+          resourcesOk={resourcesOk && !rateError}
           onClose={() => setShowConfirm(false)}
           // P0-3：先关弹窗再提交（提交前置校验失败时错误可见、不再被遮罩卡死）
           onConfirm={() => {
             setShowConfirm(false);
-            onSubmit?.();
+            if (!rateError) onSubmit?.();
           }}
         />
       )}

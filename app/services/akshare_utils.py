@@ -170,6 +170,10 @@ _harden_requests_session()
 # 带重试的 akshare 调用封装（P0-1 + 接口管理）
 # ----------------------------------------------------------------------------
 
+class AkshareApiDisabledError(RuntimeError):
+    """An explicitly disabled supplier endpoint must never be contacted."""
+
+
 def call_akshare_with_retry(
     func: Callable[..., Any],
     *args: Any,
@@ -201,6 +205,16 @@ def call_akshare_with_retry(
     Raises:
         最后一次重试仍失败时抛出原始异常
     """
+    def assert_enabled() -> None:
+        if api_key:
+            from app.services.akshare_registry import is_api_enabled
+
+            if not is_api_enabled(api_key):
+                raise AkshareApiDisabledError(f"Akshare API {api_key} is disabled by configuration")
+
+    # Check outside the retry/error-statistics path: a policy block is not a
+    # supplier failure and must not sleep, contact the supplier or be retried.
+    assert_enabled()
     # 解析重试次数：显式参数 > api_key 配置 > 默认 3
     if max_attempts is None:
         if api_key:
@@ -233,6 +247,7 @@ def call_akshare_with_retry(
 
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
+        assert_enabled()
         try:
             result = func(*args, **kwargs)
             # 记录成功

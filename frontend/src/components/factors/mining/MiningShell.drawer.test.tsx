@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 /**
  * 阶段重构回归：列表优先 + 抽屉向导 + 任务生命周期 + 复制为草稿。
@@ -57,7 +58,7 @@ vi.mock("../../../api/client", () => ({
   requestJson: vi.fn(async () => ({})),
 }));
 
-vi.mock("./step1/poolApi", () => ({
+vi.mock("./wizard/step1/poolApi", () => ({
   MIN_POOL_SIZE: 50,
   previewPool: vi.fn(async () => ({
     universe_size: 5000, hits: 800, excluded_total: 4200, can_generate: true,
@@ -65,9 +66,13 @@ vi.mock("./step1/poolApi", () => ({
     field_coverage: {}, warnings: [],
   })),
   createPoolFromFilter: vi.fn(async () => ({ id: "pool-1", name: "p", member_count: 800 })),
+  // 归一化形状（真实 poolApi.normalizeSnapshot 输出）：业务侧统一读 id
   createSnapshot: vi.fn(async () => ({
-    snapshot_id: "snap-1", pool_id: "pool-1", analysis_status: "ready",
-    is_locked: true, data_cutoff_at: "2026-08-21", analysis: {}, pool: {},
+    id: "snap-1", pool_id: "pool-1", is_locked: true, data_cutoff_at: "2026-08-21",
+  })),
+  // 回退到已锁定步时 MiningPoolStep 重挂载会拉已存快照（归一化形状）
+  fetchSnapshot: vi.fn(async () => ({
+    id: "snap-1", pool_id: "pool-1", is_locked: true, data_cutoff_at: "2026-08-21",
   })),
   fetchLatestSnapshot: vi.fn(async () => null),
   deleteLatestSnapshot: vi.fn(async () => ({})),
@@ -89,6 +94,8 @@ vi.mock("./wizard/step3/fieldApi", () => ({
 }));
 
 import MiningShell from "./MiningShell";
+import { factorMiningApi } from "../../../api/factorMining";
+import { setLocale } from "../../../i18n";
 
 const RUNS = [
   {
@@ -111,6 +118,7 @@ const DRAFTS = [
 ];
 
 beforeEach(() => {
+  setLocale("zh-CN");
   vi.clearAllMocks();
   window.localStorage.clear();
   listRuns.mockResolvedValue({ items: RUNS, total: RUNS.length, page: 1, page_size: 20 });
@@ -126,7 +134,22 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => setLocale("zh-CN"));
+
 describe("因子挖掘：列表优先 + 抽屉向导 + 生命周期", () => {
+  it("批次频率按当前语言显示，日期范围保留原业务日期", async () => {
+    const { rerender } = render(<MiningShell />);
+    await waitFor(() => expect(document.querySelector('[data-mining-task-id="run-live"]')).toBeTruthy());
+    const row = () => document.querySelector('[data-mining-task-id="run-live"]') as HTMLElement;
+    expect(row().textContent).toContain("周频");
+    expect(row().textContent).not.toContain("weekly");
+    expect(row().textContent).toContain("2025-01-01 ~ 2026-09-01");
+    setLocale("en-US");
+    rerender(<MiningShell />);
+    expect(row().textContent).toContain("Weekly");
+    expect(row().textContent).toContain("Running");
+    expect(row().textContent).toContain("2025-01-01 ~ 2026-09-01");
+  });
   it("默认落在批次列表：有新建入口、run 行、草稿行", async () => {
     render(<MiningShell />);
     await waitFor(() => expect(listRuns).toHaveBeenCalled());
@@ -153,6 +176,26 @@ describe("因子挖掘：列表优先 + 抽屉向导 + 生命周期", () => {
     await waitFor(() => expect(document.querySelector("[data-mining-drawer-locked]")).toBeTruthy());
     // 查看会拉取完整配置用于回显
     expect(getRun).toHaveBeenCalledWith("run-done");
+  });
+
+  it("历史任务进化参数的提交与保存是真正禁用，键盘不能触发写入", async () => {
+    const keyboard = userEvent.setup();
+    render(<MiningShell />);
+    await waitFor(() => expect(document.querySelector("[data-mining-run-view='run-done']")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-mining-run-view='run-done']") as HTMLElement);
+    fireEvent.click(document.querySelector('[data-mining-step-jump="evolution"]') as HTMLElement);
+    const submit = document.querySelector("[data-evo-submit]") as HTMLButtonElement;
+    const save = document.querySelector("[data-evo-save-draft]") as HTMLButtonElement;
+    expect(submit.matches(":disabled")).toBe(true);
+    expect(save.matches(":disabled")).toBe(true);
+    for (const button of [submit, save]) {
+      button.focus();
+      expect(document.activeElement).not.toBe(button);
+      await keyboard.keyboard("{Enter}");
+    }
+    expect(document.querySelector("[data-evo-confirm-submit]")).toBeNull();
+    expect(factorMiningApi.createRun).not.toHaveBeenCalled();
+    expect(factorMiningApi.saveDraft).not.toHaveBeenCalled();
   });
 
   it("点「复制为草稿」→ 拉配置并以编辑态打开（无锁定徽标）", async () => {
@@ -287,9 +330,42 @@ describe("因子挖掘：列表优先 + 抽屉向导 + 生命周期", () => {
     fireEvent.click(document.querySelector("[data-mining-run-view='run-done']") as HTMLElement);
     fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
     await act(async () => { resolvers.forEach((resolve) => resolve({ id: "run-done", status: "succeeded", start_date: "2025-03-03", end_date: "2025-08-08", data_cutoff_at: "2025-08-08" })); });
-    fireEvent.click(document.querySelector('[data-mining-step-jump="time-target"]') as HTMLElement);
+    // 强引导门控：新任务从第 1 步起，完成第 1 步（生成物料）后才能到第 2 步
+    await waitFor(() => {
+      expect(document.querySelector("[data-pool-preview-stats]")).toBeTruthy();
+    });
+    fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
+    await waitFor(() => {
+      expect(document.querySelector("[data-pool-lock-banner]")).toBeTruthy();
+    });
+    fireEvent.click(document.querySelector("[data-mining-next]") as HTMLElement);
     const start = (document.querySelector('[data-time-start] input') ?? document.querySelector('[data-time-start]')) as HTMLInputElement;
     expect(start.value).toBe("");
+  });
+
+  it("自动恢复最近任务迟到时不能覆盖已打开的新建向导", async () => {
+    let resolveRestore!: (detail: unknown) => void;
+    getRun.mockImplementation(() => new Promise((resolve) => { resolveRestore = resolve; }));
+    window.localStorage.setItem("mining_last_run_id", "run-done");
+    render(<MiningShell />);
+    await waitFor(() => expect(document.querySelector("[data-mining-new-task]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+    await act(async () => { resolveRestore({ ...RUNS[0], total_generations: 20 }); });
+    expect(document.querySelector('[data-mining-step-panel="pool"]')).toBeTruthy();
+    expect(document.querySelector("[data-run-track]")).toBeNull();
+    expect(document.querySelector("[data-mining-restored-notice]")).toBeNull();
+  });
+
+  it("旧列表删除草稿迟到失败时不把错误显示在新建向导", async () => {
+    let rejectDelete!: (reason: unknown) => void;
+    vi.mocked(factorMiningApi.deleteDraft).mockImplementationOnce(() => new Promise((_, reject) => { rejectDelete = reject; }));
+    render(<MiningShell />);
+    await waitFor(() => expect(document.querySelector('[data-mining-task-delete="draft-1"]')).toBeTruthy());
+    fireEvent.click(document.querySelector('[data-mining-task-delete="draft-1"]') as HTMLElement);
+    fireEvent.click(document.querySelector("[data-mining-new-task]") as HTMLElement);
+    await act(async () => { rejectDelete(new Error("旧删除失败")); });
+    expect(document.querySelector("[data-mining-draft-note]")).toBeNull();
+    expect(document.querySelector('[data-mining-step-panel="pool"]')).toBeTruthy();
   });
 
   it("批次超过一页时能查看后续历史批次", async () => {

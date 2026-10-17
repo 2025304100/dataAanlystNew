@@ -51,7 +51,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { useApp } from "../../context/AppContext";
-import { t, template, factorLabel } from "../../i18n";
+import { t, template } from "../../i18n";
 import "./FactorEvaluationLab.css";
 import {
   api,
@@ -66,6 +66,8 @@ import {
   type StressTestSummary,
 } from "../../api/client";
 import SafeMetric from "../common/SafeMetric";
+import { useFactorLabSelection, type FactorLabSelectionProps } from "./useFactorLabSelection";
+import { useUnsupportedFeatures } from "../settings/UnsupportedFeaturesToggle";
 
 // `warn` is a completed evaluation with a non-blocking gate result, not a
 // running task. Treating it as active makes the UI keep polling and counting
@@ -143,24 +145,19 @@ function errorCategoryLabel(category: unknown): string {
 }
 
 const METRIC_HINTS: Record<string, string> = {
-  rankIc: "排名信息系数：衡量因子排序与未来收益排序的相关性，越接近 1 越好，负值表示方向相反。",
-  rankIcMedian: "排名 IC 的中位数，用来观察典型交易日表现，减少极端日期影响。",
-  rankIcStd: "排名 IC 标准差，越小表示不同交易日的表现越稳定。",
-  icir: "ICIR = IC 均值 / IC 标准差，衡量单位波动对应的预测能力，越高越稳定。通常 0.15 以上才具备较强参考价值。",
-  positiveRatio: "正 IC 占比：未来收益方向判断正确的交易日比例。",
-  coverage: "覆盖率：有有效因子值并参与计算的样本占比。",
-  samples: "样本数：实际参与评价的股票-交易日样本数量。",
-  monotonicity: "分组单调性：各分组收益是否随因子排序稳定变化，越接近 1 越好。",
-  longShort: "多空收益：高分组与低分组之间的收益差。",
-  turnover: "换手率：策略调仓频率，越高通常意味着交易成本越高。",
-  costAdjusted: "成本后收益：扣除手续费和滑点后的收益。",
+  rankIc: "factorLabMetricRankIcHint", rankIcMedian: "factorLabMetricRankIcMedianHint",
+  rankIcStd: "factorLabMetricRankIcStdHint", icir: "factorLabMetricIcirHint",
+  positiveRatio: "factorLabMetricPositiveRatioHint", coverage: "factorLabShadowCoverageHint",
+  samples: "factorLabMetricSamplesHint", monotonicity: "factorLabMetricMonotonicityHint",
+  longShort: "factorLabMetricLongShortHint", turnover: "factorLabShadowTurnoverHint",
+  costAdjusted: "factorLabMetricNetHint",
 };
 
 function MetricLabel({ label, hint }: { label: string; hint: keyof typeof METRIC_HINTS }) {
   return (
     <Space size={4}>
       <span>{label}</span>
-      <Tooltip title={METRIC_HINTS[hint]}>
+      <Tooltip title={t(METRIC_HINTS[hint])}>
         <InfoCircleOutlined style={{ color: "#8c8c8c", cursor: "help" }} />
       </Tooltip>
     </Space>
@@ -176,6 +173,24 @@ function taskMessageLabel(message: string | null | undefined): string {
   if (/^no_factor_data:/i.test(message)) return t("evalLabErrorNoFactorData");
   if (/^missing factor_code$/i.test(message)) return t("evalLabErrorFactorRequired");
   return message;
+}
+
+function taskFactorCode(task: EvaluationTaskRead | null | undefined): string | undefined {
+  const resultCode = task?.result?.factor_code;
+  if (typeof resultCode === "string" && resultCode.trim()) return resultCode.trim();
+  const raw = (task as unknown as Record<string, unknown> | undefined)?.payload_json;
+  try {
+    const payload = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const code = payload && typeof payload === "object" ? (payload as Record<string, unknown>).factor_code : undefined;
+    return typeof code === "string" && code.trim() ? code.trim() : undefined;
+  } catch { return undefined; }
+}
+
+/** An omitted or malformed audit flag is unknown, never an implied pass. */
+function evidenceFlag(value: unknown): boolean | null {
+  if (value === true || value === 1 || value === "true" || value === "1") return true;
+  if (value === false || value === 0 || value === "false" || value === "0") return false;
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -469,6 +484,7 @@ function normalizeEvaluationMetrics(
 
 function verdictLabel(verdict: string | null | undefined): string {
   if (!verdict) return "-";
+  if (verdict === "insufficient") return t("factorLabStressInsufficient");
   if (verdict === "stable") return t("evalLabStressVerdictStable");
   if (verdict === "unstable") return t("evalLabStressVerdictUnstable");
   if (verdict === "cliff_drop") return t("evalLabStressVerdictCliffDrop");
@@ -513,52 +529,38 @@ const initialState: EvalLabState = {
   error: null,
 };
 
-export default function FactorEvaluationLab() {
+export default function FactorEvaluationLab(props: FactorLabSelectionProps = {}) {
   const ctx = useApp();
   const { message } = App.useApp();
   const { setActiveTab, setActiveSubTab } = ctx;
+  const showUnsupported = useUnsupportedFeatures();
 
   const [state, setState] = useState<EvalLabState>(initialState);
   const lastProgressRef = useRef<{ signature: string; time: number } | null>(null);
   const [stalled, setStalled] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [factorOptions, setFactorOptions] = useState<{ value: string; label: string }[]>([]);
-  const [factorLoading, setFactorLoading] = useState(true);
-  const [factorLoadError, setFactorLoadError] = useState<string | null>(null);
-
-  // 加载因子列表用于下拉选择
-  useEffect(() => {
-    let cancelled = false;
-    setFactorLoading(true);
-    setFactorLoadError(null);
-    // Factor-domain internal - DO NOT USE outside factor center
-    api.scoringListFactorDefinitions({ page_size: 100 }).then((res) => {
-      if (cancelled) return;
-      const options = (res.items || []).map((f: { code: string; name?: string | null }) => ({
-        value: f.code,
-        label: `${factorLabel(f.code, f.name ?? undefined)} (${f.code})`,
-      }));
-      setFactorOptions(options);
-    }).catch((err) => {
-      if (cancelled) return;
-      setFactorLoadError(err?.message || "加载因子列表失败");
-    }).finally(() => {
-      if (!cancelled) setFactorLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  // 表单字段
-  const [factorCode, setFactorCode] = useState("");
-  const [factorVersionId, setFactorVersionId] = useState<string | undefined>(undefined);
-  const [factorKind, setFactorKind] = useState<"continuous" | "event" | "regime">("continuous");
+  const selection = useFactorLabSelection(props);
+  const { factorCode, factorOptions, factorLoading } = selection;
+  const factorLoadError = selection.error;
+  const factorVersionId = selection.version?.id;
+  const selectionKey = JSON.stringify([factorCode, factorVersionId]);
+  const currentSelectionKey = useRef(selectionKey);
+  currentSelectionKey.current = selectionKey;
+  const factorKind = selection.factor?.factor_kind || "continuous";
   const [targetHorizon, setTargetHorizon] = useState(5);
   const [nGroups, setNGroups] = useState(5);
   const [costRate, setCostRate] = useState(0.001);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [direction, setDirection] = useState<"higher_better" | "lower_better" | "nonlinear">("higher_better");
+  const direction = selection.version?.direction || selection.factor?.direction;
   const [preflightResult, setPreflightResult] = useState<PreflightResponse | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
+  const [checkedConfigKey, setCheckedConfigKey] = useState<string | null>(null);
+  const preflightSequence = useRef(0);
+  const detailSequence = useRef(0);
+  const tasksSequence = useRef(0);
+  const runsSequence = useRef(0);
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
   const [dataCutoffDate, setDataCutoffDate] = useState<string | null>(null);
   const [executionHash, setExecutionHash] = useState<string | null>(null);
 
@@ -566,6 +568,19 @@ export default function FactorEvaluationLab() {
   const [advancedDrawerOpen, setAdvancedDrawerOpen] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState("overview");
   const [universe, setUniverse] = useState<string>("ashare_all");
+  const configKey = JSON.stringify([factorCode, factorVersionId, universe,
+    dateRange?.[0]?.format("YYYY-MM-DD"), dateRange?.[1]?.format("YYYY-MM-DD"), targetHorizon]);
+  const currentConfigKey = useRef(configKey);
+  currentConfigKey.current = configKey;
+  const readinessCurrent = checkedConfigKey === configKey;
+  const datesInvalid = !!(dateRange?.[0] && dateRange?.[1] && dateRange[0].isAfter(dateRange[1], "day"));
+
+  useEffect(() => () => {
+    preflightSequence.current += 1;
+    detailSequence.current += 1;
+    tasksSequence.current += 1;
+    runsSequence.current += 1;
+  }, []);
 
   // ============================================================
   // 【新增】任务/运行详情 弹窗 Drawer（不再依赖左侧页面 Tab 切换，点击直接打开）
@@ -589,6 +604,14 @@ export default function FactorEvaluationLab() {
     run: null,
     activeTab: "overview",
   });
+
+  const reportFactorCode = useCallback((run: EvaluationRunRead, task?: EvaluationTaskRead | null): string | undefined => {
+    if (factorCode && run.factor_version_id === factorVersionId) return factorCode;
+    const recorded = (run as unknown as Record<string, unknown>).factor_code ?? run.config?.factor_code;
+    if (typeof recorded === "string" && recorded.trim()) return recorded.trim();
+    const ownerTask = task || state.tasks.find(item => item.id === run.task_id || item.result?.run_id === run.id);
+    return taskFactorCode(ownerTask);
+  }, [factorCode, factorVersionId, state.tasks]);
 
   /** 错误项结构（与后端 errors_json / preflight items 一致） */
   type EvalErrorItem = {
@@ -697,6 +720,8 @@ export default function FactorEvaluationLab() {
 
   /** 打开详情 Drawer（任务优先；没有 runId 也强制打开，默认打开错误 Tab） */
   const handleOpenDetailDrawer = useCallback(async (payload: { taskId?: string | null; runId?: string | null }) => {
+    const request = ++detailSequence.current;
+    const selectedContext = selectionKey;
     const { taskId = null, runId = null } = payload;
     if (!taskId && !runId) return;
     // 先确定默认 Tab：有任务且失败/取消 → 默认 errors；否则 overview
@@ -737,6 +762,7 @@ export default function FactorEvaluationLab() {
             : Promise.resolve(null)
         ),
       ]);
+      if (detailSequence.current !== request || currentSelectionKey.current !== selectedContext) return;
       const finalTask = taskResp || initialTask;
       let finalActiveTab = activeTab;
       if (finalTask && ["failed", "cancelled"].includes(finalTask.status) && !runId) {
@@ -750,14 +776,18 @@ export default function FactorEvaluationLab() {
         activeTab: finalActiveTab,
       }));
       // 也同步更新页面的 selectedRun，保持和原来行为一致（用户不切 Drawer 切回页面 Tab 也能看到）
-      if (runResp) setState((prev) => ({ ...prev, selectedRun: runResp }));
+      if (runResp && (!factorCode || runResp.factor_version_id === factorVersionId)) {
+        setState((prev) => ({ ...prev, selectedRun: runResp }));
+      }
     } catch (err: any) {
+      if (detailSequence.current !== request) return;
       setDetailDrawer((prev) => ({ ...prev, loading: false }));
       message.error(err?.message || "详情加载失败");
     }
-  }, [state.tasks, state.runs, message]);
+  }, [state.tasks, state.runs, message, selectionKey, factorCode, factorVersionId]);
 
   const closeDetailDrawer = useCallback(() => {
+    detailSequence.current += 1;
     setDetailDrawer({
       open: false,
       loading: false,
@@ -769,24 +799,20 @@ export default function FactorEvaluationLab() {
     });
   }, []);
 
+  useEffect(() => {
+    runsSequence.current += 1;
+    setState((previous) => ({ ...previous, runs: [], selectedRun: null }));
+    closeDetailDrawer();
+  }, [selectionKey, closeDetailDrawer]);
+
   /** 从任务上下文恢复因子代码，避免提交后清空表单导致修复链接打开“新增”。 */
   const resolveRepairFactorCode = useCallback((): string | null => {
-    if (factorCode.trim()) return factorCode.trim();
-    const task = detailDrawer.task;
-    const resultCode = (task?.result as Record<string, unknown> | null)?.factor_code;
-    if (typeof resultCode === "string" && resultCode.trim()) return resultCode.trim();
-    const payloadRaw = (task as unknown as Record<string, unknown> | null)?.payload_json;
-    if (typeof payloadRaw === "string") {
-      try {
-        const payload = JSON.parse(payloadRaw) as Record<string, unknown>;
-        const payloadCode = payload.factor_code;
-        if (typeof payloadCode === "string" && payloadCode.trim()) return payloadCode.trim();
-      } catch {
-        // Keep the fallback path below when an old task has malformed payload JSON.
-      }
+    if (detailDrawer.task || detailDrawer.run) {
+      return taskFactorCode(detailDrawer.task)
+        || (detailDrawer.run ? reportFactorCode(detailDrawer.run, detailDrawer.task) : undefined) || null;
     }
-    return null;
-  }, [detailDrawer.task, factorCode]);
+    return factorCode.trim() || null;
+  }, [detailDrawer.task, detailDrawer.run, factorCode, reportFactorCode]);
 
   /** 点击 fix_link：根据类型跳转到对应位置或打开弹窗 */
   const handleFixLinkClick = useCallback((fixLink: { tab?: string; subtab?: string; label_zh?: string }) => {
@@ -804,9 +830,11 @@ export default function FactorEvaluationLab() {
 
     // 1. 跳转到因子编辑器弹窗（修复公式/版本）
     if (tab === "factors" && subtab === "editor") {
+      const repairCode = resolveRepairFactorCode();
+      if (!repairCode) { message.warning(t("factorLabReportIdentityUnknownFix")); return; }
       ctx.setActiveTab("settings");
       window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-center" }));
-      dispatchFactorCenterNavigation("editor", resolveRepairFactorCode());
+      dispatchFactorCenterNavigation("editor", repairCode);
       return;
     }
 
@@ -852,7 +880,7 @@ export default function FactorEvaluationLab() {
       // 历史 blocker 使用 factors 作为顶层 tab，但实际入口在设置页。
       ctx.setActiveTab(tab === "factors" ? "settings" : tab);
     }
-  }, [ctx, resolveRepairFactorCode]);
+  }, [ctx, resolveRepairFactorCode, message]);
 
   /** 错误详情抽屉中的修复路径：复用相同逻辑并关闭抽屉 */
   const applyFixLink = useCallback((fixLink: NonNullable<EvalErrorItem["fix_link"]>) => {
@@ -863,9 +891,13 @@ export default function FactorEvaluationLab() {
 
 
   const runPreflight = useCallback(async () => {
+    const request = ++preflightSequence.current;
+    const requestKey = configKey;
     const code = factorCode.trim();
-    if (!code) {
+    setPreflightError(null);
+    if (!code || !factorVersionId || datesInvalid) {
       setPreflightResult(null);
+      setPreflightLoading(false);
       return;
     }
     setPreflightLoading(true);
@@ -878,7 +910,9 @@ export default function FactorEvaluationLab() {
         endDate: dateRange?.[1]?.format("YYYY-MM-DD"),
         targetHorizon,
       });
+      if (preflightSequence.current !== request || currentConfigKey.current !== requestKey) return;
       setPreflightResult(response);
+      setCheckedConfigKey(requestKey);
       const marketItem = response.items.find((item) => item.code.startsWith("preflight.market_coverage."));
       const marketLatest = marketItem?.evidence?.latest_trade_date;
       setDataCutoffDate(
@@ -901,13 +935,20 @@ export default function FactorEvaluationLab() {
         }
       }
     } catch (err: any) {
+      if (preflightSequence.current !== request || currentConfigKey.current !== requestKey) return;
       setPreflightResult(null);
+      setPreflightError(err?.message || t("factorLabPreflightFailed"));
     } finally {
-      setPreflightLoading(false);
+      if (preflightSequence.current === request && currentConfigKey.current === requestKey) setPreflightLoading(false);
     }
-  }, [factorCode, factorVersionId, universe, dateRange?.[0]?.format("YYYY-MM-DD"), dateRange?.[1]?.format("YYYY-MM-DD"), targetHorizon]);
+  }, [configKey, datesInvalid, factorCode, factorVersionId, universe, dateRange?.[0]?.format("YYYY-MM-DD"), dateRange?.[1]?.format("YYYY-MM-DD"), targetHorizon]);
 
   useEffect(() => {
+    setPreflightResult(null);
+    setCheckedConfigKey(null);
+    setDataCutoffDate(null);
+    setExecutionHash(null);
+    setPreflightError(null);
     const timer = window.setTimeout(() => {
       runPreflight();
     }, 400);
@@ -919,41 +960,59 @@ export default function FactorEvaluationLab() {
   }, []);
 
   const loadTasks = useCallback(async (showLoading = true) => {
+    const request = ++tasksSequence.current;
     if (showLoading) update({ loadingTasks: true });
     try {
       const tasks = await api.listEvaluationTasks(50);
+      if (tasksSequence.current !== request) return;
       const activeFromList =
         tasks.find((t) => !TERMINAL_TASK_STATES.has(t.status)) ?? null;
       update({ tasks, activeTask: activeFromList ?? tasks[0] ?? null, error: null });
     } catch (err: any) {
+      if (tasksSequence.current !== request) return;
       update({ error: err?.message || t("evalLabLoadFailed") });
     } finally {
-      if (showLoading) update({ loadingTasks: false });
+      if (tasksSequence.current === request) update({ loadingTasks: false });
     }
   }, [update]);
 
   const loadRuns = useCallback(async (showLoading = true) => {
+    const request = ++runsSequence.current;
+    const selectedContext = selectionKey;
+    update({ runs: [] });
+    // Never briefly load global history while a selected factor's versions resolve.
+    if (factorCode && factorVersionId == null) {
+      update({ loadingRuns: false });
+      return;
+    }
     if (showLoading) update({ loadingRuns: true });
     try {
       const runs = await api.listEvaluationRuns({
+        factorVersionId,
         gateResult: state.gateFilter || undefined,
         limit: 50,
       });
-      update({ runs, error: null });
+      if (runsSequence.current !== request || currentSelectionKey.current !== selectedContext) return;
+      update({ runs: factorCode ? runs.filter(run => run.factor_version_id === factorVersionId) : runs, error: null });
     } catch (err: any) {
+      if (runsSequence.current !== request) return;
       update({ error: err?.message || t("evalLabRunLoadFailed") });
     } finally {
-      if (showLoading) update({ loadingRuns: false });
+      if (runsSequence.current === request) update({ loadingRuns: false });
     }
-  }, [state.gateFilter, update]);
+  }, [state.gateFilter, update, factorCode, factorVersionId, selectionKey]);
 
   const loadAll = useCallback(async (showLoading = true) => {
     await Promise.all([loadTasks(showLoading), loadRuns(showLoading)]);
   }, [loadTasks, loadRuns]);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    void loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    void loadRuns();
+  }, [loadRuns]);
 
   // 运行中任务轮询：拿到 task id 后立即拉一次，之后每 2 秒刷新，避免
   // 提交成功到第一次进度反馈之间出现一个完整轮询周期的空窗。
@@ -961,7 +1020,10 @@ export default function FactorEvaluationLab() {
     const taskId = state.activeTask?.id;
     if (!taskId || !state.activeTask || TERMINAL_TASK_STATES.has(state.activeTask.status)) return;
     let cancelled = false;
+    let polling = false;
     const poll = async () => {
+      if (polling || cancelled) return;
+      polling = true;
       try {
         const pulse = await api.getEvaluationTaskHeartbeat(taskId);
         if (cancelled) return;
@@ -977,6 +1039,8 @@ export default function FactorEvaluationLab() {
       } catch (err: any) {
         if (cancelled) return;
         update({ error: err?.message || t("evalLabLoadFailed") });
+      } finally {
+        polling = false;
       }
     };
     void poll();
@@ -1032,18 +1096,30 @@ export default function FactorEvaluationLab() {
   useEffect(() => {
     const activeTask = state.activeTask;
     if (!activeTask || !["done", "completed", "warn"].includes(activeTask.status)) return;
+    if (factorCode && factorVersionId == null) return;
     const runId = (activeTask.result as Record<string, unknown> | null)?.run_id;
+    let cancelled = false;
+    const detailRequest = detailSequence.current;
+    const selectedContext = selectionKey;
     if (typeof runId === "string" && runId && !state.selectedRun) {
       api.getEvaluationRun(runId)
-        .then((run) => update({ selectedRun: run }))
+        .then((run) => {
+          if (!cancelled && detailRequest === detailSequence.current && currentSelectionKey.current === selectedContext
+            && (!factorCode || run.factor_version_id === factorVersionId)) update({ selectedRun: run });
+        })
         .catch(() => { /* 运行记录可能尚未写入，忽略 */ });
     }
-  }, [state.activeTask, state.selectedRun, update]);
+    return () => { cancelled = true; };
+  }, [state.activeTask, state.selectedRun, update, selectionKey, factorCode, factorVersionId]);
 
   const handleSubmit = async () => {
     const code = factorCode.trim();
     if (!code) {
       message.warning(t("evalLabCodeRequired"));
+      return;
+    }
+    if (!factorVersionId || !readinessCurrent || preflightLoading || !preflightResult?.overall.passed || datesInvalid) {
+      message.warning(t("factorLabCheckCurrentConfig"));
       return;
     }
     update({ submitting: true, error: null });
@@ -1057,8 +1133,8 @@ export default function FactorEvaluationLab() {
         target_horizon: targetHorizon,
         n_groups: nGroups,
         cost_rate: costRate,
-        factor_kind: factorKind,
-        direction,
+        factor_kind: ["continuous", "event", "regime"].includes(factorKind)
+          ? factorKind as EvaluationTaskCreatePayload["factor_kind"] : undefined,
         created_by: "local_user",
         // 用户再次点击提交代表显式重跑；后端仍对 queued/running 做并发去重。
         force_new: true,
@@ -1129,9 +1205,7 @@ export default function FactorEvaluationLab() {
         key: "factor_code",
         width: 140,
         render: (value: unknown, record: EvaluationTaskRead) => {
-          // 优先从 result 取，回退到 current_item
-          const fromResult = (record.result as Record<string, unknown> | null)?.factor_code;
-          const v = (fromResult as string) || record.current_item || "-";
+          const v = taskFactorCode(record) || record.current_item || "-";
           return <span>{String(v)}</span>;
         },
       },
@@ -1258,10 +1332,11 @@ export default function FactorEvaluationLab() {
         ),
       },
       {
-        title: t("evalLabColVersion"),
+        title: t("factorLabReportVersionId"),
         dataIndex: "factor_version_id",
         key: "factor_version_id",
         width: 80,
+        render: (id: number) => `#${id}`,
       },
       {
         title: t("evalLabColGate"),
@@ -1276,13 +1351,12 @@ export default function FactorEvaluationLab() {
         width: 130,
         render: (_: unknown, record: EvaluationRunRead) => {
           const r = record as unknown as Record<string, unknown>;
-          const f = r.production_fidelity;
-          const fidelity =
-            f === true || f === 1 || f === "1" || f === "true";
+          const fidelity = evidenceFlag(r.production_fidelity);
           const reason = r.non_fidelity_reason as string | null | undefined;
+          if (fidelity === null) return <Badge status="default" text={t("factorLabFidelityUnknown")} />;
           if (fidelity) {
             return (
-              <Badge status="success" text={<span>生产保真</span>} />
+              <Badge status="success" text={<span>{t("factorLabFidelityConfirmed")}</span>} />
             );
           }
           return (
@@ -1291,10 +1365,10 @@ export default function FactorEvaluationLab() {
               text={
                 reason ? (
                   <Tooltip title={reason}>
-                    <span>非保真实验</span>
+                    <span>{t("factorLabFidelityNonProduction")}</span>
                   </Tooltip>
                 ) : (
-                  <span>非保真实验</span>
+                  <span>{t("factorLabFidelityNonProduction")}</span>
                 )
               }
             />
@@ -1335,7 +1409,8 @@ export default function FactorEvaluationLab() {
   );
 
   const activeTask = state.activeTask;
-  const selectedRun = state.selectedRun;
+  const selectedRun = state.selectedRun && (!factorCode || state.selectedRun.factor_version_id === factorVersionId) ? state.selectedRun : null;
+  const visibleRuns = factorCode ? state.runs.filter(run => run.factor_version_id === factorVersionId) : state.runs;
   const metrics = normalizeEvaluationMetrics(selectedRun?.metrics);
   const stress = metrics?.stress_test;
   const heartbeatStr = activeTask?.heartbeat_at ? formatDateTime(activeTask.heartbeat_at) : "-";
@@ -1354,7 +1429,7 @@ export default function FactorEvaluationLab() {
       children: (
         <div className="eval-result-panel">
           {selectedRun ? (
-            <EvaluationRunReport run={selectedRun} metrics={metrics} stress={stress} />
+            <EvaluationRunReport run={selectedRun} metrics={metrics} stress={stress} factorCode={reportFactorCode(selectedRun)} />
           ) : (
             <Card size="small">
               <Empty
@@ -1453,12 +1528,12 @@ export default function FactorEvaluationLab() {
             />
           }>
             <Spin spinning={state.loadingRuns}>
-              {state.runs.length === 0 ? (
+              {visibleRuns.length === 0 ? (
                 <Empty description={t("evalLabEmptyRuns")} />
               ) : (
                 <Table
                   rowKey="id"
-                  dataSource={state.runs}
+                  dataSource={visibleRuns}
                   columns={runColumns}
                   size="small"
                   pagination={{ pageSize: 10, showSizeChanger: false }}
@@ -1470,7 +1545,7 @@ export default function FactorEvaluationLab() {
           </Card>
 
           {/* 任务列表 */}
-          <Card size="small" title={t("evalLabTaskList")} style={{ marginTop: 12 }}>
+          <Card size="small" title={<Space>{t("evalLabTaskList")}<Tag>{t("factorLabGlobalTasks")}</Tag></Space>} style={{ marginTop: 12 }}>
             <Spin spinning={state.loadingTasks}>
               {state.tasks.length === 0 ? (
                 <Empty description={t("evalLabEmptyTasks")} />
@@ -1507,7 +1582,7 @@ export default function FactorEvaluationLab() {
           >
             {t("evalLabRefresh")}
           </Button>
-          <Button icon={<InfoCircleOutlined />}>{t("evalLabMethodology")}</Button>
+          <Button icon={<InfoCircleOutlined />} onClick={() => setMethodologyOpen(true)}>{t("evalLabMethodology")}</Button>
         </Space>
       </div>
 
@@ -1523,6 +1598,7 @@ export default function FactorEvaluationLab() {
 
       {/* 吸顶配置工作台 */}
       <div className="eval-workbench">
+        <Alert showIcon type="info" className="factor-lab-guidance" message={t("factorLabEvaluationGuide")} />
         <Row gutter={[12, 12]} align="bottom">
           <Col xs={24} sm={12} md={8} lg={6}>
             <div className="eval-field">
@@ -1530,7 +1606,9 @@ export default function FactorEvaluationLab() {
               <Select
                 showSearch
                 value={factorCode || undefined}
-                onChange={(v) => setFactorCode(v)}
+                aria-label={t("evalWorkbenchFactor")}
+                onChange={selection.selectFactor}
+                loading={factorLoading}
                 placeholder={t("evalLabFactorCodePlaceholder")}
                 disabled={taskRunning || state.submitting}
                 style={{ width: "100%" }}
@@ -1538,7 +1616,7 @@ export default function FactorEvaluationLab() {
                 filterOption={(input, option) =>
                   (option?.label as string ?? "").toLowerCase().includes(input.toLowerCase())
                 }
-                notFoundContent={factorLoadError ? factorLoadError : t("evalLabLoadingFactors")}
+                notFoundContent={factorLoadError || t(factorLoading ? "evalLabLoadingFactors" : "factorLabNoFactors")}
                 allowClear
                 size="large"
               />
@@ -1546,18 +1624,18 @@ export default function FactorEvaluationLab() {
           </Col>
           <Col xs={12} sm={6} md={4} lg={3}>
             <div className="eval-field">
-              <label className="eval-field-label">{t("evalWorkbenchKind")}</label>
+              <label className="eval-field-label">{t("factorLabVersion")}</label>
               <Select
-                value={factorKind}
-                onChange={(v) => setFactorKind(v)}
-                disabled={taskRunning || state.submitting}
+                aria-label={t("factorLabVersion")}
+                value={factorVersionId}
+                onChange={selection.selectVersion}
+                disabled={!factorCode || taskRunning || state.submitting}
+                loading={selection.versionLoading}
                 style={{ width: "100%" }}
                 size="large"
-                options={[
-                  { value: "continuous", label: t("factorKind_continuous") },
-                  { value: "event", label: t("factorKind_event") },
-                  { value: "regime", label: t("factorKind_regime") },
-                ]}
+                options={selection.versionOptions}
+                placeholder={t("factorLabSelectVersion")}
+                notFoundContent={selection.versionLoading ? <Spin size="small" /> : t("factorLabNoVersions")}
               />
             </div>
           </Col>
@@ -1571,10 +1649,12 @@ export default function FactorEvaluationLab() {
                 style={{ width: "100%" }}
                 size="large"
                 options={[
-                  { value: "ashare_all", label: t("evalUniverseAllA") },
-                  { value: "hs300", label: t("evalUniverseHS300") },
-                  { value: "zz500", label: t("evalUniverseZZ500") },
-                  { value: "zz1000", label: t("evalUniverseZZ1000") },
+                  { value: "ashare_all", label: t("factorLabLocalUniverse") },
+                  ...(showUnsupported ? [
+                    { value: "hs300", label: `${t("evalUniverseHS300")} · ${t("factorLabUniverseUnavailable")}`, disabled: true },
+                    { value: "zz500", label: `${t("evalUniverseZZ500")} · ${t("factorLabUniverseUnavailable")}`, disabled: true },
+                    { value: "zz1000", label: `${t("evalUniverseZZ1000")} · ${t("factorLabUniverseUnavailable")}`, disabled: true },
+                  ] : []),
                 ]}
               />
             </div>
@@ -1586,9 +1666,11 @@ export default function FactorEvaluationLab() {
                 <DatePicker
                   size="large"
                   style={{ width: "100%" }}
-                  placeholder="选择开始日期"
+                  placeholder={t("factorLabStartDate")}
                   value={dateRange?.[0] ?? null}
                   onChange={(v) => setDateRange([v, dateRange?.[1] ?? null])}
+                  disabled={taskRunning || state.submitting}
+                  status={datesInvalid ? "error" : undefined}
                 />
               </div>
             </div>
@@ -1600,9 +1682,11 @@ export default function FactorEvaluationLab() {
                 <DatePicker
                   size="large"
                   style={{ width: "100%" }}
-                  placeholder="选择结束日期"
+                  placeholder={t("factorLabEndDate")}
                   value={dateRange?.[1] ?? null}
                   onChange={(v) => setDateRange([dateRange?.[0] ?? null, v])}
+                  disabled={taskRunning || state.submitting}
+                  status={datesInvalid ? "error" : undefined}
                 />
               </div>
             </div>
@@ -1611,6 +1695,7 @@ export default function FactorEvaluationLab() {
             <div className="eval-field">
               <label className="eval-field-label">{t("evalWorkbenchTarget")}</label>
               <Select
+                aria-label={t("evalWorkbenchTarget")}
                 value={targetHorizon}
                 onChange={(v) => setTargetHorizon(Number(v) || 5)}
                 disabled={taskRunning || state.submitting}
@@ -1635,12 +1720,15 @@ export default function FactorEvaluationLab() {
                 loading={state.submitting}
                 disabled={
                   taskRunning ||
+                  !readinessCurrent ||
+                  !factorVersionId ||
+                  datesInvalid ||
                   preflightLoading ||
                   !preflightResult ||
                   !preflightResult.overall.passed ||
                   !factorCode
                 }
-                title={!factorCode ? "请先选择因子，系统会自动执行运行前检查" : undefined}
+                title={!factorCode ? t("factorLabSelectFactorFirst") : undefined}
                 block
                 className="eval-run-btn"
               >
@@ -1648,24 +1736,34 @@ export default function FactorEvaluationLab() {
               </Button>
               {!factorCode ? (
                 <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
-                  请先选择因子，系统会自动执行运行前检查。
+                  {t("factorLabSelectFactorFirst")}
                 </Typography.Text>
               ) : preflightResult && !preflightResult.overall.passed ? (
                 <Typography.Text type="danger" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
-                  就绪检查未通过，请先解决阻断项。
+                  {t("factorLabResolveBlockers")}
                 </Typography.Text>
               ) : null}
             </div>
           </Col>
         </Row>
+        {factorLoadError ? <Alert showIcon type="error" message={factorLoadError}
+          action={<Button onClick={selection.retry}>{t("factorLabRetryCheck")}</Button>} style={{ marginTop: 12 }} /> : null}
+        {datesInvalid ? <Alert showIcon type="error" message={t("factorLabDateOrder")} style={{ marginTop: 12 }} /> : null}
+        {preflightError ? <Alert showIcon type="error" message={t("factorLabPreflightFailed")} description={preflightError}
+          action={<Button onClick={() => void runPreflight()} loading={preflightLoading}>{t("factorLabRetryCheck")}</Button>}
+          style={{ marginTop: 12 }} /> : null}
 
         {/* 第二行：只读摘要 + 高级参数 */}
         <Row gutter={[12, 8]} align="middle" className="eval-workbench-meta">
           <Col flex="auto">
             <Space size="middle" wrap className="eval-meta-list">
               <span className="eval-meta-item">
+                <span className="eval-meta-label">{t("evalWorkbenchKind")}：</span>
+                <span className="eval-meta-value">{factorCode ? factorKindLabel(factorKind) : "-"}</span>
+              </span>
+              <span className="eval-meta-item">
                 <span className="eval-meta-label">{t("evalMetaDirection")}：</span>
-                <span className="eval-meta-value">{t("evalMetaDirectionHigh")}</span>
+                <span className="eval-meta-value">{direction ? t(`factorDirection_${direction}`) : "-"}</span>
               </span>
               <span className="eval-meta-item">
                 <span className="eval-meta-label">{t("evalMetaAdjust")}：</span>
@@ -1674,14 +1772,6 @@ export default function FactorEvaluationLab() {
               <span className="eval-meta-item">
                 <span className="eval-meta-label">{t("evalMetaCutoff")}：</span>
                 <span className="eval-meta-value">{dataCutoffDate || "-"}</span>
-              </span>
-              <span className="eval-meta-item">
-                <span className="eval-meta-label">{t("evalMetaExecHash")}：</span>
-                <span className="eval-meta-value mono">{executionHash || "-"}</span>
-              </span>
-              <span className="eval-meta-item">
-                <span className="eval-meta-label">{t("evalMetaFrozen")}：</span>
-                <span className="eval-meta-value">{t("evalMetaFrozenYes")}</span>
               </span>
             </Space>
           </Col>
@@ -1696,6 +1786,7 @@ export default function FactorEvaluationLab() {
         {activeTask || state.submitting ? (
           <div className="eval-running-banner" aria-busy={state.submitting || taskRunning}>
             <Space size="middle">
+              <Typography.Text>{t("factorLabGlobalTasks")}{taskFactorCode(activeTask) ? ` · ${taskFactorCode(activeTask)}` : ""}</Typography.Text>
               <Tag
                 color={state.submitting || taskRunning ? "processing" : taskStatusColor(activeTask!.status)}
                 icon={state.submitting || taskRunning ? <ClockCircleOutlined /> : undefined}
@@ -1721,12 +1812,20 @@ export default function FactorEvaluationLab() {
           </div>
         ) : null}
       </div>
+      <Modal open={methodologyOpen} title={t("evalLabMethodology")} footer={null} onCancel={() => setMethodologyOpen(false)}>
+        <Typography.Paragraph>{t("factorLabMethodologyData")}</Typography.Paragraph>
+        <Typography.Paragraph>{t("factorLabMethodologyMetrics")}</Typography.Paragraph>
+        <Alert type="warning" showIcon message={t("factorLabMethodologyNext")} />
+      </Modal>
 
       {/* 双栏主内容区 */}
       <Row gutter={12} className="eval-main-content">
         {/* 左侧：结果页签区 */}
         <Col xs={24} md={14} lg={16} xl={17} xxl={18}>
-          <Card size="small" className="eval-result-card eval-result-main-card">
+          <Card size="small" className="eval-result-card eval-result-main-card" role="region" aria-label={t("factorLabResultRegion")}>
+            <Alert showIcon type="info" message={t(factorCode ? "factorLabSelectedHistory" : "factorLabGlobalHistory")}
+              description={factorCode ? `${factorCode} · ${selection.version ? `v${selection.version.version} (#${factorVersionId})` : t("factorLabSelectVersion")}` : t("factorLabGlobalHistoryHelp")}
+              style={{ margin: 12 }} />
             <Tabs
               activeKey={activeResultTab}
               onChange={setActiveResultTab}
@@ -1882,7 +1981,7 @@ export default function FactorEvaluationLab() {
             <Col span={12}>
               <div className="eval-field">
                 <label className="eval-field-label">{t("evalLabNGroups")}</label>
-                <InputNumber
+                <InputNumber disabled={taskRunning || state.submitting}
                   value={nGroups}
                   onChange={(v) => setNGroups(Number(v) || 5)}
                   min={2}
@@ -1894,7 +1993,7 @@ export default function FactorEvaluationLab() {
             <Col span={12}>
               <div className="eval-field">
                 <label className="eval-field-label">{t("evalLabCostRate")}</label>
-                <InputNumber
+                <InputNumber disabled={taskRunning || state.submitting}
                   value={costRate}
                   onChange={(v) => setCostRate(Number(v) || 0)}
                   min={0}
@@ -1917,10 +2016,13 @@ export default function FactorEvaluationLab() {
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {t("evalAdvancedPostprocessHint")}
           </Typography.Text>
+          <Descriptions size="small" column={1} style={{ marginTop: 12 }}>
+            <Descriptions.Item label={t("evalMetaExecHash")}>{executionHash || "-"}</Descriptions.Item>
+          </Descriptions>
         </div>
         <div className="eval-advanced-footer">
           <Space>
-            <Button>{t("evalAdvancedReset")}</Button>
+            <Button disabled={taskRunning || state.submitting} onClick={() => { setNGroups(5); setCostRate(0.001); }}>{t("evalAdvancedReset")}</Button>
             <Button type="primary" onClick={() => setAdvancedDrawerOpen(false)}>
               {t("evalAdvancedApply")}
             </Button>
@@ -1980,6 +2082,8 @@ export default function FactorEvaluationLab() {
                     {detailDrawer.run ? (
                       <EvaluationRunReport
                         run={detailDrawer.run}
+                        factorCode={reportFactorCode(detailDrawer.run, detailDrawer.task)}
+                        historical={!!factorCode && detailDrawer.run.factor_version_id !== factorVersionId}
                         metrics={normalizeEvaluationMetrics(detailDrawer.run.metrics)}
                         stress={
                           normalizeEvaluationMetrics(detailDrawer.run.metrics).stress_test
@@ -2305,16 +2409,9 @@ interface EvaluationRunReportProps {
   run: EvaluationRunRead;
   metrics: EvaluationRunRead["metrics"] | undefined;
   stress: StressTestSummary | undefined;
+  factorCode?: string;
+  historical?: boolean;
 }
-
-const DEFAULT_ZERO_EXCLUDED: ExcludedSymbolDays = {
-  new_listing: 0,
-  st: 0,
-  suspended: 0,
-  delisting_period: 0,
-  status_unknown: 0,
-  price_or_volume_invalid: 0,
-};
 
 type AuditEventRow = {
   symbol_id: number;
@@ -2323,7 +2420,7 @@ type AuditEventRow = {
   reason?: string | null;
 };
 
-function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps) {
+function EvaluationRunReport({ run, metrics, stress, factorCode, historical }: EvaluationRunReportProps) {
   const m = normalizeEvaluationMetrics(metrics);
   const hasMetrics = Object.keys(m).length > 0;
   const quantileReturns = Array.isArray(m.quantile_returns) ? m.quantile_returns : [];
@@ -2332,9 +2429,9 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
   const [auditOpen, setAuditOpen] = useState(false);
   // 兼容扁平/嵌套两种 DTO：evaluation 字段可能直接挂在 run 上
   const evaluation = (run as unknown as Record<string, unknown>) || {};
-  const excluded: ExcludedSymbolDays =
-    ((evaluation.excluded_symbol_days as ExcludedSymbolDays | undefined) ??
-      DEFAULT_ZERO_EXCLUDED);
+  const excluded = evaluation.excluded_symbol_days as Partial<ExcludedSymbolDays> | null | undefined;
+  const excludedCount = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : "—";
+  const hasGovernanceEvidence = ["filter_config", "excluded_symbol_days", "production_fidelity", "non_fidelity_reason", "raw_count", "filtered_count", "effective_count", "target_batch_id", "audit_events"].some(key => evaluation[key] != null);
   const rawCount = evaluation.raw_count as number | null | undefined;
   const filteredCount = evaluation.filtered_count as number | null | undefined;
   const effectiveCount = evaluation.effective_count as number | null | undefined;
@@ -2348,24 +2445,14 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
   const targetBatchId = evaluation.target_batch_id as string | null | undefined;
   const auditEvents: AuditEventRow[] =
     (evaluation.audit_events as AuditEventRow[] | null | undefined) ?? [];
-  const fidelityFlag = evaluation.production_fidelity as
-    | number
-    | boolean
-    | null
-    | undefined;
+  const fidelity = evidenceFlag(evaluation.production_fidelity);
   const nonFidelityReason = evaluation.non_fidelity_reason as
     | string
     | null
     | undefined;
 
-  const ruleState = (key: string): boolean => {
-    if (!filterConfig) return true; // 未提供则默认视为开启（展示保守）
-    const val = (filterConfig as Record<string, unknown>)[key];
-    if (typeof val === "boolean") return val;
-    if (typeof val === "number") return val !== 0;
-    return true;
-  };
-  const ruleRows: Array<{ k: string; label: string; on: boolean }> = [
+  const ruleState = (key: string) => evidenceFlag(filterConfig?.[key]);
+  const ruleRows: Array<{ k: string; label: string; on: boolean | null }> = [
     { k: "filter_new_listing", label: "次新股过滤", on: ruleState("filter_new_listing") },
     { k: "filter_st", label: "ST 过滤", on: ruleState("filter_st") },
     { k: "filter_suspended", label: "停牌过滤", on: ruleState("filter_suspended") },
@@ -2375,12 +2462,6 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
       on: ruleState("delisting_period_excluded"),
     },
   ];
-  const fidelityBool =
-    fidelityFlag === true ||
-    fidelityFlag === 1 ||
-    (fidelityFlag as unknown as string) === "1" ||
-    (fidelityFlag as unknown as string) === "true";
-
   return (
     <Card
       title={
@@ -2392,6 +2473,8 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
       size="small"
       style={{ marginBottom: 12 }}
       className="eval-report-card"
+      role="region"
+      aria-label={`${t("evalLabSectionReport")} · ${run.id}`}
       extra={
         <Tooltip title={run.id}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -2400,6 +2483,11 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
         </Tooltip>
       }
     >
+      {historical ? <Alert type="warning" showIcon message={t("factorLabHistoricalReport")} style={{ marginBottom: 12 }} /> : null}
+      <Descriptions size="small" column={2} style={{ marginBottom: 12 }}>
+        <Descriptions.Item label={t("factorLabReportFactor")}>{factorCode || t("factorLabReportIdentityUnknown")}</Descriptions.Item>
+        <Descriptions.Item label={t("factorLabReportVersionId")}>#{run.factor_version_id}</Descriptions.Item>
+      </Descriptions>
       <Alert
         type="info"
         message={t("evalLabRunImmutable")}
@@ -2756,7 +2844,7 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
         size="small"
       >
         <Descriptions column={2} size="small" bordered>
-          <Descriptions.Item label={t("evalLabColVersion")}>
+          <Descriptions.Item label={t("factorLabReportVersionId")}>
             {run.factor_version_id}
           </Descriptions.Item>
           <Descriptions.Item label={t("evalLabTargetCode")}>
@@ -2802,28 +2890,28 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
       <Divider orientation="left" plain style={{ margin: "4px 0 12px" }}>
         过滤与数据治理
       </Divider>
-      <Row gutter={[16, 16]} style={{ marginBottom: 12 }}>
+      {!hasGovernanceEvidence ? <Alert type="info" showIcon message={t("factorLabGovernanceEvidenceMissing")} /> : <Row gutter={[16, 16]} style={{ marginBottom: 12 }}>
         <Col xs={24} md={12}>
-          <Card size="small" title="四项规则开关状态">
+          <Card size="small" title={t("factorLabFilterRulesEvidence")} role="region" aria-label={t("factorLabFilterRulesEvidence")}>
             <Space wrap size={[6, 6]}>
               {ruleRows.map((r) => (
                 <Tag
                   key={r.k}
-                  color={r.on ? "green" : "red"}
+                  color={r.on === null ? "default" : r.on ? "green" : "red"}
                   style={{
-                    textDecoration: r.on ? "none" : "line-through",
+                    textDecoration: r.on === false ? "line-through" : "none",
                     margin: 0,
                   }}
                 >
-                  {r.label} {r.on ? "✓" : "✗ 关"}
+                  {r.label} {r.on === null ? t("factorLabEvidenceNotProvided") : r.on ? "✓" : "✗ 关"}
                 </Tag>
               ))}
             </Space>
             <Divider style={{ margin: "12px 0" }} />
-            <Tag color={fidelityBool ? "green" : "gold"}>
-              生产保真：{fidelityBool ? "TRUE" : "非保真实验"}
+            <Tag color={fidelity === null ? "default" : fidelity ? "green" : "gold"}>
+              {t("factorLabProductionFidelity")}：{fidelity === null ? t("factorLabEvidenceNotProvided") : fidelity ? "✓" : `✗ ${t("factorLabFidelityNonProduction")}`}
             </Tag>
-            {!fidelityBool && nonFidelityReason ? (
+            {fidelity === false && nonFidelityReason ? (
               <Tooltip title={nonFidelityReason}>
                 <Tag color="orange">
                   原因：
@@ -2838,7 +2926,9 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
         <Col xs={24} md={12}>
           <Card
             size="small"
-            title="排除计数（股票日）"
+            title={t("factorLabExclusionCounts")}
+            role="region"
+            aria-label={t("factorLabExclusionCounts")}
             extra={
               <Button
                 type="link"
@@ -2852,22 +2942,22 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
           >
             <Row gutter={[8, 8]}>
               <Col span={8}>
-                <Statistic title="次新股" value={excluded.new_listing} />
+                <Statistic title="次新股" value={excludedCount(excluded?.new_listing)} />
               </Col>
               <Col span={8}>
-                <Statistic title="ST" value={excluded.st} />
+                <Statistic title="ST" value={excludedCount(excluded?.st)} />
               </Col>
               <Col span={8}>
-                <Statistic title="停牌" value={excluded.suspended} />
+                <Statistic title="停牌" value={excludedCount(excluded?.suspended)} />
               </Col>
               <Col span={8}>
-                <Statistic title="退市整理期" value={excluded.delisting_period} />
+                <Statistic title="退市整理期" value={excludedCount(excluded?.delisting_period)} />
               </Col>
               <Col span={8}>
-                <Statistic title="状态未知" value={excluded.status_unknown} />
+                <Statistic title="状态未知" value={excludedCount(excluded?.status_unknown)} />
               </Col>
               <Col span={8}>
-                <Statistic title="价量异常" value={excluded.price_or_volume_invalid} />
+                <Statistic title="价量异常" value={excludedCount(excluded?.price_or_volume_invalid)} />
               </Col>
             </Row>
             <Divider style={{ margin: "12px 0" }} />
@@ -2894,7 +2984,7 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
             </Space>
           </Card>
         </Col>
-      </Row>
+      </Row>}
 
       {/* 审计事件 Modal */}
       <Modal

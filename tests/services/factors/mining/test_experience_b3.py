@@ -114,7 +114,16 @@ class TestAccumulation:
         class _Outcome:
             metrics: dict
 
-        outcome = _Outcome(metrics={"ic": {"icir": 0.02}})
+        # This is a measured poor factor, rather than an unevaluated factor:
+        # missing correlation evidence must stay ungraded and never enter F1
+        # as a fabricated negative sample.
+        outcome = _Outcome(metrics={
+            "ic": {"icir": 0.02}, "correlation": 0.1,
+            "coverage": {"coverage": 0.95}, "turnover": {"avg_turnover": 0.2},
+            "stats": {"p_value": 0.8, "p_adj_bonferroni": 1.0,
+                "ci_lower": -0.1, "ci_upper": 0.1, "perm_p_value": 0.8,
+                "decay_ratio": 0.9, "degraded": False},
+        })
         SVC._grade_and_govern_outcome(db_session, cand=cand, outcome=outcome)
 
         negatives = db_session.query(FactorExperience).filter_by(

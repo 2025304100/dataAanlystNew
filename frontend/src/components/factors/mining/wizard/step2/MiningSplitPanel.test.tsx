@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
+import { setLocale } from "../../../../../i18n";
 
 /**
  * T29 Step2 切分面板测试（向导 §4 / §4.1，设计 §7.2，任务卡 pitfalls）。
@@ -11,7 +12,7 @@ import { fireEvent, render } from "@testing-library/react";
  *   4. **SplitBudget 展示**（后端下发）：总点数与各段点数；
  *   5. **purge 必须同时展示「调仓点数」与「折算交易日数」**
  *      —— 否则用户会把 purge=5 误读成 5 个交易日（任务卡 pitfalls 第一条）；
- *   6. 月频（statistically_degraded）→ 显示「最高 B 级」降级提示；
+ *   6. 测试样本不足（statistically_degraded，不限频率）→ 显示「最高 B 级」提示；
  *   7. meets_floor=false → 显示最低样本量阻断；
  *   8. **not_do：不在前端计算切分** —— 无 budget 时不得臆造段边界/点数。
  */
@@ -42,6 +43,8 @@ function bp(over: Partial<SplitBudget> = {}) {
   return { ...BUDGET, ...over };
 }
 
+afterEach(() => setLocale("zh-CN"));
+
 describe("MiningSplitPanel 三段比例", () => {
   /** antd InputNumber 会把 data-* 转发到**内层 input** 上（根是包装 div） */
   const ratioInput = (id: string) =>
@@ -59,19 +62,25 @@ describe("MiningSplitPanel 三段比例", () => {
     expect(document.querySelector("[data-split-sum]")?.textContent).toContain("100");
   });
 
-  it("比例和不为 100 → 显示阻断提示", () => {
-    render(<MiningSplitPanel />);
-    changeRatio("test", "5");
-    expect(document.querySelector("[data-split-error]")).toBeTruthy();
-    expect(document.querySelector("[data-split-sum]")?.textContent).toContain("85");
+  it("测试比例只读并随训练与验证比例联动，显示值与回调保持一致", () => {
+    const onChange = vi.fn();
+    render(<MiningSplitPanel onChange={onChange} />);
+    expect(ratioInput("test").readOnly).toBe(true);
+    changeRatio("train", "50");
+    expect(ratioInput("test").value).toBe("30");
+    expect(onChange).toHaveBeenLastCalledWith({ train: 50, val: 20, test: 30 });
+    expect(document.querySelector("[data-split-error]")).toBeNull();
   });
 
-  it("比例改回 100 后错误消失", () => {
+  it("训练与验证挤占全部样本时阻断，留出测试样本后恢复", () => {
     render(<MiningSplitPanel />);
-    changeRatio("test", "5");
+    changeRatio("train", "80");
+    expect(ratioInput("test").value).toBe("0");
     expect(document.querySelector("[data-split-error]")).toBeTruthy();
-    changeRatio("test", "20");
+    changeRatio("train", "60");
     expect(document.querySelector("[data-split-error]")).toBeNull();
+    changeRatio("val", "0");
+    expect(document.querySelector("[data-split-error]")).toBeTruthy();
   });
 
   it("比例变化回调上抛（由后端重算，前端不算切分）", () => {
@@ -83,19 +92,14 @@ describe("MiningSplitPanel 三段比例", () => {
 });
 
 describe("MiningSplitPanel 自定义边界", () => {
-  it("默认比例模式，切到自定义后出现日期边界输入", () => {
+  it("未接入执行的自定义日期边界禁用并说明，不展示无效输入", () => {
     render(<MiningSplitPanel />);
+    const custom = document.querySelector("[data-split-mode-custom]") as HTMLButtonElement;
+    expect(custom.disabled).toBe(true);
     expect(document.querySelector("[data-split-custom-train-end]")).toBeNull();
-    fireEvent.click(document.querySelector("[data-split-mode-custom]") as HTMLElement);
-    expect(document.querySelector("[data-split-custom-train-end]")).toBeTruthy();
-    expect(document.querySelector("[data-split-custom-val-end]")).toBeTruthy();
-  });
-
-  it("切回比例模式隐藏日期输入", () => {
-    render(<MiningSplitPanel />);
-    fireEvent.click(document.querySelector("[data-split-mode-custom]") as HTMLElement);
-    fireEvent.click(document.querySelector("[data-split-mode-ratio]") as HTMLElement);
+    fireEvent.click(custom);
     expect(document.querySelector("[data-split-custom-train-end]")).toBeNull();
+    expect(document.querySelector("[data-split-custom-unavailable]")).toBeTruthy();
   });
 });
 
@@ -134,6 +138,22 @@ describe("MiningSplitPanel SplitBudget 展示", () => {
     const tip = document.querySelector("[data-split-degraded]");
     expect(tip).toBeTruthy();
     expect(tip?.textContent).toContain("B");
+  });
+
+  it.each([
+    { locale: "zh-CN" as const, insufficient: "测试段样本不足", daily: "日频", monthly: "月频", lower: "降低频率" },
+    { locale: "en-US" as const, insufficient: "Insufficient test points", daily: "daily", monthly: "Monthly", lower: "lower frequency" },
+  ])("$locale：周频测试样本不足按实际原因解释，并建议增加调仓点", ({ locale, insufficient, daily, monthly, lower }) => {
+    setLocale(locale);
+    render(<MiningSplitPanel budget={bp({ frequency: "weekly", test_points: 11, statistically_degraded: true, meets_floor: false, frequency_floor: 104 })} />);
+    const degraded = document.querySelector("[data-split-degraded]")?.textContent ?? "";
+    expect(degraded).toContain(insufficient);
+    expect(degraded).toContain("B");
+    expect(degraded).not.toContain(monthly);
+    const floor = document.querySelector("[data-split-floor-fail]")?.textContent ?? "";
+    expect(floor).toContain("104");
+    expect(floor).toContain(daily);
+    expect(floor).not.toContain(lower);
   });
 
   it("未达最低样本量 → 显示阻断提示并给出门槛值", () => {

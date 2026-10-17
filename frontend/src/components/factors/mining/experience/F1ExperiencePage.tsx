@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { t } from "../../../../i18n";
 import { factorExperienceApi } from "../../../../api/factorExperience";
 import type { F1Experience } from "../../../../api/factorExperience";
+import { categoryLabel } from "../factorCategory";
+import { miningExperienceStatusLabel, miningSourceLabel } from "../miningDisplay";
 
 /**
  * F1 历史经验库列表页（B3 挂载；对外契约 GET /factor-experience）。
@@ -156,10 +158,10 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
                   </td>
                   <td>
                     <span className="mining-chip mining-chip--brand">
-                      {exp.category ?? "-"}
+                      {categoryLabel(exp.category, t)}
                     </span>
                   </td>
-                  <td>{exp.source ?? "-"}</td>
+                  <td>{miningSourceLabel(exp.source)}</td>
                   <td className="mining-cell-num">
                     {exp.avg_icir != null ? Number(exp.avg_icir).toFixed(4) : "-"}
                   </td>
@@ -170,7 +172,7 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
                     {rateText(exp)}
                   </td>
                   <td>
-                    <span className={statusChipClass(exp.status)}>{exp.status ?? "-"}</span>
+                    <span className={statusChipClass(exp.status)}>{miningExperienceStatusLabel(exp.status)}</span>
                   </td>
                   <td>
                     <button

@@ -529,6 +529,24 @@ def _resolve_strategy_params(strategy: str, delay_min_ms: int, delay_max_ms: int
     return int(strat["delay_min_ms"]), int(strat["delay_max_ms"]), int(strat["max_retries"])
 
 
+def snapshot_config_cache() -> tuple[dict[str, dict[str, Any]], bool]:
+    """Capture process policy for a database configuration transaction."""
+    with _config_cache_lock:
+        from copy import deepcopy
+        return deepcopy(_config_cache), _config_cache_loaded
+
+
+def restore_config_cache(snapshot: tuple[dict[str, dict[str, Any]], bool]) -> None:
+    """Restore policy without depending on either database remaining readable."""
+    global _config_cache_loaded
+    cache, loaded = snapshot
+    with _config_cache_lock:
+        from copy import deepcopy
+        _config_cache.clear()
+        _config_cache.update(deepcopy(cache))
+        _config_cache_loaded = loaded
+
+
 def load_config_cache(db: Session) -> None:
     """从 DB 加载所有接口配置到内存缓存（启动时或批量变更后调用）。"""
     global _config_cache_loaded

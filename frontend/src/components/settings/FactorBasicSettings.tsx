@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { InputNumber, Select, Space, Typography } from "antd";
+import { InputNumber, Select, Typography } from "antd";
 import { t } from "../../i18n";
 import { api } from "../../api/client";
+import { useUnsupportedFeatures } from "./UnsupportedFeaturesToggle";
 
 /**
  * 「因子基础配置」设置栏（C2）。
  *
- * 展示/编辑因子基础配置的一组只读信息区 + 1 个表单控件（默认复杂度上限，
- * 仅本地展示，不落库；重点在于设置栏挂载可用）。
+ * 读取真实功能状态和仓库信息；尚无执行消费者的演示配置由共享偏好
+ * 控制展示，始终只读，不把展示开关当作业务启用。
  *
  * - 三态/空态容错：配置读取异常或字段缺失时显示占位，不崩页；
  * - 选择器前缀 `data-factor-basic-*` 供测试定位。
@@ -81,13 +82,9 @@ export default function FactorBasicSettings({
   }, [configProp]);
 
   const config = fetched;
-  // 内部展示用状态：config 为空 → 空态，但控件仍可编辑（不落库）
-  const [direction, setDirection] = useState<string | null>(
-    config?.defaultDirection ?? null,
-  );
-  const [maxComplexity, setMaxComplexity] = useState<number | null>(
-    config?.maxComplexity ?? 5,
-  );
+  const showUnsupported = useUnsupportedFeatures();
+  const direction = config?.defaultDirection ?? null;
+  const maxComplexity = config?.maxComplexity ?? 5;
 
   const empty = config == null;
 
@@ -104,18 +101,18 @@ export default function FactorBasicSettings({
 
       <section className="mining-pool-blocked" style={{ borderColor: "var(--line)", background: "rgba(255,255,255,0.5)", color: "var(--ink)" }}>
         <dl className="factor-basic-dl">
-          <div>
+          {showUnsupported && <div>
             <dt>{t("factorBasicDefaultDirection")}</dt>
             <dd>{direction ? t(DIRECTIONS.find((d) => d.value === direction)?.labelKey ?? direction) : t("factorBasicNotProvided")}</dd>
-          </div>
+          </div>}
           <div>
             <dt>{t("factorBasicWarehouse")}</dt>
             <dd>{config?.warehousePath ?? t("factorBasicPlaceholder")}</dd>
           </div>
-          <div>
+          {showUnsupported && <div>
             <dt>{t("factorBasicLanguage")}</dt>
             <dd>{config?.language ?? t("factorBasicNotProvided")}</dd>
-          </div>
+          </div>}
           <div>
             <dt>{t("factorBasicEnabled")}</dt>
             <dd>
@@ -133,7 +130,7 @@ export default function FactorBasicSettings({
         </dl>
       </section>
 
-      <div className="factor-basic-form" style={{ display: "grid", gap: 10, marginTop: 12 }}>
+      {showUnsupported && <div className="factor-basic-form" style={{ display: "grid", gap: 10, marginTop: 12 }}>
         <div className="mining-dl-row" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Typography.Text>{t("factorBasicMaxComplexity")}</Typography.Text>
           <InputNumber
@@ -141,7 +138,7 @@ export default function FactorBasicSettings({
             min={1}
             max={20}
             value={maxComplexity ?? undefined}
-            onChange={(v) => setMaxComplexity(v ?? null)}
+            disabled
           />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {t("factorBasicMaxComplexityTip")}
@@ -154,14 +151,14 @@ export default function FactorBasicSettings({
             style={{ width: 180 }}
             value={direction ?? undefined}
             placeholder={t("factorBasicPlaceholder")}
-            onChange={(v) => setDirection(v)}
+            disabled
             options={DIRECTIONS.map((d) => ({
               value: d.value,
               label: t(d.labelKey),
             }))}
           />
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

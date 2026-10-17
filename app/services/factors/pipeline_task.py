@@ -11,6 +11,7 @@ from statistics import median
 from uuid import uuid4
 
 from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
@@ -26,6 +27,7 @@ from app.services.async_tasks import (
     _set_task,
     _start_worker,
     create_async_task,
+    create_async_task_once,
     list_async_tasks,
 )
 from app.services.factors.bar_mirror import mirror_daily_bars
@@ -34,8 +36,8 @@ from app.services.factors.config import (
     get_current_factor_system_config,
     get_factor_system_config,
 )
-from app.services.factors.data_sync import mirror_factor_inputs
-from app.services.factors.factor_engine import calculate_stock_factors
+from app.services.factors.data_sync import mirror_factor_inputs, FactorInputMirrorResult
+from app.services.factors.factor_engine import calculate_stock_factors, resolve_frozen_factor_specs
 from app.services.factor_set_service import factor_set_readiness
 from app.services.factors.ridge_model import train_rolling_ridge
 from app.services.factors.runtime import _snapshot
@@ -178,7 +180,8 @@ def _complete_calculation_dates(db, warehouse, *, start_date: date, end_date: da
 
 def _qualified_factor_dates(warehouse, *, batch_id: str,
                             expected_versions: dict[str, int],
-                            minimum_coverage: float = 0.70) -> dict:
+                            minimum_coverage: float = 0.70,
+                            expected_symbol_count: int | None = None) -> dict:
     with warehouse.connection(read_only=True) as conn:
         totals = dict(conn.execute("""
             SELECT trade_date, COUNT(DISTINCT symbol) FROM raw_daily_bars
@@ -194,7 +197,8 @@ def _qualified_factor_dates(warehouse, *, batch_id: str,
     per_day = {}
     for day, code, version, count in rows:
         if expected_versions.get(code) == version:
-            per_day.setdefault(day, {})[code] = count / max(totals.get(day, 0), 1)
+            denominator = totals.get(day, 0) if expected_symbol_count is None else expected_symbol_count
+            per_day.setdefault(day, {})[code] = count / max(denominator, 1)
     accepted, skipped = [], []
     for day in sorted({row[0] for row in rows}):
         coverage = {code: per_day.get(day, {}).get(code, 0.0) for code in expected_versions}
@@ -216,6 +220,61 @@ DEFAULT_ETA_SECONDS = {
 TASK_HEARTBEAT_SECONDS = 15.0
 
 
+def retention_protected_score_ids(db: Session) -> set[int]:
+    """Read current/current-eligible and evidence-referenced score IDs only."""
+    referenced: set[int] = set()
+    # Narrow refreshes produce separate batches. Retaining only the newest
+    # global batches would eventually erase the current scores of symbols that
+    # were not selected. Protect their latest date (not merely latest insert,
+    # since a historical backfill can be newer than today's score).
+    for eligible_only in (False, True):
+        newer = aliased(Score)
+        # MySQL 5.7 has no window functions. An anti-exists selects the same
+        # first row without loading complete score history into Python.
+        # DESC places a NULL cutoff last; use null-safe equality for both its
+        # ID tie breaker and the nullable model group (manual scores).
+        newer_order = or_(
+            newer.trade_date > Score.trade_date,
+            and_(newer.trade_date == Score.trade_date, or_(
+                newer.factor_data_cutoff_at > Score.factor_data_cutoff_at,
+                and_(Score.factor_data_cutoff_at.is_(None), newer.factor_data_cutoff_at.is_not(None)),
+                and_(newer.factor_data_cutoff_at.is_not_distinct_from(Score.factor_data_cutoff_at),
+                     newer.id > Score.id),
+            )),
+        )
+        better = select(newer.id).where(
+            newer.symbol_id.is_not_distinct_from(Score.symbol_id),
+            newer.weight_mode.is_not_distinct_from(Score.weight_mode),
+            newer.factor_model_run_id.is_not_distinct_from(Score.factor_model_run_id),
+            newer_order,
+        ).correlate(Score)
+        latest = select(Score.id)
+        if eligible_only:
+            latest = latest.where(or_(
+                Score.factor_model_run_id.is_(None),
+                and_(Score.model_alpha_score.between(0, 100),
+                     Score.factor_data_cutoff_at.is_not(None)),
+            ))
+            better = better.where(or_(
+                newer.factor_model_run_id.is_(None),
+                and_(newer.model_alpha_score.between(0, 100),
+                     newer.factor_data_cutoff_at.is_not(None)),
+            ))
+        referenced.update(db.scalars(latest.where(~better.exists())).all())
+    for model in (DecisionEvidence, JournalEntry, TradeSetup):
+        try:
+            referenced.update(
+                int(value[0])
+                for value in db.execute(
+                    select(model.score_id).where(model.score_id.is_not(None))
+                ).all()
+            )
+        except Exception:
+            # Legacy databases may not yet have every optional table/column.
+            continue
+    return referenced
+
+
 def _prune_unreferenced_scores(db, *, keep_batches: int = 30) -> dict[str, object]:
     """Bound SQLite/MySQL score growth while preserving all live references."""
     if keep_batches < 1:
@@ -229,38 +288,7 @@ def _prune_unreferenced_scores(db, *, keep_batches: int = 30) -> dict[str, objec
     retained = {str(row[0]) for row in rows[:keep_batches]}
     if not retained:
         return {"score_rows_deleted": 0, "protected_factor_batch_ids": []}
-    referenced: set[int] = set()
-    # Narrow refreshes produce separate batches. Retaining only the newest
-    # global batches would eventually erase the current scores of symbols that
-    # were not selected. Protect their latest date (not merely latest insert,
-    # since a historical backfill can be newer than today's score).
-    latest_order = (
-        Score.trade_date.desc(), Score.factor_data_cutoff_at.desc(), Score.id.desc(),
-    )
-    group = (Score.symbol_id, Score.weight_mode, Score.factor_model_run_id)
-    for eligible_only in (False, True):
-        latest = select(Score.id, func.row_number().over(
-            partition_by=group, order_by=latest_order,
-        ).label('rank'))
-        if eligible_only:
-            latest = latest.where(or_(
-                Score.factor_model_run_id.is_(None),
-                and_(Score.model_alpha_score.between(0, 100),
-                     Score.factor_data_cutoff_at.is_not(None)),
-            ))
-        latest = latest.subquery()
-        referenced.update(db.scalars(select(latest.c.id).where(latest.c.rank == 1)).all())
-    for model in (DecisionEvidence, JournalEntry, TradeSetup):
-        try:
-            referenced.update(
-                int(value[0])
-                for value in db.execute(
-                    select(model.score_id).where(model.score_id.is_not(None))
-                ).all()
-            )
-        except Exception:
-            # Legacy databases may not yet have every optional table/column.
-            continue
+    referenced = retention_protected_score_ids(db)
     candidates = db.execute(
         select(Score.id).where(
             Score.calc_batch_id.not_in(retained),
@@ -712,7 +740,44 @@ def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
         return _create_factor_pipeline_task(payload)
 
 
-def _create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
+def run_trusted_history_training_inline(payload: FactorPipelineCreate) -> dict:
+    """Run the production research pipeline synchronously, with a persisted task.
+
+    A maintenance CLI may load new research code while the HTTP service keeps
+    an unrelated collection task alive. This entry never calls the HTTP server
+    or starts/reuses another task's worker.
+    """
+    if not payload.trusted_history_dataset_id:
+        raise ValueError('trusted_history_dataset_required_for_inline_training')
+    from app.services.factors.research_requests import pipeline_research_request
+    if pipeline_research_request(payload) is not None:
+        raise ValueError('research_request_requires_async_dispatch')
+    with _TASK_DISPATCH_LOCK:
+        task = _create_factor_pipeline_task(payload, start_worker=False, reuse_running=False)
+    _run_factor_pipeline(task['id'])
+    from app.services.async_tasks import get_async_task
+    return get_async_task(task['id']).model_dump()
+
+
+def _create_factor_pipeline_task(payload: FactorPipelineCreate, *,
+                                 start_worker: bool = True, reuse_running: bool = True) -> dict:
+    from app.services.factors.research_requests import pipeline_research_request
+    request_identity = pipeline_research_request(payload)
+    if request_identity:
+        task_id, fingerprint = request_identity
+        db = get_session_local()()
+        try:
+            existing_request = db.get(AsyncTaskRecord, task_id)
+            if existing_request is not None:
+                from app.services.factors.research_requests import validate_research_task
+                validate_research_task(existing_request, payload.hyperparameters_json['source_model_id'],
+                    payload.hyperparameters_json['research_retrain_request_id'])
+                if existing_request.task_type != TASK_TYPE or existing_request.idempotency_key != 'request:' + fingerprint:
+                    raise ValueError('research_request_conflict')
+                from app.services.async_tasks import _task_to_read
+                return _task_to_read(existing_request).model_dump()
+        finally:
+            db.close()
     factor_config = get_current_factor_system_config()
     if not factor_config.feature_enabled:
         raise ValueError(
@@ -720,6 +785,9 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
         )
     # Task 9 (1) 取消 fallback + (2) 精确 5 错误码 — 抛 FactorSevenError（7 要素）
     _require_ready_training_factor_set(payload)
+    if payload.trusted_history_dataset_id:
+        from app.services.factors.trusted_history_training import load_training_dataset
+        load_training_dataset(payload, freeze=True)
 
     SessionLocal = get_session_local()
     runtime_db = SessionLocal()
@@ -736,7 +804,7 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
             same_intent = _pipeline_request_intent(old_payload) == _pipeline_request_intent(payload)
         except (TypeError, ValueError):
             same_intent = False
-        if same_intent:
+        if same_intent and reuse_running:
             return existing[0].model_dump()
         raise factor_structured_error(
             'FACTOR_PIPELINE_BUSY', title_zh='已有其他因子任务正在运行',
@@ -795,8 +863,13 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
     # 把“上一轮已 done”的历史任务直接返回，前端看到一条旧任务而 worker 根本不
     # 启动（第二次点击被静默吞掉）。同族的 mirror_task / mining validation /
     # factor_evaluation 均已用 force_new=True 表达同一语义。
-    task = create_async_task(TASK_TYPE, payload.model_dump(), force_new=True)
-    _start_worker(task.id, _run_factor_pipeline)
+    if request_identity:
+        task, created = create_async_task_once(TASK_TYPE, payload.model_dump(),
+            task_id=request_identity[0], request_fingerprint=request_identity[1])
+    else:
+        task, created = create_async_task(TASK_TYPE, payload.model_dump(), force_new=True), True
+    if start_worker and created:
+        _start_worker(task.id, _run_factor_pipeline)
     return task.model_dump()
 
 
@@ -811,6 +884,8 @@ def _classify_pipeline_error(exc: Exception, stage: str):
         return exc.error_code, exc.detail_zh
     # 参数/配置校验类（不可重试）
     if isinstance(exc, (ValueError,)):
+        if 'trusted_history' in lower:
+            return ('TRUSTED_HISTORY_INVALID', '可信历史研究数据集校验失败，请核实固定股票池、原始证据及完整样本；未发布评分或启用模型')
         if 'no_complete_trade_date' in lower:
             return ('DAILY_BAR_INCOMPLETE', '行情尚未收盘或镜像未覆盖完整交易日，请等待本地行情同步完成后重试')
         if 'factor_coverage' in lower:
@@ -893,13 +968,17 @@ def _run_factor_pipeline(task_id: str) -> None:
         should_cancel = lambda: _cancelled(task_id)
         if should_cancel():
             return
-        warehouse = FactorWarehouse(factor_config.warehouse_path)
-        warehouse_health = warehouse.health()
-        latest_bar_date = (
-            date.fromisoformat(warehouse_health.latest_trade_date)
-            if warehouse_health.latest_trade_date
-            else None
-        )
+        trusted_dataset = None
+        if payload.trusted_history_dataset_id:
+            from app.services.factors.trusted_history_training import load_training_dataset
+            trusted_dataset = load_training_dataset(payload)
+            warehouse = None
+            latest_bar_date = trusted_dataset.calendar[-1]
+        else:
+            warehouse = FactorWarehouse(factor_config.warehouse_path)
+            warehouse_health = warehouse.health()
+            latest_bar_date = (date.fromisoformat(warehouse_health.latest_trade_date)
+                               if warehouse_health.latest_trade_date else None)
         effective_start_date, effective_end_date = (
             resolve_pipeline_dates(
                 payload, latest_bar_date=latest_bar_date
@@ -911,6 +990,8 @@ def _run_factor_pipeline(task_id: str) -> None:
             latest_bar_date=latest_bar_date,
         )
         results: dict = {}
+        if trusted_dataset is not None:
+            results['trusted_history_dataset'] = trusted_dataset.identity
         if frozen_universe is not None:
             results['score_universe'] = frozen_universe
         results['effective_range'] = {
@@ -918,6 +999,33 @@ def _run_factor_pipeline(task_id: str) -> None:
             'calculation_start_date': calculation_start_date,
             'end_date': effective_end_date,
         }
+        # Training consumes the reviewed frozen feature set, not the unrelated
+        # default research batch. Capture dependencies before any long mirror.
+        training_specs = None
+        input_flags = {}
+        source_tables = None
+        if payload.train_model:
+            training_specs = resolve_frozen_factor_specs(db, (payload.factor_set_id,))
+            if not training_specs:
+                raise ValueError('frozen_factor_calculation_requires_features')
+            source_tables = sorted(set().union(*(spec.source_tables for spec in training_specs)))
+            input_sources = {
+                'include_valuations': 'raw_valuation_snapshots',
+                'include_financial_reports': 'raw_financial_reports',
+                'include_fund_flows': 'raw_fund_flows',
+                'include_sentiment': 'raw_sentiment',
+                'include_tail_proxy': 'raw_tail_proxy',
+                'include_etf_indicators': 'raw_etf_indicators',
+                'include_macro': 'raw_macro',
+            }
+            unknown_sources = set(source_tables) - set(input_sources.values()) - {
+                'raw_daily_bars', 'raw_asset_universe',
+            }
+            if unknown_sources:
+                raise ValueError(f'unsupported_frozen_source_tables:{sorted(unknown_sources)}')
+            input_flags = {flag: table in source_tables for flag, table in input_sources.items()}
+            if trusted_dataset is not None and set(source_tables) - {'raw_daily_bars', 'raw_asset_universe'}:
+                raise ValueError('trusted_history_unsupported_factor_dependencies')
 
         _set_task(
             db,
@@ -925,7 +1033,8 @@ def _run_factor_pipeline(task_id: str) -> None:
             status='running',
             stage='mirror',
             percent=5,
-            message='Mirroring local market and factor inputs',
+            message=('加载已核实的固定股票池历史，使用独立研究仓库' if trusted_dataset is not None
+                     else 'Mirroring local market and factor inputs'),
             started_at=_now(),
         )
         current_stage = 'mirror'
@@ -933,15 +1042,21 @@ def _run_factor_pipeline(task_id: str) -> None:
         # warehouse writes. All bar reads below use short sessions, so MySQL
         # connections are returned to the pool between DuckDB batches.
         db.rollback()
-        bars = mirror_daily_bars(
-            db,
-            warehouse=warehouse,
-            start_date=effective_start_date,
-            end_date=effective_end_date,
-            full_refresh=payload.full_refresh,
-            should_cancel=should_cancel,
-            progress_callback=_make_mirror_progress_callback(task_id),
-        )
+        if trusted_dataset is not None:
+            from app.services.factors.trusted_history_training import build_training_warehouse
+            warehouse = build_training_warehouse(trusted_dataset, task_id)
+            results['research_warehouse_path'] = str(warehouse.path.resolve())
+            bars = None
+        else:
+            bars = mirror_daily_bars(
+                db,
+                warehouse=warehouse,
+                start_date=effective_start_date,
+                end_date=effective_end_date,
+                full_refresh=payload.full_refresh,
+                should_cancel=should_cancel,
+                progress_callback=_make_mirror_progress_callback(task_id),
+            )
         if should_cancel():
             return
         # daily bars mirror 完成，进入 factor inputs mirror 阶段
@@ -951,23 +1066,32 @@ def _run_factor_pipeline(task_id: str) -> None:
             task_id,
             stage='mirror',
             percent=27,
-            message='Mirroring factor inputs (valuations, financials, flows)',
+            message=('已隔离默认行情与外部同步，准备研究因子输入' if trusted_dataset is not None
+                     else 'Mirroring factor inputs (valuations, financials, flows)'),
         )
-        inputs = mirror_factor_inputs(
-            db,
-            warehouse=warehouse,
-            start_date=effective_start_date,
-            end_date=effective_end_date,
-            full_refresh=payload.full_refresh,
-            should_cancel=should_cancel,
-            # 7 类输入逐段上报，percent 在 27→35 之间插值
-            progress_callback=_make_mirror_progress_callback(task_id),
-        )
-        results['bar_mirror'] = bars.to_dict()
+        if training_specs is not None and not any(input_flags.values()):
+            inputs = FactorInputMirrorResult(batch_id=f'factor-inputs-{uuid4().hex}')
+        else:
+            inputs = mirror_factor_inputs(
+                db,
+                warehouse=warehouse,
+                start_date=effective_start_date,
+                end_date=effective_end_date,
+                full_refresh=payload.full_refresh,
+                should_cancel=should_cancel,
+                **input_flags,
+                progress_callback=_make_mirror_progress_callback(task_id),
+            )
+        results['bar_mirror'] = (bars.to_dict() if bars is not None else {
+            'status': 'SKIPPED', 'reason': 'ISOLATED_TRUSTED_HISTORY_DATASET',
+            'business_rows': 0, 'universe_rows': 0, 'rows_written': len(trusted_dataset.bars),
+        })
         results['input_mirror'] = {
             **asdict(inputs),
             'rows_written': inputs.rows_written,
         }
+        if source_tables is not None:
+            results['input_mirror']['source_tables'] = source_tables
         if should_cancel():
             return
 
@@ -975,10 +1099,15 @@ def _run_factor_pipeline(task_id: str) -> None:
         # End any repeatable-read snapshot opened while mirroring factor
         # inputs; completeness must observe source rows committed meanwhile.
         db.rollback()
-        completeness = _complete_calculation_dates(
-            db, warehouse, start_date=calculation_start_date,
-            end_date=effective_end_date,
-        )
+        if trusted_dataset is not None:
+            from app.services.factors.trusted_history_training import complete_training_dates
+            completeness = complete_training_dates(trusted_dataset, warehouse,
+                start_date=calculation_start_date, end_date=effective_end_date)
+        else:
+            completeness = _complete_calculation_dates(
+                db, warehouse, start_date=calculation_start_date,
+                end_date=effective_end_date,
+            )
         results['data_completeness'] = completeness
         if not completeness['accepted_dates']:
             raise ValueError('no_complete_trade_date_after_mirror')
@@ -1001,6 +1130,15 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Calculating cross-sectional factors',
         )
         current_stage = 'factors'
+        # Snapshot all immutable version bindings before local warehouse work.
+        # _set_task.refresh opened another SQL transaction after its commit;
+        # release it as well as these metadata reads before any long DuckDB SQL.
+        calculation_specs = resolve_frozen_factor_specs(
+            db, tuple(dict.fromkeys(calculation_set_ids)),
+        )
+        if training_specs is not None and calculation_specs != training_specs:
+            raise ValueError('frozen_training_contract_changed_during_mirror')
+        db.rollback()
         # WPD-06: wrap factor calculation in a batch audit context. The
         # calc_batch_id is pre-generated so ingestion_batches and
         # factor_values share the same identifier for atomicity checks.
@@ -1021,8 +1159,8 @@ def _run_factor_pipeline(task_id: str) -> None:
                 start_date=calculation_start_date,
                 end_date=effective_end_date,
                 calc_batch_id=factor_calc_batch_id,
-                db=db,
-                factor_set_ids=tuple(dict.fromkeys(calculation_set_ids)),
+                frozen_factor_specs=calculation_specs,
+                selected_features_only=training_specs is not None,
                 trade_dates=tuple(completeness['accepted_dates']),
             )
             # 审计行数只是记账，不许把计算阶段带崩：字段缺失时留 0
@@ -1049,6 +1187,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Generating T+1 to T+5 labels',
         )
         current_stage = 'targets'
+        db.rollback()
         # 常驻共享批次：本次只刷新 [calculation_start_date, effective_end_date]
         # 这一段（含尾部 horizon 天），历史行的覆盖情况以覆盖表为准，不看这里的
         # scope——scope 记的是"这次刷到哪"，不是"这个批次覆盖哪"。
@@ -1085,12 +1224,17 @@ def _run_factor_pipeline(task_id: str) -> None:
         model_result = None
         if payload.train_model:
             current_stage = 'train'
+            db.close()
+            db = SessionLocal()
             training_dates = None
             if payload.factor_set_id:
                 training_set = db.get(FactorSet, payload.factor_set_id)
                 expected = {m.factor_code: m.factor_version for m in training_set.members if m.role == 'feature'}
+                db.rollback()
                 training_coverage = _qualified_factor_dates(
                     warehouse, batch_id=factors.calc_batch_id, expected_versions=expected,
+                    **({'expected_symbol_count': len(trusted_dataset.symbols)}
+                       if trusted_dataset is not None else {}),
                 )
                 results['training_coverage'] = training_coverage
                 if not training_coverage['accepted_dates']:
@@ -1104,6 +1248,9 @@ def _run_factor_pipeline(task_id: str) -> None:
                 message='Training and validating Ridge candidate',
             )
             current_stage = 'train'
+            # _set_task refreshes its row after commit; do not hand its idle
+            # read transaction to the long-running training implementation.
+            db.rollback()
             model_result = train_rolling_ridge(
                 db,
                 warehouse,
@@ -1120,6 +1267,8 @@ def _run_factor_pipeline(task_id: str) -> None:
                 allowed_trade_dates=training_dates,
                 hyperparameters={**(payload.hyperparameters_json or {}),
                                  'actor': payload.actor, 'source_hint': payload.source_hint},
+                **({'trusted_history_identity': trusted_dataset.identity}
+                   if trusted_dataset is not None else {}),
             )
             db.commit()
             results['model'] = asdict(model_result)
@@ -1179,44 +1328,56 @@ def _run_factor_pipeline(task_id: str) -> None:
                 'model_run_id': model_result.model_run_id if model_result else None,
                 'next_action': 'Review and explicitly activate a validated real-data model before requesting scores',
             }
-        # Retain a bounded calculation history so repeated score refreshes do
-        # not grow the analytical warehouse without limit. Audit metadata and
-        # SQLite Score rows remain intact for decision/evidence traceability.
-        try:
-            score_retention = _prune_unreferenced_scores(db)
-            db.commit()
-            protected = retention_protected_batch_ids(db, score_retention)
-            results['batch_retention'] = warehouse.prune_calculation_batches(
-                protected_batch_ids=protected,
-            )
-            results['batch_retention']['protected_batch_ids'] = protected
-            results['batch_retention']['score_rows_deleted'] = score_retention['score_rows_deleted']
-        except Exception as cleanup_exc:
-            logger.warning(
-                'Factor batch retention cleanup skipped for %s: %s',
-                task_id,
-                cleanup_exc,
-                exc_info=True,
-            )
+        # Training never publishes scores, including callers that request or
+        # default materialize_scores=True. It must not delete unrelated score
+        # or warehouse history. Non-training tasks retain the existing policy.
+        if payload.train_model:
             results['batch_retention'] = {
                 'status': 'SKIPPED',
-                'reason': str(cleanup_exc),
+                'reason': 'TRAINING_ONLY_NON_PUBLISHING',
             }
+        else:
+            try:
+                score_retention = _prune_unreferenced_scores(db)
+                db.commit()
+                protected = retention_protected_batch_ids(db, score_retention)
+                results['batch_retention'] = warehouse.prune_calculation_batches(
+                    protected_batch_ids=protected,
+                )
+                results['batch_retention']['protected_batch_ids'] = protected
+                results['batch_retention']['score_rows_deleted'] = score_retention['score_rows_deleted']
+            except Exception as cleanup_exc:
+                logger.warning(
+                    'Factor batch retention cleanup skipped for %s: %s',
+                    task_id,
+                    cleanup_exc,
+                    exc_info=True,
+                )
+                results['batch_retention'] = {
+                    'status': 'SKIPPED',
+                    'reason': str(cleanup_exc),
+                }
         results['runtime'] = runtime.to_dict()
         results['trained_model_auto_activated'] = False
         scores_skipped = results.get('scoring_bridge', {}).get('status') == 'SKIPPED'
         scores_partial = results.get('scoring_bridge', {}).get('status') == 'PARTIAL'
+        research_pass = (trusted_dataset is not None and model_result is not None
+                         and model_result.research_model_gate_status == 'validated')
         training_rejected = model_result is not None and model_result.status != 'validated'
-        completion_status = ('TRAINING_REJECTED' if training_rejected else
+        completion_status = ('RESEARCH_TRAINING_COMPLETED' if research_pass else
+                             'TRAINING_REJECTED' if training_rejected else
                              'AWAITING_MODEL_ACTIVATION' if scores_skipped or model_result is not None else
                              'PARTIAL_SCORE_PUBLICATION' if scores_partial else 'COMPLETED')
         results['completion_status'] = completion_status
         completion_message = {
+            'RESEARCH_TRAINING_COMPLETED': '代表股票池回溯研究完成，数学门禁通过；仍需独立验证，当前不能启用生产模型',
             'TRAINING_REJECTED': 'Factor calculation completed; training candidate rejected by data/model gates',
             'AWAITING_MODEL_ACTIVATION': 'Factor calculation completed; scores skipped until explicit model activation',
             'PARTIAL_SCORE_PUBLICATION': 'Factor scores partially published; missing inputs or symbol mappings are listed in results',
             'COMPLETED': 'Factor pipeline completed',
         }[completion_status]
+        if trusted_dataset is not None and completion_status == 'TRAINING_REJECTED':
+            completion_message = '可信历史研究训练完成，数学门禁未通过；未启用模型或发布评分'
 
         _set_task(
             db,
@@ -1466,6 +1627,7 @@ def diagnose_pipeline_lock_state() -> dict:
 __all__ = [
     'TASK_TYPE',
     'create_factor_pipeline_task',
+    'run_trusted_history_training_inline',
     'diagnose_pipeline_lock_state',
     'get_pipeline_eta',
     'recover_stale_pipeline_tasks',

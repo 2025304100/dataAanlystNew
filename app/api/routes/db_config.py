@@ -9,7 +9,7 @@ import threading
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,23 @@ router = APIRouter()
 # ── 迁移后台线程 ──────────────────────────────────────────
 
 _migration_thread: threading.Thread | None = None
+
+
+def _ensure_switch_idle(mgr):
+    from app.models.async_task import AsyncTaskRecord
+    from app.models.discovery import DiscoveryTaskRecord
+    from app.services.async_tasks import has_active_workers
+    from app.services.ai.profile_execution import has_active_profile_requests
+
+    if is_migration_running() or has_active_workers() or has_active_profile_requests():
+        raise HTTPException(409, "仍有任务在执行或退出中，请等待完成后再切换数据库")
+    with mgr.session_factory() as db:
+        for model in (AsyncTaskRecord, DiscoveryTaskRecord):
+            active = db.execute(select(model.id).where(model.status.in_(
+                ("queued", "running", "pending", "cancelling", "paused")
+            )).limit(1)).scalar()
+            if active is not None:
+                raise HTTPException(409, "仍有运行、排队或暂停任务，请完成或取消后再切换数据库")
 
 
 def _run_migration_in_thread():
@@ -78,9 +95,6 @@ def update_db_config(config: DbConfigUpdate):
         existing = load_db_config()
         new_cfg["mysql"]["password"] = existing.get("mysql", {}).get("password", "")
 
-    # 先保存配置
-    save_db_config(new_cfg)
-
     if config.use_mysql:
         # 验证必填字段
         m = config.mysql
@@ -100,17 +114,37 @@ def update_db_config(config: DbConfigUpdate):
             logger.exception("MySQL 连接测试失败")
             raise HTTPException(400, "MySQL 连接失败，请检查主机、端口、用户名和密码")
 
-        # 热切换引擎
-        mgr.initialize(url, db_type="mysql")
     else:
-        # 切换回 SQLite
-        mgr.initialize(settings.database_url, db_type="sqlite")
+        url = settings.database_url
 
+    from app.services.akshare_registry import snapshot_config_cache, restore_config_cache, load_config_cache
+    from app.services.scoring_config_engine import invalidate_active_config_cache
+    from app.services.ai_failover import reset_failover_manager
+    cache_snapshot = None
     # 重新初始化数据库（确认 schema）
     try:
-        init_db()
-    except Exception as e:
-        raise HTTPException(500, f"数据库初始化失败：{e}")
+        with mgr.configuration_transaction():
+            cache_snapshot = snapshot_config_cache()
+            try:
+                _ensure_switch_idle(mgr)
+                mgr.initialize(url, db_type="mysql" if config.use_mysql else "sqlite")
+                init_db()
+                # Startup tolerates cache-load failures; a live switch must not
+                # commit while policy still belongs to the previous database.
+                with mgr.session_factory() as db:
+                    load_config_cache(db)
+                invalidate_active_config_cache()
+                save_db_config(new_cfg)
+                reset_failover_manager()
+            except BaseException:
+                restore_config_cache(cache_snapshot)
+                invalidate_active_config_cache()
+                raise
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Database configuration switch rolled back")
+        raise HTTPException(500, "数据库切换失败，已保留原数据库与配置，请检查目标连接和权限") from None
 
     return {
         "status": "ok",

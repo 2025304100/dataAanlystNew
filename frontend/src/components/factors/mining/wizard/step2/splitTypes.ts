@@ -38,7 +38,7 @@ export interface SplitBudget {
   tail_loss: number;
   frequency_floor: number;
   meets_floor: boolean;
-  /** 月频 → True（不做 Bootstrap/置换，最高 B 级） */
+  /** 测试段样本不足 → True（不限频率；不做 Bootstrap/置换，最高 B 级） */
   statistically_degraded: boolean;
   /** 段边界（后端下发） */
   train_start?: string | null;

@@ -64,7 +64,7 @@ vi.mock("antd", async () => {
   };
 });
 
-vi.mock("../../../i18n", () => ({ t: (k: string) => k, template: (k: string) => k }));
+vi.mock("../../../i18n", async () => ({ ...await vi.importActual<typeof import("../../../i18n")>("../../../i18n"), t: (k: string) => k, template: (k: string) => k }));
 vi.mock("../../../context/AppContext", () => ({
   useApp: () => ({ locale: "zh-CN", showToast: vi.fn() }),
 }));
