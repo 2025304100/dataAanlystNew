@@ -240,7 +240,7 @@ export default function SymbolAlertSummary({
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "12px 0" }}>
           <Alert type="info" message={t("settingsResearchAlertSeparate")} />
-          <Alert type="info" message={t("settingsAlertManualMode")} />
+          <Alert type="info" message={t("alertRuleEvalModeHint")} />
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span>{t("symbolResearchAlertRuleNameLabel")}</span>
             <Input

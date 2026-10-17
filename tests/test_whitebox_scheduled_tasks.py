@@ -37,18 +37,20 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    assert scheduled_tasks.seed_default_schedules(db_session) == 15
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 14
+    assert len(rows) == 15
     enabled = [item for item in rows if item.enabled]
-    # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步（自动交易默认关闭，需用户主动开启）
+    # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步 + 因子输入日更 + 告警评估
+    # （自动交易默认关闭，需用户主动开启）
     assert {item.task_type for item in enabled} == {
         "universe_incremental_sync",
         "portfolio_equity_snapshot",
         "index_daily_sync",
         "external_data_sync",
+        "alert_evaluation",
     }
     assert all(item.next_run_at is not None for item in enabled)
     # P2-3：portfolio_auto_trade 应在默认调度中且默认关闭
@@ -59,7 +61,7 @@ def test_seed_default_schedules_is_idempotent(db_session):
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    assert scheduled_tasks.seed_default_schedules(db_session) == 15
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
@@ -72,8 +74,10 @@ def _seed_legacy_defaults_only(db_session) -> None:
     """Simulate a database already seeded by the previous default schedule set."""
     from app.models.scheduled_task import ScheduledTaskSeedState
 
+    # v7 时代还没有这两条：资金流日更（v8 加）和告警规则评估（v9 加）。
+    not_yet_seeded = {"每日因子资金流增量同步", "每日告警规则评估"}
     for data in scheduled_tasks.DEFAULT_SCHEDULES:
-        if data["name"] == "每日因子资金流增量同步":
+        if data["name"] in not_yet_seeded:
             continue
         payload = ScheduledTaskCreate(**data, timezone="Asia/Shanghai")
         db_session.add(ScheduledTask(
@@ -92,12 +96,12 @@ def _seed_legacy_defaults_only(db_session) -> None:
 
 
 def test_capital_flow_daily_schedule_is_seeded_once(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    assert scheduled_tasks.seed_default_schedules(db_session) == 15
     db_session.commit()
 
     item = db_session.query(ScheduledTask).filter_by(name="每日因子资金流增量同步").one()
     assert item.enabled == 1
-    assert item.time_of_day == "19:10"
+    assert item.time_of_day == "20:40"
     assert json.loads(item.payload_json) == {
         "dataset": "capital_flow",
         "source": "all",
@@ -107,17 +111,29 @@ def test_capital_flow_daily_schedule_is_seeded_once(db_session):
     }
 
 
+def test_valuation_daily_schedule_is_seeded_after_market_sync(db_session):
+    """估值/资金流都排在 18:00 行情同步（实测 2.45 小时）之后，别让新库退回 19:00。"""
+    scheduled_tasks.seed_default_schedules(db_session)
+    db_session.commit()
+
+    valuation = db_session.query(ScheduledTask).filter_by(name="每日因子估值增量同步").one()
+    assert valuation.time_of_day == "20:30"
+
+
 def test_seed_key_bump_adds_capital_flow_to_a_legacy_seeded_db(db_session):
     _seed_legacy_defaults_only(db_session)
 
     created = scheduled_tasks.seed_default_schedules(db_session)
     db_session.commit()
 
-    assert created == 1
+    assert created == 2
     assert db_session.query(ScheduledTask).filter_by(
         name="每日因子资金流增量同步"
     ).count() == 1
-    assert db_session.query(ScheduledTask).count() == 14
+    assert db_session.query(ScheduledTask).filter_by(
+        name="每日告警规则评估"
+    ).count() == 1
+    assert db_session.query(ScheduledTask).count() == 15
 
 
 def test_capital_flow_schedule_validates_and_dispatches(monkeypatch):
@@ -187,6 +203,43 @@ def test_external_data_schedule_validates_and_dispatches_incremental_sync(monkey
     assert source == "async"
     assert task.id == "external-1"
     assert captured == {"dataset": "fundamental", "payload": payload}
+
+
+def test_alert_evaluation_payload_must_be_empty():
+    assert scheduled_tasks.validate_task_payload("alert_evaluation", {}) == {}
+    with pytest.raises(ValueError, match="must be empty"):
+        scheduled_tasks.validate_task_payload("alert_evaluation", {"rule_ids": [10]})
+
+
+def test_alert_evaluation_uses_the_same_path_as_manual_evaluate(monkeypatch):
+    """定时评估就是告警中心「立即评估」那个函数，命中条数要写进 run.message。"""
+    calls: list[int] = []
+
+    def fake_evaluate():
+        calls.append(1)
+        return [{"id": 1}, {"id": 2}, {"id": 3}]
+
+    monkeypatch.setattr("app.services.alerts.evaluate_all_rules", fake_evaluate)
+    item = SimpleNamespace(task_type="alert_evaluation", payload_json="{}")
+
+    source, task = scheduled_tasks._dispatch_task(item)
+
+    assert calls == [1]
+    assert source == "alerts"
+    assert task["status"] == "done"
+    assert "命中 3 条" in task["message"]
+    assert task["id"]
+
+
+def test_alert_evaluation_state_is_not_read_from_the_async_task_table(db_session):
+    """source='alerts' 不能去异步任务表查一个不存在的 id，否则看板显示的是查不到的状态。"""
+    assert scheduled_tasks._task_state(db_session, "alerts", "alert-eval-1") is None
+
+
+def test_alert_evaluation_is_registered_as_a_schedule_definition():
+    definition = scheduled_tasks.TASK_DEFINITIONS["alert_evaluation"]
+    assert definition["name"] == "告警规则评估"
+    assert definition["default_payload"] == {}
 
 
 def test_portfolio_auto_trade_payload_validation(db_session):

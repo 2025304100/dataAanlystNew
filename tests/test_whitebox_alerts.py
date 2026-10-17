@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +31,8 @@ from app.api.routes.alerts import (
 )
 from app.models.alert import AlertEvent, AlertRule
 from app.models.async_task import AsyncTaskRecord
+from app.models.daily_bar import DailyBar
+from app.models.symbol import Symbol
 from app.services import alerts as alert_service
 from app.schemas.alert import AlertRuleCreate, AlertRuleUpdate
 
@@ -490,3 +492,83 @@ def test_fire_event_keeps_distinct_symbols_separate(db_session):
     assert a.id != b.id
     assert a.dedupe_key != b.dedupe_key
     assert db_session.query(AlertEvent).count() == 2
+
+
+# ============================================================================
+# 9. _eval_data_stale 的日期口径
+#
+# `func.max(daily_bars.trade_date)` 返回的是 `datetime.date`（MySQL/SQLite 都如此），
+# 而 `_parse_date` 原先只认 `datetime` 和 `str`，date 一律解析成 None。评估器把
+# None 读成"这个标的一条 K 线都没有"，于是 `if parsed is None or parsed.date() < cutoff`
+# 恒真：**每个**标的都会告警，且文案写着"尚无任何 K 线记录"（线上 100/100 误报，
+# 那些标的可能有 256 行 K 线、最新日期就是昨天）。这组用例是接调度器的前提。
+# ============================================================================
+
+def _data_stale_rule(db_session, *, symbol_id: int, stale_days: int = 7) -> AlertRule:
+    rule = AlertRule(
+        name=f"data_stale#{symbol_id}",
+        alert_type="data_stale",
+        enabled=1,
+        severity="warn",
+        cooldown_minutes=0,
+        config_json=json.dumps({"stale_days": stale_days, "symbol_ids": [symbol_id]}),
+    )
+    db_session.add(rule)
+    db_session.commit()
+    db_session.refresh(rule)
+    return rule
+
+
+def _symbol_with_latest_bar(db_session, code: str, latest) -> Symbol:
+    sym = Symbol(
+        symbol=code, name=f"测试{code}", asset_type="stock", market="cn", is_active=1,
+    )
+    db_session.add(sym)
+    db_session.commit()
+    if latest is not None:
+        db_session.add(DailyBar(
+            symbol_id=sym.id, trade_date=latest,
+            open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+        ))
+        db_session.commit()
+    return sym
+
+
+def test_data_stale_does_not_fire_when_bars_are_fresh(db_session):
+    """数据新鲜就不得报"数据过期"——这条就是原实现恒真的那个分支。"""
+    sym = _symbol_with_latest_bar(db_session, "600001", date.today())
+    rule = _data_stale_rule(db_session, symbol_id=sym.id)
+
+    events = alert_service._eval_data_stale(db_session, rule)
+    db_session.commit()
+
+    assert events == []
+
+
+def test_data_stale_reports_the_real_staleness_age(db_session):
+    """真过期时给真实天数，而不是"尚无任何 K 线记录"。"""
+    sym = _symbol_with_latest_bar(
+        db_session, "600002", date.today() - timedelta(days=30),
+    )
+    rule = _data_stale_rule(db_session, symbol_id=sym.id, stale_days=7)
+
+    events = alert_service._eval_data_stale(db_session, rule)
+    db_session.commit()
+
+    assert len(events) == 1
+    assert "已 30 天未更新" in events[0].message
+    assert "尚无任何 K 线记录" not in events[0].message
+    data = json.loads(events[0].data_json)
+    assert int(data["stale_days"]) == 30
+
+
+def test_data_stale_keeps_the_no_bar_wording(db_session):
+    """确实一条 K 线都没有时，仍走"尚无 K 线"措辞（修复不能把缺数据并入过期）。"""
+    sym = _symbol_with_latest_bar(db_session, "600003", None)
+    rule = _data_stale_rule(db_session, symbol_id=sym.id, stale_days=7)
+
+    events = alert_service._eval_data_stale(db_session, rule)
+    db_session.commit()
+
+    assert len(events) == 1
+    assert "尚无任何 K 线记录" in events[0].message

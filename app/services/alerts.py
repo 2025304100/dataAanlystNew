@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -33,6 +33,12 @@ def _parse_date(value) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value
+    # Date 列（如 func.max(daily_bars.trade_date)）取回来是 datetime.date，不是
+    # datetime：以前这里不认，K 线最新日期一律解析成 None，data_stale 于是把每个
+    # 标的都当成"没有任何 K 线"恒触发告警（线上 100/100 误报）。datetime 是 date
+    # 的子类，所以这条分支必须排在 datetime 之后。
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
     if isinstance(value, str):
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
             try:

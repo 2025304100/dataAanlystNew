@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Badge,
@@ -27,6 +27,7 @@ import {
   ArrowRightOutlined,
 } from "@ant-design/icons";
 import { api } from "../api/client";
+import type { ScheduledTask } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t, template } from "../i18n";
 import { navigateToResearch } from "../utils/sourceContext";
@@ -102,6 +103,10 @@ export default function AlertCenter() {
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [form, setForm] = useState<RuleFormData>(DEFAULT_FORM);
+  // 「启用规则」到底是不是常驻监控，取决于定时评估那条调度开没开，所以横幅跟着实际
+  // 状态走，不再无条件写"当前为手动评估"。undefined = 还没取到/取不到：宁可不显示，
+  // 也不宣称任何一种模式。
+  const [alertEvalSchedule, setAlertEvalSchedule] = useState<ScheduledTask | null | undefined>(undefined);
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -124,10 +129,30 @@ export default function AlertCenter() {
     }
   }, []);
 
+  const loadAlertEvalSchedule = useCallback(async () => {
+    try {
+      const items = await api.getScheduledTasks();
+      setAlertEvalSchedule(
+        items.find((item) => item.task_type === "alert_evaluation") ?? null,
+      );
+    } catch {
+      setAlertEvalSchedule(undefined);
+    }
+  }, []);
+
   useEffect(() => {
     loadEvents();
     loadRules();
-  }, [loadEvents, loadRules]);
+    loadAlertEvalSchedule();
+  }, [loadEvents, loadRules, loadAlertEvalSchedule]);
+
+  const evalModeBanner = useMemo(() => {
+    if (alertEvalSchedule === undefined) return null;
+    if (alertEvalSchedule?.enabled) {
+      return template("settingsAlertAutoMode", { schedule: alertEvalSchedule.name });
+    }
+    return t("settingsAlertScheduleOffMode");
+  }, [alertEvalSchedule]);
 
   const handleEvaluate = useCallback(async () => {
     try {
@@ -240,7 +265,9 @@ export default function AlertCenter() {
 
   return (
     <div className="alert-center-container">
-      <Alert type="info" showIcon message={t("settingsAlertManualMode")} style={{ marginBottom: 12 }} />
+      {evalModeBanner && (
+        <Alert type="info" showIcon message={evalModeBanner} style={{ marginBottom: 12 }} />
+      )}
       {/* Header */}
       <div className="alert-center-header">
         <div className="alert-center-header-left">
@@ -415,7 +442,7 @@ export default function AlertCenter() {
         cancelText={t("cancel") || "Cancel"}
       >
         <div className="alert-rule-form">
-          <Alert type="info" showIcon message={t("settingsAlertManualMode")} />
+          {evalModeBanner && <Alert type="info" showIcon message={evalModeBanner} />}
           <label className="alert-form-field">
             <span>{t("alertRuleName")}</span>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

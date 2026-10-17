@@ -26,7 +26,7 @@ SCHEDULER_CHECK_INTERVAL_SECONDS = 30
 # 派发失败后的短延迟重试：撞上前台行情同步这类瞬时冲突时，不该把一整天算成已跑。
 DISPATCH_RETRY_DELAY_MINUTES = 15
 DISPATCH_MAX_RETRIES_PER_DAY = 6
-DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v8"
+DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v9"
 
 TASK_DEFINITIONS: dict[str, dict] = {
     "universe_incremental_sync": {
@@ -124,6 +124,14 @@ TASK_DEFINITIONS: dict[str, dict] = {
         "description": "每日收盘前对所有已开启 auto_trade_enabled 的模拟组合执行一次自动买卖评估与下单",
         "default_payload": {"dry_run": False, "buy_candidate_limit": 10},
     },
+    "alert_evaluation": {
+        "name": "告警规则评估",
+        "description": (
+            "评估所有启用的告警规则（评分下降 / 数据过期 / 任务失败），"
+            "生成正式告警事件并按通知策略投递；与告警中心的「立即评估」同一条代码路径"
+        ),
+        "default_payload": {},
+    },
 }
 
 DEFAULT_SCHEDULES = (
@@ -140,18 +148,20 @@ DEFAULT_SCHEDULES = (
         "name": "每日因子估值增量同步",
         "task_type": "external_data_sync",
         "frequency": "daily",
-        "time_of_day": "19:00",
+        "time_of_day": "20:30",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["external_data_sync"]["default_payload"],
         "enabled": True,
     },
     # 资金流接口是逐标的的，日更必须走全市场排行快照（见 sync_market_capital_flow_snapshot），
     # 排在估值任务之后，避免两个全市场抓取抢同一时段。
+    # 两个时段都在 18:00 行情增量同步（实测 2.45 小时）之后：抢在前面只会被
+    # `_wait_for_market_priority` 挡下，而挡下的那一天不会自动补。
     {
         "name": "每日因子资金流增量同步",
         "task_type": "external_data_sync",
         "frequency": "daily",
-        "time_of_day": "19:10",
+        "time_of_day": "20:40",
         "weekdays": [],
         "payload": {
             "dataset": "capital_flow",
@@ -266,6 +276,16 @@ DEFAULT_SCHEDULES = (
         "weekdays": [],
         "payload": TASK_DEFINITIONS["portfolio_auto_trade"]["default_payload"],
         "enabled": False,
+    },
+    # 排在当日同步/评分任务之后：任务失败的告警依赖当天的异步任务账目。
+    {
+        "name": "每日告警规则评估",
+        "task_type": "alert_evaluation",
+        "frequency": "daily",
+        "time_of_day": "21:30",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["alert_evaluation"]["default_payload"],
+        "enabled": True,
     },
 )
 
@@ -491,6 +511,12 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         if not 1 <= buy_candidate_limit <= 50:
             raise ValueError("buy_candidate_limit must be between 1 and 50")
         return {"dry_run": dry_run, "buy_candidate_limit": buy_candidate_limit}
+    if task_type == "alert_evaluation":
+        # 评估对象就是"所有启用的规则"，没有可配范围：配了反而会和告警中心的
+        # 「立即评估」走出两种结果，所以拒绝任何 payload。
+        if payload:
+            raise ValueError("alert_evaluation payload must be empty")
+        return {}
     raise ValueError(f"Unsupported scheduled task type: {task_type}")
 
 
@@ -710,6 +736,18 @@ def _dispatch_task(item: ScheduledTask):
             dry_run=bool(payload.get("dry_run", False)),
             buy_candidate_limit=int(payload.get("buy_candidate_limit", 10)),
         )
+    if item.task_type == "alert_evaluation":
+        # 与告警中心「立即评估」同一条代码路径（自己开会话、自己提交），所以这里
+        # 同步执行即可；source 用 "alerts" 而非 "async"，避免 _task_state 去异步
+        # 任务表里查一个不存在的 id。
+        from app.services.alerts import evaluate_all_rules
+
+        events = evaluate_all_rules()
+        return "alerts", {
+            "id": f"alert-eval-{int(_now().timestamp())}",
+            "status": "done",
+            "message": f"告警评估完成：本轮命中 {len(events)} 条告警",
+        }
     raise ValueError(f"Unsupported scheduled task type: {item.task_type}")
 
 
