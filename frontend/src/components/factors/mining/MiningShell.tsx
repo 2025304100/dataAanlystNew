@@ -27,6 +27,7 @@ import ResultGotoFactorModelButton, { navigateMiningResult } from "./result/Resu
 import type { MiningResultContext, MiningResultRow, QualityGrade } from "./result/resultTypes";
 import FactorMiningRunTrack from "./wizard/step5/FactorMiningRunTrack";
 import PerfProbePanel from "./wizard/step5/PerfProbePanel";
+import WizardStepGuide from "./wizard/WizardStepGuide";
 import type {
   CurvePoint,
   PerfProbeGeneration,
@@ -57,6 +58,27 @@ const STEP_LABEL_KEYS: Record<MiningStepKey, string> = {
   evolution: "miningStepEvolution",
   run: "miningStepRun",
 };
+
+/** 步骤条锁定态图标（强引导：未解锁步骤不展示数字，改挂锁） */
+function StepLockIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
 
 type ShellTab = "wizard" | "runs" | "experience" | "templates";
 
