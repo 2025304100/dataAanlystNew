@@ -18,6 +18,28 @@ const { mockApi } = vi.hoisted(() => ({
 vi.mock("../../../api/client", () => ({ api: mockApi }));
 vi.mock("../../../i18n", () => ({ t: (key: string) => key }));
 
+// 只替换 antd 的 DatePicker：真实 rc-picker 的受控 input 无法用原生事件可靠驱动——
+// 直接改 DOM value 后，负载下 rc-picker 的 onChange 会回传 null/非法值，range 变非法，
+// handleSubmit 在区间校验处提前 return（createReview 记为 0 次，界面显示 invalidRange）。
+// 换成受控 <input> 并在 change 时回传 dayjs，即可确定性地设置区间。
+// 本用例锁定的是抽屉的 payload / 区间校验契约，与 rc-picker 内部实现无关。
+vi.mock("antd", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("antd")>();
+  const dayjsLib = (await import("dayjs")).default;
+  const DatePickerMock = (props: any) => {
+    const { value, onChange, id, "data-testid": testId } = props;
+    return (
+      <input
+        id={id}
+        data-testid={testId}
+        value={value ? value.format("YYYY-MM-DD") : ""}
+        onChange={(e) => onChange?.(e.target.value ? dayjsLib(e.target.value) : null)}
+      />
+    );
+  };
+  return { ...actual, DatePicker: DatePickerMock };
+});
+
 import PortfolioReviewDrawer from "../PortfolioReviewDrawer";
 
 const openDrawer = () =>
@@ -25,15 +47,9 @@ const openDrawer = () =>
     <PortfolioReviewDrawer open onClose={vi.fn()} portfolioId={3} />,
   );
 
-/** antd DatePicker 的 data-testid 落在容器上，需对内部 input 输入并回车提交。 */
+/** 驱动被 mock 的 DatePicker（受控 input）：change 即触发组件的 onChange。 */
 const setPickerDate = (testid: string, value: string) => {
-  const node = screen.getByTestId(testid) as HTMLElement;
-  const input = (node.tagName === "INPUT" ? node : node.querySelector("input")) as HTMLInputElement;
-  // 整体写入 value 并由 rc-picker 在回车/失焦时解析；逐字 userEvent.type 会被
-  // rc-picker 的输入掩码重排，反而写坏日期，故保留 fireEvent。
-  fireEvent.change(input, { target: { value } });
-  fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-  fireEvent.blur(input);
+  fireEvent.change(screen.getByTestId(testid), { target: { value } });
 };
 
 beforeEach(() => {

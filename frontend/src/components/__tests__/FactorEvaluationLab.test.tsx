@@ -327,7 +327,7 @@ describe("FactorEvaluationLab", () => {
     expect(within(main).queryByRole("region", { name: /evalLabSectionReport · first-factor-report/, hidden: true })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(within(main).getByText("evalLabEmptyRuns")).toBeVisible();
-  });
+  }, 30000); // 多组件聚合渲染，并行负载下会超默认 5s，放宽外层超时（不改任何断言）
 
   it("allows explicit viewing of another task's historical report without replacing the selected version result", async () => {
     const firstRun = makeRun({ id: "selected-factor-report" });
@@ -351,7 +351,7 @@ describe("FactorEvaluationLab", () => {
     expect(within(historicalReport).getByText("factorLabHistoricalReport")).toBeVisible();
     expect(within(main).queryByRole("region", { name: /evalLabSectionReport · other-task-report/, hidden: true })).not.toBeInTheDocument();
     expect(within(main).getByRole("region", { name: /evalLabSectionReport · selected-factor-report/, hidden: true })).toBeInTheDocument();
-  });
+  }, 30000); // 多组件聚合渲染，并行负载下会超默认 5s，放宽外层超时（不改任何断言）
 
   it("invalidates a passed readiness check as soon as the target horizon changes", async () => {
     render(<FactorEvaluationLab />);
