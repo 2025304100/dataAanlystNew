@@ -2,7 +2,8 @@
 
 ## 前置准备
 
-- 启动后端：`python -m uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- 启动后端：`python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`
+  （本项目无鉴权体系，仅绑本机回环；**勿用 `0.0.0.0`**，否则等价于把无认证的写接口暴露到局域网）
 - 启动前端：`cd frontend && npm run dev`
 - 浏览器打开 `http://localhost:5173`
 - 确认数据库已初始化（有持仓/观察池数据更佳）

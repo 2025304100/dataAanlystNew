@@ -721,9 +721,9 @@ start.bat
 **方式二：手动启动**
 
 ```bash
-# 后端
+# 后端（仅本机回环：本项目无鉴权体系，勿用 0.0.0.0 暴露写接口到局域网）
 pip install -r requirements.txt
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 # 前端开发（另一个终端）
 cd frontend
