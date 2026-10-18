@@ -107,6 +107,10 @@ def test_real_pending_candidate_uses_locked_policy_and_blocks_every_activation(
     assert candidate['trade_date_count']==250
     assert result['full_cohort_denominator']==24
     assert result['production_scores_published']==0 and not result['model_activated']
+    from app.services.factors import production_prediction_journal as journal
+    locked, candidate_identity = journal._candidate(db_session, contract['plan_id'])
+    assert locked == contract
+    assert candidate_identity['coefficients'] == result['candidate']['coefficients']
     model=db_session.get(FactorModelRun,model_id)
     hp=json.loads(model.hyperparameters_json);metrics=json.loads(model.metrics_json)
     assert hp['production_admission']==identity and 'trusted_history_dataset' not in hp

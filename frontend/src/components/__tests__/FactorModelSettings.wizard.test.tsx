@@ -84,6 +84,22 @@ describe("FactorModelSettings — one operation page per wizard step", () => {
     }));
   });
 
+  it("recognizes a pending independent-validation candidate as trained without allowing activation", async () => {
+    const pending = { ...candidate("pending"), status: "pending_validation", production_eligible: false,
+      training_mode: "warehouse", readiness_message: "尚待独立样本及成本后评估" };
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: [pending] });
+    render(<FactorModelSettings />);
+    await goPage(3);
+    expect(screen.getByRole("button", { name: /第 2 步：训练模型/ })).toHaveAttribute("data-step-state", "complete");
+    expect(screen.getByRole("button", { name: /第 3 步：验证与启用/ })).toHaveAttribute("data-step-state", "current");
+    const row = (await screen.findByText(pending.id)).closest("tr")!;
+    expect(within(row).getByText("候选统计验证通过，待独立验证")).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /正式启用/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "配置重新训练" })).not.toBeInTheDocument();
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
   it("starts at input preparation and mounts only the selected operation page", async () => {
     render(<FactorModelSettings />);
     await screen.findByTestId("wizard-page-prepare");

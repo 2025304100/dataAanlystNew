@@ -31,6 +31,14 @@ from app.services import fundamental_data, lhb_data, tail_proxy_data
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.fixture(autouse=True)
+def trading_session(monkeypatch):
+    # These task/locking tests exercise an open session, independent of the
+    # machine date. Closed/missing-calendar behavior has public API tests in
+    # test_valuation_sync_request_budget.py.
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
+
+
 class _DeferredThread:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -91,7 +99,7 @@ def test_public_all_capital_flow_refuses_per_symbol_fallback(db_session, monkeyp
         service._run_symbol_sync(db_session, task.id, "capital_flow", payload)
 
 
-def test_incremental_fallback_stops_on_cancel(db_session, monkeypatch):
+def test_incremental_daily_request_stops_on_cancel(db_session, monkeypatch):
     symbols = _symbols(db_session, count=3)
     watchlist = Watchlist(name="audit", list_type="manual")
     db_session.add(watchlist)
@@ -101,8 +109,12 @@ def test_incremental_fallback_stops_on_cancel(db_session, monkeypatch):
     task, payload = _task(db_session, "fundamental", {"source": "watchlist", "max_workers": 1}, monkeypatch)
     seen = []
 
-    def fail(*_args, **_kwargs):
-        raise ConnectionError("audit snapshot unavailable")
+    def cancel_request(worker_db, selected, *args, **kwargs):
+        seen.append(selected[0].id)
+        row = worker_db.get(AsyncTaskRecord, task.id)
+        row.cancel_requested = 1
+        worker_db.commit()
+        raise InterruptedError("cancelled daily batch")
 
     def single(worker_db, symbol, *_args, **_kwargs):
         seen.append(symbol.id)
@@ -112,9 +124,9 @@ def test_incremental_fallback_stops_on_cancel(db_session, monkeypatch):
             worker_db.commit()
         return object()
 
-    monkeypatch.setattr(fundamental_data, "sync_market_valuation_snapshot", fail)
+    monkeypatch.setattr(fundamental_data, "sync_market_valuation_snapshot", cancel_request)
     monkeypatch.setattr(fundamental_data, "sync_symbol_valuation", single)
-    service._run_symbol_sync(db_session, task.id, "fundamental", payload)
+    assert service._run_symbol_sync(db_session, task.id, "fundamental", payload) is None
     assert len(seen) == 1
 
 

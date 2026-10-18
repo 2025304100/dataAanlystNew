@@ -503,6 +503,7 @@ export async function streamAISession(
 
 export interface ExternalSyncResult {
   dataset: ExternalSyncDataset;
+  skip_reason?: "market_closed" | "already_current";
   total: number;
   success: number;
   skipped: number;
@@ -1120,6 +1121,8 @@ export const api = {
   reviewProductionCandidate: (modelId:string,bundleId:string,portfolioId:number) => requestJson<import('../types/productionAdmission').ProductionExecutionReview>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-candidate/review?bundle_id=${encodeURIComponent(bundleId)}&portfolio_id=${portfolioId}`),
   submitProductionCandidate: (modelId:string,bundleId:string,portfolioId:number,sha:string) => requestJson<AsyncTaskRead>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-candidate`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,portfolio_id:portfolioId,expected_sha256:sha})}),
   getProductionCandidateTask: (planId:string) => requestJson<AsyncTaskRead>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}`),
+  getProductionPredictionStatus: (planId:string,bundleId:string) => requestJson<import('../types/productionAdmission').ProductionPredictionStatus>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/predictions?bundle_id=${encodeURIComponent(bundleId)}`),
+  recordProductionPrediction: (planId:string,bundleId:string) => requestJson<unknown>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/predictions`,{method:'POST',body:JSON.stringify({bundle_id:bundleId}),timeoutMs:180000}),
   freezeProductionAdmission: (modelId:string,bundleId:string,identity:string) => requestJson<import('../types/productionAdmission').ProductionAdmissionReport>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-admission/freeze`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,expected_identity_sha256:identity})}),
   getInputBusinessStatus: (bundleId: string) => requestJson<import("../types/inputReplay").InputBusinessStatus>(`${API}/scoring/input-bundles/${encodeURIComponent(bundleId)}/business-status`),
   createInputReplay: (payload: InputReplayRequest) => requestJson<InputReplayTask>(`${API}/scoring/input-replays`, {

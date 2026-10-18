@@ -921,7 +921,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     ? models.find(model => model.id === runModelId) : undefined;
   const selectedTrainingModel = wizardModels.find(model => model.id === runModel?.id);
   const wizardCandidate = selectedTrainingModel?.status === "validated" && selectedTrainingModel.production_eligible === true ? selectedTrainingModel : undefined;
-  const hasTrainingRecord = Boolean(workflowFactorSetId) && wizardModels.some((model) => ["validated", "rejected", "trained", "done", "completed"].includes(model.status) && (model.production_eligible === true || model.training_mode === "warehouse"));
+  const hasTrainingRecord = wizardModels.some((model) => ["validated", "pending_validation", "rejected", "trained", "done", "completed"].includes(model.status) && (model.production_eligible === true || model.training_mode === "warehouse"));
   const wizardActiveModel = !scoringModeIssue ? activeScoringModel : undefined;
   const bridge = activeTask?.result?.scoring_bridge as { model_run_id?: string; status?: string; materialized_count?: number } | undefined;
   const scoresPublished = Boolean(wizardActiveModel && bridge?.model_run_id === wizardActiveModel.id && bridge.status === "PUBLISHED" && (bridge.materialized_count ?? 0) > 0 && ["done", "completed"].includes(activeTask?.status ?? ""));
@@ -931,7 +931,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   const wizardSteps = [
     { id: "prepare" as const, title: "准备输入", state: loading ? "waiting" as const : preparationReady ? "complete" as const : "blocked" as const },
     { id: "train" as const, title: "训练模型", state: hasTrainingRecord ? "complete" as const : "waiting" as const },
-    { id: "review" as const, title: "验证与启用", state: wizardActiveModel ? "complete" as const : "waiting" as const },
+    { id: "review" as const, title: "验证与启用", state: wizardActiveModel ? "complete" as const : hasTrainingRecord ? "current" as const : "waiting" as const },
     { id: "score" as const, title: "生成评分", state: scoresPublished ? "complete" as const : "waiting" as const },
   ];
   const currentIndex = ["prepare", "train", "review", "score"].indexOf(wizardStep);
@@ -984,7 +984,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     const relevantModels = workflowFactorSetId ? models.filter((model) => model.hyperparameters?.factor_set_id === workflowFactorSetId) : models;
     const anyModelTrained = relevantModels.some((m) => {
       const s = String(m.status ?? "").toLowerCase();
-      return ["validated", "trained", "rejected", "done", "completed"].includes(s) && (m.production_eligible === true || m.training_mode === "warehouse");
+      return ["validated", "pending_validation", "trained", "rejected", "done", "completed"].includes(s) && (m.production_eligible === true || m.training_mode === "warehouse");
     });
     const anyModelValidated = relevantModels.some((m) => m.status === "validated" && m.production_eligible === true);
     const decisionModeEqualsFormalActive =
@@ -1389,7 +1389,9 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
           <Tag>{wizardModels.length}</Tag>
         </div>
         <Text type="secondary">影子评分用于观察，正式模型参与模型决策；启用后会自动提交固定该版本的评分任务。</Text>
-        {wizardModels.length > 0 && !wizardModels.some((model) => model.status === "validated" && model.production_eligible === true) && <div className="factor-model-empty-ready"><ExclamationCircleOutlined /><div><strong>目前没有可启用的合格模型</strong><p>旧验证记录仍需通过来源和版本资格检查。查看具体原因，或使用冻结集合重新训练。</p></div><Button onClick={() => focusPipeline("train")}>配置重新训练</Button></div>}
+        {wizardModels.some(model => model.status === "pending_validation" && model.training_mode === "warehouse")
+          ? <Alert type="info" showIcon message={t("productionCandidate.modelPending")} description={t("productionCandidate.pending")} />
+          : wizardModels.length > 0 && !wizardModels.some((model) => model.status === "validated" && model.production_eligible === true) && <div className="factor-model-empty-ready"><ExclamationCircleOutlined /><div><strong>目前没有可启用的合格模型</strong><p>旧验证记录仍需通过来源和版本资格检查。查看具体原因，或使用冻结集合重新训练。</p></div><Button onClick={() => focusPipeline("train")}>配置重新训练</Button></div>}
         {wizardModels.length === 0 && <Alert type="info" showIcon message="还没有此集合的训练结果" description="先返回训练步骤，使用冻结集合生成候选模型。" action={<Button onClick={() => chooseWizardStep("train")}>去训练模型</Button>} />}
         <Table<FactorModelRun>
           rowKey="id"

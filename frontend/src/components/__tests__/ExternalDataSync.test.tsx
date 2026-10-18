@@ -329,7 +329,7 @@ describe("ExternalDataSync dashboard", () => {
     expect(screen.getAllByRole("button", { name: "检查并修复缺口" })).toHaveLength(3);
     const coverageHeading = screen.getAllByText("仓库字段覆盖（非同步结果）")[0];
     await userEvent.setup().hover(coverageHeading);
-    expect(await screen.findByText("估值按真实快照日期统计采集缺口，评分可在 7 天内沿用已有估值快照；财报按公告日期生效。仓库字段覆盖不表示已生成模型评分。")).toBeInTheDocument();
+    expect(await screen.findByText(/A 股日覆盖率和连续天数按交易日计算，剔除周末及交易所节假日休市/)).toBeInTheDocument();
   });
 
   it("keeps input synchronization usable when the wizard hides scoring operations", async () => {
@@ -432,6 +432,24 @@ describe("ExternalDataSync dashboard", () => {
     });
     expect(screen.getByText("2/8")).toBeInTheDocument();
     expect(screen.getByText(/600000/)).toBeInTheDocument();
+    expect(mockApi.getExternalDataSyncTaskPartitions).not.toHaveBeenCalled();
+  });
+
+  it("shows the closed market skip reason as successful completion", async () => {
+    const task = makeTask("fundamental", "done");
+    const reason = "2026-10-17 休市，无需更新";
+    mockApi.startExternalDataSync.mockResolvedValue({
+      ...task, message: reason, total: 5555, processed: 5555, ok_count: 0, failed_count: 0,
+      result: { dataset: "fundamental", total: 5555, success: 0, skipped: 5555,
+        failed: 0, records: 0, errors: [], skip_reason: "market_closed" },
+    } as any);
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: /extSyncFundamental/ }));
+    await waitFor(() => expect(message.success).toHaveBeenCalledWith(reason));
+    expect(mockApi.getExternalDataSyncTaskPartitions).not.toHaveBeenCalled();
+    expect(mockApi.getExternalDataOverview).toHaveBeenCalledTimes(1);
+    expect(mockApi.getExternalDataCoverage).toHaveBeenCalledTimes(1);
+    expect(message.error).not.toHaveBeenCalled();
   });
 
   it("cancels the active external sync from the progress card", async () => {

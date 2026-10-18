@@ -296,28 +296,28 @@ def sync_fundamental(
 
     仅同步 cn-stock；ETF 自动跳过。
     """
-    from app.services.fundamental_data import sync_symbol_valuation
-    from datetime import date
+    from app.services.fundamental_data import complete_daily_valuation_ids, sync_market_valuation_snapshot
+    from app.services.market_session import is_cn_trading_day
 
+    today = date.today()
+    if not is_cn_trading_day(db, today):
+        return SyncResult()
     symbols = _resolve_symbols(db, source, asset_type="stock")
     result = SyncResult(total=len(symbols))
-    today = date.today()
-    for i, sym in enumerate(symbols):
-        try:
-            val = sync_symbol_valuation(db, sym, today)
-            if val is None:
-                result.skipped += 1
-            else:
-                result.success += 1
-            db.commit()  # 每个 symbol 单独提交，避免中途崩溃丢失已同步数据
-        except Exception as exc:
-            db.rollback()
-            result.failed += 1
-            if len(result.errors) < 5:
-                result.errors.append(f"{sym.symbol}: {exc}")
-            logger.warning("fundamental sync failed for %s: %s", sym.symbol, exc)
-        if i < len(symbols) - 1:
-            time.sleep(_SYNC_THROTTLE_SECONDS)
+    current = complete_daily_valuation_ids(db, [symbol.id for symbol in symbols], today)
+    pending = [symbol for symbol in symbols if symbol.id not in current]
+    result.skipped = len(current)
+    if not pending:
+        return result
+    try:
+        synced = sync_market_valuation_snapshot(db, pending, today)
+        db.commit()
+        result.success = result.records = len(synced)
+        result.skipped += len(pending) - len(synced)
+    except Exception as exc:
+        db.rollback()
+        result.failed = len(pending)
+        result.errors.append(f"当日估值同步已停止，未切换历史接口：{exc}")
     return result
 
 

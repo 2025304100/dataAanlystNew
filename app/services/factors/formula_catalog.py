@@ -222,6 +222,29 @@ _catalog_cache_lock = Lock()
 _catalog_cache: dict[str, tuple[float, int, dict[str, Any]]] = {}
 
 
+def invalidate_formula_catalog_cache() -> None:
+    with _catalog_cache_lock:
+        _catalog_cache.clear()
+
+
+def _prepare_coverage_calendar(conn: Any) -> None:
+    from app.services.market_session import read_cn_calendar
+
+    rows = read_cn_calendar()
+    conn.execute("CREATE OR REPLACE TEMP TABLE coverage_cn_closed_days (trade_date DATE PRIMARY KEY)")
+    closed = [(day,) for day, is_open in rows if not is_open]
+    if closed:
+        conn.executemany("INSERT INTO coverage_cn_closed_days VALUES (?)", closed)
+
+
+def _open_cn_day_sql(column: str) -> str:
+    return (
+        f"EXTRACT(ISODOW FROM {column}) BETWEEN 1 AND 5 "
+        f"AND NOT EXISTS (SELECT 1 FROM coverage_cn_closed_days AS closure "
+        f"WHERE closure.trade_date = {column})"
+    )
+
+
 def _warehouse_cache_key(warehouse: Any) -> tuple[str, int]:
     path = getattr(warehouse, "path", None)
     if path is None:
@@ -292,6 +315,7 @@ def _query_cross_section_coverage(
     table: str,
     field: str,
     minimum_coverage: float,
+    _calendar_ready: bool = False,
 ) -> dict[str, Any]:
     """Compare actual values with the matching active CN asset-day universe."""
     asset_type = "etf" if table == "raw_etf_indicators" else "stock"
@@ -309,6 +333,8 @@ def _query_cross_section_coverage(
             ON source.symbol = bars.symbol
             AND source.trade_date = calendar.trade_date"""
     try:
+        if not _calendar_ready:
+            _prepare_coverage_calendar(conn)
         rows = conn.execute(
             f"""
             WITH stock_bars AS (
@@ -319,6 +345,7 @@ def _query_cross_section_coverage(
                 WHERE LOWER(universe.asset_type) = '{asset_type}'
                   AND LOWER(universe.region) = 'cn'
                   AND universe.is_active = TRUE
+                  AND {_open_cn_day_sql('bars.trade_date')}
             ),
             calendar AS (
                 SELECT DISTINCT trade_date
@@ -388,6 +415,7 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
     stats: dict[str, dict[str, Any]] = {}
     try:
         with warehouse.connection(read_only=True) as conn:
+            _prepare_coverage_calendar(conn)
             for table, fields in table_fields.items():
                 is_daily_table = table == "raw_daily_bars"
                 try:
@@ -437,8 +465,18 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                     count_aliases[field] = alias
                     select_parts.append(f"COUNT({column}) AS {alias}")
                 try:
+                    # Reports may be announced during holidays and remain
+                    # valid PIT evidence. Only daily CN observations are
+                    # filtered; other markets retain their own dates.
+                    row_filter = ""
+                    if date_col == "trade_date" and "symbol" in columns:
+                        row_filter = f""" WHERE (
+                            NOT EXISTS (SELECT 1 FROM raw_asset_universe AS u
+                                WHERE u.symbol = observations.symbol AND LOWER(u.region) = 'cn')
+                            OR ({_open_cn_day_sql('observations.trade_date')})
+                        )"""
                     row = conn.execute(
-                        f"SELECT {', '.join(select_parts)} FROM {table}"
+                        f"SELECT {', '.join(select_parts)} FROM {table} AS observations{row_filter}"
                     ).fetchone()
                 except Exception:
                     row = None
@@ -499,6 +537,7 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                             minimum_coverage=float(
                                 policy.get("minimum_daily_coverage", 0.0)
                             ),
+                            _calendar_ready=True,
                         )
                         stats[field].update(coverage)
                         stats[field]["continuity_days"] = coverage[

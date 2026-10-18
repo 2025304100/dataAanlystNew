@@ -18,7 +18,8 @@ from app.services.fundamental_data import (
 pytestmark = pytest.mark.whitebox
 
 
-def test_market_valuation_snapshot_fetches_full_market_only_once(db_session, monkeypatch):
+def test_daily_valuation_fetches_selected_symbols_only_once(db_session, monkeypatch):
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
     symbols = [
         Symbol(symbol="600000", name="A", asset_type="stock", market="sh", industry="Bank"),
         Symbol(symbol="000001", name="B", asset_type="stock", market="sz", industry="Bank"),
@@ -31,11 +32,14 @@ def test_market_valuation_snapshot_fetches_full_market_only_once(db_session, mon
     ])
     calls = []
 
-    def fake_call(*args, **kwargs):
-        calls.append((args, kwargs))
-        return frame
+    def fake_call(db, codes, start, end, **kwargs):
+        calls.append((codes, start, end))
+        return [{"symbol": str(row["代码"]), "trade_date": start,
+                 "pe_ttm": row["市盈率-动态"], "pb": row["市净率"],
+                 "total_market_cap": row["总市值"], "circulating_market_cap": row["流通市值"]}
+                for _, row in frame.iterrows()]
 
-    monkeypatch.setattr("app.services.fundamental_data.call_akshare_with_retry", fake_call)
+    monkeypatch.setattr("app.services.valuation_provider.fetch_valuation_rows", fake_call)
 
     synced = sync_market_valuation_snapshot(
         db_session, symbols, trade_date=date.today()
@@ -46,7 +50,8 @@ def test_market_valuation_snapshot_fetches_full_market_only_once(db_session, mon
     assert len(calls) == 1
     rows = db_session.query(StockValuation).order_by(StockValuation.symbol_id).all()
     assert len(rows) == 2
-    assert rows[0].source == "akshare:stock_zh_a_spot_em"
+    assert rows[0].source == "eastmoney:valuation_daily"
+    assert calls[0] == (["600000", "000001"], date.today(), date.today())
 
 
 def test_valuation_sync_falls_back_to_stock_value_history(db_session):
@@ -105,8 +110,7 @@ def test_valuation_history_range_writes_only_returned_trade_dates(
     frame = pd.DataFrame(
         [
             {"TRADE_DATE": "2026-07-10", "PE_TTM": 20.0, "PB": 4.0},
-            {"TRADE_DATE": "2026-07-12", "PE_TTM": 21.0, "PB": 4.1},
-            {"TRADE_DATE": "2026-07-20", "PE_TTM": 22.0, "PB": 4.2},
+            {"TRADE_DATE": "2026-07-13", "PE_TTM": 21.0, "PB": 4.1},
         ]
     )
     monkeypatch.setattr(
@@ -114,8 +118,10 @@ def test_valuation_history_range_writes_only_returned_trade_dates(
         lambda *args, **kwargs: {},
     )
     monkeypatch.setattr(
-        "app.services.fundamental_data.call_akshare_with_retry",
-        lambda *args, **kwargs: frame,
+        "app.services.valuation_provider.fetch_valuation_rows",
+        lambda *args, **kwargs: [{"symbol": "600519", "trade_date": date.fromisoformat(row["TRADE_DATE"]),
+            "pe_ttm": row["PE_TTM"], "pb": row["PB"], "total_market_cap": None,
+            "circulating_market_cap": None} for _, row in frame.iterrows()],
     )
 
     written = sync_symbol_valuation_range(
@@ -140,6 +146,6 @@ def test_valuation_history_range_writes_only_returned_trade_dates(
     assert repeated == 2
     assert {row.trade_date for row in rows} == {
         date(2026, 7, 10),
-        date(2026, 7, 12),
+        date(2026, 7, 13),
     }
     assert {row.source for row in rows} == {"akshare:stock_value_em"}

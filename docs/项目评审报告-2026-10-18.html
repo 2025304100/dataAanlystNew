@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个人量化工作台 · 项目评审报告（2026-10-18）</title>
+<style>
+  :root{
+    --ink:#1A1B1C; --ink-2:#4D5766; --ink-3:#767676;
+    --brand:#1A2B4A; --brand-2:#52647D; --brand-3:#8D9AAB;
+    --line:#E4E3DD; --bg:#F4F3EE; --card:#FFFFFF; --head:#F2F2F2;
+    --amber:#C8861A; --red:#B84C3A; --green:#3D8B12;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:15px;line-height:1.75;}
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 28px 80px;}
+  /* 封面头 */
+  header.cover{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:34px 36px 28px;margin-bottom:24px;}
+  header.cover h1{margin:0 0 8px;font-size:26px;font-weight:700;color:var(--brand);line-height:1.4;}
+  .sub{color:var(--ink-2);font-size:14px;margin-bottom:20px;}
+  .meta{width:100%;border-collapse:collapse;font-size:13px;}
+  .meta td{border:1px solid var(--line);padding:7px 12px;background:var(--card);}
+  .meta td:first-child{width:120px;background:var(--head);font-weight:600;color:var(--brand-2);}
+  /* 摘要卡 */
+  .exec{border-left:4px solid var(--amber);background:var(--card);
+    border:1px solid var(--line);border-left:5px solid var(--amber);
+    border-radius:10px;padding:18px 22px;margin:24px 0;}
+  .exec .tag{font-size:12px;font-weight:700;color:var(--amber);letter-spacing:2px;}
+  .exec p{margin:8px 0 0;font-size:15px;}
+  /* 章节 */
+  section{margin:34px 0;}
+  h2{font-size:21px;font-weight:700;color:var(--brand);
+    border-bottom:2px solid var(--brand);padding-bottom:8px;margin:0 0 16px;}
+  h3{font-size:17px;font-weight:700;color:var(--brand-2);margin:22px 0 10px;}
+  h4{font-size:15px;font-weight:700;color:var(--ink);margin:16px 0 8px;}
+  p{margin:10px 0;}
+  ul,ol{margin:8px 0 12px;padding-left:26px;}
+  li{margin:5px 0;}
+  strong{color:var(--ink);}
+  .hl{background:rgba(200,134,26,0.10);padding:0 4px;border-radius:4px;font-weight:600;}
+  .red{color:var(--red);font-weight:600;}
+  .green{color:var(--green);font-weight:600;}
+  .amber{color:var(--amber);font-weight:600;}
+  code{background:#F1F1EF;border:1px solid var(--line);border-radius:4px;
+    padding:1px 6px;font-size:12.5px;font-family:Consolas,"Courier New",monospace;color:var(--brand);}
+  /* 表格 */
+  table.data{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:13px;background:var(--card);}
+  table.data th{background:var(--head);border:1px solid #D9D9D9;padding:8px 10px;text-align:center;
+    font-weight:600;color:var(--brand-2);}
+  table.data td{border:1px solid #D9D9D9;padding:7px 10px;vertical-align:middle;color:var(--ink);}
+  table.data td:first-child{font-weight:600;}
+  table.data tr:nth-child(even) td{background:#FAFAF8;}
+  table.data .num{text-align:right;font-variant-numeric:tabular-nums;}
+  .table-note{font-size:12px;color:var(--ink-3);margin:-12px 0 16px;}
+  /* 图：决策闭环 */
+  .fig{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:20px 22px;margin:16px 0 8px;}
+  .fig h4{margin:0 0 12px;font-size:15px;color:var(--brand);}
+  .flow{display:flex;flex-wrap:wrap;gap:10px;}
+  .node{flex:1 1 150px;min-width:150px;border-radius:10px;padding:10px 13px;
+    border:1px solid var(--line);background:#FBFBFA;}
+  .node .lbl{font-size:12px;color:var(--ink-3);}
+  .node .stat{font-size:14px;font-weight:700;margin-top:2px;}
+  .node .ev{font-size:11.5px;color:var(--ink-2);margin-top:5px;line-height:1.6;}
+  .node.ok{border-top:3px solid var(--green);}
+  .node.ok .stat{color:var(--green);}
+  .node.warn{border-top:3px solid var(--amber);}
+  .node.warn .stat{color:var(--amber);}
+  .node.bad{border-top:3px solid var(--red);}
+  .node.bad .stat{color:var(--red);}
+  .mismatch{margin-top:12px;border-radius:10px;padding:12px 16px;background:rgba(26,43,74,0.05);
+    border:1px solid var(--line);font-size:13.5px;color:var(--ink);}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--ink-2);margin-top:12px;}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;}
+  .fig-src{font-size:11.5px;color:var(--ink-3);margin-top:8px;}
+  /* 目录 */
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 24px;margin:24px 0;}
+  nav.toc b{color:var(--brand);}
+  nav.toc ol{margin:8px 0 0;padding-left:22px;columns:2;column-gap:40px;}
+  nav.toc li{margin:3px 0;font-size:13.5px;}
+  nav.toc a{color:var(--ink-2);text-decoration:none;}
+  nav.toc a:hover{color:var(--amber);}
+  footer{color:var(--ink-3);font-size:12px;text-align:center;margin-top:40px;}
+  @media (max-width:640px){
+    .wrap{padding:20px 14px 60px;}
+    header.cover{padding:24px 20px;}
+    nav.toc ol{columns:1;}
+    .node{flex:1 1 100%;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="cover">
+  <h1>个人量化工作台 · 项目评审报告</h1>
+  <div class="sub">Personal Quant Workbench · 评审对象：行情查看 / 自选管理 / 数据分析 / 交易辅助（A 股 / 美股 / ETF）</div>
+  <table class="meta">
+    <tr><td>评审日期</td><td>2026-10-18</td></tr>
+    <tr><td>评审视角</td><td>资深个人投资者 + 一线产品评审专家（懂 A 股交易场景与 B 端金融工具）</td></tr>
+    <tr><td>项目阶段</td><td>刚启动 / 评审复盘</td></tr>
+    <tr><td>产品形态</td><td>PC 桌面端优先（Electron / Web），未来移动端</td></tr>
+    <tr><td>核心结论</td><td><span class="red">暂不建议对外发布</span>：工程能力过剩、产品闭环未闭合，需先补齐链路与信任基础（见 §2）</td></tr>
+  </table>
+</header>
+
+<nav class="toc">
+  <b>目录</b>
+  <ol>
+    <li><a href="#s1">评审依据与证据索引</a></li>
+    <li><a href="#s2">整体判断（含决策闭环图）</a></li>
+    <li><a href="#s3">优点（做多逻辑）</a></li>
+    <li><a href="#s4">缺陷与风险（做空逻辑）</a></li>
+    <li><a href="#s5">架构设计意见</a></li>
+    <li><a href="#s6">交互设计意见</a></li>
+    <li><a href="#s7">前端 UI 意见</a></li>
+    <li><a href="#s8">可改良建议（按优先级）</a></li>
+    <li><a href="#s9">问题证据索引</a></li>
+    <li><a href="#s10">评审边界与验证缺口</a></li>
+  </ol>
+</nav>
+
+<section id="s1">
+<h2>1. 评审依据与证据索引</h2>
+<table class="data">
+  <tr><th style="width:26%">材料</th><th style="width:24%">用途</th><th>关键证据位置</th></tr>
+  <tr><td><code>docs/project-analysis.md</code></td><td>产品定位、技术栈、模块成熟度</td><td>技术栈表；一级功能成熟度表；"前端无 react-router，使用 activeTab + ?tab="；待改进清单</td></tr>
+  <tr><td><code>docs/前端交互验收报告-2026-09-20.md</code></td><td>真实浏览器点击级走查</td><td>§三 P0-1~P0-4；§四 P1-1~P1-5；§五/§八 P2 清单；§六·补"单测全绿与交互可用是两回事"</td></tr>
+  <tr><td><code>docs/前后端代码审查报告-2026-10-13.md</code></td><td>安全与数据一致性问题</td><td>§3 R1~R5（已复现）；§4 R6（候选）；§5 后端 71 个未消费方法；§6 前端 72 个未消费 API 封装；§8 104 条前端诊断</td></tr>
+  <tr><td><code>docs/personal-quant-workbench-practical-usability-final-plan.md</code></td><td>产品改良基线（7 月编写）</td><td>§1.2 运行快照（健康 84、7 标的 85.7% 行情过期、因子 degraded）；§5 今日页设计；§10 决策就绪状态；§24 外部数据透明度</td></tr>
+  <tr><td><code>docs/assets/homepage-model-coverage-2026-10-17.jpg</code></td><td>最新首页实测截图</td><td>因子覆盖率：5日主力净流入 0/5538（0.0%）、ROE 同比 600/5538（10.8%）；"缺失 K 线""新买单暂不可用"</td></tr>
+  <tr><td><code>screenshots/g3-desktop-1440-1440x900-20260821.png</code></td><td>组合交易-回测中心 UI 截图</td><td>深色 AntD 风格、快照/指标/净值曲线布局</td></tr>
+  <tr><td><code>README.md</code></td><td>测试体系</td><td>四层测试 ~550 用例；CI + pre-commit</td></tr>
+</table>
+<p class="table-note">说明：本报告基于上述材料做静态评审，未重新启动系统走查；"已复现"问题均为原报告在真实运行环境中的验证结论，本报告引用时予以保留。</p>
+</section>
+
+<section id="s2">
+<h2>2. 整体判断</h2>
+<div class="exec">
+  <div class="tag">一句话结论</div>
+  <p><strong>方向值得做，但当前是"工程能力严重过剩、产品闭环没有闭合"的状态</strong>——核心赌注是<span class="hl">用工程化手段解决个人投资者"决策不可信、复盘无纪律"的痛点</span>，赌注成立，但兑现前提是把断掉的链路补上；<span class="red">以当前状态上线，留不住任何一类用户。</span></p>
+</div>
+
+<p>核心链路（数据 → 因子 → 评分 → 机会 → 组合 → 回测）中成熟度最高的是<strong>组合交易</strong>与<strong>机会中心</strong>，最差的是<strong>因子挖掘 v2</strong>（骨架，主链路 4 个 P0 走不通）。这是系统性错位而非普通延期：后端能力大量就绪（<code>preview</code> 返回真实数据、<code>filter-fields</code> 返回 19 个字段、<code>import-template</code> 返回 CSV 模板），<strong>前端 UI 根本没有接入</strong>——71 个后端方法、72 个前端 API 封装、104 条前端未使用诊断并存，"后端 4,021 个函数 / 516 个路由"的引擎配的却是一批"点了不干活、没有任何反馈"的按钮。</p>
+
+<div class="fig">
+  <h4>图 1　决策闭环成熟度与断点（评审判断）</h4>
+  <div class="flow">
+    <div class="node warn"><div class="lbl">1 行情数据采集</div><div class="stat">可用 · 时效差</div><div class="ev">85.7% 标的行情过期<br>AkShare 限流 / 字段漂移<br>增量同步未落地</div></div>
+    <div class="node bad"><div class="lbl">2 因子计算</div><div class="stat">Degraded</div><div class="ev">因子健康 degraded<br>5日主力净流入覆盖率 0/5538<br>Ridge 权重未启用</div></div>
+    <div class="node warn"><div class="lbl">3 评分 / 机会扫描</div><div class="stat">可用</div><div class="ev">Quality + Timing 双评分<br>机会优先级可解释</div></div>
+    <div class="node ok"><div class="lbl">4 机会中心</div><div class="stat">高成熟度</div><div class="ev">候选 / 观察 / 排除 / 扫描<br>状态流转完整</div></div>
+    <div class="node ok"><div class="lbl">5 组合交易 / 模拟</div><div class="stat">高 · 有隐患</div><div class="ev">G0–G7 治理 + 证据链<br>⚠ R6 并发一致性未验证</div></div>
+    <div class="node warn"><div class="lbl">6 回测 / 复盘</div><div class="stat">可用 · 不稳</div><div class="ev">预检长期转圈 / N/A<br>DuckDB 连接冲突</div></div>
+    <div class="node bad"><div class="lbl">7 因子挖掘 v2</div><div class="stat">骨架 · 主链路断</div><div class="ev">4 个 P0：建池 405<br>字段空 / 提交无请求<br>预览数字空白</div></div>
+  </div>
+  <div class="mismatch"><strong>系统性错位：后端就绪，前端未接。</strong>后端 4,021 个函数 / 516 个路由，但 71 个后端方法、72 个前端 API 封装、104 条前端诊断无人消费；<code>preview</code> / <code>filter-fields</code> / <code>import-template</code> 接口返回真实数据，UI 却渲染空白、按钮静默失效。</div>
+  <div class="legend">
+    <span><i style="background:rgba(61,139,18,0.55)"></i>高成熟度</span>
+    <span><i style="background:rgba(200,134,26,0.60)"></i>可用但有风险</span>
+    <span><i style="background:rgba(184,76,58,0.55)"></i>断点 / 骨架</span>
+  </div>
+  <div class="fig-src">数据来源：docs/project-analysis.md 成熟度表；docs/前端交互验收报告-2026-09-20.md；docs/前后端代码审查报告-2026-10-13.md；运行快照与截图。成熟度为评审判断，85.7% 行情过期为 2026-07 运行快照。本图为自绘示意图，非系统实测渲染。</div>
+</div>
+
+<h3>2.1 目标用户画得准不准</h3>
+<p><strong>画得不准。</strong> 可用性方案写"不熟悉量化的普通投资者，同时兼容专业用户"——这是最典型的定位摇摆。A 股真实分层：约 90% 用户在同花顺/东财看行情加自选，约 5% 用 i问财/条件选股，真正碰因子、评分、回测的不足 2%。普通投资者看到 "Quality Score / Timing Score / Z-Score" 就跑；专业用户又嫌 AntD 套壳不够深。<strong>两头都要 = 两头都不要。</strong></p>
+
+<h3>2.2 痛点真伪</h3>
+<p><strong>有真有假。</strong> 真痛点：决策可信度（"行情过期了系统还让我买"）、数据时效（85.7% 标的行情过期）、复盘纪律（"买了不知道当时为什么买，复盘全靠拍脑袋"）。<span class="red">伪需求："自动进化挖掘因子"</span>——个人投资者没有跑遗传算法的场景，这是为做而做的自嗨功能，还恰好占着 4 个 P0。</p>
+
+<h3>2.3 差异化</h3>
+<p><strong>不存在于功能清单里。</strong> 行情打不过同花顺/东财（AkShare 免费数据更差），回测打不过聚宽/米筐。唯一像壁垒的资产是<strong>证据链 + 快照哈希 + PIT mode + G0–G7 治理</strong>——但那是工程资产，用户感知不到，短期也换不来留存。</p>
+</section>
+
+<section id="s3">
+<h2>3. 优点（做多逻辑）</h2>
+<ol>
+  <li><strong>四层测试 + CI + pre-commit（约 550 用例）</strong>，同类个人项目里罕见的工程纪律——对的，坚持。</li>
+  <li><strong>证据链、快照哈希、PIT mode、版本追溯</strong>设计是专业级的，方向完全正确：金融工具的决策推荐必须可追溯，这是可信度底座。</li>
+  <li><strong>组合治理 G0–G7 双跑门禁</strong>（快照冻结、双引擎对比、守恒校验），同类产品几乎没有。</li>
+  <li><strong>不接券商、只做计划 + 记录成交</strong>的定位决策非常对：避开合规大雷，同时覆盖"决策辅助"真实场景。</li>
+  <li><strong>技术选型务实</strong>：SQLite 默认、AkShare 免费源、FastAPI + React，没有为不存在的规模上重型基建。</li>
+  <li>UI 深色主题、AntD 组件统一，专业感在线（回测中心截图观感良好）。</li>
+</ol>
+</section>
+
+<section id="s4">
+<h2>4. 缺陷与风险（做空逻辑）</h2>
+
+<h3>4.1 产品层面</h3>
+<ul>
+  <li><strong>核心路径硬伤</strong>（因子挖掘 4 个 P0，证据见 §9）：
+    <ul>
+      <li>P0-1 Step1 建池请求 405（URL 双斜杠空 id，<code>MiningShell.tsx:314</code> 未传 <code>poolId</code>）；</li>
+      <li>P0-2 Step3 无任何字段可选（<code>fields</code> 靠 props 注入、默认为 <code>[]</code>，没人调用已就绪的 <code>filter-fields</code> 接口）；</li>
+      <li>P0-3 Step4 确认提交无请求、弹窗不关（<code>MiningShell.tsx:206-211</code> 因快照 id 恒空直接 return，且 <code>onConfirm</code> 不先关弹窗）；</li>
+      <li>P0-4 预览统计恒为空且"&lt;50 硬阻断"失效（前端字段 <code>total/matched/excluded</code> 与后端 <code>universe_size/hits/excluded_total</code> 不匹配，<code>undefined &lt; 50</code> 恒 false）。</li>
+    </ul>
+  </li>
+  <li><strong>单测 834 例全绿、真实链路全断</strong>：测试全部用 mock 数据注入 props，真实渲染时无人注入——这是"自我安慰型"测试架构，比没测试更危险。</li>
+  <li><strong>自嗨功能</strong>：因子挖掘 v2（进化算法）、模板库初始为空且要手动"重置系统模板"才可用、Step4 参数"看得见填不进"（<code>ClassicalBaseConfig</code> / <code>SelectionConfig</code> 无 props、onChange 未接）。</li>
+  <li><strong>半成品状态直接暴露给用户</strong>：首页常驻"新买单暂不可用"、缺失 K 线、因子覆盖率 0%——这些本应是受控内部状态，却成了首屏事故现场。</li>
+</ul>
+
+<h3>4.2 商业层面</h3>
+<p><strong>没有付费理由。</strong> 单机 + 免费数据源 + 无行情差异化，用户用脚投票会留在同花顺。获客无渠道（无社区、无内容、无导流）；留存取决于数据新鲜度（当前 85.7% 标的行情过期）。天花板：个人工具，零收入预期；若做 B 端研究工具则当前形态要重做。</p>
+
+<h3>4.3 竞争层面</h3>
+<p>同花顺不需要抄"证据链"——它抄走的是"能用"，用户要的也是"能用"。本项目活下来的唯一理由：场景足够小众（个人量化决策纪律），大厂看不上；一旦做大了，东财一个自选股界面就能吸走 90% 用户。</p>
+
+<h3>4.4 合规层面</h3>
+<p>当前"模拟交易 + 线下成交记录"模式安全。雷区在商业化那一步：</p>
+<ul>
+  <li>对外收费提供评分/买卖建议 → 涉<strong>证券投资咨询业务资质</strong>（证监会监管红线）；</li>
+  <li>AkShare 实质抓取东财等网页接口 → 商业使用有<strong>数据来源合规与反爬</strong>风险；</li>
+  <li>R5 已证实数据库配置写接口无认证（<code>STRICT_AUTH=1</code> 下无凭据请求仍进入写处理器）——本地单机问题不大，一旦对外部署就是事故。</li>
+</ul>
+</section>
+
+<section id="s5">
+<h2>5. 架构设计意见</h2>
+<ul>
+  <li><strong>选型匹配当前阶段，不过度设计。</strong> 但 54+ 个 Alembic 迁移、旧 <code>init_db</code> 双轨 schema 并存、DuckDB 多连接冲突（P1-2/P1-3 根因）说明<strong>数据层管理已开始失控</strong>，是最该还的技术债。</li>
+  <li><strong>4 个已复现的 P1 必须排最前</strong>（证据见 §9）：
+    <ul>
+      <li>R1 静态资源路径穿越（<code>app/main.py:906</code> 只检查 <code>exists()</code> 未解析路径，<code>/assets/..%2f..</code> 可越界读文件）；</li>
+      <li>R2 数据库热切换后控制面仍连旧库（<code>app/db/manager.py:41</code> 更换主引擎未失效 <code>_cp_factory</code>，业务数据分裂）；</li>
+      <li>R3 数据库配置校验失败前已写盘（<code>app/api/routes/db_config.py:82</code> 先 <code>save_db_config</code> 后校验，400 不撤销磁盘写入）；</li>
+      <li>R4 取消超时巡检未接生产入口（<code>app/services/async_tasks.py:835</code> 能力已实现，生产 <code>_run_patrol()</code> 不调用，任务可假死）；</li>
+      <li>R6 模拟下单缺组合级并发串行化（<code>app/services/sim_accounts.py</code> 读改写无 <code>FOR UPDATE</code>，需 MySQL 并发实验验证）。</li>
+    </ul>
+  </li>
+  <li><strong>实时行情</strong>：当前拉取/定时任务模式，未做 WebSocket 推送。<strong>对当前定位（盘后决策）是对的</strong>——但 UI 层缺断线重连、心跳、降级状态，要补。</li>
+  <li><strong>扩展性</strong>：SQLite 单机撑不住用户量 ×10，但当前阶段不需要。真正的瓶颈不在架构，在<strong>数据源</strong>：AkShare 免费接口限流 + 字段漂移（85.7% 行情过期即证据）。</li>
+  <li><strong>成本结构</strong>：服务器几乎零成本；<strong>行情数据授权（Level-1 全市场）是百万级年费</strong>，免费接口永远无法作为商业基础。数据新鲜度是产品命脉，应把"全量重拉"改为"增量同步 + 标的级水位 + 批次缓存"（方案 §24 已设计：ETF 全市场接口每批一次，可省约 90% 请求量）。</li>
+</ul>
+</section>
+
+<section id="s6">
+<h2>6. 交互设计意见</h2>
+<ul>
+  <li><strong>核心路径步数</strong>：组合交易 5 子页、机会中心 4 子页结构尚可；但"机会 → 交易计划"没有闭合（计划向导仅在设计方案中，未落地）。高频用户需要的快捷键、批量操作、右键菜单、多窗口分屏、全局搜索——<strong>未见任何证据</strong>。A 股盯盘用户是"3 秒切窗口、5 秒看持仓"的动物，没有快捷键的 PC 工具会被认为"不够专业"。</li>
+  <li><strong>信息架构</strong>：6 个一级 Tab + 设置 18 个导航项，普通用户 3 步内找不到"数据镜像"或"公式与计划"。方案中的五入口 + 高级设置折叠是对的，但至今未落地。无 react-router、靠 <code>?tab=</code> 深链接，多窗口对照场景完全没考虑。</li>
+  <li><strong>状态覆盖（最差的板块）</strong>：加载态（回测预检无限转圈 P1-3）、空态（Step3 空白无提示）、报错（英文底层错误直接甩用户 P1-2）、静默失效（预检/导入/保存暂存等 10+ 处）。方案 §12 的"错误四要素 + 恢复动作"与 §10 决策就绪状态，在验收时点未生效。断线重连无证据。</li>
+  <li><strong>移动端</strong>：当前组件全是桌面向（表格、抽屉、多列），移动端复用率估计 &lt;30%，K 线与持仓表必须重做；但"决策就绪 / 普通语言解释 / 状态机"等逻辑层可复用。</li>
+</ul>
+</section>
+
+<section id="s7">
+<h2>7. 前端 UI 意见</h2>
+<ul>
+  <li><strong>视觉一致性</strong>：AntD 深色主题统一，专业感达标；但 P2-6 用 <code>&lt;pre&gt;{JSON.stringify(...)}&lt;/pre&gt;</code> 直接打印分析数据，暴露未完成态。</li>
+  <li><strong>信息密度</strong>：回测中心截图（参数左栏 / 快照右栏 / 净值曲线）是合格的金融密度；首页则信息过杂——"发现池维护 / 因子模型 / 优先机会 / 重要消息"四卡片主题不一。</li>
+  <li><strong>涨跌色</strong>：截图未见明显错误，但<strong>需显式核查</strong>：AntD 默认无红涨绿跌语义，若未全局配置就是事故级问题。</li>
+  <li><strong>响应式</strong>：无证据覆盖 2K / 4K / 带鱼屏；设计稿 HTML 固定宽度，风险高。暗色模式是刚需，当前已深色，OK。动效未见花哨，保持克制即可。</li>
+</ul>
+</section>
+
+<section id="s8">
+<h2>8. 可改良建议（按优先级）</h2>
+
+<h3>8.1 P0 —— 不做会出事故 / 留不住用户</h3>
+<table class="data">
+  <tr><th style="width:30%">问题描述</th><th style="width:38%">具体改进方案</th><th style="width:18%">预期收益</th><th>工作量评估</th></tr>
+  <tr><td>因子挖掘 4 个 P0：建池 405、字段空、提交无请求、预览空、&lt;50 硬阻断失效</td><td>消费已就绪接口：<code>createPoolFromFilter</code> → 拿 <code>pool.id</code> → <code>createSnapshot</code>；Step3 挂载时调 <code>filter-fields</code> 并注入；<code>onConfirm</code> 先关弹窗再提交；前端适配 <code>universe_size/hits/excluded_total</code> 并基于 <code>can_generate</code> 判定阻断</td><td>主链路可用，消除"点了不干活"的信任崩塌</td><td>中（2–3 天）</td></tr>
+  <tr><td>R1–R5 安全与数据一致性问题</td><td>R1 对目标 <code>resolve()</code> 校验目录边界；R2 引擎切换统一位置失效控制缓存；R3 先校验候选配置再原子切换保存；R4 把取消超时巡检接入生产周期巡检；R5 管理接口统一认证</td><td>消除越界读文件、数据分裂、配置错写、任务假死</td><td>中（3–4 天）</td></tr>
+  <tr><td>全站"静默失效"按钮（执行预检、导入模板、保存暂存等 10+ 处）</td><td>立契约：任何点击 3 秒内必有反馈（loading / 成功 / 失败），失败必 toast + 恢复动作</td><td>用户信任重建，留存底线</td><td>中</td></tr>
+  <tr><td>数据新鲜度：85.7% 标的行情过期</td><td>增量同步 + 标的级水位 + 批次缓存；行情过期时阻断新开仓并给一键恢复按钮</td><td>决策可信度，直接决定用户去留</td><td>中</td></tr>
+  <tr><td>决策就绪状态只做了一半（首页"新买单暂不可用"是半成品态）</td><td>完整落地 <code>ready / limited / blocked</code> 三态 + 理由清单 + 一键恢复（方案 §10 已设计）</td><td>把首屏事故现场变成受控状态</td><td>中</td></tr>
+</table>
+
+<h3>8.2 P1 —— 本迭代必须改</h3>
+<table class="data">
+  <tr><th style="width:30%">问题描述</th><th style="width:38%">具体改进方案</th><th style="width:18%">预期收益</th><th>工作量评估</th></tr>
+  <tr><td>单测全绿、真实链路全断</td><td>补端到端契约测试：<code>render(&lt;MiningShell /&gt;)</code> 不注入 props，断言 Step1 生成快照、Step3 有字段、Step4 发出 <code>POST /factor-mining/runs</code></td><td>测试从"自我安慰"变真门禁</td><td>小</td></tr>
+  <tr><td>信息架构过深（6 Tab + 18 设置项）</td><td>落地方案五入口导航 + 首次使用 6 步向导 + 高级设置折叠 + 保留 URL 兼容</td><td>新用户 10 分钟上手</td><td>中</td></tr>
+  <tr><td>因子挖掘产品定位存疑</td><td>砍掉或降级为"模板化因子研究"（25 个系统模板已有），不做遗传算法；模板库改安装/迁移时自动 seed</td><td>省维护成本，聚焦真实场景</td><td>决策项</td></tr>
+  <tr><td>回测预检转圈 / DuckDB 连接冲突</td><td>排查 <code>/backtest/precheck</code> 与数仓连接冲突（同 P1-2 根因），超时给失败态而非无限 loading</td><td>消除"等不到结果"的流失点</td><td>小</td></tr>
+  <tr><td>custom-indicators 500（测试脏数据击穿）</td><td>清理 <code>__p22_smoke_*</code> 等脏行；接口对脏行容错过滤</td><td>整页 500 消除</td><td>小</td></tr>
+  <tr><td>tsc 构建门禁失败（5 处类型错误）</td><td>修 <code>FactorModelPage.test.tsx</code> 等 mock 字段，恢复 <code>npm run build</code></td><td>构建回归可验证</td><td>小</td></tr>
+</table>
+
+<h3>8.3 P2 —— 中长期优化</h3>
+<table class="data">
+  <tr><th style="width:30%">问题描述</th><th style="width:38%">具体改进方案</th><th style="width:18%">预期收益</th><th>工作量评估</th></tr>
+  <tr><td>PC 高频交互缺失</td><td>全局快捷键（自选 / 跳持仓 / 切窗口）、表格右键菜单、多窗口分屏、托盘常驻</td><td>专业用户留存</td><td>中</td></tr>
+  <tr><td>多分辨率 / 移动端未规划</td><td>布局改弹性 + 断点；移动端重做 K 线与持仓表，复用逻辑层</td><td>未来迁移成本可控</td><td>大</td></tr>
+  <tr><td>数据透明度不足（同步结果刷新即失）</td><td>按方案 §24 落地：每张数据卡片展示有效日期 / 覆盖率 / 最近成功时间 / 来源；长任务转后台任务中心</td><td>用户可预判、可追溯</td><td>中</td></tr>
+  <tr><td>外部数据同步效率（ETF 逐只循环、财报全量重写）</td><td>ETF 全市场接口提升为批次级；财报按"更新最新 / 首次近三年 / 强制回填"三模式</td><td>请求量降约 90%，同步耗时大幅下降</td><td>中</td></tr>
+  <tr><td>商业化合规未定</td><td>明确免费个人 vs 付费边界；付费前完成投顾资质评估与行情数据授权评估</td><td>避免上线即合规事故</td><td>小（调研）</td></tr>
+</table>
+</section>
+
+<section id="s9">
+<h2>9. 问题证据索引</h2>
+<p>以下证据均来自项目仓库内文档，可在对应文件中复核。P0/P1 编号沿用原报告编号。</p>
+
+<h3>9.1 因子挖掘主链路断（4 个 P0）</h3>
+<p class="table-note">来源：docs/前端交互验收报告-2026-09-20.md §三</p>
+<table class="data">
+  <tr><th style="width:14%">编号</th><th style="width:30%">现象</th><th>根因证据</th></tr>
+  <tr><td>P0-1</td><td>Step1「生成挖掘物料」请求 405，双斜杠 URL</td><td><code>MiningShell.tsx:314</code> 未传 <code>poolId</code>，<code>MiningPoolStep.tsx:38</code> 默认 <code>""</code>；<code>poolApi.ts</code> 的 <code>createPoolFromFilter</code> 从未被调用</td></tr>
+  <tr><td>P0-2</td><td>Step3「字段与校验」无任何字段可选，按钮永远禁用</td><td><code>MiningFieldStep.tsx:41-48</code> fields 默认 <code>[]</code>；<code>MiningShell.tsx:347</code> 未注入；<code>GET /filter-fields</code> 返回 200 且 19 字段完整，<code>fetchFilterFields()</code> 无人调用</td></tr>
+  <tr><td>P0-3</td><td>Step4「确认提交」无请求、弹窗不关、提示被遮罩</td><td><code>MiningShell.tsx:206-211</code> 因快照 id 恒空直接 return；<code>MiningEvoParamStep.tsx:208</code> <code>onConfirm</code> 不关弹窗</td></tr>
+  <tr><td>P0-4</td><td>预览统计恒为空，&lt;50 硬阻断失效</td><td><code>poolApi.ts:24-31</code> 声明 <code>total/matched/excluded</code>，后端返回 <code>universe_size/hits/excluded_total</code>；<code>undefined &lt; 50</code> 恒 false</td></tr>
+</table>
+
+<h3>9.2 静默失效按钮（点了不报错不干活）</h3>
+<p class="table-note">来源：同上 §四 / §八·补</p>
+<table class="data">
+  <tr><th style="width:30%">位置</th><th>证据</th></tr>
+  <tr><td>今日决策「执行预检」</td><td><code>TodayDecision.tsx:358-360</code> 在 <code>setPreflightLoading(true)</code> 前 <code>if (!portfolioId) return;</code>；<code>ctx.portfolioId ?? 1</code> 不兜底 0 → 点击无任何请求</td></tr>
+  <tr><td>因子挖掘 Step1「导入股票池」</td><td><code>MiningPoolStep.tsx:175-179</code> 传 <code>onTemplate={() =&gt; undefined}</code>、<code>onFile={() =&gt; undefined}</code>；<code>downloadImportTemplate / previewImport / importMembers / exportImportErrors</code> 四个接口全部没被调用</td></tr>
+  <tr><td>Step4 高级参数「看得见填不进」</td><td><code>MiningEvoParamStep.tsx:174-183</code> <code>ClassicalBaseConfig</code> / <code>SelectionConfig</code> 完全无 props，onChange 未接，用户填值不进 <code>evolution_params</code></td></tr>
+  <tr><td>Step5「保存暂存」</td><td><code>onSaveDraft</code> 未传，点击无反应无提示（P2-13）</td></tr>
+  <tr><td>双锁 / ETA / 资源卡片</td><td><code>MiningShell.tsx:355</code> 未传 <code>lockStatus / etaSeconds / resourcesOk</code>，弹窗恒定"可立即开始"（P1-8）</td></tr>
+</table>
+
+<h3>9.3 测试失真：单测全绿 ≠ 交互可用</h3>
+<p class="table-note">来源：同上 §六·补</p>
+<blockquote style="border-left:3px solid var(--brand-3);margin:10px 0;padding:8px 16px;background:#FBFBFA;color:var(--ink-2);font-size:13.5px;">
+"单测全绿与'交互可用'是两回事。本次 4 个 P0 全部出在<strong>真实链路</strong>上……而单测里这些步骤都是用 mock 数据注入跑通的——<code>MiningShell</code> 的 <code>poolId</code>/<code>fields</code> 由外部注入，测试注入了，真实渲染时没人注入。"
+</blockquote>
+<ul>
+  <li>vitest 全量：81 个测试文件 / 834 个用例全部通过；</li>
+  <li>真实浏览器走查：4 P0 + 10 P1 + 13 P2，因子挖掘 <code>GET /factor-mining/runs</code> 恒为空。</li>
+</ul>
+
+<h3>9.4 安全与数据一致性问题（已复现）</h3>
+<p class="table-note">来源：docs/前后端代码审查报告-2026-10-13.md §3 / §4</p>
+<table class="data">
+  <tr><th style="width:10%">编号</th><th style="width:10%">严重度</th><th style="width:26%">问题</th><th>证据</th></tr>
+  <tr><td>R1</td><td>P1</td><td>静态资源接口允许越界读取（路径穿越）</td><td><code>app/main.py:906</code> 只 <code>exists()</code> 未解析路径；<code>/assets/..%2f..%2f</code> 请求返回 200</td></tr>
+  <tr><td>R2</td><td>P1</td><td>数据库热切换后控制平面仍连旧库</td><td><code>app/db/manager.py:41</code> 换主引擎未失效 <code>_cp_factory</code>；复现主库 B / 控制库 A</td></tr>
+  <tr><td>R3</td><td>P1</td><td>数据库配置校验失败前已写入磁盘</td><td><code>app/api/routes/db_config.py:82</code> 先 <code>save_db_config</code> 后校验；400 不撤销写入</td></tr>
+  <tr><td>R4</td><td>P1</td><td>已实现的取消超时升级没有生产入口</td><td><code>app/services/async_tasks.py:835</code>；生产 <code>_run_patrol()</code> 不调用，取消截止时间过后的任务仍 <code>running</code></td></tr>
+  <tr><td>R5</td><td>P1</td><td>数据库配置写接口没有认证保护</td><td><code>app/api/routes/db_config.py:68</code>；<code>STRICT_AUTH=1</code> 下无凭据请求仍进入写处理器</td></tr>
+  <tr><td>R6</td><td>P1 候选</td><td>模拟下单缺少组合级并发串行化</td><td><code>app/services/sim_accounts.py:59/81/105/272</code> 读改写无 <code>FOR UPDATE</code>；需 MySQL 并发实验验证</td></tr>
+</table>
+
+<h3>9.5 未消费代码规模（能力空转）</h3>
+<p class="table-note">来源：同上 §5 / §6 / §8</p>
+<ul>
+  <li>后端 71 个方法无生产/测试消费（含 legacy 辅助、便利包装，需逐项标记"删除 / 保留 / 补接入"）；</li>
+  <li>前端 72 个 API 封装方法无消费者（如 <code>aiChat</code>、<code>backupDatabase</code>、<code>sync*</code> 系列、<code>getTodayDecisionPreview</code> 等）；</li>
+  <li>前端 104 条生产源码诊断（<code>noUnusedLocals=false</code> 默认不暴露）。</li>
+</ul>
+
+<h3>9.6 数据时效与质量</h3>
+<p class="table-note">来源：docs/personal-quant-workbench-practical-usability-final-plan.md §1.2；docs/assets/homepage-model-coverage-2026-10-17.jpg</p>
+<ul>
+  <li>系统健康评分 ≈84；跟踪 7 个标的，约 85.7% 存在行情过期提示；因子健康 <code>degraded</code>；</li>
+  <li>最新首页实测：5日主力净流入因子覆盖率 0/5538（0.0%）、ROE 同比增长 600/5538（10.8%）、市盈率倒数(TTM) 74.0%、负市净率 99.1%；页面同时出现"缺失 K 线""新买单暂不可用"。</li>
+</ul>
+
+<h3>9.7 构建门禁失败</h3>
+<p class="table-note">来源：同上 §四 P1-5</p>
+<ul>
+  <li><code>tsc --noEmit</code> 退出码 2：<code>FactorModelPage.test.tsx:178/179/180/476</code> 与 <code>FactorModelPage.t13-supplement.test.tsx:159</code> 类型错误；</li>
+  <li>影响：<code>npm run build</code>（<code>tsc -b &amp;&amp; vite build</code>）必然失败，dev 模式不受影响。</li>
+</ul>
+</section>
+
+<section id="s10">
+<h2>10. 评审边界与验证缺口</h2>
+<ul>
+  <li><strong>已读</strong>：项目定位、模块成熟度、前端交互验收（2026-09-20）、前后端代码审查（2026-10-13）、可用性改良方案（全文核心章节）、两份运行截图（回测中心 / 今日决策）。</li>
+  <li><strong>未读/未做</strong>：未启动系统重新走查（页面状态以原报告时点为准，10 月后可能已有修复）；未跑任何测试；未通读全部 80+ 验收/计划文档（因子挖掘相关细节以验收报告摘要为准）；未核对前端涨跌色、响应式断点等需要实机验证的 UI 细节。</li>
+  <li><strong>结论时效</strong>：R1–R5、P0-1~P0-4 均为原报告"已复现"结论；若项目在 9–10 月后已修复，应在修复后重新走查验证。</li>
+</ul>
+</section>
+
+<footer>个人量化工作台 · 项目评审报告 · 生成日期 2026-10-18 · 本报告为静态材料评审，结论时效以证据索引中各原报告时点为准</footer>
+</div>
+</body>
+</html>

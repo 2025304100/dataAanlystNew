@@ -40,7 +40,6 @@ import {
   type ExternalDataSyncPlan,
   type ExternalDataCoverage,
   type ExternalDatasetCoverage,
-  type ExternalSyncPlanDetails,
   type ExternalSyncDataset,
   type ExternalSyncTask,
   type FactorPipelineTask,
@@ -407,7 +406,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const [activeTasks, setActiveTasks] = useState<ExternalSyncTask[]>([]);
   const [finishedTask, setFinishedTask] = useState<ExternalSyncTask | null>(null);
   const [taskActionLoading, setTaskActionLoading] = useState<"cancel" | "retry" | null>(null);
-  const [partitionDetails, setPartitionDetails] = useState<ExternalSyncPlanDetails | null>(null);
   const [repairingDataset, setRepairingDataset] = useState<"fundamental" | "financial" | "capital_flow" | null>(null);
   const [tailImporting, setTailImporting] = useState(false);
   const [tailImportResult, setTailImportResult] = useState<TailProxyImportResult | null>(null);
@@ -577,13 +575,21 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     if (taskAllAttemptsFailed(task)) {
       message.error("同步失败：全部尝试失败");
     } else if (task.status === "done" && !taskHasWarnings(task)) {
-      message.success(t("extTaskCompleted"));
+      message.success(task.result?.skip_reason ? task.message : t("extTaskCompleted"));
     } else if (task.status === "done") {
       message.warning(t("extTaskCompletedWithErrors"));
     } else if (task.status === "cancelled") {
       message.info("同步已取消，已完成的数据保留，可从断点继续");
     } else {
       message.error(task.message || t("extStatusFailed"));
+    }
+    if (task.result?.skip_reason && task.result.records === 0) {
+      const dataset = datasetFromTask(task);
+      setOverview((current) => current ? {
+        ...current, datasets: current.datasets.map((item) => item.dataset === dataset
+          ? { ...item, latest_task: task } : item),
+      } : current);
+      return;
     }
     await refreshOverview(true);
   }, [refreshOverview]);
@@ -595,16 +601,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   useEffect(() => {
     void refreshCapabilities();
   }, [refreshCapabilities]);
-
-  useEffect(() => {
-    if (!activeTask) {
-      setPartitionDetails(null);
-      return;
-    }
-    void api.getExternalDataSyncTaskPartitions(activeTask.id)
-      .then(setPartitionDetails)
-      .catch(() => setPartitionDetails(null));
-  }, [activeTask?.id, activeTask?.updated_at]);
 
   useEffect(() => {
     const runningTasks = activeTasks.filter((task) => ["queued", "running"].includes(task.status));
@@ -954,7 +950,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       ),
     },
     {
-      title: <Tooltip title="估值按真实快照日期统计采集缺口，评分可在 7 天内沿用已有估值快照；财报按公告日期生效。仓库字段覆盖不表示已生成模型评分。"><span>仓库字段覆盖（非同步结果）<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
+      title: <Tooltip title="A 股日覆盖率和连续天数按交易日计算，剔除周末及交易所节假日休市，不计为缺失；估值按真实快照日期统计，评分可在 7 天内沿用已有快照。财报按实际公告日期生效，假期公告仍保留。仓库字段覆盖不表示已生成模型评分。"><span>仓库字段覆盖（非同步结果）<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
       width: 230,
       render: (_, row) => {
         const diagnostic = coverageByDataset.get(row.dataset);
@@ -1009,12 +1005,13 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
               <>
                 <Typography.Text style={{ fontSize: 12 }}>
                   {taskProgressText(task)} · {t("extDashboardSuccess")} {task.ok_count ?? 0} · {t("extDashboardFailed")} {task.failed_count ?? 0}
+                  {Boolean(task.result?.skipped) && ` · 跳过 ${task.result!.skipped}`}
                 </Typography.Text>
                 <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
                   {formatDate(task.finished_at || task.updated_at, true)}
                 </div>
-                {(task.status === "failed" || taskAllAttemptsFailed(task)) && task.message && (
-                  <Typography.Text type="danger" ellipsis={{ tooltip: task.message }} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
+                {(task.status === "failed" || taskAllAttemptsFailed(task) || task.result?.skip_reason) && task.message && (
+                  <Typography.Text type={task.status === "failed" ? "danger" : "secondary"} ellipsis={{ tooltip: task.message }} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
                     {task.message}
                   </Typography.Text>
                 )}

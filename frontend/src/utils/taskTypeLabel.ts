@@ -37,6 +37,7 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
   macro_update: "taskTypeMacro",
   financial_report_sync: "taskTypeFinancialReportSync",
   factor_production_candidate: "productionCandidate.taskType",
+  factor_independent_evaluation: "productionCandidate.independentTaskType",
   hot_rank_snapshot: "taskTypeHotRankSnapshot",
   lhb_institution_sync: "taskTypeLhbInstitutionSync",
   tail_proxy_snapshot: "taskTypeTailProxySnapshot",

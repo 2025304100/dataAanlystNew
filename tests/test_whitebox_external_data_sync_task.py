@@ -17,6 +17,13 @@ from app.services import capital_flow_data
 
 
 pytestmark = pytest.mark.whitebox
+
+
+@pytest.fixture(autouse=True)
+def open_trading_session(monkeypatch):
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
+
+
 class _DeferredThread:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -125,6 +132,7 @@ def test_serializes_same_dataset_but_allows_independent_external_syncs(db_sessio
 
 
 def test_market_data_task_has_priority_over_new_external_task(db_session, monkeypatch):
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
     db_session.add(
         AsyncTaskRecord(
             id="market-priority-test",

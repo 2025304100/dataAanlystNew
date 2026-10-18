@@ -11,12 +11,19 @@ from app.db.manager import DatabaseManager
 from app.models.async_task import AsyncTaskRecord
 from app.models.capital_flow import CapitalFlow
 from app.models.symbol import Symbol
+from app.models.market_data import MarketCalendar
 from app.services import capital_flow_data
 from app.services import external_data_sync_task as service
 from app.services.capital_flow_data import sync_market_capital_flow_snapshot
 
 
 pytestmark = pytest.mark.whitebox
+
+
+@pytest.fixture(autouse=True)
+def open_session_calendar(db_session):
+    db_session.add(MarketCalendar(trade_date=date(2026, 10, 9), is_trading_day=1))
+    db_session.commit()
 
 
 def _cn_symbols(db_session, codes: list[str]) -> list[Symbol]:
@@ -208,6 +215,7 @@ def test_fundamental_incremental_still_uses_one_market_snapshot_after_branch_mer
     db_session, monkeypatch
 ):
     """合并分支后估值路径不能退化：仍是 1 次全市场抓取 + 个股接口兜底。"""
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
     symbols = _cn_symbols(db_session, ["600000", "000001"])
     task = AsyncTaskRecord(
         id="fund-incremental-snapshot",
@@ -223,7 +231,7 @@ def test_fundamental_incremental_still_uses_one_market_snapshot_after_branch_mer
     )
     calls: dict[str, int] = {"snapshot": 0, "per_symbol": 0}
 
-    def fake_snapshot(_db, syms, trade_date=None):
+    def fake_snapshot(_db, syms, trade_date=None, **kwargs):
         calls["snapshot"] += 1
         return {symbol.id for symbol in syms}
 

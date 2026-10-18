@@ -3836,6 +3836,41 @@ def get_production_candidate_task(db, plan_id):
     return get_candidate_task(db, plan_id)
 
 
+def get_production_prediction_status(db, plan_id, *, bundle_id=None):
+    from app.services.factors.production_prediction_journal import journal_status
+    return journal_status(db, plan_id, bundle_id=bundle_id)
+
+
+def get_production_independent_evaluation_status(db, plan_id):
+    from app.services.factors.production_cost_evaluation import independent_evaluation_status
+    return independent_evaluation_status(db, plan_id)
+
+
+def review_production_independent_evaluation(db, plan_id, *, bundle_id):
+    from app.services.factors.production_independent_evidence import review_independent_evidence
+    return review_independent_evidence(db, plan_id, bundle_id=bundle_id)
+
+
+def submit_production_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256):
+    from app.services.factors.production_independent_task import submit_independent_evaluation
+    return submit_independent_evaluation(db, plan_id, bundle_id=bundle_id, expected_sha256=expected_sha256)
+
+
+def get_production_independent_task(db, task_id):
+    from app.services.factors.production_independent_task import get_independent_task
+    return get_independent_task(db, task_id)
+
+
+def get_production_independent_report(db,task_id):
+    from app.services.factors.production_independent_task import get_independent_report
+    return get_independent_report(db,task_id)
+
+
+def record_production_prediction(db, plan_id, *, bundle_id):
+    from app.services.factors.production_prediction_journal import write_daily_prediction
+    return write_daily_prediction(db, plan_id, bundle_id=bundle_id)
+
+
 def run_factor_eval_precheck(
     db: Session,  # type: ignore[name-defined]
     factor_code: str | None,

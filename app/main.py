@@ -151,6 +151,9 @@ async def lifespan(_: FastAPI):
 
     # 跨平台持久化调度器：Linux / Windows 均由设置页统一管理。
     scheduled_task_loop = asyncio.create_task(scheduler_loop())
+    from app.services.trade_calendar_sync import calendar_refresh_loop
+
+    calendar_task = asyncio.create_task(calendar_refresh_loop())
 
     # Unified notification Outbox dispatcher. Business services only enqueue;
     # this loop completes delivery for in-app and configured external channels.
@@ -206,6 +209,12 @@ async def lifespan(_: FastAPI):
         pass
     except Exception:
         logger.exception("mining_lock_patrol_task shutdown failed")
+
+    calendar_task.cancel()
+    try:
+        await calendar_task
+    except asyncio.CancelledError:
+        pass
 
     scheduled_task_loop.cancel()
     try:

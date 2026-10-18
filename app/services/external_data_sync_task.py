@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
-from sqlalchemy import and_, desc, distinct, func, or_, select, text
+from sqlalchemy import and_, desc, distinct, func, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -119,7 +119,7 @@ def _external_sync_creation_guard(db: Session, dataset: ExternalDataset):
 ExternalSyncMode = Literal["incremental", "backfill"]
 
 _DATASET_CAPABILITIES: dict[ExternalDataset, dict[str, Any]] = {
-    "fundamental": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "通过个股历史估值接口写入真实交易日 PE/PB 快照；接口未返回的日期不会填补。"},
+    "fundamental": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "当天仅请求缺失标的及指定交易日；历史回填在服务端按起止日期过滤。接口未返回的日期不会填补，当天失败不会切换历史下载。"},
     "financial": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "按公告日保存可取得的报告历史。"},
     "capital_flow": {"modes": {"incremental", "backfill"}, "history_limit_days": 100, "reason": "提供商每次返回近约 120 个交易日（2026-10-01 实测 120 行）；增量除当日外，还会为可比历史不足的标的顺带落这段窗口，超出可得范围必须接入新数据源或导入。"},
     "lhb": {"modes": {"incremental", "backfill"}, "history_limit_days": 31, "reason": "龙虎榜为事件数据，单次区间受接口限制。"},
@@ -408,6 +408,12 @@ def _create_persisted_sync_plan(
             symbols = resolve_external_symbols(
                 db, payload.get("source", "watchlist"), asset_type, payload.get("watchlist_id"), payload.get("portfolio_id")
             )
+            if dataset == "fundamental" and frozen_plan.get("mode") != "backfill":
+                from app.services.fundamental_data import complete_daily_valuation_ids
+
+                current_ids = complete_daily_valuation_ids(db, [symbol.id for symbol in symbols], end_date)
+                payload["_already_current_count"] = len(current_ids)
+                symbols = [symbol for symbol in symbols if symbol.id not in current_ids]
             partition_specs = [
                 {
                     "partition_key": f"symbol:{symbol.id}:{start_date}:{end_date}",
@@ -531,6 +537,9 @@ def get_external_data_gaps(
         raise ValueError("start_date must be on or before end_date")
     if limit < 1 or limit > 1000:
         raise ValueError("limit must be between 1 and 1000")
+    from app.services.market_session import cn_open_day_clause
+
+    trading_day = cn_open_day_clause(db, DailyBar.trade_date)
     if dataset == "financial":
         has_visible_report = (
             select(StockFinancialReport.id)
@@ -547,6 +556,7 @@ def get_external_data_gaps(
             .where(
                 Symbol.asset_type == "stock", Symbol.is_active == 1,
                 DailyBar.trade_date >= start_date, DailyBar.trade_date <= end_date,
+                trading_day,
                 ~has_visible_report,
             )
             .group_by(Symbol.id, Symbol.symbol)
@@ -577,6 +587,7 @@ def get_external_data_gaps(
             Symbol.is_active == 1,
             DailyBar.trade_date >= start_date,
             DailyBar.trade_date <= end_date,
+            trading_day,
             source_id.is_(None),
         )
     )
@@ -817,6 +828,9 @@ def _run_symbol_sync(
         "records": 0,
         "errors": [],
     }
+    local_current = int(payload.get("_already_current_count", 0)) if dataset == "fundamental" else 0
+    result["total"] += local_current
+    result["skipped"] += local_current
     if dataset == "fundamental":
         missing_industry = [symbol.symbol for symbol in symbols if not symbol.industry]
         result["field_coverage"] = {"industry": {
@@ -824,13 +838,63 @@ def _run_symbol_sync(
             "available": len(symbols) - len(missing_industry),
             "missing": len(missing_industry), "missing_sample": missing_industry[:20],
         }}
+
+    def finish_without_fetch(reason: str, message: str) -> dict:
+        result.update(skipped=result["total"], skip_reason=reason, message=message)
+        for partition in partitions_by_symbol.values():
+            partition.status = "skipped"
+            partition.rows_written = 0
+            partition.error_message = None
+            partition.finished_at = partition.updated_at = _now()
+        if sync_plan_id:
+            # Include non-symbol partitions such as northbound flow.
+            db.execute(update(DataSyncPartition).where(
+                DataSyncPartition.plan_id == sync_plan_id,
+                DataSyncPartition.status.in_(("queued", "failed")),
+            ).values(status="skipped", rows_written=0, error_message=None,
+                     finished_at=_now(), updated_at=_now()))
+        db.commit()
+        if sync_plan_id:
+            _refresh_sync_plan(db, sync_plan_id, terminal=True)
+        return result
+
+    if not symbols and local_current:
+        return finish_without_fetch("already_current", "所选标的估值已是最新，无需更新")
+
+    if dataset in {"fundamental", "capital_flow", "etf"} and plan.get("mode") != "backfill":
+        from app.services.market_session import is_cn_trading_day
+
+        if not is_cn_trading_day(db, range_end):
+            return finish_without_fetch("market_closed", f"{range_end} 休市，无需更新")
+    elif dataset in {"fundamental", "capital_flow"}:
+        from app.services.market_session import range_is_cn_closed
+
+        if range_is_cn_closed(db, range_start, range_end):
+            return finish_without_fetch("market_closed", "所选日期范围均为 A 股休市日，无需更新")
+
+    if dataset == "fundamental" and plan.get("mode") != "backfill" and symbols:
+        from app.services.fundamental_data import complete_daily_valuation_ids
+
+        complete_ids = complete_daily_valuation_ids(db, [symbol.id for symbol in symbols], range_end)
+        if len(complete_ids) == len(symbols):
+            return finish_without_fetch("already_current", "所选标的估值已是最新，无需更新")
+        # Persist local skips and remove them before selecting HTTP batches.
+        result["skipped"] += len(complete_ids)
+        symbols = [symbol for symbol in symbols if symbol.id not in complete_ids]
+        for symbol_id in complete_ids:
+            partition = partitions_by_symbol.pop(symbol_id, None)
+            if partition is not None:
+                partition.status = "skipped"
+                partition.rows_written = 0
+                partition.finished_at = partition.updated_at = _now()
+        db.commit()
     _update_task(
         db,
         task_id,
         status="running",
         stage="prepare",
         percent=2,
-        total=len(symbols),
+        total=result["total"],
         message=f"Resolved {len(symbols)} symbols",
         started_at=_now(),
     )
@@ -872,9 +936,8 @@ def _run_symbol_sync(
             result["errors"].append(f"northbound: {exc}")
             logger.warning("northbound sync failed in external task: %s", exc)
 
-    # The provider already returns the complete A-share snapshot. Fetch it
-    # once for incremental valuation and fund-flow syncs instead of repeating
-    # the same full-market request for every symbol.
+    # Daily valuation uses date/code-bounded batches. Capital flow retains
+    # its market ranking endpoint. Neither daily path backfills valuation history.
     if dataset in {"fundamental", "capital_flow"} and plan.get("mode") != "backfill":
         if dataset == "capital_flow":
             from app.services.capital_flow_data import (
@@ -890,17 +953,11 @@ def _run_symbol_sync(
         else:
             from app.services.fundamental_data import (
                 sync_market_valuation_snapshot,
-                sync_symbol_valuation,
             )
 
             def _snapshot_sync(active_db: Session) -> set[int]:
-                return sync_market_valuation_snapshot(active_db, symbols, range_end)
-
-            def _single_symbol_sync(active_db: Session, symbol: Symbol) -> Any:
-                return sync_symbol_valuation(
-                    active_db, symbol, range_end, skip_market_snapshot=True,
-                    refresh_industry=False, history_start_date=range_start,
-                )
+                return sync_market_valuation_snapshot(active_db, symbols, range_end,
+                    should_cancel=lambda: _is_cancelled(active_db, task_id))
 
         if _is_cancelled(db, task_id):
             return None
@@ -908,18 +965,20 @@ def _run_symbol_sync(
             synced_ids = _snapshot_sync(db) or set()
         except Exception as exc:
             db.rollback()
-            # The complete-market endpoint is occasionally disconnected by
-            # the provider. Do not turn one failed HTTP request into N failed
-            # symbols; fall back to the per-symbol historical endpoint.
-            if dataset == "capital_flow" and source == "all":
-                # 全市场逐标的兜底等于 5,000+ 次个股请求（8/23-8/24 实测 6.5 小时只跑到
-                # 2,738 只），日更不能退化成那种规模；定向补数走缺口修复或小范围任务。
+            if dataset == "fundamental":
+                if _is_cancelled(db, task_id):
+                    return None
+                raise RuntimeError(f"当日估值同步已停止，未切换历史接口：{exc}") from exc
+            # Only small, explicitly selected scopes may use historical
+            # fallback. A batch failure must not amplify into market-wide
+            # history downloads (each call can return thousands of rows).
+            if source == "all" or len(symbols) > 50:
                 logger.warning(
-                    "capital flow market snapshot failed; refusing per-symbol fan-out for all scope: %s",
+                    "market snapshot failed; refusing large per-symbol fan-out: %s",
                     exc,
                 )
                 raise RuntimeError(
-                    f"全市场资金流排行接口不可用，未执行逐标的兜底（避免 5,000+ 次请求）："
+                    f"批量接口不可用，已停止同步，未执行逐标的兜底（避免大范围历史请求）；请稍后重试或缩小范围："
                     f"{type(exc).__name__}: {exc}"
                 ) from exc
             logger.warning(
@@ -1225,6 +1284,28 @@ def _run_bulk_sync(
     dataset: Literal["lhb", "hot_rank", "tail_proxy"],
     payload: dict,
 ) -> dict:
+    from app.services.market_session import is_cn_trading_day, range_is_cn_closed
+
+    plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
+    start = _as_date(plan["requested_start_date"])
+    end = _as_date(plan["requested_end_date"])
+    closed = (
+        range_is_cn_closed(db, start, end) if plan.get("mode") == "backfill"
+        else not is_cn_trading_day(db, end)
+    )
+    if closed:
+        plan_id = payload.get("sync_plan_id")
+        count = 0
+        if plan_id:
+            count = db.execute(update(DataSyncPartition).where(
+                DataSyncPartition.plan_id == plan_id,
+                DataSyncPartition.status.in_(("queued", "failed")),
+            ).values(status="skipped", rows_written=0, finished_at=_now(), updated_at=_now())).rowcount
+            db.commit()
+            _refresh_sync_plan(db, plan_id, terminal=True)
+        return {"dataset": dataset, "total": count, "success": 0, "skipped": count,
+                "failed": 0, "records": 0, "errors": [], "skip_reason": "market_closed",
+                "message": "所选日期范围均为 A 股休市日，无需更新"}
     if not _wait_for_market_priority(db, task_id):
         return {
             "dataset": dataset,
@@ -1438,7 +1519,13 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status in {"done", "failed", "cancelled"} or task.is_terminal_locked:
             return
-        if payload.get("_mirror_only"):
+        if payload.get("_preflight_skip"):
+            result = {"dataset": dataset, "total": 0, "success": 0, "skipped": 0,
+                      "failed": 0, "records": 0, "errors": [],
+                      "skip_reason": "market_closed", "message": payload["_preflight_skip"]}
+            if payload.get("sync_plan_id"):
+                _refresh_sync_plan(db, payload["sync_plan_id"], terminal=True)
+        elif payload.get("_mirror_only"):
             result = {"dataset": dataset, "total": 0, "success": 0, "skipped": 0, "failed": 0, "records": 0, "errors": [], "mirror_retry": True}
             result.update(payload.get("_mirror_written_range") or {})
         elif dataset in ("fundamental", "financial", "capital_flow", "etf"):
@@ -1457,7 +1544,11 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         if result.get("written_start_date") and result.get("written_end_date"):
             mirror_plan["requested_start_date"] = result["written_start_date"]
             mirror_plan["requested_end_date"] = result["written_end_date"]
-        mirror = _mirror_external_factor_inputs(db, task_id, dataset, mirror_plan)
+        mirror = (
+            {"status": "skipped", "records": 0, "reason": result["skip_reason"]}
+            if result.get("skip_reason")
+            else _mirror_external_factor_inputs(db, task_id, dataset, mirror_plan)
+        )
         mirror["start_date"] = mirror_plan.get("requested_start_date")
         mirror["end_date"] = mirror_plan.get("requested_end_date")
         result["warehouse_mirror"] = mirror
@@ -1469,8 +1560,10 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         try:
             from app.services.data_quality import capture_field_quality_snapshots
 
-            result["quality_snapshot"] = capture_field_quality_snapshots(
-                db, trigger=f"external_sync:{dataset}"
+            result["quality_snapshot"] = (
+                {"status": "skipped", "reason": result["skip_reason"]}
+                if result.get("skip_reason")
+                else capture_field_quality_snapshots(db, trigger=f"external_sync:{dataset}")
             )
         except Exception as exc:
             logger.warning("quality snapshot failed after external task %s: %s", task_id, exc)
@@ -1498,7 +1591,7 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
             ok_count=result["success"],
             failed_count=result["failed"],
             current_item=None,
-            message=(
+            message=result.get("message") or (
                 f"Sync completed: success {result['success']}, "
                 f"skipped {result['skipped']}, failed {result['failed']}"
             ),
@@ -1525,7 +1618,7 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
                 running_partitions = db.execute(
                     select(DataSyncPartition).where(
                         DataSyncPartition.plan_id == sync_plan_id,
-                        DataSyncPartition.status == "running",
+                        DataSyncPartition.status.in_(("queued", "running")),
                     )
                 ).scalars().all()
                 for partition in running_partitions:
@@ -1542,6 +1635,7 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         task = db.get(AsyncTaskRecord, task_id)
         if task is not None and task.status not in ("done", "failed", "cancelled"):
             task.status = "failed"
+            task.is_terminal_locked = 1
             task.stage = "failed"
             # A terminal failure must not leave the UI at the fetch-stage 10%
             # checkpoint; 100% here means the task lifecycle is finished.
@@ -1583,15 +1677,35 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
     if dataset not in EXTERNAL_DATASETS:
         raise ValueError(f"Unsupported external dataset: {dataset}")
     payload = dict(payload)
+    payload.pop("_preflight_skip", None)
+    payload.pop("_already_current_count", None)
     plan = build_external_sync_plan(dataset, payload)
     parent_plan_id = payload.pop("_parent_plan_id", None)
     partition_specs = payload.pop("_partition_specs", None)
     task_payload = {"dataset": dataset, **payload, "plan": plan}
     db = SessionLocal()
     try:
+        # Detect closed dates before symbol resolution and partition creation.
+        # A no-op keeps one audit task/plan, never thousands of symbol rows.
+        closed = False
+        if dataset != "financial" and not task_payload.get("_mirror_only"):
+            from app.services.market_session import is_cn_trading_day, range_is_cn_closed
+
+            try:
+                start, end = _as_date(plan["requested_start_date"]), _as_date(plan["requested_end_date"])
+                closed = (range_is_cn_closed(db, start, end) if plan["mode"] == "backfill"
+                          else not is_cn_trading_day(db, end))
+            except RuntimeError:
+                # Unknown calendar is handled as a terminal diagnostic by
+                # the worker, without contacting market-data providers.
+                closed = False
+            if closed:
+                task_payload["_preflight_skip"] = "所选日期为 A 股休市日，无需更新"
+                partition_specs = []
         # Wait before obtaining database ownership: provider priority must not
         # hold SQLite's writer reservation or a MySQL named lock for 120s.
-        _await_market_preflight(db, dataset)
+        if not closed:
+            _await_market_preflight(db, dataset)
         db.rollback()  # preflight is read-only; create starts its own transaction
         with _external_sync_creation_guard(db, dataset):
             existing = db.execute(

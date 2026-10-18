@@ -42,6 +42,7 @@ os.environ.setdefault(
 #    测试要的是确定性，不是"和外网赛跑"。外部显式设过该变量时尊重它
 #    （便于专门验证同步链路的场景），生产默认仍是开启。
 os.environ.setdefault("AUTO_UNIVERSE_SYNC_ON_STARTUP", "0")
+os.environ.setdefault("AUTO_TRADE_CALENDAR_REFRESH", "0")
 
 # WP9 验证环境兼容：若 akshare/sklearn 未安装（如 CI 沙箱），注入 stub 以允许
 # `import app.main`（transitively imports app.services.discovery_tasks /

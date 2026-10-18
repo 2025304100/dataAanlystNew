@@ -89,6 +89,98 @@ class ProductionCandidateRequest(BaseModel):
     expected_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
+class ProductionPredictionRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    bundle_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
+
+
+class IndependentEvaluationRequest(BaseModel):
+    model_config = {'extra':'forbid'}
+    bundle_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
+    expected_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+@router.get('/scoring/production-candidates/{plan_id}/independent-review')
+def api_independent_review(plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'),
+        bundle_id: str = Query(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import review_production_independent_evaluation
+    try:
+        return review_production_independent_evaluation(db,plan_id,bundle_id=bundle_id)
+    except FileNotFoundError:
+        raise HTTPException(404,detail='production_evidence_inputs_not_found')
+    except ValueError as exc:
+        raise HTTPException(409,detail=str(exc))
+
+
+@router.post('/scoring/production-candidates/{plan_id}/independent-evaluation',status_code=202)
+def api_submit_independent_evaluation(payload: IndependentEvaluationRequest,
+        plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import submit_production_independent_evaluation
+    try:
+        return submit_production_independent_evaluation(db,plan_id,**payload.model_dump())
+    except FileNotFoundError:
+        raise HTTPException(404,detail='production_evidence_inputs_not_found')
+    except ValueError as exc:
+        raise HTTPException(409,detail=str(exc))
+
+
+@router.get('/scoring/independent-evaluations/{task_id}')
+def api_get_independent_evaluation(task_id: str = PathParam(pattern=r'^[a-f0-9]{32}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import get_production_independent_task
+    result = get_production_independent_task(db,task_id)
+    if result is None:raise HTTPException(404,detail='production_evidence_task_not_found')
+    return result
+
+
+@router.get('/scoring/independent-evaluations/{task_id}/report')
+def api_get_independent_report(task_id: str = PathParam(pattern=r'^[a-f0-9]{32}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import get_production_independent_report
+    try:
+        return get_production_independent_report(db,task_id)
+    except FileNotFoundError:
+        raise HTTPException(404,detail='production_evidence_report_not_found')
+    except ValueError as exc:
+        raise HTTPException(409,detail=str(exc))
+
+
+@router.get('/scoring/production-candidates/{plan_id}/independent-evaluation')
+def api_independent_evaluation_status(plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'),
+                                      db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import get_production_independent_evaluation_status
+    try:
+        return get_production_independent_evaluation_status(db, plan_id)
+    except FileNotFoundError:
+        raise HTTPException(404, detail='production_cost_evidence_not_found')
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+
+@router.get('/scoring/production-candidates/{plan_id}/predictions')
+def api_production_prediction_status(plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'),
+                                     bundle_id: str | None = Query(default=None, pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'),
+                                     db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import get_production_prediction_status
+    try:
+        return get_production_prediction_status(db, plan_id, bundle_id=bundle_id)
+    except FileNotFoundError:
+        raise HTTPException(404, detail='production_prediction_evidence_not_found')
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+
+@router.post('/scoring/production-candidates/{plan_id}/predictions')
+def api_production_prediction(payload: ProductionPredictionRequest,
+                              plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'),
+                              db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import record_production_prediction
+    try:
+        return record_production_prediction(db, plan_id, **payload.model_dump())
+    except FileNotFoundError:
+        raise HTTPException(404, detail='production_prediction_evidence_not_found')
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+
 @router.get('/scoring/models/{model_id}/production-candidate/review')
 def api_review_production_candidate(model_id: str,
         bundle_id: str = Query(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'),

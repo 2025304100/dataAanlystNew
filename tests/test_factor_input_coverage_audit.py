@@ -188,12 +188,14 @@ def test_etf_lookup_does_not_return_future_snapshot(db_session, monkeypatch):
 
 
 def test_tail_actual_session_reaches_warehouse_after_requested_date_differs(db_session, tmp_path, monkeypatch):
+    from app.models.market_data import MarketCalendar
     from types import SimpleNamespace
     from app.models.async_task import AsyncTaskRecord
     from app.services import data_quality, external_data_sync_task, tail_proxy_data
     from app.services.factors import data_sync
 
     warehouse = _warehouse(tmp_path)
+    db_session.add(MarketCalendar(trade_date=date(2026, 10, 14), is_trading_day=1))
     db_session.add(AsyncTaskRecord(id="tail-actual-audit", task_type="external_sync_tail_proxy", status="queued", stage="queued"))
     db_session.add(TailAccumulationSnapshot(
         symbol="000001", trade_date=date(2026, 10, 13), minute_count=242,

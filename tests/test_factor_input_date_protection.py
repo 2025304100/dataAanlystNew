@@ -179,11 +179,15 @@ def test_partial_etf_refresh_preserves_same_day_facts(
 
 
 def test_numeric_market_code_matches_zero_padded_stock(db_session, monkeypatch):
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
     symbol = Symbol(symbol="000001", name="stock", asset_type="stock", market="sz")
     db_session.add(symbol)
     db_session.flush()
-    monkeypatch.setattr(fundamental_data, "call_akshare_with_retry", lambda *a, **k:
-        pd.DataFrame([{"代码": 1, "市盈率-动态": 10, "市净率": 1}]))
+    def selected_daily(db, codes, start, end, **kwargs):
+        assert codes == ["000001"]
+        return [{"symbol": "000001", "trade_date": start, "pe_ttm": 10, "pb": 1,
+                 "total_market_cap": 100, "circulating_market_cap": 80}]
+    monkeypatch.setattr("app.services.valuation_provider.fetch_valuation_rows", selected_daily)
     synced = fundamental_data.sync_market_valuation_snapshot(db_session, [symbol])
     assert synced == {symbol.id}
     row = db_session.query(StockValuation).one()

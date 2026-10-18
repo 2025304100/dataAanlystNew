@@ -18,3 +18,10 @@ export interface ProductionExecutionReview {
   contract:{plan_id:string;training_cutoff:string;cost:{portfolio_id:number;currency:string;evaluation_capital:number;
     fees:Record<string,number>;provenance:Record<string,string>;source_snapshot_id:string|null}};
 }
+
+export interface ProductionPredictionStatus {
+  plan_id:string;candidate_model_id:string;independent_after:string;
+  journal_dates:string[];journal_count:number;required_independent_dates:number;
+  independent_validation_complete:boolean;cost_evaluation_complete:boolean;
+  qualification_issued:boolean;model_activated:boolean;read_only:boolean;can_record_today:boolean;
+}

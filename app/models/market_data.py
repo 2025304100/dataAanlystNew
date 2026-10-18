@@ -20,7 +20,8 @@
 
 维护
 ====
-表内容由 `scripts/sync_trade_calendar.py` 依据交易所休市安排（经新浪财经收录）维护。
+当前年度由 `services/trade_calendar_sync.py` 每日获取上交所休市安排并缓存；
+历史日历仍可通过 `scripts/sync_trade_calendar.py` 校正。
 2026-10-01 校正过一次：修正 75 行「应休市却标开市」，
 各年交易日数从 260/262/261/261 收敛到真实的 242/242/243/242。
 """
