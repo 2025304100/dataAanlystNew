@@ -442,7 +442,7 @@ describe("WP9.1 investment tab 移除与兼容路由", () => {
     expect(buttonTexts).toContain("tabOpportunity");
   });
 
-  it("test_investment_tab_redirect_works - ?tab=investment 仍可解析为有效 tab", () => {
+  it("test_investment_tab_redirect_works - ?tab=investment 仍可解析为有效 tab", async () => {
     // WP9.1：investment 保留在 VALID_TABS 中作为兼容路由
     expect(VALID_TABS.has("investment")).toBe(true);
 
@@ -456,8 +456,9 @@ describe("WP9.1 investment tab 移除与兼容路由", () => {
     render(<App />);
 
     // 应渲染 wp9.legacyEntryRemoved 提示 + InvestmentCenter 薄壳
-    expect(screen.getByText("wp9.legacyEntryRemoved")).toBeInTheDocument();
-    expect(screen.getByTestId("investment-center-mock")).toBeInTheDocument();
+    // InvestmentCenter 现为 lazy chunk（P2-1 chunk 分割），需等其动态加载完成
+    expect(await screen.findByText("wp9.legacyEntryRemoved")).toBeInTheDocument();
+    expect(await screen.findByTestId("investment-center-mock")).toBeInTheDocument();
     // 兼容容器带 data-tab-content="investment-legacy" 标记
     const legacyContainer = document.querySelector(
       '[data-tab-content="investment-legacy"]',

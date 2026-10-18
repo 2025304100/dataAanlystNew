@@ -2,25 +2,32 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Spin, Alert } from "antd";
 import { useApp } from "./context/AppContext";
 import { t } from "./i18n";
-import InvestmentCenter from "./components/InvestmentCenter";
-import TodayDecision from "./components/TodayDecision";
-// WP1.1：机会中心主入口（信息架构壳层，四页签：候选池/观察池/已排除/扫描记录）
-import OpportunityCenter from "./components/OpportunityCenter";
-import MacroData from "./components/MacroData";
-import MarketNews from "./components/MarketNews";  // 行情消息
-import Settings from "./components/Settings";
-import DetailModal from "./components/DetailModal";
-import MetricModal from "./components/MetricModal";
+// 各 Tab 页面与两个弹层改为 React.lazy 按需加载，声明见下方（P2-1 chunk 分割）
 // WP-AI.7：AI 助手前端入口（浮动按钮 + 抽屉）
 import { AIAssistantProvider } from "./components/ai/AIAssistantContext";
 import AIAssistant from "./components/ai/AIAssistant";
 // WP0.4：旧路由与 activeTab 兼容映射
 import { resolveTabFromUrl } from "./utils/tabCompatibility";
-// 组合交易主壳（Task 3）：替代旧「工作台/模拟交易」双 sub-tab
-import PortfolioTradingShell from "./components/portfolio-trading/PortfolioTradingShell";
 // 顶部栏右侧通知/帮助下拉（Task 12）
 import NotificationDropdown from "./components/portfolio-trading/NotificationDropdown";
 import HelpDropdown from "./components/portfolio-trading/HelpDropdown";
+
+// ── P2-1 chunk 分割：Tab 页面按需加载 ─────────────────────────
+// 此前这些页面全部静态引入，使 index 打包成 2.3MB、首屏必须下载全部页面代码。
+// 改为 lazy 后各 Tab 自成 chunk，只有壳层与首个 Tab 进入 index。
+// DetailModal 内部引入 echarts；它此前被首屏静态引入，会把 vendor-charts(1MB)
+// 拖进首屏预加载。改为 lazy 后仅在真正打开详情弹层时才拉取图表库。
+const DetailModal = React.lazy(() => import("./components/DetailModal"));
+const MetricModal = React.lazy(() => import("./components/MetricModal"));
+const TodayDecision = React.lazy(() => import("./components/TodayDecision"));
+const PortfolioTradingShell = React.lazy(
+  () => import("./components/portfolio-trading/PortfolioTradingShell"),
+);
+const OpportunityCenter = React.lazy(() => import("./components/OpportunityCenter"));
+const InvestmentCenter = React.lazy(() => import("./components/InvestmentCenter"));
+const MacroData = React.lazy(() => import("./components/MacroData"));
+const MarketNews = React.lazy(() => import("./components/MarketNews"));
+const Settings = React.lazy(() => import("./components/Settings"));
 
 export default function App() {
   const ctx = useApp();
@@ -209,6 +216,13 @@ export default function App() {
       </div>
 
       <main className="layout">
+        <React.Suspense
+          fallback={
+            <div data-testid="tab-loading" style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+              <Spin size="large" />
+            </div>
+          }
+        >
         {ctx.activeTab === "decision" && <TodayDecision />}
 
         {/* WP9.1：投资中心一级入口已从导航移除，此处仅保留兼容渲染。
@@ -258,15 +272,18 @@ export default function App() {
         {ctx.activeTab === "news" && <MarketNews />}
 
         {ctx.activeTab === "settings" && <Settings />}
+        </React.Suspense>
       </main>
 
-      {detailModalOpen && ctx.detail && (
-        <DetailModal open={detailModalOpen} onClose={closeDetailModal} />
-      )}
+      <React.Suspense fallback={null}>
+        {detailModalOpen && ctx.detail && (
+          <DetailModal open={detailModalOpen} onClose={closeDetailModal} />
+        )}
 
-      {metricModalType && (
-        <MetricModal type={metricModalType} onClose={closeMetricModal} />
-      )}
+        {metricModalType && (
+          <MetricModal type={metricModalType} onClose={closeMetricModal} />
+        )}
+      </React.Suspense>
 
       {/* WP-AI.7：全局 AI 助手浮动按钮 + 抽屉（跳转到设置页的 AI 配置区） */}
       <AIAssistant
