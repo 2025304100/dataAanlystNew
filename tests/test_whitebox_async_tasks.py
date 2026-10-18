@@ -291,6 +291,64 @@ def test_get_async_task_survives_poisoned_patrol(db_session, monkeypatch):
     assert read.status == "done"
 
 
+def test_cancel_timeout_upgrade_is_wired_into_production_read_path(db_session):
+    """R4：取消超时升级必须走**生产巡检**，而不是只有被测试直接调用的孤立函数。
+
+    此前 `_run_patrol` 只跑 `patrol_interrupted_and_stalled`，而真正消费
+    `cancelled_timeout_at` 的 `patrol_stalled_and_cancel_timeout` /
+    `run_task_reliability_patrol` 在 app 内零生产调用方：用户取消一个不响应取消
+    令牌的挂死 worker 后，任务不会在设计的 60s 窗口被强制终止，只能等约 30 分钟的
+    `_expire_stale_tasks` 兜底。这里走生产读入口 `get_async_task`（内部触发 `_run_patrol`），
+    断言"取消请求超时 → 升级 cancelled/cancel_timeout + outbox + audit"三串联。
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+
+    from app.models.decision_engine import GovernanceOutboxEvent
+    from app.services.data_governance_audit import DataGovernanceAuditEvent
+
+    # 巡检与本表字段口径一致：存 naive UTC
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    task = _create_task(db_session, status="running", task_type="market_data_sync")
+    task.cancel_requested = 1
+    task.cancelled_timeout_at = now_naive - timedelta(seconds=10)
+    task.heartbeat_at = now_naive
+    db_session.commit()
+
+    read = async_tasks.get_async_task(task.id)
+    assert read is not None
+    assert read.status == "cancelled"
+    assert read.stage == "cancel_timeout"
+    assert read.is_terminal_locked is True
+
+    db_session.expire_all()
+    fresh = db_session.get(AsyncTaskRecord, task.id)
+    assert fresh is not None
+    assert fresh.status == "cancelled"
+    assert fresh.stage == "cancel_timeout"
+    assert int(getattr(fresh, "is_terminal_locked", 0) or 0) == 1
+    errors = json.loads(fresh.errors_json or "[]")
+    assert any(e.get("code") == "eval.task.cancel_timeout" for e in errors)
+
+    cid = fresh.correlation_id
+    assert cid
+
+    events = db_session.execute(
+        select(GovernanceOutboxEvent).where(
+            GovernanceOutboxEvent.event_type == "CANCELLED_TIMEOUT"
+        )
+    ).scalars().all()
+    assert events, "CANCELLED_TIMEOUT 应落 governance_outbox"
+    assert any(e.correlation_id == cid for e in events)
+
+    audits = db_session.execute(
+        select(DataGovernanceAuditEvent).where(
+            DataGovernanceAuditEvent.correlation_id == cid
+        )
+    ).scalars().all()
+    assert audits, "CANCELLED_TIMEOUT 应写数据治理审计（fail-soft 映射为 UNKNOWN_AUDIT_ACTION）"
+
+
 def test_interrupt_orphaned_async_tasks_marks_only_non_terminal(db_session):
     queued = _create_task(db_session, status="queued", task_type="factor_pipeline")
     running = _create_task(db_session, status="running", task_type="universe_smart_sync")

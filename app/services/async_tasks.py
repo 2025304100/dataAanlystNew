@@ -404,6 +404,64 @@ def _run_patrol(db: Session) -> None:
         except Exception:
             logger.exception("rollback after patrol failure also failed")
 
+    # R4：把「取消超时升级为 CANCELLED_TIMEOUT」接进生产巡检。
+    # 此前 patrol_stalled_and_cancel_timeout / run_task_reliability_patrol 只有测试调用，
+    # 生产巡检从不消费 cancelled_timeout_at：用户取消一个不响应取消令牌的 worker 后，
+    # 任务要等约 30 分钟的 _expire_stale_tasks 兜底才会终结（测试绿 ≠ 生产生效）。
+    try:
+        from app.services.task_heartbeat_service import patrol_stalled_and_cancel_timeout
+
+        def _emit_cancel_timeout(payload: dict) -> None:
+            """把 CANCELLED_TIMEOUT 落 governance_outbox（与业务同一 session，原子提交）。"""
+            from app.services.governance_outbox import emit_governance_event
+            emit_governance_event(
+                db,
+                event_type=payload.get("event_type") or "CANCELLED_TIMEOUT",
+                aggregate_type="async_task",
+                aggregate_id=str(payload.get("task_id") or ""),
+                payload=payload,
+                correlation_id=payload.get("correlation_id"),
+                task_id=str(payload["task_id"]) if payload.get("task_id") else None,
+                portfolio_id=payload.get("portfolio_id"),
+            )
+
+        def _write_cancel_timeout_audit(payload: dict) -> None:
+            """写数据治理审计；TASK_CANCEL_TIMEOUT 未进 AuditAction 白名单，按 fail-soft
+            映射为 UNKNOWN_AUDIT_ACTION 并把原动作留在 attributes.original_action，
+            因此无需为新增审计动作跑迁移。"""
+            from typing import cast
+            from app.services.data_governance_audit import AuditAction, write_audit_event
+            write_audit_event(
+                db,
+                cast(AuditAction, "TASK_CANCEL_TIMEOUT"),
+                portfolio_id=payload.get("portfolio_id"),
+                correlation_id=payload.get("correlation_id"),
+                operator_id=payload.get("operator_id") or "system:patrol",
+                attributes={
+                    "task_id": payload.get("task_id"),
+                    "status_before": payload.get("status_before"),
+                    "stage_before": payload.get("stage_before"),
+                    "upgrade_mode": payload.get("upgrade_mode"),
+                },
+                note="CANCELLED_TIMEOUT upgrade by reliability patrol",
+            )
+
+        patrol_stalled_and_cancel_timeout(
+            db,
+            # 该函数的"心跳停滞"分支与本轮已跑的 patrol_interrupted_and_stalled 重叠
+            # （后者按阶段预算+无进度判 stalled），这里只取 CANCELLED_TIMEOUT 升级分支，
+            # 把停滞阈值调到极大使其停滞判定不生效，避免两套 staged 语义互相覆盖。
+            heartbeat_stall_seconds=10 ** 9,
+            emit_event_cb=_emit_cancel_timeout,
+            write_audit_cb=_write_cancel_timeout_audit,
+        )
+    except Exception:
+        logger.exception("patrol_stalled_and_cancel_timeout failed; continuing with _expire_stale_tasks")
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("rollback after cancel-timeout patrol failure also failed")
+
 
 
 def mark_graceful_shutdown_tasks(db):
