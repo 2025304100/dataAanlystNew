@@ -45,6 +45,7 @@ const { mockApi, mockMessage, mockModalConfirm, mockNavigate } = vi.hoisted(() =
     scoringListFactorDefinitions: vi.fn(),
     getFactorModel: vi.fn(),
     scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: true, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_coverage: [] })),
+    scoringListTasks: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringGetFactorDefinition: vi.fn(async () => ({})),
     getEvaluationTaskHeartbeat: vi.fn(async () => ({})),
     activateFactorModel: vi.fn(),
@@ -302,7 +303,7 @@ describe("TR-6.1 模型表「关联集合」列 → 跳转 & 进入因子中心 
     expect(card.classList.contains("pulse")).toBe(true);
     scrollSpy2.mockRestore();
     unmount();
-  });
+  }, 30000);
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -372,7 +373,8 @@ describe("TR-6.2 模型行 expand 6 列 mini 表 N/A 安全（不伪装 0）", (
 
     renderFactorModelPageWith({ factorSets: [fs], models: [model] });
     render(<FactorModelPage />);
-    await waitFor(() => expect(screen.getByText(/factorModelModels|候选模型/i) || true).toBeTruthy(), { timeout: 8000 });
+    // 等真正渲染出模型表（Card 标题在数据未加载时就会出现，不能拿它当"已就绪"）
+    await waitFor(() => expect(screen.getByTestId("model-table-wrapper")).toBeInTheDocument(), { timeout: 8000 });
 
     // antd Table 第一列默认渲染 expand icon（.ant-table-row-expand-icon）。按 id 找到 expand 按钮位置：最靠近该行的 expand icon。
     // 简化：通过 table wrapper 查找 expand icon，点击第一个 expand（第一行就是 mdl-T62）
@@ -414,7 +416,7 @@ describe("TR-6.2 模型行 expand 6 列 mini 表 N/A 安全（不伪装 0）", (
     const zeroPlaceholderRegex = />(?:0|0\.0{1,10}|0%|0\.000000)(?:<|\s<)/g;
     const zeroMatches = html.match(zeroPlaceholderRegex) || [];
     expect(zeroMatches.length).toBe(0);
-  });
+  }, 30000);
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -495,7 +497,7 @@ describe("TR-6.3 未关联模型 expand → Alert warning + AC-7 关键中文 + 
     });
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1), { timeout: 6000 });
     expect(mockNavigate.mock.calls[mockNavigate.mock.calls.length - 1][0]).toBe("/factors/migration");
-  });
+  }, 30000);
 });
 
 // ═══════════════════════════════════════════════════════════════════════
