@@ -6,6 +6,7 @@
 // 3. 反向时间范围在前端就拦下，不发起无意义请求。
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const { mockApi } = vi.hoisted(() => ({
   mockApi: {
@@ -28,6 +29,8 @@ const openDrawer = () =>
 const setPickerDate = (testid: string, value: string) => {
   const node = screen.getByTestId(testid) as HTMLElement;
   const input = (node.tagName === "INPUT" ? node : node.querySelector("input")) as HTMLInputElement;
+  // 整体写入 value 并由 rc-picker 在回车/失焦时解析；逐字 userEvent.type 会被
+  // rc-picker 的输入掩码重排，反而写坏日期，故保留 fireEvent。
   fireEvent.change(input, { target: { value } });
   fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
   fireEvent.blur(input);
@@ -65,10 +68,17 @@ describe("PortfolioReviewDrawer", () => {
     openDrawer();
     await screen.findByTestId("review-drawer");
 
+    const user = userEvent.setup();
     setPickerDate("review-start-date", "2026-05-01");
     setPickerDate("review-end-date", "2026-05-31");
-    fireEvent.change(screen.getByTestId("review-note-input"), { target: { value: "五月复盘" } });
-    fireEvent.click(screen.getByTestId("review-submit-button"));
+    // 备注与提交走 userEvent：每步 await 会 flush React 状态更新，避免并行负载下
+    // 提交按钮仍读到未生效的备注（disabled 时点击不会触发提交，createReview 记 0 次）。
+    await user.type(screen.getByTestId("review-note-input"), "五月复盘");
+    // 并行负载（CPU 争抢）下备注状态可能尚未回灌到渲染，按钮仍是 disabled；
+    // 显式等待按钮可用再点击，消除这一时序依赖。
+    const submit = screen.getByTestId("review-submit-button") as HTMLButtonElement;
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
 
     await waitFor(() => expect(mockApi.createReview).toHaveBeenCalledTimes(1));
     const [portfolioId, payload] = mockApi.createReview.mock.calls[0] as [number, Record<string, unknown>];
@@ -84,10 +94,11 @@ describe("PortfolioReviewDrawer", () => {
   it("反向时间范围在前端拦下，不发请求", async () => {
     openDrawer();
     await screen.findByTestId("review-drawer");
+    const user = userEvent.setup();
     setPickerDate("review-start-date", "2026-08-31");
     setPickerDate("review-end-date", "2026-08-01");
-    fireEvent.change(screen.getByTestId("review-note-input"), { target: { value: "任意备注" } });
-    fireEvent.click(screen.getByTestId("review-submit-button"));
+    await user.type(screen.getByTestId("review-note-input"), "任意备注");
+    await user.click(screen.getByTestId("review-submit-button"));
 
     expect(await screen.findByTestId("review-error")).toBeInTheDocument();
     expect(mockApi.createReview).not.toHaveBeenCalled();
