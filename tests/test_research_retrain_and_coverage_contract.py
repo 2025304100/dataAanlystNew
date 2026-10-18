@@ -8,6 +8,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def research_api(monkeypatch, db_session):

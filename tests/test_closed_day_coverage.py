@@ -10,6 +10,8 @@ from app.services.factors.formula_catalog import _query_field_stats
 from app.services.factors.store import FactorWarehouse
 from app.services.market_session import range_is_cn_closed
 
+pytestmark = pytest.mark.whitebox
+
 
 def test_coverage_excludes_closed_days_but_keeps_real_missing_trading_day(tmp_path, monkeypatch):
     monkeypatch.setattr("app.services.market_session.read_cn_calendar", lambda: [(date(2026, 10, 1), 0)])

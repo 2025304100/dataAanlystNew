@@ -15,6 +15,8 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.sim_accounts import build_sim_account_summary, latest_price_for_symbol, latest_prices_for_symbols
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def dashboard_case(db_session, monkeypatch):

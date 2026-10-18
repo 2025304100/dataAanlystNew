@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+pytestmark = pytest.mark.whitebox
+
 
 FORMULA = (
     "iif(count(turnover_rate - turnover_rate, 20) == 20, "

@@ -14,6 +14,8 @@ from app.services.market_data_sources.sources._normalize import (
     normalize_cn_em_history, normalize_cn_stock_sina_history,
 )
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.mark.parametrize("route", ["eastmoney", "sina_fallback", "sina_bj_primary"])
 @pytest.mark.parametrize("sina_value,em_value,expected", [

@@ -9,6 +9,8 @@ from app.models.market_data import MarketCalendar
 from app.services import trade_calendar_sync as service
 from app.services.market_session import is_cn_trading_day
 
+pytestmark = pytest.mark.whitebox
+
 
 def _annual_page(year=2026):
     periods = {"元旦": ("1月1日", "1月3日"), "春节": ("2月15日", "2月23日"),

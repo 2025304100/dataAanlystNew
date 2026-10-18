@@ -12,6 +12,8 @@ from app.db.session import get_db
 from app.models.factor_runtime import FactorSystemConfig
 from app.services.factors.store import FactorWarehouse
 
+pytestmark = pytest.mark.whitebox
+
 
 GUARDED_TURNOVER = (
     "iif(count(turnover_rate-turnover_rate,20)==20,"

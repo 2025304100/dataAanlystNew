@@ -11,6 +11,8 @@ from app.services.factors import production_execution as execution
 from app.services.factors import production_admission as admission
 from app.services.factors import production_prediction_journal as journal
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def panel():

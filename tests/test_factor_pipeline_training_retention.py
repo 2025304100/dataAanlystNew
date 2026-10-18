@@ -11,6 +11,8 @@ from tests.test_turnover_v3_public_warehouse_lifecycle import (
     turnover_client, FORMULA, _seed_turnover_market,
 )
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.mark.parametrize("materialize_scores", [False, True, None],
                          ids=["scores_false", "scores_true", "scores_default"])

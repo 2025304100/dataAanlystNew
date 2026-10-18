@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services import akshare_registry, market_data, universe_sync
 
+pytestmark = pytest.mark.whitebox
+
 
 DAY = date(2026, 8, 7)
 OLD = datetime(2026, 8, 8, 1, 24, 4)

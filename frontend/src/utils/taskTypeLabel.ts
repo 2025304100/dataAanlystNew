@@ -47,6 +47,8 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
   // 组合交易
   portfolio_auto_trade: "taskTypePortfolioAutoTrade",
   portfolio_equity_snapshot: "taskTypePortfolioEquitySnapshot",
+  // 告警
+  alert_evaluation: "taskTypeAlertEvaluation",
 };
 
 const EXTERNAL_SYNC_PREFIX = "external_sync_";

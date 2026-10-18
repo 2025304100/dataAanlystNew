@@ -7,6 +7,8 @@ import pytest
 
 from app.services.market_data_sources.sources import sina_history_evidence as evidence
 
+pytestmark = pytest.mark.whitebox
+
 
 SYMBOL = "sz000425"
 

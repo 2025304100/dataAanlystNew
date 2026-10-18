@@ -4,6 +4,8 @@ from fastapi.testclient import TestClient
 
 from app.db.session import get_db
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def client(db_session):

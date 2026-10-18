@@ -5,6 +5,8 @@ import pytest
 
 from app.services import valuation_provider as provider
 
+pytestmark = pytest.mark.whitebox
+
 
 def _row(code="000001", day="2026-10-16"):
     return {"SECURITY_CODE": code, "TRADE_DATE": day + " 00:00:00",

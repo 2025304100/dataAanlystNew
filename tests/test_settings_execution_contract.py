@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 from app.api.routes import akshare_apis, custom_indicators, discovery, scheduled_tasks, scoring_configs, signal_rules
 from app.db.session import get_db
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def schedule_client(db_session):

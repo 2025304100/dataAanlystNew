@@ -917,8 +917,10 @@ def frontend_assets(asset_path: str, request: Request) -> Response:
     if proxied is not None:
         return proxied
 
-    asset_file = dist_root / "assets" / asset_path
-    if asset_file.exists():
+    assets_root = (dist_root / "assets").resolve()
+    asset_file = (assets_root / asset_path).resolve()
+    # 路径穿越防护：解析后必须仍落在 assets 目录内，否则可能是 `..%2f..` 一类越界读
+    if asset_file.is_relative_to(assets_root) and asset_file.is_file():
         return FileResponse(asset_file)
     raise HTTPException(status_code=404, detail="Not found")
 

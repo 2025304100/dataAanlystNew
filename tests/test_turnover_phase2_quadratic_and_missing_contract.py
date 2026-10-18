@@ -18,6 +18,8 @@ from app.services.factors.factor_compiler import compile_formula
 from app.services.factors.factor_executor import FactorExecutor
 from app.services.factors.store import FactorWarehouse
 
+pytestmark = pytest.mark.whitebox
+
 
 CONTRACT = json.loads((Path(__file__).resolve().parents[1] /
     '.analysis/turnover-phase2-quadratic-contract-2026-10-16.json').read_text(encoding='utf-8'))

@@ -11,6 +11,9 @@ from sqlalchemy.exc import OperationalError
 from tests.test_whitebox_factor_public_lifecycle_e2e import (
     lifecycle_client, _draft, _seed_local_market,
 )
+import pytest
+
+pytestmark = pytest.mark.whitebox
 
 
 def test_public_training_reacquires_metadata_connection_after_long_warehouse_work(
@@ -56,7 +59,7 @@ def test_public_training_reacquires_metadata_connection_after_long_warehouse_wor
             self.connection = connection
 
         def execute(self, statement, *args, **kwargs):
-            if "WITH valuation_dedup AS" in statement or "entry_calendar" in statement:
+            if "valuation_dedup AS" in statement or "entry_calendar" in statement:
                 warehouse_phases.append("targets" if "entry_calendar" in statement else "factors")
                 expired.update(active)
             return self.connection.execute(statement, *args, **kwargs)

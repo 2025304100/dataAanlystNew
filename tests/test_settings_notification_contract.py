@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from app.db.session import get_db
 from app.services.notifications.anti_disturb import is_in_quiet_hours
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def client(db_session):

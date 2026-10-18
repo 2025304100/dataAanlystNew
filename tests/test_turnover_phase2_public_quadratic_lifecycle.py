@@ -19,6 +19,8 @@ from sqlalchemy import func, select
 from tests.test_turnover_v3_public_warehouse_lifecycle import turnover_client
 from tests.test_whitebox_factor_public_lifecycle_e2e import _seed_local_market
 
+pytestmark = pytest.mark.whitebox
+
 
 CONTRACT = json.loads((Path(__file__).resolve().parents[1] /
     '.analysis/turnover-phase2-quadratic-contract-2026-10-16.json').read_text(encoding='utf-8'))

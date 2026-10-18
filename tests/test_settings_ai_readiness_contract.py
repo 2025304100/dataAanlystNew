@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from app.api.routes import ai_config, system
 from app.db.session import get_db
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def readiness_client(db_session, tmp_path, monkeypatch):

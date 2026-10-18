@@ -15,6 +15,8 @@ from app.models.symbol import Symbol
 from app.services import akshare_registry, market_data
 from app.services.async_tasks import get_async_task
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.mark.parametrize("outcomes,expected", [([False], "failed"), ([True, False], "partial"), ([True], "completed")])
 def test_initialization_reports_real_supplier_outcome(db_session, monkeypatch, outcomes, expected):

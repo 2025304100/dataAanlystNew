@@ -21,6 +21,8 @@ from app.services.market_history_contract import (
     require_cn_stock_qfq,
 )
 
+pytestmark = pytest.mark.whitebox
+
 DAY = date(2026, 10, 15)
 
 

@@ -3745,6 +3745,7 @@ factorValidation_error: "Validation error",
     taskTypeApiProbe: "API Probe",
     taskTypePortfolioAutoTrade: "Portfolio Auto Trade",
     taskTypePortfolioEquitySnapshot: "Portfolio Equity Snapshot",
+    taskTypeAlertEvaluation: "Alert Evaluation",
     taskTypeExternalSync: "External Data Sync",
     taskTypeOther: "Other Task",
     // Scan snapshot coverage (was printing raw scope values)

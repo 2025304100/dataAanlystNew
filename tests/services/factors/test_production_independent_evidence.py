@@ -14,6 +14,8 @@ from app.services.factors import production_admission as admission
 from app.services.factors import production_cost_evaluation as cost
 from tests.services.factors.test_production_prediction_journal import daily
 
+pytestmark = pytest.mark.whitebox
+
 
 def test_real_journal_replay_rejects_rehashed_forged_predictions(daily,db_session):
     contract,candidate,_,_ = daily

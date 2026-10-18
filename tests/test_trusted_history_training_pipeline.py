@@ -14,6 +14,8 @@ from sqlalchemy import event, select
 
 from tests.test_turnover_v3_public_warehouse_lifecycle import turnover_client, FORMULA
 
+pytestmark = pytest.mark.whitebox
+
 
 def _dataset(tmp_path, monkeypatch, *, day_count=310, incomplete_day=None, illiquid_day=None):
     import app.services.market_history_evidence as evidence

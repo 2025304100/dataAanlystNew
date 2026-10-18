@@ -21,6 +21,8 @@ from app.services import fundamental_data, external_data_sync_task as service
 from app.services.factors.store import FactorWarehouse
 from app.services import valuation_provider
 
+pytestmark = pytest.mark.whitebox
+
 TODAY = date(2026, 10, 16)
 
 

@@ -11,6 +11,8 @@ from app.services.factors import production_execution as execution
 from app.services.factors import production_admission as admission
 from tests.test_turnover_v3_public_warehouse_lifecycle import turnover_client
 
+pytestmark = pytest.mark.whitebox
+
 
 def portfolio():
     return SimpleNamespace(id=1, currency='CNY', total_capital=500000., investable_ratio=.9,

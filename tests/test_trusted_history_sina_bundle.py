@@ -8,6 +8,8 @@ import pytest
 from app.services import market_history_evidence as evidence
 from app.services.market_data_sources.sources import sina_history_evidence as sina
 
+pytestmark = pytest.mark.whitebox
+
 
 DAY = date(2026, 8, 7)
 SYMBOL = "sz000425"

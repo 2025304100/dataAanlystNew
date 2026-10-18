@@ -17,6 +17,8 @@ from app.services.market_data_sources.sources._normalize import (
     normalize_cn_stock_sina_history,
 )
 
+pytestmark = pytest.mark.whitebox
+
 
 TURNOVER = (
     "iif(count(turnover_rate - turnover_rate, 20) == 20, "

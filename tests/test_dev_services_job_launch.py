@@ -8,6 +8,8 @@ import pytest
 
 from scripts import dev_services
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.mark.parametrize("in_job,is_job_ok,query_ok,limit_flags,allow_breakaway", [
     (True, True, True, 0x2800, True),

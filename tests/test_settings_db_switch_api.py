@@ -12,6 +12,8 @@ from app.api.routes import ai_profiles, akshare_apis, app_settings, db_config
 from app.core import config as core_config
 from app.services.async_tasks import cancel_async_task, create_async_task, get_async_task
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def config_client(tmp_path, monkeypatch, db_session):

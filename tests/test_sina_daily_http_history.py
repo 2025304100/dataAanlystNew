@@ -13,6 +13,8 @@ from app.services.market_data_sources.sources import sina_history_http, sina_his
 from app.services.market_data_sources.sources.akshare_source import SinaStockSource
 from app.services.market_data_sources.sources.base import SourceUnavailable
 
+pytestmark = pytest.mark.whitebox
+
 
 DAY = date(2024, 1, 2)
 

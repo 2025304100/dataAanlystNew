@@ -28,6 +28,11 @@ class _FakeSnap:
         self.cost_config: dict[str, Any] = {
             "slippage_buy_bps": 5, "slippage_sell_bps": 5, "min_lot_size": 100,
         }
+        # 快照绑定字段：证据构建器会直接读取（缺失会 AttributeError）
+        self.factor_model_run_id = ""
+        self.factor_set_id = None
+        self.rule_id = None
+        self.rule_version = None
 
 
 class _FakeScored:

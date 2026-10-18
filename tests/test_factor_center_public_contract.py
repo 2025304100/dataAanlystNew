@@ -9,6 +9,8 @@ from app.api.routes import factors, factor_evaluation, factor_shadow, scoring_fa
 from app.db.session import get_db
 from app.models.factor_runtime import FactorSystemConfig
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def center_client(db_session, tmp_path, monkeypatch):

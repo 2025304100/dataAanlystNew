@@ -5,6 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def collection_client(db_session, tmp_path, monkeypatch):

@@ -173,6 +173,25 @@ class TestExecutePanelSma20Warmup:
 
 
 class TestZscoreCrossSectional:
+    def test_object_dtype_none_does_not_emit_incompatible_dtype_futurewarning(self):
+        """回归（P2）：raw 含 None（object dtype）时后处理赋值不得触发 pandas
+        "Setting an item of incompatible dtype" 的 FutureWarning。
+
+        修复前 `winsorized.loc[idx] = group_w.values` 把 object(None) 赋进 float64
+        列；修复后 None 归一为 NaN，且不告警。
+        """
+        import warnings
+
+        raw = pd.Series([1.0, 2.0, None, 4.0, 5.0], dtype=object)
+        td = pd.Series([date(2026, 1, 5)] * 5)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            winsorized, normalized = apply_postprocess_cross_sectional(
+                raw, td, {"zscore": {"ddof": 0}}
+            )
+        assert pd.isna(winsorized.iloc[2])
+        assert winsorized.dtype == float
+
     def test_zscore_per_date_mean0_std1(self):
         """每个 trade_date 内 5 只股票，取 zscore 后每个分组断言 mean≈0, std≈1。"""
         # 构造 5 个交易日 × 5 只股票的测试数据，每天值不同

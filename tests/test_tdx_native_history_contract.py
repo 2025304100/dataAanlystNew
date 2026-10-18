@@ -9,6 +9,8 @@ from app.services.market_data_sources.sources.base import SourceUnavailable
 from app.services.market_data_sources.sources.tdx_source import TDXHistorySource
 from app.services.market_data_sources.tdx_parser import parse_day_file
 
+pytestmark = pytest.mark.whitebox
+
 
 def native_record(day=20240816):
     # Native .day layout, independently fixed to the pytdx reader's wire

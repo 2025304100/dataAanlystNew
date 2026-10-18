@@ -13,6 +13,8 @@ from app.services.market_history_evidence import (
     write_trusted_history_dataset, load_trusted_history_dataset,
 )
 
+pytestmark = pytest.mark.whitebox
+
 
 START, DAY, END = date(2026, 8, 6), date(2026, 8, 7), date(2026, 8, 10)
 

@@ -6,6 +6,9 @@ from sqlalchemy import event
 from tests.test_turnover_v3_public_warehouse_lifecycle import (
     turnover_client, FORMULA, _seed_turnover_market,
 )
+import pytest
+
+pytestmark = pytest.mark.whitebox
 
 
 def test_public_guarded_turnover_training_reads_only_its_frozen_input_dependencies(

@@ -50,7 +50,9 @@ def _seed_factor(db_session, factor_code="pf_valid_001", formula="close", postpr
         created_via="manual",
     )
     db_session.add(version)
-    db_session.flush()
+    # preflight_factor_evaluation 内部自开 SessionLocal（无 db 入参），必须 commit
+    # 才能让新会话看见本例种下的 FactorVersion，否则报 factor_not_found。
+    db_session.commit()
     return factor, version
 
 

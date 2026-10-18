@@ -46,6 +46,8 @@ TASK_TYPE_LABELS_ZH: dict[str, str] = {
     # 组合交易
     "portfolio_auto_trade": "组合自动交易",
     "portfolio_equity_snapshot": "组合权益快照",
+    # 告警
+    "alert_evaluation": "告警规则评估",
 }
 
 # external_sync_<dataset> 是运行时按数据集拼出来的前缀族，统一按一句中文呈现。

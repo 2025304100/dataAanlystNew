@@ -18,6 +18,8 @@ from app.services.market_data_sources.sources import tencent_history
 from app.services.market_data_sources.sources import akshare_source
 from app.services.market_history_contract import tencent_quantity_input_contract
 
+pytestmark = pytest.mark.whitebox
+
 
 NORMALIZERS = [market_data._normalize_cn_stock_tx_history, normalize_cn_stock_tx_history]
 DAY = date(2026, 8, 7)

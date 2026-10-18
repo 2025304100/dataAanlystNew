@@ -12,6 +12,8 @@ from app.services.market_data_sources.sources import akshare_source
 from app.services.market_data_sources.sources.akshare_source import TxStockSource
 from app.services.market_data_sources.sources.base import SourceUnavailable
 
+pytestmark = pytest.mark.whitebox
+
 
 DAY = date(2026, 8, 7)
 ROW = [str(DAY), "40.13", "43.07", "43.29", "39.44", "1110388.00"]

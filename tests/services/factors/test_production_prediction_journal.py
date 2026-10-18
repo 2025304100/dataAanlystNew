@@ -11,6 +11,8 @@ from app.services.factors import production_prediction_journal as journal
 from app.services.factors import production_admission as admission
 from app.services.factors.factor_engine import FrozenFactorSpec
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def daily(tmp_path, monkeypatch, db_session, request):

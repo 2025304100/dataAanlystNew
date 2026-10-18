@@ -16,6 +16,8 @@ from app.services.market_data import _upsert_bars
 from app.services.market_history_contract import history_source_tag
 from app.services.universe_sync import _upsert_universe_bars
 
+pytestmark = pytest.mark.whitebox
+
 
 def seed(db):
     symbol = Symbol(symbol="601168", name="证据测试", asset_type="stock", market="sh")

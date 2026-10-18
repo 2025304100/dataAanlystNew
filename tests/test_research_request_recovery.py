@@ -8,6 +8,8 @@ from sqlalchemy.orm import sessionmaker
 
 from tests.test_research_retrain_and_coverage_contract import research_api
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def request_store(tmp_path, monkeypatch):

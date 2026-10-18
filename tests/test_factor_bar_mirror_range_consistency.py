@@ -9,6 +9,8 @@ from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.factors.bar_mirror import mirror_daily_bars
 from app.services.factors.store import FactorWarehouse
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.mark.parametrize("subsequent_request", ["repeat", "in_place_correction", "cancel_and_resume"])
 def test_bounded_mirror_keeps_business_values_after_repeat_correction_or_resume(

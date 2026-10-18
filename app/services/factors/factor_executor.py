@@ -677,8 +677,10 @@ def apply_postprocess_cross_sectional(
     for _, idx in raw_values.groupby(trade_date_series).groups.items():
         group_raw = raw_values.loc[idx]
         group_w, group_n = apply_postprocess(group_raw, postprocess)
-        winsorized.loc[idx] = group_w.values
-        normalized.loc[idx] = group_n.values
+        # 归一为 float64 再赋值：raw 含 None(object dtype) 时直接赋 float64 列会触发
+        # pandas "Setting an item of incompatible dtype" 的 FutureWarning（P2）。
+        winsorized.loc[idx] = pd.to_numeric(group_w, errors="coerce").to_numpy(dtype="float64")
+        normalized.loc[idx] = pd.to_numeric(group_n, errors="coerce").to_numpy(dtype="float64")
 
     return winsorized, normalized
 

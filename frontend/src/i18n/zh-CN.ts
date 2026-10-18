@@ -3746,6 +3746,7 @@ factorValidation_error: "验证出错",
     taskTypeApiProbe: "接口探测",
     taskTypePortfolioAutoTrade: "组合自动交易",
     taskTypePortfolioEquitySnapshot: "组合权益快照",
+    taskTypeAlertEvaluation: "告警规则评估",
     taskTypeExternalSync: "外部数据同步",
     taskTypeOther: "其他任务",
     // 扫描记录覆盖范围（原先表格直接印 discovery_score_snapshot.scope 原值）

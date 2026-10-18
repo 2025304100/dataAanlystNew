@@ -11,6 +11,8 @@ from app.models.factor_model import FactorVersion
 from app.models.factor_runtime import FactorSystemConfig
 from app.services.factors.store import FactorWarehouse
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def legacy_preflight(db_session, tmp_path, monkeypatch):

@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from app.api.routes import ai_profiles, ai_sessions
 from app.services.ai_failover import reset_failover_manager
 
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def ai_client(db_session):

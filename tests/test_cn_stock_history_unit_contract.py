@@ -23,6 +23,8 @@ from app.services.market_data_sources.sources import tencent_history
 from app.services.market_data_sources.sources import akshare_source
 from app.services.market_history_contract import tencent_quantity_input_contract
 
+pytestmark = pytest.mark.whitebox
+
 
 DAY = date(2026, 8, 7)
 ENDPOINTS = {
