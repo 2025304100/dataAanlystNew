@@ -52,3 +52,63 @@ def test_precomputed_match_fee_is_not_recalculated_by_account_adapter(db_session
     assert order.filled_price == 10.005
     assert order.fee == 5.12
     assert cash_balance(db_session, portfolio.id) == 50_000.0 - 1_000.5 - 5.12
+
+
+def test_place_sim_order_issues_per_portfolio_row_lock(db_session, monkeypatch):
+    """R6：并发下单必须按组合串行——下单入口需发出组合级 FOR UPDATE 行锁查询。
+
+    SQLite 方言会忽略 FOR UPDATE，故这里以 MySQL 方言编译捕获到的 SELECT 来断言"锁被请求"；
+    真正的并发一致性（无超卖/超支）仍以 MySQL 现场并发实验为准。
+    """
+    from sqlalchemy import Select
+    from sqlalchemy.dialects import mysql
+
+    portfolio = Portfolio(
+        name="r6-row-lock",
+        account_type="simulated",
+        asset_scope="mixed",
+        total_capital=50_000.0,
+        investable_ratio=1.0,
+        cash_reserve_ratio=0.0,
+        currency="CNY",
+        default_single_position_pct=0.2,
+        auto_trade_enabled=1,
+    )
+    symbol = Symbol(symbol="600972", name="Row Lock", asset_type="stock", market="SH")
+    db_session.add_all([portfolio, symbol])
+    db_session.flush()
+    db_session.add(DailyBar(
+        symbol_id=symbol.id,
+        trade_date=date(2026, 1, 5),
+        open=10.0, high=10.1, low=9.9, close=10.0, volume=100_000.0,
+    ))
+    ensure_sim_account_seed(db_session, portfolio)
+    db_session.commit()
+
+    captured = []
+    real_execute = db_session.execute
+
+    def spy(statement, *args, **kwargs):
+        captured.append(statement)
+        return real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", spy)
+
+    place_sim_order(
+        db_session,
+        portfolio=portfolio,
+        symbol=symbol,
+        side="buy",
+        quantity=100,
+        price=10.0,
+        enforce_rules=False,
+        apply_fees=False,
+    )
+    db_session.commit()
+
+    compiled = [
+        str(s.compile(dialect=mysql.dialect())).upper()
+        for s in captured
+        if isinstance(s, Select)
+    ]
+    assert any("FOR UPDATE" in sql and "PORTFOLIOS" in sql for sql in compiled), compiled

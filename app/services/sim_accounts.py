@@ -229,6 +229,13 @@ def place_sim_order(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # 组合级串行化（R6）：同一组合的并发下单必须串行，避免读到过期持仓/现金而超卖或超支。
+    # MySQL/InnoDB 通过 SELECT ... FOR UPDATE 行锁实现；SQLite 写事务本身串行、且该子句被
+    # 方言忽略（等价空操作）。真并发一致性仍需 MySQL 现场实验验证。
+    db.execute(
+        select(Portfolio.id).where(Portfolio.id == portfolio.id).with_for_update()
+    )
+
     ensure_sim_account_seed(db, portfolio)
 
     normalized_quantity = normalize_order_quantity(symbol, quantity)
