@@ -1126,13 +1126,6 @@ def _execute_snapshot_order_plans(
         "skipped_due_to_cancel": False,
     }
 
-    # #region debug-point H1:snapshot-context
-    try:
-        import json as _dbg_json, os as _dbg_os, urllib.request as _dbg_ur; _dbg_p = 'C:/Users/demo/AppData/Local/Temp/trae-debug/auto-trade-zero-orders/auto-trade-zero-orders.env'; _dbg_c = open(_dbg_p).read() if _dbg_os.path.exists(_dbg_p) else ''; _dbg_url = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SERVER_URL=')), 'http://127.0.0.1:7778/event'); _dbg_sid = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SESSION_ID=')), 'auto-trade-zero-orders'); _dbg_ur.urlopen(_dbg_ur.Request(_dbg_url, data=_dbg_json.dumps({"sessionId": _dbg_sid, "runId": "pre", "hypothesisId": "H1", "location": "auto_trade_member_source.py:_execute_snapshot_order_plans:entry", "msg": "[DEBUG] execute_snapshot_order_plans entry", "data": {"portfolio_id": portfolio_id, "snapshot_id": str(strategy_snapshot_id), "trade_date": str(trade_date), "dry_run": bool(dry_run)}}).encode(), headers={"Content-Type": "application/json"})).read()
-    except Exception:
-        pass
-    # #endregion
-
     # WP6.5 / PT-DEF-7：任务取消传播（迁移到 DecisionEngine 路径后恢复）。
     # check_task_cancelled 曾因迁移失去唯一调用点而成为死代码；此处恢复：
     # 取消后跳过本组合、不做任何成交，避免取消信号在自动模拟交易中被忽略（资金安全）。
@@ -1144,12 +1137,6 @@ def _execute_snapshot_order_plans(
     if check_task_cancelled():
         record_portfolio_skipped(portfolio_id)
         result["skipped_due_to_cancel"] = True
-        # #region debug-point H5:cancel-skip
-        try:
-            import json as _dbg_json, os as _dbg_os, urllib.request as _dbg_ur; _dbg_p = 'C:/Users/demo/AppData/Local/Temp/trae-debug/auto-trade-zero-orders/auto-trade-zero-orders.env'; _dbg_c = open(_dbg_p).read() if _dbg_os.path.exists(_dbg_p) else ''; _dbg_url = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SERVER_URL=')), 'http://127.0.0.1:7778/event'); _dbg_sid = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SESSION_ID=')), 'auto-trade-zero-orders'); _dbg_ur.urlopen(_dbg_ur.Request(_dbg_url, data=_dbg_json.dumps({"sessionId": _dbg_sid, "runId": "pre", "hypothesisId": "H5", "location": "auto_trade_member_source.py:skipped_due_to_cancel", "msg": "[DEBUG] skipped_due_to_cancel branch taken", "data": {"portfolio_id": portfolio_id, "trade_date": str(trade_date)}}).encode(), headers={"Content-Type": "application/json"})).read()
-        except Exception:
-            pass
-        # #endregion
         return result
 
     state_context = _build_snapshot_decision_state_context(
@@ -1172,13 +1159,6 @@ def _execute_snapshot_order_plans(
         # shared engine rejects every new BUY when entry governance is locked.
         governance_exit_only=True,
     )
-    # #region debug-point H2:engine-result
-    try:
-        import json as _dbg_json, os as _dbg_os, urllib.request as _dbg_ur; _dbg_p = 'C:/Users/demo/AppData/Local/Temp/trae-debug/auto-trade-zero-orders/auto-trade-zero-orders.env'; _dbg_c = open(_dbg_p).read() if _dbg_os.path.exists(_dbg_p) else ''; _dbg_url = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SERVER_URL=')), 'http://127.0.0.1:7778/event'); _dbg_sid = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SESSION_ID=')), 'auto-trade-zero-orders'); _dbg_v = vars(evaluated) if hasattr(evaluated, '__dict__') else {}; _dbg_like = {k: (len(v) if isinstance(v, (list, tuple, dict)) else str(v)[:160]) for k, v in _dbg_v.items() if any(t in k.lower() for t in ('reject', 'candidate', 'signal', 'diag', 'reason', 'error', 'skip', 'plan', 'cover', 'gate'))}; _dbg_ur.urlopen(_dbg_ur.Request(_dbg_url, data=_dbg_json.dumps({"sessionId": _dbg_sid, "runId": "pre", "hypothesisId": "H2", "location": "auto_trade_member_source.py:_execute_snapshot_order_plans:after_evaluate", "msg": "[DEBUG] engine evaluated", "data": {"engine_type": type(evaluated).__name__, "decision_run_id": str(getattr(evaluated, 'decision_run_id', None)), "n_order_plans": len(getattr(evaluated, 'order_plans', None) or []), "attr_keys": sorted(_dbg_v.keys()), "signal_like": _dbg_like}}).encode(), headers={"Content-Type": "application/json"})).read()
-    except Exception:
-        pass
-    # #endregion
-
     snapshot_row = (
         db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
         if db is not None else None
@@ -2079,12 +2059,6 @@ def _execute_snapshot_order_plans(
 
     # WP6.5：正常完成，记录已处理组合（与 cancel 跳过的 skipped_portfolios 对称）
     record_portfolio_processed(portfolio_id)
-    # #region debug-point H5:result-summary
-    try:
-        import json as _dbg_json, os as _dbg_os, urllib.request as _dbg_ur; _dbg_p = 'C:/Users/demo/AppData/Local/Temp/trae-debug/auto-trade-zero-orders/auto-trade-zero-orders.env'; _dbg_c = open(_dbg_p).read() if _dbg_os.path.exists(_dbg_p) else ''; _dbg_url = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SERVER_URL=')), 'http://127.0.0.1:7778/event'); _dbg_sid = next((l.split('=', 1)[1] for l in _dbg_c.splitlines() if l.startswith('DEBUG_SESSION_ID=')), 'auto-trade-zero-orders'); _dbg_ur.urlopen(_dbg_ur.Request(_dbg_url, data=_dbg_json.dumps({"sessionId": _dbg_sid, "runId": "pre", "hypothesisId": "H5", "location": "auto_trade_member_source.py:result-summary", "msg": "[DEBUG] execute result summary", "data": {"portfolio_id": portfolio_id, "trade_date": str(trade_date), "dry_run": bool(dry_run), "executed": len(result["executed_orders"]), "pending": len(result["pending_orders"]), "skipped": len(result["skipped_orders"]), "rejected": len(result["rejected_decisions"]), "errors": result["errors"][:3], "skipped_due_to_cancel": result["skipped_due_to_cancel"], "rejected_sample": [i.get("code") or i.get("reason") or i.get("stage") for i in result["rejected_decisions"][:5]]}}).encode(), headers={"Content-Type": "application/json"})).read()
-    except Exception:
-        pass
-    # #endregion
     return result
 
 
