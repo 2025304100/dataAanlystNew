@@ -661,8 +661,12 @@ class TestRollbackCapability:
         assert fallback_snapshot.weight_mode == "manual"
 
         # 2. 重新激活到 ridge（需要 validated 模型）
-        # 创建一个 validated 模型记录
+        # 激活走 assess_factor_model_readiness 全套 fail-closed 门禁：仓库训练来源、
+        # frozen FactorSet 与其 feature 成员、权重版本一致、不可变权重快照。
+        # 复用真实训练证据夹具补齐这些证据，避免逐条手搓 FactorSet/snapshot。
         from app.models.factor_model import FactorModelRun
+        from tests.factor_model_fixtures import add_training_proof
+
         model = FactorModelRun(
             id="model-cycle-002",
             model_type="ridge",
@@ -683,22 +687,22 @@ class TestRollbackCapability:
             rejection_reason=None,
             artifact_path=None,
         )
-        db_session.add(model)
         # 激活前置 fail-closed：validated 模型必须有非空且有限的因子系数
         # （`runtime.activate_factor_model` 查 FactorModelMember），因此补上权重行；
         # 否则本用例会停在“validated model has no factor coefficients”。
-        db_session.add_all([
-            FactorModelMember(
-                model_run_id="model-cycle-002", factor_code="ep_ttm",
-                factor_version=1, coefficient=0.6, normalized_weight=0.6,
-                train_ic=0.05, validation_ic=0.05, side="long",
-            ),
-            FactorModelMember(
-                model_run_id="model-cycle-002", factor_code="turnover_z20",
-                factor_version=1, coefficient=-0.4, normalized_weight=-0.4,
-                train_ic=0.03, validation_ic=0.03, side="short",
-            ),
-        ])
+        model.weights.append(FactorModelMember(
+            factor_code="ep_ttm",
+            factor_version=1, coefficient=0.6, normalized_weight=0.6,
+            train_ic=0.05, validation_ic=0.05, side="long",
+        ))
+        model.weights.append(FactorModelMember(
+            factor_code="turnover_z20",
+            factor_version=1, coefficient=-0.4, normalized_weight=-0.4,
+            train_ic=0.03, validation_ic=0.03, side="short",
+        ))
+        db_session.add(model)
+        db_session.flush()
+        add_training_proof(db_session, model, "legacy-system-v1")
         db_session.flush()
 
         # 3. 重新激活
