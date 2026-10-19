@@ -29,7 +29,14 @@ from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
 from app.services import discovery_data_prep, discovery_fast_scan
 
-pytestmark = pytest.mark.whitebox
+pytestmark = [
+    pytest.mark.whitebox,
+    # 本文件会触发"无 ready 快照 → fire-and-forget 数据准备任务"，需在用例间回收残留
+    # worker 线程，避免其用全局 session 把「ready 空快照 + scan_run」写进下一个用例的
+    # tmp 库，导致 test_fast_scan_api_route_with_snapshot 命中 0 条结果（conftest.
+    # _isolate_worker_stop_event，PT-DEF-15；与 test_whitebox_discovery_fast_scan.py 同处置）。
+    pytest.mark.reap_workers,
+]
 
 
 # ============================================================================
