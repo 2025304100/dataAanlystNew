@@ -57,10 +57,24 @@ def _seed_strict_snapshot(db_session, *, snapshot_id: str):
         effective_from=datetime(2025, 1, 1),
     )
     db_session.add(snapshot)
+    # 正式 PIT 运行模式要求快照带"冻结因子集"且模型/因子集 readiness 通过
+    # （见 decision_engine FACTOR_SET_REQUIRED 分支）。复用真实绑定夹具，
+    # 使 gate 不再以 FACTOR_SET_REQUIRED 覆盖本用例要验证的每日行情 PIT 原因。
+    from tests.portfolio_binding_helpers import bind_applied_snapshot
+    bind_applied_snapshot(db_session, snapshot)
+    db_session.commit()
     return portfolio, symbol, snapshot
 
 
 def _add_buy_score(db_session, *, symbol_id: int, model_id: str, trade_date: date):
+    # evaluate 会把绑定 readiness 的"成员版本表"注入 snap.versions（见 decision_engine
+    # :1475-1483），血缘校验据此比对 Score.factor_member_versions_json；不补齐即
+    # SCORE_FACTOR_VERSION_MISMATCH → 覆盖率 0。这里按同一来源取值写入。
+    from app.services.factors.__facade__ import assess_score_model_readiness
+    _set_id = f"fs-{model_id}"
+    _ready = assess_score_model_readiness(
+        db_session, model_id, _set_id, require_runtime_active=False)
+    _fmv = (_ready.get("details") or {}).get("factor_member_versions")
     db_session.add(Score(
         symbol_id=symbol_id,
         trade_date=trade_date,
@@ -74,6 +88,17 @@ def _add_buy_score(db_session, *, symbol_id: int, model_id: str, trade_date: dat
         factor_model_run_id=model_id,
         calc_batch_id=f"score-{trade_date.isoformat()}",
         published_at=datetime(2025, 1, 1),
+        # 绑定模型的 Score 血缘校验要求 factor_data_cutoff_at 与 model_alpha_score；
+        # 缺失会让覆盖率记 0 → SCORE_COVERAGE_BELOW_SLA → DATA_INCOMPLETE_PAUSED，
+        # 反而把本用例要验证的"每日行情 PIT 拒绝原因"掩盖掉。
+        factor_data_cutoff_at=datetime(2025, 1, 1),
+        # 阈值口径 0～100（buy=70）；本夹具 quality 为 0～1，alpha 同乘 100，
+        # 以便正确产出 BUY 计划（再由每日行情 PIT 检查拒绝/放行）。
+        model_alpha_score=90.0,
+        # 与绑定后快照的 factor_set_id 保持同源（bind_applied_snapshot 口径 fs-{model}），
+        # 否则血缘校验 SCORE_FACTOR_SET_MISMATCH → 覆盖率 0。
+        factor_set_id=f"fs-{model_id}",
+        factor_member_versions_json=json.dumps(_fmv) if _fmv else None,
         pit_safety="PIT_VERIFIED",
     ))
 
