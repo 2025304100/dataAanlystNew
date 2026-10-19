@@ -123,6 +123,10 @@ def _make_score(
     trade_date: date = date(2026, 7, 17),
     priority_score: float = 75.0,
 ) -> Score:
+    # PIT 血缘：Score.published_at 默认取"真实当前时间"，本用例用历史 trade_date；
+    # 不显式回填会被决策引擎判 SCORE_PUBLICATION_AFTER_CUTOFF，叠加
+    # factor_data_cutoff_at / model_alpha_score 为空 → 覆盖率记 0 → fail-closed 阻断、不出单。
+    _cut = datetime.combine(trade_date, datetime.min.time())
     score = Score(
         symbol_id=symbol_id,
         trade_date=trade_date,
@@ -132,6 +136,9 @@ def _make_score(
         stage=stage,
         action=action,
         priority_score=priority_score,
+        published_at=_cut,
+        factor_data_cutoff_at=_cut,
+        model_alpha_score=priority_score,
     )
     db_session.add(score)
     db_session.commit()
@@ -213,12 +220,9 @@ def _apply_member_snapshot(
     import json as _json
 
     from app.models.decision_engine import StrategyExecutionSnapshot
+    from tests.portfolio_binding_helpers import bind_applied_snapshot
 
     sym_ids = [int(m["symbol_id"]) for m in members if m.get("symbol_id") is not None]
-    if sym_ids:
-        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
-            {"factor_model_run_id": factor_model_run_id}, synchronize_session=False,
-        )
     snap_id = f"ms-snap-{portfolio.id}"
     snap = StrategyExecutionSnapshot(
         id=snap_id, snapshot_no=1, portfolio_id=portfolio.id,
@@ -231,6 +235,18 @@ def _apply_member_snapshot(
         effective_from=datetime(2026, 1, 1),
     )
     db_session.add(snap)
+    # 与真实链路一致：自动执行要求"已应用的模型绑定"（active FactorModel + PortfolioFactorUsage），
+    # 否则入口 governor 会以 MODEL_INACTIVE / PORTFOLIO_NOT_READY 阻断（execute_member_source 静默 0 单）。
+    bind_applied_snapshot(db_session, snap)
+    # 再按绑定后的快照补齐 Score 血缘（factor_set_id 由 bind_applied_snapshot 定为 fs-{model_id}）。
+    if sym_ids:
+        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
+            {
+                "factor_model_run_id": snap.factor_model_run_id,
+                "factor_set_id": snap.factor_set_id,
+            },
+            synchronize_session=False,
+        )
     db_session.commit()
     return snap
 

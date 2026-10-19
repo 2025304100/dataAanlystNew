@@ -120,6 +120,11 @@ def _make_score(
     trade_date: date = date(2026, 7, 17),
     priority_score: float = 75.0,
 ) -> Score:
+    # PIT 血缘：Score.published_at 的默认值是"真实当前时间"，而本用例用历史
+    # trade_date（补算/回测口径）。不显式回填就会被决策引擎判为
+    # SCORE_PUBLICATION_AFTER_CUTOFF；再叠加 factor_data_cutoff_at / model_alpha_score
+    # 为空（绑定模型的 Score 血缘校验要求）→ 覆盖率 0 → fail-closed 阻断、不出单。
+    _cut = datetime.combine(trade_date, datetime.min.time())
     score = Score(
         symbol_id=symbol_id,
         trade_date=trade_date,
@@ -129,6 +134,9 @@ def _make_score(
         stage=stage,
         action=action,
         priority_score=priority_score,
+        published_at=_cut,
+        factor_data_cutoff_at=_cut,
+        model_alpha_score=priority_score,
     )
     db_session.add(score)
     db_session.commit()
@@ -221,10 +229,6 @@ def _apply_member_snapshot(
     from tests.portfolio_binding_helpers import bind_applied_snapshot
 
     sym_ids = [int(m["symbol_id"]) for m in members if m.get("symbol_id") is not None]
-    if sym_ids:
-        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
-            {"factor_model_run_id": factor_model_run_id}, synchronize_session=False,
-        )
     snap_id = f"idem-snap-{portfolio.id}"
     snap = StrategyExecutionSnapshot(
         id=snap_id, snapshot_no=1, portfolio_id=portfolio.id,
@@ -238,6 +242,17 @@ def _apply_member_snapshot(
     )
     db_session.add(snap)
     bind_applied_snapshot(db_session, snap)
+    # 补齐 Score 血缘：决策引擎按**快照的** factor_model_run_id / factor_set_id 过滤并做血缘校验
+    # （bind_applied_snapshot 会把 factor_set_id 定为 fs-{model_id}）。不补齐 → SCORE_MODEL/FACTOR_SET
+    # MISMATCH，覆盖率记 0 → fail-closed 阻断、不出单。此处直接取绑定后的值，避免重复推导。
+    if sym_ids:
+        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
+            {
+                "factor_model_run_id": snap.factor_model_run_id,
+                "factor_set_id": snap.factor_set_id,
+            },
+            synchronize_session=False,
+        )
     db_session.commit()
     return snap
 

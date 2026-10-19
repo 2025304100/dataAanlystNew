@@ -73,10 +73,6 @@ def _apply_member_snapshot(
     from tests.portfolio_binding_helpers import bind_applied_snapshot
 
     sym_ids = [int(m["symbol_id"]) for m in members if m.get("symbol_id") is not None]
-    if sym_ids:
-        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
-            {"factor_model_run_id": factor_model_run_id}, synchronize_session=False,
-        )
     snap_id = f"safety-snap-{portfolio.id}"
     snap = StrategyExecutionSnapshot(
         id=snap_id, snapshot_no=1, portfolio_id=portfolio.id,
@@ -90,6 +86,16 @@ def _apply_member_snapshot(
     )
     db_session.add(snap)
     bind_applied_snapshot(db_session, snap)
+    # 按绑定后的快照补齐 Score 血缘（factor_set_id = fs-{model_id}）；否则血缘校验
+    # SCORE_FACTOR_SET_MISMATCH → 覆盖率 0 → fail-closed 阻断。
+    if sym_ids:
+        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
+            {
+                "factor_model_run_id": snap.factor_model_run_id,
+                "factor_set_id": snap.factor_set_id,
+            },
+            synchronize_session=False,
+        )
     db_session.commit()
     return snap
 
@@ -141,6 +147,10 @@ def _make_score(
     action: str = "open",
     trade_date: date = date(2026, 7, 17),
 ) -> Score:
+    # PIT 血缘：published_at 默认取"真实当前时间"，与本用例历史 trade_date 相冲，
+    # 不显式回填会被判 SCORE_PUBLICATION_AFTER_CUTOFF；叠加 factor_data_cutoff_at /
+    # model_alpha_score 为空 → 覆盖率记 0 → fail-closed 阻断、不出单。
+    _cut = datetime.combine(trade_date, datetime.min.time())
     score = Score(
         symbol_id=symbol_id,
         trade_date=trade_date,
@@ -150,6 +160,9 @@ def _make_score(
         stage="start",
         action=action,
         priority_score=75.0,
+        published_at=_cut,
+        factor_data_cutoff_at=_cut,
+        model_alpha_score=75.0,
     )
     db_session.add(score)
     db_session.commit()
