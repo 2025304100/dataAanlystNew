@@ -503,13 +503,16 @@ export async function streamAISession(
 
 export interface ExternalSyncResult {
   dataset: ExternalSyncDataset;
-  skip_reason?: "market_closed" | "already_current";
+  skip_reason?: "market_closed" | "already_current" | "data_unavailable" | "no_symbols" | "no_events" | "no_new_data";
   total: number;
   success: number;
   skipped: number;
   failed: number;
   records: number;
   errors: string[];
+  warnings?: string[];
+  field_coverage?: Record<string, { available: number; total: number }>;
+  unavailable_fields?: Record<string, string>;
   plan?: ExternalDataSyncPlan;
   northbound?: {
     status: "done" | "warning";

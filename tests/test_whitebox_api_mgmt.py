@@ -500,7 +500,6 @@ def test_registry_contains_factor_pipeline_interfaces():
         "stock_lhb_detail_em",
         "stock_lhb_jgmmtj_em",
         "stock_hot_rank_em",
-        "stock_zh_a_hist_min_em",
         "bond_zh_us_rate",
         "macro_china_market_margin_sh",
         "macro_china_market_margin_sz",

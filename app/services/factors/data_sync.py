@@ -754,7 +754,7 @@ def mirror_factor_inputs(
     include_financial_reports: bool = True,
     include_fund_flows: bool = True,
     include_sentiment: bool = True,
-    include_tail_proxy: bool = True,
+    include_tail_proxy: bool = False,
     include_etf_indicators: bool = True,
     include_macro: bool = True,
     full_refresh: bool = False,
@@ -767,6 +767,8 @@ def mirror_factor_inputs(
     以"已完成的输入类数 / 启用的输入类数"上报，供流水线把 27%→35% 这段做插值。
     没有它时这段会长时间停在同一个百分比上（VIZ-0930-26）。
     """
+    # Retained keyword for old pipeline payloads; retired inputs are never mirrored.
+    include_tail_proxy = False
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
     if not any(
@@ -806,7 +808,12 @@ def mirror_factor_inputs(
 
     if _cancelled(should_cancel):
         return result
-    target = warehouse or FactorWarehouse()
+    if warehouse is None:
+        from app.services.factors.config import get_factor_system_config
+
+        target = FactorWarehouse(get_factor_system_config(db).warehouse_path)
+    else:
+        target = warehouse
     target.initialize()
     if _cancelled(should_cancel):
         return result

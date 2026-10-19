@@ -161,7 +161,7 @@ def test_northbound_failure_is_observable(db_session, monkeypatch):
 
     monkeypatch.setattr(capital_flow_data.ak, "stock_hsgt_north_net_flow_in", lambda *_a, **_k: None, raising=False)
     monkeypatch.setattr(capital_flow_data, "call_akshare_with_retry", fail)
-    monkeypatch.setattr(capital_flow_data, "sync_market_capital_flow_snapshot", lambda *_a: set())
+    monkeypatch.setattr(capital_flow_data, "sync_market_capital_flow_snapshot", lambda *_a, **_k: set())
     result = service._run_symbol_sync(db_session, task.id, "capital_flow", payload)
     assert result["failed"] or any("northbound" in error for error in result["errors"])
 
@@ -196,7 +196,7 @@ def test_stale_market_task_does_not_block_creation(db_session, monkeypatch):
 
 def test_northbound_unchecked_makes_no_provider_call(db_session, monkeypatch):
     task, payload = _task(db_session, "capital_flow", {"source": "watchlist", "include_northbound": False}, monkeypatch)
-    monkeypatch.setattr(capital_flow_data, "sync_market_capital_flow_snapshot", lambda *_a: set())
+    monkeypatch.setattr(capital_flow_data, "sync_market_capital_flow_snapshot", lambda *_a, **_k: set())
 
     def forbidden(*_args, **_kwargs):
         raise AssertionError("unchecked northbound option must not call provider")
@@ -223,7 +223,7 @@ def test_sync_plan_rejects_inverted_dates(dataset):
         service.build_external_sync_plan(dataset, {"start_date": "2026-10-14", "end_date": "2026-10-13"})
 
 
-@pytest.mark.parametrize("dataset", ["hot_rank", "tail_proxy", "etf"])
+@pytest.mark.parametrize("dataset", ["hot_rank", "etf"])
 def test_snapshot_datasets_reject_backfill(dataset):
     with pytest.raises(ValueError, match="does not support backfill"):
         service.build_external_sync_plan(dataset, {"mode": "backfill"})
@@ -397,7 +397,7 @@ def test_mirror_warning_retry_has_no_provider_partitions(db_session, monkeypatch
 
 
 def test_tail_all_scope_rejected_before_task_creation(db_session, monkeypatch):
-    with pytest.raises(ValueError, match="不支持全市场"):
+    with pytest.raises(ValueError, match="尾盘代理已停用"):
         service.start_external_data_sync("tail_proxy", {"source": "all"})
     assert db_session.query(AsyncTaskRecord).count() == 0
 

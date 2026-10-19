@@ -242,39 +242,9 @@ def _fetch_individual_info(db: Session, symbol: Symbol) -> dict[str, Any]:
 def _fetch_value_history(
     db: Session, symbol: Symbol, trade_date: date
 ) -> dict[str, Any]:
-    """Fallback to the stable per-stock historical valuation interface."""
-    code = _market_code_for_akshare(symbol)
-    try:
-        with _proxy_bypass(), quiet_akshare_output():
-            frame = call_akshare_with_retry(
-                ak.stock_value_em,
-                symbol=code,
-                api_key="stock_value_em",
-                db=db,
-            )
-        normalized = normalize_stock_value_frame(frame, symbol=code)
-        if normalized.empty:
-            return {}
-        eligible = normalized[
-            normalized["trade_date"] <= trade_date
-        ].sort_values("trade_date")
-        if eligible.empty:
-            return {}
-        row = eligible.iloc[-1]
-        return {
-            "trade_date": row["trade_date"],
-            "pe_ttm": _safe_float(row["pe_ttm"]),
-            "pb": _safe_float(row["pb"]),
-            "total_market_cap": _safe_float(row["total_market_cap"]),
-            "circulating_market_cap": _safe_float(
-                row["circulating_market_cap"]
-            ),
-        }
-    except Exception as exc:
-        logger.debug(
-            "stock_value_em failed for %s: %s", symbol.symbol, exc
-        )
-        return {}
+    """Compatibility helper with an explicit date filter; no full-history fallback."""
+    rows = _fetch_value_history_rows(db, symbol, start_date=trade_date, end_date=trade_date)
+    return rows[-1] if rows else {}
 
 
 def _fetch_value_history_rows(
@@ -410,99 +380,25 @@ def sync_symbol_valuation(
     refresh_industry: bool = True,
     history_start_date: date | None = None,
 ) -> StockValuation | None:
-    """同步单个 symbol 的估值数据。
-
-    主数据源：stock_zh_a_spot_em（全市场快照，含 PE/PB/市值）。
-    辅助：stock_individual_info_em（行业信息）。
-    """
-    if symbol.asset_type != "stock":
+    """Use the same bounded provider as daily jobs, including on-demand scoring."""
+    if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
         return None
-    region = region_from_market(symbol.market)
-    if region != "cn":
-        return None  # 当前仅支持 A 股估值数据
-
     target_date = trade_date or date.today()
-
-    # 1. 拉取数据
     if target_date > date.today():
         return None
-    # An undated live quote must never be relabelled as a past observation.
-    spot_data = _fetch_spot_valuation(db, symbol) if target_date == date.today() and not skip_market_snapshot else {}
-    fallback_data = {}
-    if (
-        spot_data.get("pe_ttm") is None
-        and spot_data.get("pb") is None
-        and spot_data.get("total_market_cap") is None
-    ):
-        fallback_data = _fetch_value_history(db, symbol, target_date)
-        if history_start_date is not None:
-            actual_date = fallback_data.get("trade_date")
-            if not isinstance(actual_date, date) or actual_date < history_start_date:
-                return None
-        spot_data = fallback_data
-    # A failed task-wide market snapshot must not cause every symbol to
-    # download it again, or refresh unrelated industry metadata. Dedicated
-    # single-symbol callers retain their existing behavior by default.
-    info_data = _fetch_individual_info(db, symbol) if refresh_industry else {}
-
-    pe_ttm = spot_data.get("pe_ttm")
-    pb = spot_data.get("pb")
-    total_market_cap = spot_data.get("total_market_cap")
-    circulating_market_cap = spot_data.get("circulating_market_cap")
-    industry = info_data.get("industry") or symbol.industry
-    # PE 历史分位暂不可用（akshare 1.18.30 无 stock_a_lg_indicator）
-    pe_history_percentile = None
-    # 行业分位暂不计算（需拉全行业成分股，开销大；预留接口）
-    industry_pe_percentile = None
-
-    if pe_ttm is None and pb is None and total_market_cap is None:
-        logger.info("No valuation data for %s, skip", symbol.symbol)
-        return None
-
-    pe_score = calc_pe_score(pe_ttm, pe_history_percentile, industry_pe_percentile)
-    actual_date = fallback_data.get("trade_date") or target_date
-
-    # 2. 写库（upsert）
-    existing = db.execute(
-        select(StockValuation).where(
-            StockValuation.symbol_id == symbol.id,
-            StockValuation.trade_date == actual_date,
-        )
-    ).scalars().first()
-
-    raw_json = json.dumps(
-        {
-            "spot": spot_data,
-            "historical_fallback": bool(fallback_data),
-            "info": info_data,
-        },
-        ensure_ascii=False,
-        default=str,
-    )
-
-    if existing is None:
-        existing = StockValuation(
-            symbol_id=symbol.id,
-            trade_date=actual_date,
-        )
-        db.add(existing)
-
-    existing.pe_ttm = pe_ttm
-    existing.pb = pb
-    existing.total_market_cap = total_market_cap
-    existing.circulating_market_cap = circulating_market_cap
-    existing.industry_pe_percentile = industry_pe_percentile
-    existing.industry = industry
-    existing.pe_history_percentile = pe_history_percentile
-    existing.pe_score = pe_score
-    existing.source = (
-        "akshare:stock_value_em"
-        if fallback_data
-        else "akshare:stock_zh_a_spot_em"
-    )
-    existing.raw_json = raw_json
-    db.flush()
-    return existing
+    if target_date == date.today():
+        synced = sync_market_valuation_snapshot(db, [symbol], target_date)
+        if symbol.id not in synced:
+            return None
+        return db.execute(select(StockValuation).where(StockValuation.symbol_id == symbol.id,
+                                                       StockValuation.trade_date == target_date)).scalars().first()
+    rows = _fetch_value_history_rows(db, symbol, start_date=history_start_date or target_date, end_date=target_date)
+    written = None
+    for row in rows:
+        item = _upsert_valuation_history_row(db, symbol, row, industry=symbol.industry)
+        if item is not None:
+            written = item
+    return written
 
 
 def get_latest_valuation(

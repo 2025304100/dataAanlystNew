@@ -183,7 +183,6 @@ def test_factor_health_reports_raw_tables_and_coverage(tmp_path):
         "main_inflow_5d_ratio",
         "lhb_institution_net_ratio",
         "hot_rank_attention",
-        "tail_accumulation_proxy",
         "turnover_z20",
     }
     assert {item.coverage for item in report.factors} == {1.0}

@@ -17,6 +17,8 @@
 """
 from __future__ import annotations
 
+from app.services.feature_policy import DISABLED_FACTOR_FIELDS, TAIL_PROXY_DISABLED_REASON
+
 import ast
 import math
 import operator
@@ -864,6 +866,10 @@ class FactorExecutor:
         deps = plan.data_dependencies
         fields = deps.get("fields", [])
         source_tables = deps.get("source_tables", [])
+        if DISABLED_FACTOR_FIELDS.intersection(fields) or "raw_tail_proxy" in source_tables:
+            return pd.DataFrame(), [{"source_table": "raw_tail_proxy", "required_fields": fields,
+                                     "category": "feature_disabled", "correlation_id": "tail_proxy_disabled",
+                                     "message": TAIL_PROXY_DISABLED_REASON}]
         max_lookback = deps.get("max_lookback", 1)
 
         if not fields or not source_tables:
@@ -1144,7 +1150,7 @@ class FactorExecutor:
                 trade_date=str(trade_date) if trade_date else None,
                 symbol_count=0,
                 coverage=0.0,
-                errors=[_no_spine_error(trade_date=trade_date, plan=plan)],
+                errors=errors or [_no_spine_error(trade_date=trade_date, plan=plan)],
             )
 
         if symbols:
@@ -1267,7 +1273,7 @@ class FactorExecutor:
                 trade_date_count=0,
                 symbol_count=0,
                 coverage=0.0,
-                errors=[_no_spine_error(trade_date=trade_date, plan=plan)],
+                errors=errors or [_no_spine_error(trade_date=trade_date, plan=plan)],
             )
 
         # 2. 评估公式
@@ -1384,6 +1390,10 @@ class FactorExecutor:
         fields = deps.get("fields", [])
         source_tables = deps.get("source_tables", [])
 
+        if DISABLED_FACTOR_FIELDS.intersection(fields) or "raw_tail_proxy" in source_tables:
+            return pd.DataFrame(), [{"source_table": "raw_tail_proxy", "required_fields": fields,
+                                     "category": "feature_disabled", "correlation_id": "tail_proxy_disabled",
+                                     "message": TAIL_PROXY_DISABLED_REASON}]
         if not fields or not source_tables:
             return pd.DataFrame(), structured_errors
 

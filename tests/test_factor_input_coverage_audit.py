@@ -187,47 +187,6 @@ def test_etf_lookup_does_not_return_future_snapshot(db_session, monkeypatch):
     assert etf_basic_data.get_or_sync_etf_indicator(db_session, symbol, date(2026, 1, 1)) is None
 
 
-def test_tail_actual_session_reaches_warehouse_after_requested_date_differs(db_session, tmp_path, monkeypatch):
-    from app.models.market_data import MarketCalendar
-    from types import SimpleNamespace
-    from app.models.async_task import AsyncTaskRecord
-    from app.services import data_quality, external_data_sync_task, tail_proxy_data
-    from app.services.factors import data_sync
-
-    warehouse = _warehouse(tmp_path)
-    db_session.add(MarketCalendar(trade_date=date(2026, 10, 14), is_trading_day=1))
-    db_session.add(AsyncTaskRecord(id="tail-actual-audit", task_type="external_sync_tail_proxy", status="queued", stage="queued"))
-    db_session.add(TailAccumulationSnapshot(
-        symbol="000001", trade_date=date(2026, 10, 13), minute_count=242,
-        tail_minute_count=31, day_amount=20000, tail_amount=3000,
-        tail_amount_share=0.15, tail_activity_ratio=1, tail_return=0.01,
-        close_location=0.8, proxy_score=0.5, source="test",
-    ))
-    db_session.commit()
-    monkeypatch.setattr(data_sync, "FactorWarehouse", lambda *args, **kwargs: warehouse)
-    monkeypatch.setattr(data_quality, "capture_field_quality_snapshots", lambda *args, **kwargs: {})
-    monkeypatch.setattr(tail_proxy_data, "sync_tail_proxy_snapshots", lambda *args, **kwargs: SimpleNamespace(trade_date=date(2026, 10, 13), total=1, written=1, skipped=0, failed=0, errors=()))
-    external_data_sync_task._run_external_sync_task("tail-actual-audit", "tail_proxy", {"source": "watchlist", "plan": {"requested_start_date": "2026-10-14", "requested_end_date": "2026-10-14"}})
-    task = external_data_sync_task.get_external_sync_task("tail-actual-audit")
-    assert task.status == "done"
-    assert task.result["warehouse_mirror"]["status"] == "done"
-    assert task.result["warehouse_mirror"]["start_date"] == "2026-10-13"
-    compilation = compile_formula(formula="proxy_score", strict_fields=True)
-    preview = FactorExecutor(warehouse).preview(compilation.execution_plan, trade_date=date(2026, 10, 13))
-    assert preview.values and preview.values[0]["raw_value"] == 0.5
-
-
-def test_csv_rejected_session_count_is_not_capped_to_error_samples(db_session):
-    from app.services.tail_proxy_import import import_tail_minute_csv
-
-    rows = ["symbol,timestamp,open,high,low,close,volume,amount"]
-    rows.extend(f"{index:06d},2026-10-13 14:59:00,10,11,9,10,1,100" for index in range(101))
-    result = import_tail_minute_csv(db_session, csv_text="\n".join(rows), filename="audit.csv")
-    assert result["written_sessions"] == 0
-    assert len(result["rejected"]) == 100
-    assert result["rejected_sessions"] == 101
-
-
 def _tail_csv(*, tail_amount=100):
     timestamps = pd.date_range("2026-10-13 09:30", "2026-10-13 11:30", freq="1min").append(
         pd.date_range("2026-10-13 13:00", "2026-10-13 15:00", freq="1min"))
@@ -238,56 +197,6 @@ def _tail_csv(*, tail_amount=100):
                    or timestamp.hour == 15 else 100 for timestamp in timestamps],
     })
     return frame.to_csv(index=False)
-
-
-def test_valid_tail_csv_is_mirrored_but_keeps_the_production_gate(db_session, tmp_path, monkeypatch):
-    from app.services import data_quality
-    from app.services.factors import data_sync
-    from app.services.tail_proxy_import import import_tail_minute_csv
-
-    warehouse = _warehouse(tmp_path)
-    monkeypatch.setattr(data_sync, "FactorWarehouse", lambda *args, **kwargs: warehouse)
-    monkeypatch.setattr(data_quality, "capture_field_quality_snapshots", lambda *args, **kwargs: {})
-    result = import_tail_minute_csv(db_session, csv_text=_tail_csv(), filename="audit.csv")
-    assert result["written_sessions"] == 1
-    assert result["rejected_sessions"] == 0
-    assert result["formula_evaluation"] == "blocked_pending_reliable_marketwide_history"
-    with warehouse.connection(read_only=True) as conn:
-        record = conn.execute("SELECT minute_count, tail_minute_count, proxy_score FROM raw_tail_proxy").fetchone()
-    assert record[0] == 242 and record[1] == 31
-    assert record[2] == pytest.approx(0)
-    assert _query_field_stats(warehouse)["proxy_score"]["nonnull_rows"] == 1
-
-
-def test_corrected_tail_csv_refreshes_the_existing_warehouse_session(db_session, tmp_path, monkeypatch):
-    from app.services import data_quality
-    from app.services.factors import data_sync
-    from app.services.tail_proxy_import import import_tail_minute_csv
-
-    warehouse = _warehouse(tmp_path)
-    monkeypatch.setattr(data_sync, "FactorWarehouse", lambda *args, **kwargs: warehouse)
-    monkeypatch.setattr(data_quality, "capture_field_quality_snapshots", lambda *args, **kwargs: {})
-    import_tail_minute_csv(db_session, csv_text=_tail_csv(), filename="audit.csv")
-    import_tail_minute_csv(db_session, csv_text=_tail_csv(tail_amount=200), filename="corrected.csv")
-    sql_record = db_session.query(TailAccumulationSnapshot).one()
-    assert sql_record.tail_activity_ratio == 2
-    with warehouse.connection(read_only=True) as conn:
-        assert conn.execute("SELECT tail_activity_ratio FROM raw_tail_proxy").fetchone()[0] == 2
-
-
-def test_csv_downstream_preserves_gate(db_session, tmp_path, monkeypatch):
-    from app.services import data_quality
-    from app.services.factors import data_sync
-    from app.services.tail_proxy_import import import_tail_minute_csv
-
-    warehouse = _warehouse(tmp_path)
-    monkeypatch.setattr(data_sync, "FactorWarehouse", lambda *args, **kwargs: warehouse)
-    monkeypatch.setattr(data_quality, "capture_field_quality_snapshots", lambda *args, **kwargs: {})
-    result = import_tail_minute_csv(db_session, csv_text=_tail_csv(), filename="adapter.csv")
-    assert result["written_sessions"] == 1
-    assert result["formula_evaluation"] == "blocked_pending_reliable_marketwide_history"
-    with warehouse.connection(read_only=True) as conn:
-        assert conn.execute("SELECT minute_count, tail_minute_count, proxy_score FROM raw_tail_proxy").fetchone() == (242, 31, 0)
 
 
 def test_quality_snapshot_does_not_call_twenty_missing_days_light(db_session, tmp_path, monkeypatch):

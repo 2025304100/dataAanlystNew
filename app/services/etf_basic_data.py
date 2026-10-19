@@ -1,23 +1,15 @@
-"""P2：ETF 特有数据服务（溢价折价/跟踪误差/基金规模/份额变化）。
+"""ETF dated snapshots and bounded historical NAV lookup.
 
-数据源：akshare
-- ak.fund_etf_spot_em()：ETF 实时行情（含净值/折价率）
-- ak.fund_etf_fund_info_em(fund)：ETF 历史净值
-- ak.fund_etf_fund_daily_em()：ETF 每日份额/规模
-
-设计要点：
-1. sync_etf_indicator：拉取并写入当日 ETF 指标快照
-2. calc_premium_discount_score：将溢价折价转换为 0-100 评分
-3. calc_tracking_error：应用层计算跟踪误差
-4. 评分时按需拉取：calculate_symbol_score_with_config 调用 get_or_sync_etf_indicator
+Current sync batches selected codes only. NAV is explicitly an IOPV estimate;
+estimated net assets are IOPV * shares. Benchmark tracking error is not collected.
 """
 from __future__ import annotations
 
 import json
 import logging
 import math
-from datetime import date
-from typing import Any
+from datetime import date, timedelta
+from typing import Any, Callable
 
 import akshare as ak
 import pandas as pd
@@ -31,6 +23,9 @@ from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_ou
 from app.services.market_data import _proxy_bypass
 from app.services.factors.contracts import normalize_symbol
 from app.services.regions import region_from_market
+from app.services.etf_provider import BATCH_SIZE, fetch_etf_quotes
+
+TRACKING_ERROR_UNAVAILABLE = "跟踪误差尚未接入对应基准及同日收益序列，当前同步不提供该指标。"
 
 logger = logging.getLogger(__name__)
 
@@ -76,38 +71,11 @@ def _observation_date(value: Any) -> date | None:
 
 
 def _fetch_etf_spot(db: Session, symbol: Symbol) -> dict[str, Any]:
-    """从 ak.fund_etf_spot_em 拉取 ETF 实时溢价折价。
-
-    返回 dict：{ close, nav, premium_discount }
-    注：该接口网络不稳定，失败时返回空 dict，由调用方兜底。
-    """
-    code = _etf_code(symbol)
-    try:
-        with _proxy_bypass(), quiet_akshare_output():
-            df = call_akshare_with_retry(ak.fund_etf_spot_em, api_key="fund_etf_spot_em", db=db)
-        if df is None or df.empty:
-            return {}
-        # 列名通常为：代码、名称、最新价、涨跌幅、成交量、成交额、开盘价、最高价、最低价、
-        #           昨收、单位净值、累计净值、折价率
-        row = df[df["代码"].map(normalize_symbol) == code]
-        if row.empty:
-            return {}
-        row = row.iloc[0]
-        premium = next(
-            (_parse_pct(row.get(name)) for name in ("折价率", "溢价率", "折溢价率")
-             if row.get(name) is not None),
-            None,
-        )
-        return {
-            "trade_date": _observation_date(row.get("交易日期")) or date.today(),
-            "nav_date": _observation_date(row.get("净值日期")),
-            "close": _safe_float(_first_present(row.get("最新价"), row.get("市价"))),
-            "nav": _safe_float(_first_present(row.get("单位净值"), row.get("基金净值"))),
-            "premium_discount": premium,
-        }
-    except Exception as exc:
-        logger.debug("fund_etf_spot_em failed for %s: %s", symbol.symbol, exc)
-        return {}
+    """Compatibility helper using the same targeted current quote provider."""
+    quote = fetch_etf_quotes(db, [_etf_code(symbol)]).get(_etf_code(symbol), {})
+    nav, close = quote.get("nav"), quote.get("close")
+    return {**quote, "nav_date": quote.get("trade_date"),
+            "premium_discount": (close / nav - 1) * 100 if nav and close else None}
 
 
 def _fetch_etf_fund_info(db: Session, symbol: Symbol, trade_date: date) -> dict[str, Any]:
@@ -118,7 +86,10 @@ def _fetch_etf_fund_info(db: Session, symbol: Symbol, trade_date: date) -> dict[
     code = _etf_code(symbol)
     try:
         with _proxy_bypass(), quiet_akshare_output():
-            df = call_akshare_with_retry(ak.fund_etf_fund_info_em, fund=code, api_key="fund_etf_fund_info_em", db=db)
+            df = call_akshare_with_retry(ak.fund_etf_fund_info_em, fund=code,
+                start_date=(trade_date - timedelta(days=10)).strftime("%Y%m%d"),
+                end_date=trade_date.strftime("%Y%m%d"),
+                api_key="fund_etf_fund_info_em", max_attempts=2, db=db)
         if df is None or df.empty:
             return {}
         # 列名：净值日期、单位净值、累计净值、日增长率
@@ -138,7 +109,7 @@ def _fetch_etf_fund_info(db: Session, symbol: Symbol, trade_date: date) -> dict[
 
 
 def _fetch_etf_fund_daily(db: Session, symbol: Symbol) -> dict[str, Any]:
-    """从 ak.fund_etf_fund_daily_em 拉取 ETF 每日份额/规模/折价率。
+    """从 ak.fund_etf_fund_daily_em 拉取带日期净值；该接口不提供份额或规模。
 
     列名为动态日期（如 '2026-07-03-单位净值'），需按后缀匹配。
     返回 dict：{ nav, close, premium_discount }
@@ -170,7 +141,7 @@ def _fetch_etf_fund_daily(db: Session, symbol: Symbol) -> dict[str, Any]:
         )
         return {
             "trade_date": nav_date,
-            "price_date": _observation_date(row.get("交易日期")) or date.today(),
+            "price_date": _observation_date(row.get("交易日期")),
             "nav": nav,
             "close": close,
             "premium_discount": premium_discount,
@@ -217,6 +188,99 @@ def calc_tracking_error(etf_returns: list[float], index_returns: list[float], wi
     return (var ** 0.5) * 100  # 转为百分比
 
 
+def sync_etf_snapshots(
+    db: Session, symbols: list[Symbol], trade_date: date,
+    *, should_cancel: Callable[[], bool] | None = None,
+    on_result: Callable[[Symbol, EtfIndicator | None, dict], None] | None = None,
+) -> dict:
+    """Collect only same-day IOPV snapshots in selected-symbol batches.
+
+    fund_size is an explicit estimate (IOPV * shares), never market cap or a
+    claimed audited NAV. Tracking error requires a separate benchmark contract.
+    """
+    from app.services.market_session import is_cn_trading_day
+
+    if trade_date != date.today():
+        raise ValueError("ETF 实时快照仅支持当前日期，历史净值请使用有界净值接口")
+    result = {"dataset": "etf", "total": len(symbols), "success": 0, "skipped": 0,
+              "failed": 0, "records": 0, "errors": [], "warnings": [],
+              "unavailable_fields": {"etf_tracking_error": TRACKING_ERROR_UNAVAILABLE},
+              "field_coverage": {key: {"available": 0, "total": len(symbols)} for key in
+                  ("etf_premium_discount", "etf_fund_size", "etf_total_shares")}}
+    if not is_cn_trading_day(db, trade_date):
+        return {**result, "skipped": len(symbols), "skip_reason": "market_closed",
+                "message": f"{trade_date} 休市，无需更新"}
+    eligible = [symbol for symbol in symbols
+                if symbol.asset_type == "etf" and region_from_market(symbol.market) == "cn"]
+    if not eligible:
+        return {**result, "skipped": len(symbols), "skip_reason": "no_symbols",
+                "message": "所选范围没有境内 ETF，无需同步"}
+    result["skipped"] = len(symbols) - len(eligible)
+    for start in range(0, len(eligible), BATCH_SIZE):
+        batch = eligible[start:start + BATCH_SIZE]
+        if should_cancel and should_cancel():
+            raise InterruptedError("ETF 同步已取消")
+        quotes = fetch_etf_quotes(db, [_etf_code(symbol) for symbol in batch], should_cancel=should_cancel)
+        for symbol in batch:
+            if should_cancel and should_cancel():
+                raise InterruptedError("ETF 同步已取消")
+            quote = quotes.get(_etf_code(symbol), {})
+            item, fresh = None, {}
+            if quote.get("trade_date") == trade_date:
+                nav, close, shares = (quote.get(key) for key in ("nav", "close", "total_shares"))
+                premium = (close / nav - 1) * 100 if nav and close else None
+                size = nav * shares if nav and shares else None
+                premium = premium if premium is not None and math.isfinite(premium) else None
+                size = size if size is not None and math.isfinite(size) else None
+                fresh = {"etf_premium_discount": premium, "etf_fund_size": size, "etf_total_shares": shares}
+                # A local closing price or a returned quote alone is not an ETF metric.
+                if any(value is not None and math.isfinite(value) for value in fresh.values()):
+                    item = db.execute(select(EtfIndicator).where(
+                        EtfIndicator.symbol_id == symbol.id, EtfIndicator.trade_date == trade_date,
+                    )).scalars().first()
+                    if item is None:
+                        item = EtfIndicator(symbol_id=symbol.id, trade_date=trade_date)
+                        db.add(item)
+                    prior_source = item.source
+                    retained = [key for key, value in {"nav": nav, "close": close,
+                        "total_shares": shares, "fund_size": size, "premium_discount": premium}.items()
+                        if value is None and getattr(item, key) is not None]
+                    for key, value in {"nav": nav, "close": close, "total_shares": shares,
+                                       "fund_size": size, "premium_discount": premium}.items():
+                        if value is not None and math.isfinite(value):
+                            setattr(item, key, value)
+                    if premium is not None:
+                        item.premium_discount_score = calc_premium_discount_score(premium)
+                    item.source = "eastmoney:etf_snapshot"
+                    item.raw_json = json.dumps({"quote": quote,
+                        "nav_basis": "iopv" if nav is not None else "retained_same_day" if item.nav is not None else None,
+                        "fund_size_basis": "same_day_iopv_times_shares" if size is not None else "retained_same_day" if item.fund_size is not None else None,
+                        "retained_same_day_fields": retained, "retained_source": prior_source if retained else None,
+                        "tracking_error_status": "benchmark_history_unavailable"}, ensure_ascii=False, default=str)
+                    db.flush()
+            if item is None:
+                result["skipped"] += 1
+            else:
+                result["success"] += 1
+                result["records"] += 1
+                for key, value in fresh.items():
+                    if value is not None and math.isfinite(value):
+                        result["field_coverage"][key]["available"] += 1
+            if on_result:
+                on_result(symbol, item, result)
+    counts = result["field_coverage"]
+    total = len(symbols)
+    result["warnings"] = [TRACKING_ERROR_UNAVAILABLE]
+    result["message"] = (f"ETF 快照：溢折价 {counts['etf_premium_discount']['available']}/{total}，"
+        f"规模估算 {counts['etf_fund_size']['available']}/{total}，"
+        f"份额 {counts['etf_total_shares']['available']}/{total}；跟踪误差尚未接入")
+    if result["records"]:
+        result.update(written_start_date=trade_date.isoformat(), written_end_date=trade_date.isoformat())
+    else:
+        result.update(skip_reason="data_unavailable", message=f"未取得 {trade_date} 的有效 ETF 指标，未更新本地数据")
+    return result
+
+
 def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = None) -> EtfIndicator | None:
     """同步单个 ETF symbol 的指标数据。"""
     if symbol.asset_type != "etf":
@@ -229,6 +293,13 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
 
     if target_date > date.today():
         return None
+    if target_date == date.today():
+        result = sync_etf_snapshots(db, [symbol], target_date)
+        if not result["records"]:
+            return None
+        return db.execute(select(EtfIndicator).where(
+            EtfIndicator.symbol_id == symbol.id, EtfIndicator.trade_date == target_date,
+        )).scalars().first()
     # Current quotes have no historical contract. Never request them for a
     # historical target or join today's quote to a prior day's published NAV.
     fund_daily = _fetch_etf_fund_daily(db, symbol) if target_date == date.today() else {}
@@ -303,8 +374,8 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     existing.nav = nav
     existing.close = close
     existing.premium_discount = premium_discount
-    # These collectors do not supply size/shares or benchmark returns. New
-    # rows retain NULL; a partial quote refresh must not erase existing facts.
+    # Historical NAV does not supply shares or benchmark returns. Preserve
+    # exact-day facts when this is only a partial historical refresh.
     existing.premium_discount_score = score
     existing.source = "akshare"
     existing.raw_json = raw_json

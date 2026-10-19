@@ -3,25 +3,20 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from datetime import date, datetime
 from typing import Any
 
-import akshare as ak
 import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.financial_report import StockFinancialReport
 from app.models.symbol import Symbol
-from app.services.akshare_utils import (
-    call_akshare_with_retry,
-    quiet_akshare_output,
-)
 from app.services.factors.fundamental import (
     normalize_financial_analysis_frame,
 )
-from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
 
 
@@ -86,21 +81,16 @@ def _raw_rows_by_identity(frame: pd.DataFrame) -> dict[tuple[date, date], str]:
 def _nullable_float(value: Any) -> float | None:
     if value is None or pd.isna(value):
         return None
-    return float(value)
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 def _fetch_financial_analysis(
-    db: Session, symbol: Symbol
+    db: Session, symbol: Symbol, *, start: date | None = None, end: date | None = None,
 ) -> tuple[pd.DataFrame, dict[tuple[date, date], str]]:
+    from app.services.financial_provider import fetch_financial_rows
     code = _akshare_financial_symbol(symbol)
-    with _proxy_bypass(), quiet_akshare_output():
-        frame = call_akshare_with_retry(
-            ak.stock_financial_analysis_indicator_em,
-            symbol=code,
-            indicator="按报告期",
-            api_key=_FINANCIAL_API_KEY,
-            db=db,
-        )
+    frame = pd.DataFrame(fetch_financial_rows(db, code, start or date(1990, 1, 1), end or date.today()))
     if frame is None or frame.empty:
         return normalize_financial_analysis_frame(
             pd.DataFrame(), symbol=code
@@ -117,6 +107,7 @@ def sync_symbol_financial_reports(
     *,
     announcement_start: date | None = None,
     announcement_end: date | None = None,
+    incremental: bool = False,
 ) -> int:
     """Fetch and upsert report versions within an optional announcement range."""
     if symbol.asset_type != "stock":
@@ -130,14 +121,28 @@ def sync_symbol_financial_reports(
     ):
         raise ValueError("announcement_start must be on or before announcement_end")
 
-    normalized, raw_rows = _fetch_financial_analysis(db, symbol)
+    effective_end = announcement_end or date.today()
+    if effective_end > date.today():
+        raise ValueError("财报公告日期不能晚于今天")
+    if incremental and announcement_start is None:
+        announcement_start = effective_end
+    normalized, raw_rows = _fetch_financial_analysis(db, symbol, start=announcement_start, end=effective_end)
+    return _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_start, effective_end)
+
+
+def _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_start, effective_end):
     written = 0
+    written_dates = []
     for row in normalized.to_dict("records"):
         report_period = row["report_period"]
         announcement_date = row["announcement_date"]
         if announcement_start is not None and announcement_date < announcement_start:
             continue
-        if announcement_end is not None and announcement_date > announcement_end:
+        if announcement_date > effective_end or report_period > announcement_date:
+            continue
+        values = {field: _nullable_float(row[field]) for field in
+                  ("roe_ttm", "net_profit", "revenue", "net_profit_yoy", "revenue_yoy")}
+        if not any(value is not None for value in values.values()):
             continue
         report_type = str(row["report_type"])
         source = str(row["source"])
@@ -160,22 +165,57 @@ def sync_symbol_financial_reports(
                 source=source,
             )
             db.add(existing)
-        existing.roe_ttm = _nullable_float(row["roe_ttm"])
-        existing.net_profit = _nullable_float(row["net_profit"])
-        existing.revenue = _nullable_float(row["revenue"])
-        existing.net_profit_yoy = _nullable_float(row["net_profit_yoy"])
-        existing.revenue_yoy = _nullable_float(row["revenue_yoy"])
-        existing.raw_json = raw_rows.get(
-            (report_period, announcement_date)
-        )
+        changed = existing.id is None
+        for field, value in values.items():
+            if value is not None and getattr(existing, field) != value:
+                setattr(existing, field, value)
+                changed = True
+        if not changed:
+            continue
+        existing.raw_json = raw_rows.get((report_period, announcement_date))
         written += 1
+        written_dates.append(announcement_date)
     db.flush()
     logger.info(
         "Synced %d financial report versions for %s",
         written,
         symbol.symbol,
     )
-    return written
+    return FinancialWriteCount(written, written_dates)
+
+
+class FinancialWriteCount(int):
+    def __new__(cls, count, dates):
+        value = super().__new__(cls, count)
+        value.sync_written_dates = tuple(dates)
+        return value
+
+
+def sync_financial_announcements(db, symbols, start, end, *, should_cancel=None, on_result=None):
+    """Daily scope is fetched in code/date batches; unchanged reports are skipped."""
+    from app.services.financial_provider import BATCH_SIZE, fetch_financial_rows
+    eligible = [s for s in symbols if s.asset_type == "stock" and region_from_market(s.market) == "cn"]
+    result = {"total": len(eligible), "success": 0, "skipped": 0, "failed": 0, "records": 0, "errors": []}
+    observations = []
+    for offset in range(0, len(eligible), BATCH_SIZE):
+        batch = eligible[offset:offset+BATCH_SIZE]
+        observations.extend(fetch_financial_rows(db, [_akshare_financial_symbol(s) for s in batch], start, end, should_cancel=should_cancel))
+    for symbol in eligible:
+        if should_cancel and should_cancel():
+            raise InterruptedError("财报同步已取消")
+        code = _akshare_financial_symbol(symbol)
+        frame = pd.DataFrame([row for row in observations if row["SECUCODE"] == code])
+        normalized = normalize_financial_analysis_frame(frame, symbol=code)
+        count = _persist_financial_analysis(db, symbol, normalized, _raw_rows_by_identity(frame), start, end)
+        result["success" if count else "skipped"] += 1
+        result["records"] += int(count)
+        dates = count.sync_written_dates
+        if dates:
+            result["written_start_date"] = min(result.get("written_start_date", min(dates).isoformat()), min(dates).isoformat())
+            result["written_end_date"] = max(result.get("written_end_date", max(dates).isoformat()), max(dates).isoformat())
+        if on_result:
+            on_result(symbol, count, result)
+    return result
 
 
 def resolve_financial_report_symbols(

@@ -4,7 +4,7 @@
 - universe_symbols.last_synced_at 晚于快照 generated_at → UNIVERSE_RESYNCED
 - universe_symbols.created_at 晚于快照 generated_at → NEW_SYMBOL_ADDED
 - daily_bar 在快照后新增记录，或 bar_count < 5 → LATEST_BAR_CHANGED
-- stock_valuation / capital_flow / hot_rank / lhb / tail_accumulation 在快照后更新 → 对应原因
+- stock_valuation / capital_flow / hot_rank / lhb 在快照后更新 → 对应原因
 - 快照不存在或超过 snapshot_max_age_days → 所有标的 dirty（SNAPSHOT_EXPIRED / NEW_SYMBOL_ADDED）
 
 全量重建触发：
@@ -31,7 +31,6 @@ from app.models.hot_rank_snapshot import StockHotRankSnapshot
 from app.models.lhb_institution_trade import LhbInstitutionTrade
 from app.models.stock_valuation import StockValuation
 from app.models.symbol import Symbol
-from app.models.tail_accumulation_snapshot import TailAccumulationSnapshot
 from app.models.universe import UniverseSymbol
 
 logger = logging.getLogger(__name__)
@@ -295,9 +294,6 @@ def compute_dirty_symbols(
     lhb_max = _aggregate_max_created_at_by_symbol_str(
         db, LhbInstitutionTrade, sym_codes
     )
-    tail_max = _aggregate_max_created_at_by_symbol_str(
-        db, TailAccumulationSnapshot, sym_codes
-    )
 
     # 3. 逐个 universe_symbol 判定
     results: list[DirtySymbol] = []
@@ -391,13 +387,6 @@ def compute_dirty_symbols(
                 reasons.append(DirtyReason.LHB_UPDATED)
                 change_timestamps.append(ts)
                 detail["lhb_created_at_max"] = ts.isoformat()
-
-        if us.symbol in tail_max:
-            ts = tail_max[us.symbol]
-            if ts > snapshot_generated_at:
-                reasons.append(DirtyReason.TAIL_ACCUMULATION_UPDATED)
-                change_timestamps.append(ts)
-                detail["tail_accumulation_created_at_max"] = ts.isoformat()
 
         if not reasons:
             continue

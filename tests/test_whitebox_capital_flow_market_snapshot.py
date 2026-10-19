@@ -72,143 +72,53 @@ def _dated_history_frame(*dates: date) -> pd.DataFrame:
     ])
 
 
-def _fake_provider(rank_frame: pd.DataFrame, session_date: date | None):
-    """Rank endpoint carries no date; the dated per-symbol endpoint is probed too."""
-    history = _dated_history_frame(session_date) if session_date else pd.DataFrame()
+def _quote_provider(monkeypatch, quotes):
+    from app.services import capital_flow_provider
+    calls = []
+    def fetch(db, secids, **kwargs):
+        calls.append(secids)
+        return quotes
+    monkeypatch.setattr(capital_flow_provider, "fetch_capital_flow_quotes", fetch)
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
+    return calls
 
-    def call(_func, *args, **kwargs):
-        if kwargs.get("api_key") == "stock_individual_fund_flow_rank":
-            return rank_frame
-        return history
 
-    return call
-
-
-def test_market_capital_flow_snapshot_fetches_full_market_only_once(db_session, monkeypatch):
+def test_market_capital_flow_snapshot_fetches_selected_symbols_only(db_session, monkeypatch):
     symbols = _cn_symbols(db_session, ["600000", "000001", "000002"])
-    frame = _rank_frame([
-        {"code": "600000", "main": 1_000.0, "main_pct": 3.5, "super_large": 600.0,
-         "large": 400.0, "medium": -100.0, "small": -900.0},
-        {"code": "000001", "main": -2_000.0, "main_pct": -1.5, "super_large": -800.0,
-         "large": -1_200.0, "medium": 300.0, "small": 1_700.0},
-    ])
-    calls: list[dict] = []
-
-    def fake_call(_func, *args, **kwargs):
-        calls.append(kwargs)
-        return _fake_provider(frame, date.today())(_func, *args, **kwargs)
-
-    monkeypatch.setattr(capital_flow_data, "call_akshare_with_retry", fake_call)
-
-    synced = sync_market_capital_flow_snapshot(db_session, symbols, date.today())
-    db_session.commit()
-
-    rank_calls = [item for item in calls if item.get("api_key") == "stock_individual_fund_flow_rank"]
-    assert len(rank_calls) == 1
-    assert rank_calls[0]["indicator"] == "今日"
+    calls = _quote_provider(monkeypatch, {
+        "600000": {"trade_date": date.today(), "main_net_inflow": 1000, "main_net_inflow_pct": 3.5},
+        "000001": {"trade_date": date.today(), "main_net_inflow": -2000, "small_net_inflow": 1700},
+    })
+    synced = sync_market_capital_flow_snapshot(db_session, symbols)
+    assert calls == [["1.600000", "0.000001", "0.000002"]]
     assert synced == {symbols[0].id, symbols[1].id}
     rows = db_session.query(CapitalFlow).order_by(CapitalFlow.symbol_id).all()
-    assert len(rows) == 2
-    assert rows[0].main_net_inflow == pytest.approx(1_000.0)
-    assert rows[0].main_net_inflow_pct == pytest.approx(3.5)
-    assert rows[0].super_large_net_inflow == pytest.approx(600.0)
-    assert rows[0].small_net_inflow == pytest.approx(-900.0)
-    assert all(row.trade_date == date.today() for row in rows)
-    # 000002 不在 provider 返回的排行里：不补零、不造行
-    assert db_session.query(CapitalFlow).filter(
-        CapitalFlow.symbol_id == symbols[2].id
-    ).count() == 0
+    assert len(rows) == 2 and rows[0].main_net_inflow == 1000 and rows[1].small_net_inflow == 1700
+    assert all(r.trade_date == date.today() for r in rows)
 
 
-def test_market_capital_flow_snapshot_stamps_the_providers_session_not_the_calendar_day(
-    db_session, monkeypatch
-):
-    """日更接口若给的是上一交易日，写入日期必须跟着 provider 走。"""
+def test_market_capital_flow_snapshot_skips_prior_session(db_session, monkeypatch):
     symbols = _cn_symbols(db_session, ["600000"])
-    frame = _rank_frame([{"code": "600000", "main": 700.0}])
-    monkeypatch.setattr(
-        capital_flow_data,
-        "call_akshare_with_retry",
-        _fake_provider(frame, (date.today() - timedelta(days=1))),
-    )
-
-    sync_market_capital_flow_snapshot(db_session, symbols, date.today())
-    db_session.commit()
-
-    row = db_session.query(CapitalFlow).one()
-    assert row.trade_date == (date.today() - timedelta(days=1))
-
-
-def test_market_capital_flow_snapshot_writes_nothing_without_a_session_date(
-    db_session, monkeypatch
-):
-    """日期无从印证时必须失败关闭，不能把当日流水挂到无交易日的行上。"""
-    symbols = _cn_symbols(db_session, ["600000"])
-    frame = _rank_frame([{"code": "600000", "main": 700.0}])
-    monkeypatch.setattr(
-        capital_flow_data,
-        "call_akshare_with_retry",
-        _fake_provider(frame, None),
-    )
-
-    with pytest.raises(RuntimeError, match="no corroborating session date"):
-        sync_market_capital_flow_snapshot(db_session, symbols, date.today())
-
+    _quote_provider(monkeypatch, {"600000": {"trade_date": date.today()-timedelta(days=1), "main_net_inflow": 700}})
+    assert sync_market_capital_flow_snapshot(db_session, symbols) == set()
     assert db_session.query(CapitalFlow).count() == 0
 
 
-def test_market_capital_flow_snapshot_skips_rows_without_main_inflow(db_session, monkeypatch):
-    symbols = _cn_symbols(db_session, ["600000", "600001"])
-    frame = _rank_frame([
-        {"code": "600000", "main": None, "super_large": 10.0},
-        {"code": "600001", "main": 50.0},
-    ])
-    monkeypatch.setattr(
-        capital_flow_data,
-        "call_akshare_with_retry",
-        _fake_provider(frame, date.today()),
-    )
-
-    synced = sync_market_capital_flow_snapshot(db_session, symbols, date.today())
-    db_session.commit()
-
-    assert synced == {symbols[1].id}
-    assert db_session.query(CapitalFlow).count() == 1
-
-
-def test_market_capital_flow_snapshot_raises_on_unusable_frame(db_session, monkeypatch):
-    """空/畸形返回必须抛错，否则任务不会切到个股接口兜底而是静默零写入。"""
+def test_market_capital_flow_snapshot_skips_missing_main_inflow(db_session, monkeypatch):
     symbols = _cn_symbols(db_session, ["600000"])
-    monkeypatch.setattr(
-        capital_flow_data,
-        "call_akshare_with_retry",
-        _fake_provider(pd.DataFrame(), date.today()),
-    )
-
-    with pytest.raises(RuntimeError, match="no usable rows"):
-        sync_market_capital_flow_snapshot(db_session, symbols, date.today())
+    _quote_provider(monkeypatch, {"600000": {"trade_date": date.today(), "main_net_inflow": None}})
+    assert sync_market_capital_flow_snapshot(db_session, symbols) == set()
+    assert db_session.query(CapitalFlow).count() == 0
 
 
 def test_market_capital_flow_snapshot_ignores_etf_and_non_cn_symbols(db_session, monkeypatch):
     symbols = _cn_symbols(db_session, ["600000"])
-    symbols.append(Symbol(
-        symbol="510300", name="ETF", asset_type="etf", market="sh"
-    ))
-    symbols.append(Symbol(
-        symbol="AAPL", name="Apple", asset_type="stock", market="us"
-    ))
-    db_session.add_all(symbols[1:])
-    db_session.flush()
-    monkeypatch.setattr(
-        capital_flow_data,
-        "call_akshare_with_retry",
-        _fake_provider(_rank_frame([{"code": "600000", "main": 1.0}]), date.today()),
-    )
-
-    synced = sync_market_capital_flow_snapshot(db_session, symbols, date.today())
-
-    assert synced == {symbols[0].id}
-    assert db_session.query(CapitalFlow).count() == 1
+    symbols.extend([Symbol(symbol="510300", name="ETF", market="sh", asset_type="etf"),
+                    Symbol(symbol="AAPL", name="Apple", market="us", asset_type="stock")])
+    db_session.add_all(symbols[1:]); db_session.flush()
+    calls = _quote_provider(monkeypatch, {"600000": {"trade_date": date.today(), "main_net_inflow": 10}})
+    assert sync_market_capital_flow_snapshot(db_session, symbols) == {symbols[0].id}
+    assert calls == [["1.600000"]]
 
 
 def test_fundamental_incremental_still_uses_one_market_snapshot_after_branch_merge(
@@ -281,7 +191,7 @@ def test_capital_flow_incremental_task_uses_one_market_snapshot(db_session, monk
     )
     calls: dict[str, int] = {"snapshot": 0, "per_symbol": 0, "northbound": 0}
 
-    def fake_snapshot(_db, syms, trade_date=None):
+    def fake_snapshot(_db, syms, trade_date=None, **kwargs):
         calls["snapshot"] += 1
         return {symbol.id for symbol in syms}
 
@@ -317,7 +227,7 @@ def test_capital_flow_incremental_task_uses_one_market_snapshot(db_session, monk
     assert result["total"] == 3  # two symbols plus one observable northbound partition
 
 
-def test_capital_flow_incremental_falls_back_to_per_symbol_when_snapshot_fails(
+def test_capital_flow_incremental_stops_without_history_fallback(
     db_session, monkeypatch
 ):
     symbols = _cn_symbols(db_session, ["600000", "000001"])
@@ -350,14 +260,9 @@ def test_capital_flow_incremental_falls_back_to_per_symbol_when_snapshot_fails(
         "include_northbound": False, "max_workers": 1,
     }
     plan = service.build_external_sync_plan("capital_flow", payload, today=date(2026, 10, 9))
-    result = service._run_symbol_sync(
-        db_session, task.id, "capital_flow", {**payload, "plan": plan}
-    )
-
-    assert sorted(seen) == ["000001", "600000"]
-    assert result["success"] == 1
-    assert result["skipped"] == 1
-    assert any("批量接口不可用" in message for message in result["errors"])
+    with pytest.raises(RuntimeError, match="未执行逐标的兜底"):
+        service._run_symbol_sync(db_session, task.id, "capital_flow", {**payload, "plan": plan})
+    assert seen == []
 
 
 def test_capital_flow_all_scope_does_not_fan_out_per_symbol_when_snapshot_fails(
@@ -538,7 +443,7 @@ def _flow_rows(*days: date, inflow: float = 100.0) -> list[dict]:
     ]
 
 
-def test_sync_symbol_seeds_whole_window_when_history_is_thin(db_session, monkeypatch):
+def test_sync_symbol_writes_only_requested_day_when_history_is_thin(db_session, monkeypatch):
     """首次触到的标的：同一次请求已经拿回整段窗口，就一次落满，不再等十天。"""
     symbols = _cn_symbols(db_session, ["600000"])
     days = [date(2026, 9, d) for d in range(10, 25)]
@@ -552,12 +457,9 @@ def test_sync_symbol_seeds_whole_window_when_history_is_thin(db_session, monkeyp
     db_session.commit()
 
     stored = db_session.query(CapitalFlow).order_by(CapitalFlow.trade_date).all()
-    assert len(stored) == len(days)
+    assert len(stored) == 1
     assert row.trade_date == days[-1]
-    # 落库顺序是旧→新：前 4 场可比样本不足 5 个，必须留 None，第 5 场起才出分
-    assert [item.main_net_inflow_score is None for item in stored] == (
-        [True] * 4 + [False] * (len(stored) - 4)
-    )
+    assert stored[0].main_net_inflow_score is None
 
 
 def test_sync_symbol_writes_only_new_rows_once_history_is_deep(db_session, monkeypatch):

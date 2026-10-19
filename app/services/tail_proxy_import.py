@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.tail_accumulation_snapshot import TailAccumulationSnapshot
+from app.services.feature_policy import reject_tail_proxy
 from app.services.factors.tail_proxy import (
     calculate_tail_proxy, minute_session_mask, normalize_minute_timestamps,
 )
@@ -31,6 +32,7 @@ def _symbol_code(value: object) -> str:
 
 
 def import_tail_minute_csv(db: Session, *, csv_text: str, filename: str) -> dict[str, Any]:
+    reject_tail_proxy()
     try:
         reader = csv.DictReader(io.StringIO(csv_text))
         normalized_headers = [str(item or "").lstrip("\ufeff").strip().lower() for item in (reader.fieldnames or [])]

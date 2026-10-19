@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models.data_quality_snapshot import DataQualitySnapshot
 from app.models.data_sync_plan import DataSyncPartition, DataSyncPlan
+from app.services.feature_policy import DISABLED_FACTOR_FIELDS
 from app.services.factors.config import get_factor_system_config# near-relative coupling: data-quality check reads scoring-system flag — audit 2026-08-30
 from app.services.factors.formula_catalog import build_formula_catalog
 from app.services.factors.store import FactorWarehouse
@@ -564,11 +565,15 @@ def _latest_failure_by_dataset(db: Session) -> dict[str, str]:
 
 
 def capture_field_quality_snapshots(
-    db: Session, *, trigger: str = "manual"
+    db: Session, *, trigger: str = "manual", dataset: str | None = None,
 ) -> dict[str, Any]:
     """Persist the current warehouse evidence without rewriting source data."""
     config = get_factor_system_config(db)
-    catalog = build_formula_catalog(FactorWarehouse(config.warehouse_path))
+    field_keys = {field for field, owner in _FIELD_DATASETS.items() if owner == dataset} if dataset else None
+    if dataset and not field_keys:
+        raise ValueError(f"Unsupported quality dataset: {dataset}")
+    catalog = (build_formula_catalog(FactorWarehouse(config.warehouse_path), field_keys=field_keys)
+               if field_keys is not None else build_formula_catalog(FactorWarehouse(config.warehouse_path)))
     failures = _latest_failure_by_dataset(db)
     captured_at = _now()
     saved = 0
@@ -642,7 +647,8 @@ def capture_field_quality_snapshots(
 
 def list_latest_field_quality(db: Session) -> dict[str, Any]:
     rows = db.execute(
-        select(DataQualitySnapshot).order_by(desc(DataQualitySnapshot.captured_at))
+        select(DataQualitySnapshot).where(DataQualitySnapshot.field.notin_(DISABLED_FACTOR_FIELDS))
+        .order_by(desc(DataQualitySnapshot.captured_at))
     ).scalars().all()
     latest: dict[str, DataQualitySnapshot] = {}
     for row in rows:

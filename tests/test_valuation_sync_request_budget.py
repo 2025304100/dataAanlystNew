@@ -176,7 +176,7 @@ def test_healthy_market_snapshot_keeps_constant_request_budget(valuation_client,
     assert calls == {"market": 1}
 
 
-@pytest.mark.parametrize("dataset", ["fundamental", "capital_flow", "etf", "lhb", "hot_rank", "tail_proxy"])
+@pytest.mark.parametrize("dataset", ["fundamental", "capital_flow", "etf", "lhb", "hot_rank"])
 @pytest.mark.parametrize("day", [date(2026, 10, 17), date(2026, 10, 18), date(2026, 10, 1)])
 def test_closed_market_skips_without_provider_or_mirror(valuation_client, db_session, monkeypatch, day, dataset):
     class ClosedDate(TradingDate):

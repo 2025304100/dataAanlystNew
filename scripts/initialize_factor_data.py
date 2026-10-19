@@ -25,7 +25,6 @@ from app.services.financial_data import (
 from app.services.fundamental_data import sync_symbol_valuation
 from app.services.hot_rank_data import sync_hot_rank_snapshot
 from app.services.lhb_data import sync_lhb_institution_trades
-from app.services.tail_proxy_data import sync_tail_proxy_snapshots
 from app.models.universe import UniverseDailyBar, UniverseSymbol
 
 
@@ -173,29 +172,7 @@ def run(
                 "error": f"{type(exc).__name__}:{exc}"
             }
 
-        if skip_tail:
-            summary["tail_proxy"] = {"skipped_by_request": True}
-        else:
-            try:
-                tail = sync_tail_proxy_snapshots(
-                    db,
-                    source="candidates",
-                    limit=tail_limit,
-                    trade_date=today,
-                )
-                db.commit()
-                summary["tail_proxy"] = {
-                    "total": tail.total,
-                    "written": tail.written,
-                    "skipped": tail.skipped,
-                    "failed": tail.failed,
-                    "errors": list(tail.errors),
-                }
-            except Exception as exc:
-                db.rollback()
-                summary["tail_proxy"] = {
-                    "error": f"{type(exc).__name__}:{exc}"
-                }
+        summary["tail_proxy"] = {"disabled": True}
         summary["warehouse"] = warehouse.health().to_dict()
         return summary
     finally:

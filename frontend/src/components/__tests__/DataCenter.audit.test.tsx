@@ -78,6 +78,18 @@ describe("data-center factor-input entry and tab persistence", () => {
     await waitFor(() => expect(screen.queryByText("temporary quality error")).not.toBeInTheDocument());
   });
 
+  it("excludes retired tail proxy rows returned by an older coverage cache", async () => {
+    mockApi.getExternalDataCoverage.mockResolvedValue({ datasets: [
+      { dataset: "fundamental", fields: [{ field: "pe_ttm", table_rows: 1, nonnull_rows: 1 }] },
+      { dataset: "tail_proxy", fields: [{ field: "proxy_score", table_rows: 1, nonnull_rows: 1 }] },
+    ] });
+    localStorage.setItem("settings_data_center_tab", "coverage");
+    render(<DataCenter />);
+    expect(await screen.findByText("市盈率（PE-TTM）")).toBeInTheDocument();
+    expect(screen.queryByText("候选尾盘代理")).not.toBeInTheDocument();
+    expect(screen.queryByText("尾盘代理分数")).not.toBeInTheDocument();
+  });
+
   it("does not reopen a dismissed quality history when its request completes", async () => {
     let resolveHistory!: (value: unknown) => void;
     mockApi.getExternalDataQualityHistory.mockImplementation(() => new Promise((resolve) => { resolveHistory = resolve; }));

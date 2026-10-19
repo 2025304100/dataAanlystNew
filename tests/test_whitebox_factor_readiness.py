@@ -268,18 +268,6 @@ def test_hot_rank_attention_degraded():
 
 # ── 场景 8: tail_accumulation_proxy blocked ──────────────
 
-def test_tail_accumulation_proxy_blocked():
-    """尾盘代理表 0 条 → blocked, 含 source_table_empty。"""
-    result = _eval(
-        "tail_accumulation_proxy",
-        coverage=_make_factor_coverage(
-            "tail_accumulation_proxy", coverage=0.0, eligible=0
-        ),
-    )
-    assert result.status == "blocked"
-    assert "source_table_empty" in result.blocking_reasons
-    assert result.evidence["source_table_rows"]["raw_tail_proxy"] == 0
-
 
 # ── 场景 9: warehouse 不可用 ─────────────────────────────
 
@@ -296,7 +284,6 @@ def test_warehouse_unavailable_blocks_all():
         "main_inflow_5d_ratio",
         "lhb_institution_net_ratio",
         "hot_rank_attention",
-        "tail_accumulation_proxy",
     ):
         result = evaluate_factor_readiness(
             code,
@@ -322,7 +309,6 @@ def test_no_complete_trade_day_blocks_all():
         "turnover_z20",
         "ep_ttm",
         "lhb_institution_net_ratio",
-        "tail_accumulation_proxy",
     ):
         result = evaluate_factor_readiness(
             code,
@@ -399,8 +385,8 @@ def _build_full_report():
 def test_summary_counts():
     """8 因子 → {'available': 1, 'degraded': 2, 'blocked': 5}。"""
     report = _build_full_report()
-    assert report.summary == {"available": 1, "degraded": 2, "blocked": 5}
-    assert len(report.factors) == 8
+    assert report.summary == {"available": 1, "degraded": 2, "blocked": 4}
+    assert len(report.factors) == 7
 
 
 # ── 场景 12: to_dict 序列化无错误 ─────────────────────────
@@ -441,8 +427,7 @@ def test_blocking_evidence_numbers():
     assert roe.evidence["source_table_rows"]["raw_financial_reports"] == 336
     inflow = report.get_factor("main_inflow_5d_ratio")
     assert inflow.evidence["source_table_rows"]["raw_fund_flows"] == 0
-    tail = report.get_factor("tail_accumulation_proxy")
-    assert tail.evidence["source_table_rows"]["raw_tail_proxy"] == 0
+    assert report.get_factor("tail_accumulation_proxy") is None
 
 
 # ── 额外验证：available 因子含完整交易日证据 ─────────────

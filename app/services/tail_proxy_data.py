@@ -25,6 +25,7 @@ from app.services.akshare_utils import (
     quiet_akshare_output,
 )
 from app.services.factors.tail_proxy import calculate_tail_proxy
+from app.services.feature_policy import reject_tail_proxy
 from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
 
@@ -173,6 +174,7 @@ def sync_tail_proxy_snapshots(
     portfolio_id: int | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> TailProxySyncResult:
+    reject_tail_proxy()
     target_date = resolve_tail_proxy_trade_date(db, trade_date)
     scope = {key: value for key, value in {"watchlist_id": watchlist_id, "portfolio_id": portfolio_id}.items() if value is not None}
     symbols = resolve_tail_proxy_symbols(db, source=source, limit=limit, **scope)

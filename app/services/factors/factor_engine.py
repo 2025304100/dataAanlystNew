@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from app.services.factors.definitions import FACTOR_DEFINITIONS
+from app.services.feature_policy import DISABLED_FACTOR_CODES, reject_tail_proxy
 from app.services.factors.store import FactorWarehouse
 
 
@@ -55,6 +56,8 @@ def resolve_frozen_factor_specs(db, factor_set_ids: tuple[str, ...], *,
         for member in factor_set.members:
             if member.role != "feature":
                 continue
+            if member.factor_code in DISABLED_FACTOR_CODES:
+                reject_tail_proxy()
             version = db.get(FactorVersion, member.factor_version_id)
             factor = db.get(Factor, member.factor_id)
             if (version is None or version.factor_id != member.factor_id
@@ -209,15 +212,6 @@ def _load_raw_factor_panel(
             FROM raw_sentiment
             WHERE hot_rank_pct IS NOT NULL
         ),
-        tail_proxy_dedup AS (
-            SELECT *,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY symbol, trade_date
-                       ORDER BY ingested_at DESC, source
-                   ) AS row_num
-            FROM raw_tail_proxy
-            WHERE proxy_score IS NOT NULL
-        ),
         panel AS (
             SELECT
                 b.symbol,
@@ -230,7 +224,6 @@ def _load_raw_factor_panel(
                 f.main_net_inflow,
                 s.lhb_institution_net,
                 h.hot_rank_pct,
-                tail.proxy_score AS tail_proxy_score,
                 current_fin.roe_ttm AS current_roe_ttm,
                 prior_fin.roe_ttm AS prior_year_roe_ttm
             FROM raw_daily_bars b
@@ -255,10 +248,6 @@ def _load_raw_factor_panel(
               ON h.row_num = 1
              AND h.symbol = b.symbol
              AND h.trade_date = b.trade_date
-            LEFT JOIN tail_proxy_dedup tail
-              ON tail.row_num = 1
-             AND tail.symbol = b.symbol
-             AND tail.trade_date = b.trade_date
             LEFT JOIN LATERAL (
                 SELECT
                     report_period,
@@ -382,8 +371,7 @@ def _load_raw_factor_panel(
                  AND hot_rank_pct <= 100
                 THEN 1.0 - hot_rank_pct / 100.0
                 ELSE NULL
-            END AS hot_rank_attention,
-            tail_proxy_score AS tail_accumulation_proxy
+            END AS hot_rank_attention
         FROM rolling
         ORDER BY trade_date, symbol
     """
@@ -470,6 +458,8 @@ def calculate_stock_factors(
             valuation_max_age_days=valuation_max_age_days) if factor_set_ids else ()
     if selected_features_only and not frozen_factor_specs:
         raise ValueError("frozen_factor_calculation_requires_features")
+    if any(spec.code in DISABLED_FACTOR_CODES for spec in frozen_factor_specs):
+        reject_tail_proxy()
     warehouse.initialize()
     batch_id = calc_batch_id or f"factors-{uuid4().hex}"
     needed_native = list(dict.fromkeys(spec.code for spec in frozen_factor_specs if spec.native))

@@ -142,10 +142,10 @@ def normalize_lhb_institution_frame(frame: pd.DataFrame) -> pd.DataFrame:
         ["symbol", "trade_date"], as_index=False, sort=True
     ).agg(
         {
-            "buyer_institution_count": "sum",
-            "seller_institution_count": "sum",
-            "institution_buy": "sum",
-            "institution_sell": "sum",
+            "buyer_institution_count": lambda values: values.sum(min_count=1),
+            "seller_institution_count": lambda values: values.sum(min_count=1),
+            "institution_buy": lambda values: values.sum(min_count=1),
+            "institution_sell": lambda values: values.sum(min_count=1),
             "institution_net": "sum",
             "market_amount": "max",
             "institution_net_pct": "max",

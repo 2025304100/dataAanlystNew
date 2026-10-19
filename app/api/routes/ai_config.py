@@ -289,7 +289,7 @@ _FACTOR_SYSTEM_FUNCTIONS_DOC = """
 
 【可用字段】
 open, high, low, close, volume, amount, turnover_rate, prev_close, pe_ttm, pb,
-main_net_inflow, roe_ttm, lhb_institution_net, hot_rank_pct, proxy_score
+main_net_inflow, roe_ttm, lhb_institution_net, hot_rank_pct
 
 【可用函数】
 abs(x), min(a,b), max(a,b), round(x,n), log(x), sqrt(x), exp(x),

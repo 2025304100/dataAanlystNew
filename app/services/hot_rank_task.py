@@ -51,23 +51,29 @@ def _run_hot_rank_task(task_id: str) -> None:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status == "cancelled":
             return
+        from app.services.external_data_sync_task import finalize_legacy_external_sync
+        publication = finalize_legacy_external_sync(db, task_id, "hot_rank", summary.written,
+                                                  [summary.trade_date], skip_reason=summary.skip_reason)
+        publication_failed = publication["warehouse_mirror"]["status"] == "warning"
         _set_task(
             db,
             task_id,
-            status="done",
-            stage="done",
+            status="failed" if publication_failed else "done",
+            stage="failed" if publication_failed else "done",
             percent=100,
             total=summary.received,
             processed=summary.received,
             ok_count=summary.written,
-            failed_count=summary.unmatched,
-            message="Hot-rank snapshot completed",
+            failed_count=int(publication_failed),
+            message="人气榜已入库，仓库同步失败，请重试" if publication_failed else "A 股休市，已跳过人气榜采集" if summary.skip_reason == "market_closed" else "Hot-rank snapshot completed",
             result_json=json.dumps(
                 {
                     "trade_date": summary.trade_date,
                     "received": summary.received,
                     "written": summary.written,
                     "unmatched": summary.unmatched,
+                    "skip_reason": summary.skip_reason,
+                    **publication,
                 },
                 ensure_ascii=False,
                 default=str,
@@ -78,7 +84,7 @@ def _run_hot_rank_task(task_id: str) -> None:
         db.rollback()
         logger.exception("Hot-rank task failed: %s", task_id)
         task = db.get(AsyncTaskRecord, task_id)
-        if task is not None:
+        if task is not None and task.status != "cancelled":
             _append_error(task, {"scope": "hot_rank", "error": str(exc)})
             task.status = "failed"
             task.stage = "failed"

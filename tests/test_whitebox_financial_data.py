@@ -23,7 +23,7 @@ def test_financial_sync_accepts_current_f10_names_without_losing_amounts(db_sess
     frame=pd.DataFrame([dict(REPORT_DATE='2026-06-30',NOTICE_DATE='2026-08-15',ROEJQ=5.22,
         PARENTNETPROFIT=25696000000,TOTALOPERATEREVE=70617000000,
         PARENTNETPROFITTZ=3.32,TOTALOPERATEREVETZ=1.77)])
-    with patch('app.services.financial_data.call_akshare_with_retry',return_value=frame):
+    with patch('app.services.financial_provider.fetch_financial_rows',return_value=frame.to_dict("records")):
         assert sync_symbol_financial_reports(db_session,symbol)==1
     row=db_session.scalar(select(StockFinancialReport).where(StockFinancialReport.symbol_id==symbol.id))
     assert row.net_profit==25696000000 and row.revenue==70617000000
@@ -61,12 +61,12 @@ def test_financial_sync_preserves_versions_and_is_idempotent(db_session):
     )
 
     with patch(
-        "app.services.financial_data.call_akshare_with_retry",
-        return_value=frame,
+        "app.services.financial_provider.fetch_financial_rows",
+        return_value=frame.to_dict("records"),
     ) as fetch:
         assert sync_symbol_financial_reports(db_session, symbol) == 2
         db_session.commit()
-        assert sync_symbol_financial_reports(db_session, symbol) == 2
+        assert sync_symbol_financial_reports(db_session, symbol) == 0
         db_session.commit()
 
     rows = db_session.execute(
@@ -81,11 +81,7 @@ def test_financial_sync_preserves_versions_and_is_idempotent(db_session):
     ]
     assert [row.roe_ttm for row in rows] == [18.2, 19.1]
     assert "RAW_MARKER" in (rows[0].raw_json or "")
-    assert fetch.call_args.kwargs["symbol"] == "600519.SH"
-    assert fetch.call_args.kwargs["indicator"] == "按报告期"
-    assert fetch.call_args.kwargs["api_key"] == (
-        "stock_financial_analysis_indicator_em"
-    )
+    assert fetch.call_args.args[1] == "600519.SH"
 
 
 def test_financial_sync_skips_non_cn_stock_without_network(db_session):
@@ -98,7 +94,7 @@ def test_financial_sync_skips_non_cn_stock_without_network(db_session):
     db_session.add(symbol)
     db_session.flush()
     with patch(
-        "app.services.financial_data.call_akshare_with_retry"
+        "app.services.financial_provider.fetch_financial_rows"
     ) as fetch:
         assert sync_symbol_financial_reports(db_session, symbol) == 0
     fetch.assert_not_called()
@@ -129,8 +125,8 @@ def test_financial_backfill_filters_by_announcement_date(db_session):
     )
 
     with patch(
-        "app.services.financial_data.call_akshare_with_retry",
-        return_value=frame,
+        "app.services.financial_provider.fetch_financial_rows",
+        return_value=frame.to_dict("records"),
     ):
         written = sync_symbol_financial_reports(
             db_session,
@@ -157,8 +153,8 @@ def test_financial_sync_route_reports_symbol_and_record_counts(db_session):
     db_session.add(symbol)
     db_session.commit()
     with patch(
-        "app.services.financial_data.sync_symbol_financial_reports",
-        return_value=8,
+        "app.services.financial_data.sync_financial_announcements",
+        return_value={"total": 1, "success": 1, "skipped": 0, "failed": 0, "records": 8, "errors": []},
     ) as sync:
         result = sync_financial_reports(source="all", db=db_session)
 
@@ -166,7 +162,7 @@ def test_financial_sync_route_reports_symbol_and_record_counts(db_session):
     assert result.success == 1
     assert result.records == 8
     assert result.failed == 0
-    sync.assert_called_once_with(db_session, symbol)
+    sync.assert_called_once_with(db_session, [symbol], date.today(), date.today())
 
 
 @pytest.mark.parametrize(

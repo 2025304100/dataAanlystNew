@@ -141,7 +141,7 @@ def test_cross_section_coverage_uses_only_active_cn_stocks():
     class Connection:
         sql = ""
 
-        def execute(self, sql: str):
+        def execute(self, sql: str, params=None):
             self.sql = sql
             return Result()
 
@@ -160,3 +160,44 @@ def test_cross_section_coverage_uses_only_active_cn_stocks():
     assert "universe.is_active = true" in normalized_sql
     assert summary["trailing_coverage_days"] == 0
     assert summary["latest_daily_coverage"] is None
+
+
+def test_catalog_cache_ttl_starts_after_a_slow_query_finishes(monkeypatch):
+    from app.services.factors import formula_catalog as catalog
+    clock, queries = [0.0], []
+    def slow_query(warehouse):
+        queries.append(warehouse)
+        clock[0] += 40
+        return {"close": {"table_rows": 1, "nonnull_rows": 1}}
+    monkeypatch.setattr(catalog, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(catalog, "_warehouse_cache_key", lambda warehouse: ("slow-query-contract", 1))
+    monkeypatch.setattr(catalog, "_query_field_stats", slow_query)
+    catalog.invalidate_formula_catalog_cache()
+    warehouse = object()
+    try:
+        catalog.build_formula_catalog(warehouse)
+        catalog.build_formula_catalog(warehouse)
+        assert len(queries) == 1
+    finally:
+        catalog.invalidate_formula_catalog_cache()
+
+
+def test_dataset_quality_catalog_has_separate_cache_from_full_catalog(monkeypatch):
+    from app.services.factors import formula_catalog as catalog
+    calls=[]
+    def query(warehouse, *, field_keys=None):
+        calls.append(field_keys)
+        return {key: {"table_rows": 1, "nonnull_rows": 1} for key in (field_keys or {"close", "main_net_inflow"})}
+    monkeypatch.setattr(catalog, "_warehouse_cache_key", lambda warehouse: ("dataset-cache-contract", 1))
+    monkeypatch.setattr(catalog, "_query_field_stats", query)
+    catalog.invalidate_formula_catalog_cache()
+    try:
+        warehouse=object()
+        scoped=catalog.build_formula_catalog(warehouse,field_keys={"main_net_inflow"})
+        full=catalog.build_formula_catalog(warehouse)
+        catalog.build_formula_catalog(warehouse,field_keys={"main_net_inflow"})
+        assert [field["key"] for field in scoped["fields"]]==["main_net_inflow"]
+        assert len(full["fields"])>1
+        assert calls==[{"main_net_inflow"},None]
+    finally:
+        catalog.invalidate_formula_catalog_cache()

@@ -17,6 +17,12 @@ from tests.test_factor_input_coverage_audit import _warehouse, _mirror, _seed_et
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.fixture(autouse=True)
+def known_trading_calendar(monkeypatch):
+    # Date-alignment contracts are independent of the calendar guard tests.
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
+
+
 def _symbol(db, *, asset_type="etf"):
     record = Symbol(symbol="510300.SH", name="audit", asset_type=asset_type, market="sh")
     db.add(record)
@@ -60,13 +66,13 @@ def test_current_quote_cannot_be_combined_with_prior_day_nav(db_session, monkeyp
         "trade_date": prior, "nav": 1, "price_date": date.today(), "close": 9,
     })
     monkeypatch.setattr(etf_basic_data, "_fetch_etf_fund_info", lambda *a: {})
-    monkeypatch.setattr(etf_basic_data, "_fetch_etf_spot", lambda *a: {
-        "trade_date": date.today(), "close": 10,
-    })
+    monkeypatch.setattr(etf_basic_data, "fetch_etf_quotes", lambda *a, **k: {"510300": {
+        "trade_date": date.today(), "close": 10, "nav": None, "total_shares": 1000,
+    }})
     result = etf_basic_data.sync_etf_indicator(db_session, symbol)
-    assert result.trade_date == prior
-    assert result.close == 1.1
-    assert result.premium_discount == pytest.approx(10)
+    assert result.trade_date == date.today()
+    assert result.close == 10 and result.nav is None
+    assert result.premium_discount is None
     assert result.fund_size is None and result.tracking_error is None
     assert db_session.query(EtfIndicator).count() == 1
 
@@ -94,12 +100,12 @@ def test_historical_valuation_does_not_query_undated_spot(db_session, monkeypatc
     def live_quote(*args):
         pytest.fail("historical valuation must not request today's live quote")
     monkeypatch.setattr(fundamental_data, "_fetch_spot_valuation", live_quote)
-    monkeypatch.setattr(fundamental_data, "_fetch_value_history", lambda *a: {
-        "trade_date": date(2020, 1, 2), "pe_ttm": 8, "pb": 1,
-    })
+    monkeypatch.setattr(fundamental_data, "_fetch_value_history_rows", lambda *a, **k: [{
+        "trade_date": date(2020, 1, 3), "pe_ttm": 8, "pb": 1,
+    }])
     monkeypatch.setattr(fundamental_data, "_fetch_individual_info", lambda *a: {})
     result = fundamental_data.sync_symbol_valuation(db_session, symbol, date(2020, 1, 3))
-    assert result.trade_date == date(2020, 1, 2)
+    assert result.trade_date == date(2020, 1, 3)
     assert result.pe_ttm == 8
 
 
@@ -151,7 +157,7 @@ def test_partial_cross_section_does_not_hide_a_symbol_gap(tmp_path):
 
 
 @pytest.mark.parametrize("refresh,expected_nav,expected_close,expected_premium", [
-    ("close_only", 1, 2.2, 120), ("nav_only", 2, 1.1, -45),
+    ("close_only", 1, 2.2, 10), ("nav_only", 2, 1.1, 10),
 ])
 def test_partial_etf_refresh_preserves_same_day_facts(
     db_session, monkeypatch, refresh, expected_nav, expected_close, expected_premium
@@ -166,15 +172,17 @@ def test_partial_etf_refresh_preserves_same_day_facts(
     monkeypatch.setattr(etf_basic_data, "_fetch_etf_fund_info", lambda *a: (
         {"trade_date": date.today(), "nav": 2} if refresh == "nav_only" else {}
     ))
-    monkeypatch.setattr(etf_basic_data, "_fetch_etf_spot", lambda *a: (
-        {"trade_date": date.today(), "close": 2.2} if refresh == "close_only" else {}
-    ))
+    monkeypatch.setattr(etf_basic_data, "fetch_etf_quotes", lambda *a, **k: {"510300": {
+        "trade_date": date.today(), "close": 2.2 if refresh == "close_only" else None,
+        "nav": 2 if refresh == "nav_only" else None, "total_shares": 1000,
+    }})
     record = etf_basic_data.sync_etf_indicator(db_session, symbol)
     assert record.nav == expected_nav
     assert record.close == expected_close
     assert record.premium_discount == pytest.approx(expected_premium)
     assert record.premium_discount_score is not None
-    assert record.fund_size == 100 and record.tracking_error == 0.2
+    assert record.fund_size == (2000 if refresh == "nav_only" else 100)
+    assert record.tracking_error == 0.2
     assert db_session.query(EtfIndicator).count() == 1
 
 

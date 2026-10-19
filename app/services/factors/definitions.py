@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from app.services.feature_policy import DISABLED_FACTOR_CODES
 
 
 @dataclass(frozen=True)
@@ -75,19 +76,6 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         category="sentiment",
         direction="nonlinear",
         formula="1 - hot_rank_pct / 100",
-        missing_policy="exclude",
-        model_enabled=False,
-        health_required=False,
-    ),
-    FactorDefinition(
-        code="tail_accumulation_proxy",
-        name="Tail-session Accumulation Proxy",
-        category="capital_flow",
-        direction="higher_better",
-        formula=(
-            "log(tail_activity_ratio) "
-            "+ 20*tail_return + close_location - 0.5"
-        ),
         missing_policy="exclude",
         model_enabled=False,
         health_required=False,
@@ -174,6 +162,10 @@ def seed_factor_definitions(db: Session) -> int:
     from app.models.factor import Factor
     from app.models.factor_model import FactorVersion
 
+    for factor in db.execute(select(Factor).where(Factor.code.in_(DISABLED_FACTOR_CODES))).scalars():
+        factor.is_active = 0
+        factor.status = "inactive"
+        factor.lifecycle_status = "deprecated"
     created = 0
     for definition in FACTOR_DEFINITIONS:
         factor = db.execute(

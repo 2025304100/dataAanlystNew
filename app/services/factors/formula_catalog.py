@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date
+import logging
 from threading import Lock
 from time import monotonic
 from typing import Any, Mapping
@@ -15,6 +16,8 @@ from app.services.factors.factor_compiler import (
     FIELD_CATALOG,
     FUNCTION_CATALOG,
 )
+
+logger = logging.getLogger(__name__)
 
 
 _FIELD_LABELS_EN = {
@@ -35,7 +38,6 @@ _FIELD_LABELS_EN = {
     "roe_ttm": "ROE TTM",
     "lhb_institution_net": "Institution Net",
     "hot_rank_pct": "Hot Rank Percentile",
-    "proxy_score": "Tail Proxy Score",
     "etf_premium_discount": "ETF Premium / Discount",
     "etf_tracking_error": "ETF Tracking Error",
     "etf_fund_size": "ETF Fund Size",
@@ -199,21 +201,18 @@ _FIELD_DATA_POLICIES: dict[str, dict[str, Any]] = {
         "evaluation_mode": "snapshot",
         "status_reason_zh": "当前仅有热度榜快照，不承诺历史连续性。",
     },
-    "proxy_score": {
-        "data_mode": "blocked",
-        "status_reason_zh": "尾盘分钟代理当前维持 blocked，未接入可评价的分钟历史。",
-    },
     "etf_premium_discount": {
         "data_mode": "snapshot", "evaluation_mode": "snapshot",
-        "status_reason_zh": "ETF 当日指标快照，仅用于 ETF 快照评价。",
+        "status_reason_zh": "同日价格相对 IOPV 的溢折价快照，正为溢价、负为折价；不作为历史净值回填。",
     },
     "etf_tracking_error": {
         "data_mode": "snapshot", "evaluation_mode": "snapshot",
         "status_reason_zh": "ETF 当日指标快照，仅用于 ETF 快照评价。",
+        "empty_reason_zh": "跟踪误差尚未接入对应基准及同日收益序列，当前同步不提供该指标。",
     },
     "etf_fund_size": {
         "data_mode": "snapshot", "evaluation_mode": "snapshot",
-        "status_reason_zh": "ETF 当日指标快照，仅用于 ETF 快照评价。",
+        "status_reason_zh": "规模为同日 IOPV×基金份额估算（元），用于快照观察；不是已披露的资产净值。",
     },
 }
 
@@ -235,6 +234,10 @@ def _prepare_coverage_calendar(conn: Any) -> None:
     closed = [(day,) for day, is_open in rows if not is_open]
     if closed:
         conn.executemany("INSERT INTO coverage_cn_closed_days VALUES (?)", closed)
+    latest_session = max((day for day, is_open in rows
+                          if is_open and day <= date.today() and day.weekday() < 5), default=None)
+    conn.execute("CREATE OR REPLACE TEMP TABLE coverage_cn_latest_session AS SELECT CAST(? AS DATE) trade_date",
+                 [latest_session])
 
 
 def _open_cn_day_sql(column: str) -> str:
@@ -319,6 +322,32 @@ def _query_cross_section_coverage(
 ) -> dict[str, Any]:
     """Compare actual values with the matching active CN asset-day universe."""
     asset_type = "etf" if table == "raw_etf_indicators" else "stock"
+    if table == "raw_etf_indicators":
+        # ETF bars are intentionally outside the stock model's bar mirror.
+        # Snapshot coverage uses the active ETF universe and latest CN session.
+        if not _calendar_ready:
+            _prepare_coverage_calendar(conn)
+        day = conn.execute("SELECT trade_date FROM coverage_cn_latest_session").fetchone()[0]
+        if day is None:
+            # Standalone warehouses may have no SQL calendar. Only this fallback
+            # reads bar dates; ordinary live snapshots use the cached calendar.
+            day = conn.execute(f"""SELECT MAX(trade_date) FROM (
+                SELECT DISTINCT b.trade_date FROM raw_daily_bars b
+                JOIN raw_asset_universe u ON u.symbol=b.symbol
+                WHERE LOWER(u.region)='cn' AND b.trade_date<=? AND {_open_cn_day_sql('b.trade_date')}
+                UNION SELECT DISTINCT etf.trade_date FROM raw_etf_indicators etf
+                WHERE etf.trade_date<=? AND {_open_cn_day_sql('etf.trade_date')}
+            )""", [date.today(), date.today()]).fetchone()[0]
+        if day is None:
+            return _coverage_summary([], minimum_coverage=minimum_coverage)
+        expected, covered = conn.execute(f"""SELECT COUNT(*),
+            COUNT(*) FILTER (WHERE source.covered) FROM raw_asset_universe u
+            LEFT JOIN (SELECT symbol, BOOL_OR({field} IS NOT NULL) covered
+                FROM raw_etf_indicators WHERE trade_date=? GROUP BY symbol) source
+            ON source.symbol=u.symbol
+            WHERE LOWER(u.asset_type)='etf' AND LOWER(u.region)='cn' AND u.is_active=TRUE
+        """, [day]).fetchone()
+        return _coverage_summary([(day, int(expected), int(covered))], minimum_coverage=minimum_coverage)
     if table == "raw_financial_reports":
         source_join = f"""LEFT JOIN LATERAL (
             SELECT reports.symbol, reports.{field}
@@ -402,7 +431,7 @@ def _query_cross_section_coverage(
     return summary
 
 
-def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
+def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) -> dict[str, dict[str, Any]]:
     """Read lightweight field-level coverage evidence from DuckDB.
 
     Nullable fields are counted in one aggregate scan per table. Physical
@@ -410,6 +439,8 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
     """
     table_fields: dict[str, list[str]] = {}
     for field_name, spec in FIELD_CATALOG.items():
+        if field_keys is not None and field_name not in field_keys:
+            continue
         table_fields.setdefault(spec.source_table, []).append(field_name)
 
     stats: dict[str, dict[str, Any]] = {}
@@ -478,7 +509,8 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                     row = conn.execute(
                         f"SELECT {', '.join(select_parts)} FROM {table} AS observations{row_filter}"
                     ).fetchone()
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Coverage aggregate query failed for %s: %s", table, exc)
                     row = None
                 if row is None:
                     row_values: dict[str, Any] = {
@@ -516,6 +548,14 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                             "column_exists": physical_field_column(table, field) in columns,
                             "derived": False,
                         }
+                    if table == "raw_etf_indicators" and physical_field_column(table, field) in columns:
+                        column = physical_field_column(table, field)
+                        condition = row_filter + (" AND " if row_filter else " WHERE ") + f"{column} IS NOT NULL"
+                        first, last, dates, symbols = conn.execute(f"""SELECT MIN(trade_date), MAX(trade_date),
+                            COUNT(DISTINCT trade_date), COUNT(DISTINCT symbol)
+                            FROM raw_etf_indicators AS observations{condition}""").fetchone()
+                        stats[field].update(first_date=str(first) if first else None,
+                            latest_date=str(last) if last else None, distinct_dates=int(dates), distinct_symbols=int(symbols))
                     policy = _FIELD_DATA_POLICIES.get(field, {})
                     # 日覆盖是字段能力的基础证据，不应只在配置了连续性门槛
                     # （例如资金流 60 日）时才计算。只要数据表具备标的、交易日
@@ -563,7 +603,7 @@ def _field_capability(field_name: str, stats: Mapping[str, Any]) -> dict[str, An
         reason = str(policy.get("status_reason_zh", "该字段当前不可用于评价。"))
     elif table_rows <= 0 or (nonnull_rows <= 0 and not derived):
         status = "blocked"
-        reason = "源表为空或字段没有非空记录。"
+        reason = str(policy.get("empty_reason_zh", "源表为空或字段没有非空记录。"))
     elif data_mode == "event":
         status = "event"
         reason = str(policy.get("status_reason_zh", "仅事件日可用。"))
@@ -620,7 +660,7 @@ def _field_capability(field_name: str, stats: Mapping[str, Any]) -> dict[str, An
     }
 
 
-def build_formula_catalog(warehouse: Any | None = None) -> dict[str, Any]:
+def build_formula_catalog(warehouse: Any | None = None, *, field_keys: set[str] | None = None) -> dict[str, Any]:
     """Build the syntax catalog plus a live data-capability snapshot.
 
     ``enabled`` continues to mean “accepted by the compiler”, so users can
@@ -632,15 +672,20 @@ def build_formula_catalog(warehouse: Any | None = None) -> dict[str, Any]:
     field_stats: dict[str, dict[str, Any]] = {}
     if warehouse is not None:
         cache_key, cache_mtime = _warehouse_cache_key(warehouse)
+        if field_keys is not None:
+            cache_key += "#fields=" + ",".join(sorted(field_keys))
         now = monotonic()
         with _catalog_cache_lock:
             cached = _catalog_cache.get(cache_key)
             if cached and cached[0] + _CATALOG_CACHE_TTL_SECONDS > now and cached[1] == cache_mtime:
                 field_stats = deepcopy(cached[2])
         if not field_stats:
-            field_stats = _query_field_stats(warehouse)
+            field_stats = (_query_field_stats(warehouse, field_keys=field_keys)
+                           if field_keys is not None else _query_field_stats(warehouse))
             with _catalog_cache_lock:
-                _catalog_cache[cache_key] = (now, cache_mtime, deepcopy(field_stats))
+                # A large warehouse query may itself outlast the TTL. Start
+                # freshness after it finishes, so the next UI read can reuse it.
+                _catalog_cache[cache_key] = (monotonic(), cache_mtime, deepcopy(field_stats))
 
     fields = [
         {
@@ -657,6 +702,7 @@ def build_formula_catalog(warehouse: Any | None = None) -> dict[str, Any]:
             "enabled": True,
         }
         for key, spec in FIELD_CATALOG.items()
+        if field_keys is None or key in field_keys
     ]
     functions = []
     for key, spec in FUNCTION_CATALOG.items():

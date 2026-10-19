@@ -13,13 +13,11 @@ import {
   Tag,
   Tooltip,
   Typography,
-  Upload,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   BankOutlined,
-  ClockCircleOutlined,
   DatabaseOutlined,
   FileTextOutlined,
   FireOutlined,
@@ -43,7 +41,6 @@ import {
   type ExternalSyncDataset,
   type ExternalSyncTask,
   type FactorPipelineTask,
-  type TailProxyImportResult,
 } from "../api/client";
 
 type SyncSource = "watchlist" | "positions" | "all";
@@ -152,7 +149,6 @@ const DATASET_ORDER: ExternalSyncDataset[] = [
   "financial",
   "lhb",
   "hot_rank",
-  "tail_proxy",
   "capital_flow",
   "etf",
 ];
@@ -161,7 +157,7 @@ const TASK_DATASET_PREFIX = "external_sync_";
 const isRunningTask = (task: { status: string }) => ["queued", "running"].includes(task.status);
 
 function datasetFromTask(task: ExternalSyncTask): ExternalSyncDataset | null {
-  if (task.result?.dataset) return task.result.dataset;
+  if (task.result?.dataset) return DATASET_ORDER.includes(task.result.dataset) ? task.result.dataset : null;
   if (!task.task_type.startsWith(TASK_DATASET_PREFIX)) return null;
   const dataset = task.task_type.slice(TASK_DATASET_PREFIX.length) as ExternalSyncDataset;
   return DATASET_ORDER.includes(dataset) ? dataset : null;
@@ -219,7 +215,7 @@ function syncResultParams(result: ExternalSyncTask["result"]): Record<string, st
 }
 
 function taskHasWarnings(task: ExternalSyncTask): boolean {
-  return task.failed_count > 0 || Boolean(task.result?.errors?.length) || task.result?.warehouse_mirror?.status === "warning" || task.result?.northbound?.status === "warning";
+  return task.failed_count > 0 || Boolean(task.result?.errors?.length) || Boolean(task.result?.warnings?.length) || task.result?.warehouse_mirror?.status === "warning" || task.result?.northbound?.status === "warning";
 }
 
 function taskCanResume(task: ExternalSyncTask): boolean {
@@ -407,8 +403,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const [finishedTask, setFinishedTask] = useState<ExternalSyncTask | null>(null);
   const [taskActionLoading, setTaskActionLoading] = useState<"cancel" | "retry" | null>(null);
   const [repairingDataset, setRepairingDataset] = useState<"fundamental" | "financial" | "capital_flow" | null>(null);
-  const [tailImporting, setTailImporting] = useState(false);
-  const [tailImportResult, setTailImportResult] = useState<TailProxyImportResult | null>(null);
   const [pipelineStarting, setPipelineStarting] = useState(false);
   const [pipelineTask, setPipelineTask] = useState<FactorPipelineTask | null>(null);
   const [pipelinePollError, setPipelinePollError] = useState<string | null>(null);
@@ -516,7 +510,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       financial: { title: t("extSyncFinancial"), desc: t("extSyncFinancialDesc"), icon: <FileTextOutlined /> },
       lhb: { title: t("extSyncLhb"), desc: t("extSyncLhbDesc"), icon: <BankOutlined /> },
       hot_rank: { title: t("extSyncHotRank"), desc: t("extSyncHotRankDesc"), icon: <FireOutlined /> },
-      tail_proxy: { title: t("extSyncTailProxy"), desc: t("extSyncTailProxyDesc"), icon: <ClockCircleOutlined /> },
+      tail_proxy: { title: "已停用", desc: "", icon: null },
       capital_flow: { title: t("extSyncCapitalFlow"), desc: t("extSyncCapitalFlowDesc"), icon: <RiseOutlined /> },
       etf: { title: t("extSyncEtf"), desc: t("extSyncEtfDesc"), icon: <DatabaseOutlined /> },
   };
@@ -577,7 +571,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     } else if (task.status === "done" && !taskHasWarnings(task)) {
       message.success(task.result?.skip_reason ? task.message : t("extTaskCompleted"));
     } else if (task.status === "done") {
-      message.warning(t("extTaskCompletedWithErrors"));
+      message.warning(task.result?.dataset === "etf" && task.result?.warnings?.length ? task.message : t("extTaskCompletedWithErrors"));
     } else if (task.status === "cancelled") {
       message.info("同步已取消，已完成的数据保留，可从断点继续");
     } else {
@@ -653,10 +647,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     if (dashboardUnavailable) return;
     const effectiveSource = overrides.source ?? source;
     const effectiveMode = overrides.mode ?? syncMode;
-    if (dataset === "tail_proxy" && effectiveSource === "all") {
-      message.warning("尾盘分钟同步仅支持观察池或持仓范围，请缩小标的范围");
-      return;
-    }
     if (effectiveMode === "backfill" && (!capabilities || capabilitiesLoading || capabilitiesError || !capabilities[dataset]?.modes.includes("backfill"))) {
       message.warning("历史同步能力尚未确认或数据源不支持，请重试读取同步能力");
       return;
@@ -840,34 +830,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     }
   };
 
-  const importTailMinutes = async (file: File) => {
-    if (!overview) {
-      message.warning("同步看板尚未加载完成，请稍后再导入 CSV");
-      return;
-    }
-    setTailImporting(true);
-    setTailImportResult(null);
-    try {
-      const result = await api.importTailProxyMinutes({
-        csv_text: await file.text(), filename: file.name,
-      });
-      setTailImportResult(result);
-      if (result.warehouse_mirror?.status === "warning") message.warning(`原始分钟输入已保存：${result.written_sessions} 个交易日；因子仓库镜像失败，请重新导入重试`);
-      else if (result.quality_snapshot?.status === "warning") message.warning("原始输入与因子仓库已写入，质量诊断刷新失败，请重试刷新诊断");
-      else if (result.written_sessions > 0) message.success(`尾盘分钟导入完成：${result.written_sessions} 个有效交易日`);
-      else message.warning("尾盘分钟未写入有效交易日，请检查 CSV 的交易时间和会话完整性");
-      if (result.rejected_sessions > 0) {
-        message.warning(`${result.rejected_sessions} 个交易日未满足完整尾盘会话校验`);
-      }
-      if (result.invalid_rows) message.warning(`CSV 中 ${result.invalid_rows} 行格式、数值或交易时间无效，未写入`);
-      await refreshOverview(true);
-    } catch (error: any) {
-      message.error(template("extSyncFailed", { message: error?.message || String(error) }));
-    } finally {
-      setTailImporting(false);
-    }
-  };
-
   const activeDataset = activeTask ? datasetFromTask(activeTask) : null;
   const taskRunning = activeTasks.some((task) => ["queued", "running"].includes(task.status));
   const anyRunning = taskRunning || Boolean(startingDataset);
@@ -881,7 +843,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const northboundReady = Boolean(northboundCapability?.available === true && !capabilitiesLoading && !capabilitiesError);
   const pipelineOutcome = pipelineTask ? scoringOutcome(pipelineTask) : null;
   const pipelineUniverseDescription = pipelineTask ? scoringTaskUniverseDescription(pipelineTask) : null;
-  const tailImportWarning = Boolean(tailImportResult && (tailImportResult.written_sessions === 0 || tailImportResult.rejected_sessions > 0 || tailImportResult.invalid_rows || tailImportResult.warnings?.length || tailImportResult.warehouse_mirror?.status === "warning" || tailImportResult.quality_snapshot?.status === "warning"));
   const rows = useMemo(() => {
     const byDataset = new Map((overview?.datasets || []).map((item) => [item.dataset, item]));
     return DATASET_ORDER.map(
@@ -901,7 +862,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     [coverage],
   );
   const coverageActions = useMemo(
-    () => (coverage?.datasets || []).filter((item) => ["blocked", "limited", "unknown"].includes(item.readiness)),
+    () => (coverage?.datasets || []).filter((item) => DATASET_ORDER.includes(item.dataset) && ["blocked", "limited", "unknown"].includes(item.readiness)),
     [coverage],
   );
 
@@ -911,7 +872,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       dataIndex: "dataset",
       width: 330,
       render: (dataset: ExternalSyncDataset) => {
-        const config = configs[dataset];
+        const config = configs[dataset as keyof typeof configs];
         return (
           <Space align="start" size={10}>
             <span style={{ color: "#1677ff", fontSize: 17, lineHeight: "24px" }}>{config.icon}</span>
@@ -950,7 +911,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       ),
     },
     {
-      title: <Tooltip title="A 股日覆盖率和连续天数按交易日计算，剔除周末及交易所节假日休市，不计为缺失；估值按真实快照日期统计，评分可在 7 天内沿用已有快照。财报按实际公告日期生效，假期公告仍保留。仓库字段覆盖不表示已生成模型评分。"><span>仓库字段覆盖（非同步结果）<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
+      title: <Tooltip title="A 股日覆盖率和连续天数按交易日计算，剔除周末及交易所节假日休市，不计为缺失；估值按真实快照日期统计，评分可在 7 天内沿用已有快照。财报按实际公告日期生效，假期公告仍保留。ETF 日覆盖按最新交易日的全市场境内 ETF 统计，本次仅同步观察池时不会代表全市场已覆盖。仓库字段覆盖不表示已生成模型评分。"><span>仓库字段覆盖（非同步结果）<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
       width: 230,
       render: (_, row) => {
         const diagnostic = coverageByDataset.get(row.dataset);
@@ -968,7 +929,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         if (!field) {
           return (
             <div>
-              <Tag color={color}>{readinessLabel(diagnostic.readiness)}</Tag>
+              <Tag color={color}>{diagnostic.reason === "partial_fields_available" ? "部分指标可用" : readinessLabel(diagnostic.readiness)}</Tag>
               <Typography.Text type={diagnostic.readiness === "blocked" ? "danger" : "secondary"} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
                 {datasetCoverageReason(diagnostic)}
               </Typography.Text>
@@ -979,10 +940,10 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         const dailyCoverage = field.latest_daily_coverage == null ? "-" : `${(field.latest_daily_coverage * 100).toFixed(1)}%`;
         return (
           <div>
-            <Tag color={color}>{readinessLabel(diagnostic.readiness)}</Tag>
+            <Tag color={color}>{diagnostic.reason === "partial_fields_available" ? "部分指标可用" : readinessLabel(diagnostic.readiness)}</Tag>
             <Typography.Text style={{ fontSize: 12 }}>{field.first_date || "-"} ~ {field.latest_date || "-"}</Typography.Text>
             <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
-              非空 {nonnullRate} · 日覆盖 {dailyCoverage} · 连续 {field.continuity_days} 日
+              非空 {nonnullRate} · {row.dataset === "etf" ? "全市场 ETF 日覆盖" : "日覆盖"} {dailyCoverage} · {row.dataset === "etf" ? "快照" : `连续 ${field.continuity_days} 日`}
             </div>
             {diagnostic.reason && (
               <Typography.Text type={diagnostic.readiness === "blocked" ? "danger" : "secondary"} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
@@ -1010,7 +971,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                 <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
                   {formatDate(task.finished_at || task.updated_at, true)}
                 </div>
-                {(task.status === "failed" || taskAllAttemptsFailed(task) || task.result?.skip_reason) && task.message && (
+                {(task.status === "failed" || taskAllAttemptsFailed(task) || task.result?.skip_reason || task.result?.field_coverage) && task.message && (
                   <Typography.Text type={task.status === "failed" ? "danger" : "secondary"} ellipsis={{ tooltip: task.message }} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
                     {task.message}
                   </Typography.Text>
@@ -1031,10 +992,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         const historyUnsupported = syncMode === "backfill" && (!historyCapabilitiesReady || !capabilities?.[row.dataset]?.modes.includes("backfill"));
         const historyLimit = capabilities?.[row.dataset]?.history_limit_days;
         const spanExceedsLimit = syncMode === "backfill" && historySpan !== null && historyLimit != null && historyLimit > 0 && historySpan > historyLimit;
-        const scopeUnsupported = row.dataset === "tail_proxy" && source === "all";
         let disabledReason: string | null = null;
-        if (scopeUnsupported) disabledReason = "尾盘分钟同步仅支持观察池或持仓范围，请缩小标的范围";
-        else if (historyUnsupported && !historyCapabilitiesReady) disabledReason = "历史同步能力尚未确认，请等待加载或重试读取同步能力";
+        if (historyUnsupported && !historyCapabilitiesReady) disabledReason = "历史同步能力尚未确认，请等待加载或重试读取同步能力";
         else if (historyUnsupported) disabledReason = row.dataset === "etf"
           ? "ETF 历史接口目前只稳定提供净值，溢折价、规模、份额等指标没有统一可靠的历史序列；当前同步按最近快照执行"
           : "当前数据源仅支持最近快照，请将同步模式切换为“最近快照”";
@@ -1339,37 +1298,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         />
       ) : null}
 
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 14 }}
-        message="尾盘代理补充导入（自动同步优先）"
-        description={<Space wrap>
-          <span>二期将由系统按候选池自动采集最近真实交易日；当前 CSV 仅作为临时验收或数据源不可用时的补充入口。文件必须包含 symbol,timestamp,open,high,low,close,volume,amount；每个交易日需至少 180 根分钟线、20 根尾盘线且最后时间不早于 14:59。</span>
-          <Upload
-            accept=".csv,text/csv"
-            showUploadList={false}
-            disabled={tailImporting || controlsDisabled || !overview}
-            beforeUpload={(file) => { void importTailMinutes(file); return false; }}
-          >
-            <Button size="small" loading={tailImporting} disabled={tailImporting || controlsDisabled || !overview}>导入 CSV</Button>
-          </Upload>
-        </Space>}
-      />
-
-      {tailImportResult && <Alert
-        type={tailImportWarning ? "warning" : "success"}
-        showIcon
-        style={{ marginBottom: 14 }}
-        message={tailImportResult.warehouse_mirror?.status === "warning" ? "原始分钟输入已保存，因子仓库镜像失败" : tailImportResult.quality_snapshot?.status === "warning" ? "原始输入与因子仓库已写入，质量诊断刷新失败" : `尾盘分钟输入：${tailImportResult.written_sessions} 个有效交易日，拒绝 ${tailImportResult.rejected_sessions} 个交易日`}
-        description={<Space direction="vertical" size={4}>
-          {Boolean(tailImportResult.invalid_rows) && <span>无效行：{tailImportResult.invalid_rows}；未写入</span>}
-          {tailImportResult.warehouse_mirror && <span>因子仓库镜像：{tailImportResult.warehouse_mirror.status === "done" ? `已写入 ${formatCount(tailImportResult.warehouse_mirror.records)} 条记录` : tailImportResult.warehouse_mirror.status === "warning" ? `失败：${tailImportResult.warehouse_mirror.error || "请重新导入重试"}` : "未执行"}</span>}
-          {tailImportResult.quality_snapshot && <span>质量快照：{tailImportResult.quality_snapshot.status === "done" ? "已刷新" : tailImportResult.quality_snapshot.status === "warning" ? `失败：${tailImportResult.quality_snapshot.error || "请刷新诊断重试"}` : "未刷新"}</span>}
-          {tailImportResult.warnings?.map((warning, index) => <span key={`${index}-${warning}`}>{warning}</span>)}
-        </Space>}
-      />}
-
       {previewPlan ? (
         <Alert
           type="success"
@@ -1400,6 +1328,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           message={`${configs[resultTask.result.dataset].title}: ${template("extSyncResult", syncResultParams(resultTask.result))}`}
           description={
             <Space direction="vertical" style={{ width: "100%" }}>
+              {resultTask.result.dataset === "etf" && resultTask.message && <Typography.Text>{resultTask.message}</Typography.Text>}
+              {resultTask.result.warnings?.map((warning) => <Typography.Text type="warning" key={warning}>{warning}</Typography.Text>)}
               {resultTask.result.warehouse_mirror && <Typography.Text type={resultTask.result.warehouse_mirror.status === "warning" ? "warning" : "secondary"}>
                 因子仓库镜像：{resultTask.result.warehouse_mirror.status === "warning" ? `失败：${resultTask.result.warehouse_mirror.error || "请从断点重试"}` : resultTask.result.warehouse_mirror.status === "skipped" ? "未执行" : `已写入 ${formatCount(resultTask.result.warehouse_mirror.records)} 条记录`}
               </Typography.Text>}

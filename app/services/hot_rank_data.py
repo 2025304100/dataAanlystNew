@@ -6,7 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import date
-import akshare as ak
+import requests
 import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +31,7 @@ class HotRankSyncResult:
     received: int
     written: int
     unmatched: int
+    skip_reason: str | None = None
 
 
 def _symbol_code(value: str) -> str:
@@ -53,12 +54,19 @@ def _raw_payloads(frame: pd.DataFrame) -> dict[str, str]:
 def _fetch_hot_rank(
     db: Session, as_of: date
 ) -> tuple[pd.DataFrame, dict[str, str]]:
-    with _proxy_bypass(), quiet_akshare_output():
-        frame = call_akshare_with_retry(
-            ak.stock_hot_rank_em,
-            api_key=_API_KEY,
-            db=db,
-        )
+    def request():
+        # The rank payload already contains code/rank; do not fetch 100 quotes
+        # merely to obtain price columns that this dataset never stores.
+        with _proxy_bypass():
+            response = requests.post("https://emappdata.eastmoney.com/stockrank/getAllCurrentList",
+                json={"appId": "appId01", "globalId": "786e4c21-70dc-435a-93bb-38",
+                      "marketType": "", "pageNo": 1, "pageSize": 100}, timeout=(5, 15))
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise ValueError("人气榜接口返回结构异常")
+        return pd.DataFrame(payload["data"])
+    frame = call_akshare_with_retry(request, api_key=_API_KEY, db=db, max_attempts=2)
     if frame is None or frame.empty:
         return normalize_hot_rank_frame(pd.DataFrame(), as_of=as_of), {}
     return normalize_hot_rank_frame(
@@ -71,7 +79,17 @@ def sync_hot_rank_snapshot(
 ) -> HotRankSyncResult:
     """Capture the provider's current top-100 list under one snapshot date."""
     trade_date = as_of or date.today()
+    from app.services.market_session import is_cn_trading_day
+    if trade_date != date.today():
+        raise ValueError("人气榜仅提供当前快照，不能用于历史或未来日期")
+    if not is_cn_trading_day(db, trade_date):
+        return HotRankSyncResult(trade_date, 0, 0, 0, "market_closed")
     normalized, raw_payloads = _fetch_hot_rank(db, trade_date)
+    if len(normalized) > 100 or normalized["symbol"].duplicated().any() or normalized["hot_rank"].duplicated().any():
+        raise ValueError("人气榜返回超量或重复记录")
+    ranks = normalized["hot_rank"]
+    if ((ranks < 1) | (ranks > 100) | (ranks % 1 != 0)).any():
+        raise ValueError("人气榜返回无效名次")
     written = 0
     unmatched = 0
     for row in normalized.to_dict("records"):

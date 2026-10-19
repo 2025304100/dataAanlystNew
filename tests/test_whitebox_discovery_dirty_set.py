@@ -341,7 +341,7 @@ def test_snapshot_with_various_data_changes(db_session):
     assert DirtyReason.CAPITAL_FLOW_UPDATED in d2.reasons
     assert DirtyReason.HOT_RANK_UPDATED in d2.reasons
     assert DirtyReason.LHB_UPDATED in d2.reasons
-    assert DirtyReason.TAIL_ACCUMULATION_UPDATED in d2.reasons
+    assert DirtyReason.TAIL_ACCUMULATION_UPDATED not in d2.reasons
 
 
 def test_snapshot_with_universe_resynced(db_session):

@@ -30,7 +30,7 @@ class EtfIndicator(Base):
     # 溢价折价率（%，正为溢价，负为折价）
     premium_discount: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 基金规模与份额
-    fund_size: Mapped[float | None] = mapped_column(Float, nullable=True)  # 基金规模（元）
+    fund_size: Mapped[float | None] = mapped_column(Float, nullable=True)  # 元；实时同步为同日 IOPV×份额估算，口径见 raw_json
     total_shares: Mapped[float | None] = mapped_column(Float, nullable=True)  # 总份额（份）
     shares_change: Mapped[float | None] = mapped_column(Float, nullable=True)  # 份额变化（份，正为净申购）
     # 跟踪误差（%，应用层计算：ETF 收益率 vs 标的指数收益率 的滚动标准差）

@@ -28,6 +28,7 @@ from app.schemas.factor_library import (
     FactorVersionCreate,
 )
 from app.services.factors.baseline_freeze import compute_factor_content_hash
+from app.services.feature_policy import DISABLED_FACTOR_CODES
 
 
 # ── 工具函数 ──────────────────────────────────────────────
@@ -68,7 +69,7 @@ def list_factors(
     page_size: int = 20,
 ) -> tuple[list[Factor], int]:
     """分页查询因子列表，返回 (items, total)。"""
-    conditions = []
+    conditions = [Factor.code.notin_(DISABLED_FACTOR_CODES)]
     if lifecycle_status:
         conditions.append(Factor.lifecycle_status == lifecycle_status)
     if origin:

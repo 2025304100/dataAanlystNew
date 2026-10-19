@@ -922,7 +922,6 @@ class TestSystemFactorFormulas:
         "main_net_inflow",      # 资金流基础
         "lhb_institution_net",  # 龙虎榜基础
         "hot_rank_pct",         # 热度基础
-        "proxy_score",          # 尾盘基础
     ])
     def test_system_factor_formula_compilable(self, formula):
         """系统因子基础公式可编译。"""

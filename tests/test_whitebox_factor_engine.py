@@ -239,12 +239,12 @@ def test_calculate_stock_factors_formulas_scaling_and_idempotency(tmp_path):
         valuation_max_age_days=30,
     )
 
-    assert first.rows_written == 32
-    assert first.eligible_rows == 32
+    assert first.rows_written == 28
+    assert first.eligible_rows == 28
     assert first.symbol_count == 4
     assert first.trade_date_count == 1
     assert set(first.coverage_by_factor.values()) == {1.0}
-    assert second.rows_written == 32
+    assert second.rows_written == 28
 
     with warehouse.connection(read_only=True) as conn:
         count = conn.execute(
@@ -258,7 +258,7 @@ def test_calculate_stock_factors_formulas_scaling_and_idempotency(tmp_path):
             "ORDER BY factor_code, symbol"
         ).fetchdf()
 
-    assert count == 32
+    assert count == 28
     ep = rows[
         (rows["symbol"] == "000001") & (rows["factor_code"] == "ep_ttm")
     ].iloc[0]
@@ -278,16 +278,12 @@ def test_calculate_stock_factors_formulas_scaling_and_idempotency(tmp_path):
         (rows["symbol"] == "000001")
         & (rows["factor_code"] == "hot_rank_attention")
     ].iloc[0]
-    tail = rows[
-        (rows["symbol"] == "000001")
-        & (rows["factor_code"] == "tail_accumulation_proxy")
-    ].iloc[0]
+    assert "tail_accumulation_proxy" not in set(rows["factor_code"])
 
     assert ep["raw_value"] == pytest.approx(0.1)
     assert flow["raw_value"] == pytest.approx(0.01)
     assert lhb["raw_value"] == pytest.approx(0.1)
     assert hot["raw_value"] == pytest.approx(0.99)
-    assert tail["raw_value"] == pytest.approx(0.1)
     assert pb_outlier["raw_value"] == -20
     assert pb_outlier["winsorized_value"] > -20
     assert np.isfinite(rows["normalized_value"]).all()

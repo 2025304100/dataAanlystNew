@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -37,6 +38,8 @@ class LhbInstitutionSyncResult:
     received: int
     written: int
     unmatched: int
+    written_dates: tuple[date, ...] = ()
+    skip_reason: str | None = None
 
 
 def _symbol_code(value: str) -> str:
@@ -67,7 +70,8 @@ def _raw_payloads(
 def _nullable_float(value: Any) -> float | None:
     if value is None or pd.isna(value):
         return None
-    return float(value)
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 def _nullable_int(value: Any) -> int | None:
@@ -85,6 +89,7 @@ def _fetch_lhb_institution(
             end_date=end_date.strftime("%Y%m%d"),
             api_key=_API_KEY,
             db=db,
+            max_attempts=2,
         )
     if frame is None or frame.empty:
         return normalize_lhb_institution_frame(pd.DataFrame()), {}
@@ -97,11 +102,17 @@ def sync_lhb_institution_trades(
     """Synchronize one bounded market-wide date range."""
     if start_date > end_date:
         raise ValueError("start_date must not be after end_date")
+    if end_date > date.today():
+        raise ValueError("龙虎榜结束日期不能晚于今天")
     if (end_date - start_date).days + 1 > _MAX_RANGE_DAYS:
         raise ValueError(
             f"date range must not exceed {_MAX_RANGE_DAYS} calendar days"
         )
 
+    from app.services.market_session import range_is_cn_closed
+    from app.models.market_data import MarketCalendar
+    if range_is_cn_closed(db, start_date, end_date):
+        return LhbInstitutionSyncResult(start_date, end_date, 0, 0, 0, skip_reason="market_closed")
     normalized, raw_payloads = _fetch_lhb_institution(db, start_date, end_date)
     # Some provider responses are empty or normalized by a compatibility
     # adapter to ``None``. Treat that as an empty result, not a subscript/type
@@ -112,12 +123,21 @@ def sync_lhb_institution_trades(
         raw_payloads = {}
     written = 0
     unmatched = 0
+    written_dates = set()
+    closed_dates = set(db.execute(select(MarketCalendar.trade_date).where(
+        MarketCalendar.trade_date >= start_date, MarketCalendar.trade_date <= end_date,
+        MarketCalendar.is_trading_day == 0)).scalars())
     for row in normalized.to_dict("records"):
         code = _symbol_code(str(row["symbol"]))
         if re.fullmatch(r"\d{6}", code) is None:
             unmatched += 1
             continue
         trade_date = row["trade_date"]
+        if not start_date <= trade_date <= end_date:
+            raise ValueError("龙虎榜接口返回所选区间外的记录")
+        if trade_date.weekday() >= 5 or trade_date in closed_dates or _nullable_float(row.get("institution_net")) is None:
+            unmatched += 1
+            continue
         source = str(row["source"])
         existing = db.execute(
             select(LhbInstitutionTrade).where(
@@ -133,30 +153,17 @@ def sync_lhb_institution_trades(
                 source=source,
             )
             db.add(existing)
-        existing.buyer_institution_count = _nullable_int(
-            row["buyer_institution_count"]
-        )
-        existing.seller_institution_count = _nullable_int(
-            row["seller_institution_count"]
-        )
-        existing.institution_buy = _nullable_float(
-            row["institution_buy"]
-        )
-        existing.institution_sell = _nullable_float(
-            row["institution_sell"]
-        )
-        existing.institution_net = _nullable_float(
-            row["institution_net"]
-        )
-        existing.market_amount = _nullable_float(row["market_amount"])
-        existing.institution_net_pct = _nullable_float(
-            row["institution_net_pct"]
-        )
-        existing.turnover_rate = _nullable_float(row["turnover_rate"])
+        for field in ("buyer_institution_count", "seller_institution_count", "institution_buy", "institution_sell",
+                      "institution_net", "market_amount", "institution_net_pct", "turnover_rate"):
+            value = _nullable_int(row.get(field)) if field.endswith("_count") else _nullable_float(row.get(field))
+            if value is not None:
+                setattr(existing, field, value)
         reason = row.get("reason")
-        existing.reason = str(reason) if reason is not None and not pd.isna(reason) else None
+        if reason is not None and not pd.isna(reason):
+            existing.reason = str(reason)
         existing.raw_json = raw_payloads.get((code, trade_date))
         written += 1
+        written_dates.add(trade_date)
     db.flush()
     logger.info(
         "LHB institution sync %s..%s received=%d written=%d unmatched=%d",
@@ -172,6 +179,7 @@ def sync_lhb_institution_trades(
         received=len(normalized),
         written=written,
         unmatched=unmatched,
+        written_dates=tuple(sorted(written_dates)),
     )
 
 

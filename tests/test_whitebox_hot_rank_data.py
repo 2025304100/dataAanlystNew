@@ -26,22 +26,23 @@ def _provider_frame() -> pd.DataFrame:
     )
 
 
-def test_hot_rank_sync_captures_current_snapshot_idempotently(db_session):
+def test_hot_rank_sync_captures_current_snapshot_idempotently(db_session, monkeypatch):
+    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
     with patch(
         "app.services.hot_rank_data.call_akshare_with_retry",
         return_value=_provider_frame(),
     ) as fetch:
         first = sync_hot_rank_snapshot(
-            db_session, as_of=date(2026, 7, 15)
+            db_session, as_of=date.today()
         )
         db_session.commit()
         second = sync_hot_rank_snapshot(
-            db_session, as_of=date(2026, 7, 15)
+            db_session, as_of=date.today()
         )
         db_session.commit()
 
     assert first == HotRankSyncResult(
-        trade_date=date(2026, 7, 15),
+        trade_date=date.today(),
         received=2,
         written=2,
         unmatched=0,
@@ -66,7 +67,7 @@ def test_hot_rank_sync_route_returns_snapshot_counts(db_session):
     from app.api.routes.external_data import sync_hot_rank
 
     summary = HotRankSyncResult(
-        trade_date=date(2026, 7, 15),
+        trade_date=date.today(),
         received=100,
         written=98,
         unmatched=2,

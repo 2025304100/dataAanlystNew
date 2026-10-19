@@ -37,11 +37,11 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 15
+    assert scheduled_tasks.seed_default_schedules(db_session) == 14
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 15
+    assert len(rows) == 14
     enabled = [item for item in rows if item.enabled]
     # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步 + 因子输入日更 + 告警评估
     # （自动交易默认关闭，需用户主动开启）
@@ -61,7 +61,7 @@ def test_seed_default_schedules_is_idempotent(db_session):
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 15
+    assert scheduled_tasks.seed_default_schedules(db_session) == 14
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
@@ -96,7 +96,7 @@ def _seed_legacy_defaults_only(db_session) -> None:
 
 
 def test_capital_flow_daily_schedule_is_seeded_once(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 15
+    assert scheduled_tasks.seed_default_schedules(db_session) == 14
     db_session.commit()
 
     item = db_session.query(ScheduledTask).filter_by(name="每日因子资金流增量同步").one()
@@ -133,7 +133,7 @@ def test_seed_key_bump_adds_capital_flow_to_a_legacy_seeded_db(db_session):
     assert db_session.query(ScheduledTask).filter_by(
         name="每日告警规则评估"
     ).count() == 1
-    assert db_session.query(ScheduledTask).count() == 15
+    assert db_session.query(ScheduledTask).count() == 14
 
 
 def test_capital_flow_schedule_validates_and_dispatches(monkeypatch):
@@ -479,7 +479,6 @@ def test_scheduled_task_api_crud_and_manual_run(db_session, monkeypatch):
             "macro_update",
             "factor_pipeline",
             "hot_rank_snapshot",
-            "tail_proxy_snapshot",
             "lhb_institution_sync",
             "financial_report_sync",
             "discovery_mining",

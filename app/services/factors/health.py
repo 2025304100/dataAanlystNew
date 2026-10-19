@@ -48,7 +48,6 @@ _RAW_TABLE_DATES = {
     "raw_financial_reports": "announcement_date",
     "raw_fund_flows": "trade_date",
     "raw_sentiment": "trade_date",
-    "raw_tail_proxy": "trade_date",
     "raw_macro": "period",
     "factor_values": "trade_date",
 }

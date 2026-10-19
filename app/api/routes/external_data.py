@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.symbol import Symbol
+from app.services.feature_policy import TAIL_PROXY_DISABLED_REASON
 from app.schemas.async_task import AsyncTaskRead
 from app.services.external_data_sync_task import (
     ExternalDataset,
@@ -67,6 +68,13 @@ class SyncResult(BaseModel):
     failed: int = 0  # 失败数
     records: int = 0  # 写入或更新的底层记录数
     errors: list[str] = []  # 前 N 条错误信息
+
+
+class EtfSyncResult(SyncResult):
+    warnings: list[str] = Field(default_factory=list)
+    field_coverage: dict = Field(default_factory=dict)
+    unavailable_fields: dict = Field(default_factory=dict)
+    message: str = ""
 
 
 class ExternalSyncTaskCreate(BaseModel):
@@ -164,20 +172,13 @@ def refresh_external_data_quality_snapshots(db: Session = Depends(get_db)):
     return capture_field_quality_snapshots(db, trigger="manual")
 
 
-@router.post("/external-data/tail-proxy/import")
+@router.post("/external-data/tail-proxy/import", include_in_schema=False)
 def import_tail_proxy_minutes(
     payload: TailMinuteImportRequest,
     db: Session = Depends(get_db),
 ):
-    """Import validated minute bars; it remains candidate/manual data, not market history."""
-    from app.services.tail_proxy_import import import_tail_minute_csv
-
-    try:
-        return import_tail_minute_csv(
-            db, csv_text=payload.csv_text, filename=payload.filename or "upload.csv"
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    """Reject calls from older clients after the feature was retired."""
+    raise HTTPException(status_code=410, detail=TAIL_PROXY_DISABLED_REASON)
 
 
 @router.get("/external-data/gaps")
@@ -330,31 +331,18 @@ def sync_financial_reports(
     db: Session = Depends(get_db),
 ):
     """同步 A 股财务分析历史并保留同报告期的不同公告版本。"""
-    from app.services.financial_data import sync_symbol_financial_reports
+    from app.services.financial_data import sync_financial_announcements
 
     symbols = _resolve_symbols(db, source, asset_type="stock")
     result = SyncResult(total=len(symbols))
-    for i, sym in enumerate(symbols):
-        try:
-            count = sync_symbol_financial_reports(db, sym)
-            if count == 0:
-                result.skipped += 1
-            else:
-                result.success += 1
-                result.records += count
-            db.commit()
-        except Exception as exc:
-            db.rollback()
-            result.failed += 1
-            if len(result.errors) < 5:
-                result.errors.append(f"{sym.symbol}: {exc}")
-            logger.warning(
-                "financial report sync failed for %s: %s",
-                sym.symbol,
-                exc,
-            )
-        if i < len(symbols) - 1:
-            time.sleep(_SYNC_THROTTLE_SECONDS)
+    try:
+        summary = sync_financial_announcements(db, symbols, date.today(), date.today())
+        db.commit()
+        result = SyncResult(**summary)
+    except Exception as exc:
+        db.rollback()
+        result.failed = len(symbols)
+        result.errors.append(f"财报当日同步已停止，未切换全历史下载：{exc}")
     return result
 
 
@@ -426,6 +414,7 @@ def sync_hot_rank(db: Session = Depends(get_db)):
 @router.post(
     "/external-data/tail-proxy/sync",
     response_model=SyncResult,
+    include_in_schema=False,
 )
 def sync_tail_proxy(
     source: Literal["candidates", "watchlist", "positions"] = Query(
@@ -436,31 +425,8 @@ def sync_tail_proxy(
     watchlist_id: int | None = None,
     portfolio_id: int | None = None,
 ):
-    """同步候选范围的分钟量价代理，不代表 Level-2 大单主买。"""
-    from app.services.tail_proxy_data import sync_tail_proxy_snapshots
-
-    try:
-        scope = {key: value for key, value in {"watchlist_id": watchlist_id, "portfolio_id": portfolio_id}.items() if value is not None}
-        summary = sync_tail_proxy_snapshots(db, source=source, limit=limit, **scope)
-        db.commit()
-    except ValueError as exc:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        db.rollback()
-        logger.warning("Tail proxy sync failed: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Tail proxy sync failed: {exc}",
-        ) from exc
-    return SyncResult(
-        total=summary.total,
-        success=summary.written,
-        skipped=summary.skipped,
-        failed=summary.failed,
-        records=summary.written,
-        errors=list(summary.errors),
-    )
+    """Reject calls from older clients after the feature was retired."""
+    raise HTTPException(status_code=410, detail=TAIL_PROXY_DISABLED_REASON)
 
 
 @router.post("/external-data/capital-flow/sync", response_model=SyncResult)
@@ -473,11 +439,13 @@ def sync_capital_flow(
 
     仅同步 cn-stock；ETF 自动跳过。
     """
-    from app.services.capital_flow_data import sync_symbol_capital_flow, sync_northbound_flow
+    from app.services.capital_flow_data import sync_market_capital_flow_snapshot, sync_northbound_flow
+    from app.services.market_session import is_cn_trading_day
     from datetime import date
 
-    # 北向资金（市场层面，无论 source 都同步）
     result = SyncResult()
+    if not is_cn_trading_day(db, date.today()):
+        return result
     if include_northbound:
         result.total += 1
         try:
@@ -496,55 +464,31 @@ def sync_capital_flow(
 
     symbols = _resolve_symbols(db, source, asset_type="stock")
     result.total += len(symbols)
-    today = date.today()
-    for i, sym in enumerate(symbols):
-        try:
-            flow = sync_symbol_capital_flow(db, sym, today)
-            if flow is None:
-                result.skipped += 1
-            else:
-                result.success += 1
-            db.commit()
-        except Exception as exc:
-            db.rollback()
-            result.failed += 1
-            if len(result.errors) < 5:
-                result.errors.append(f"{sym.symbol}: {exc}")
-            logger.warning("capital flow sync failed for %s: %s", sym.symbol, exc)
-        if i < len(symbols) - 1:
-            time.sleep(_SYNC_THROTTLE_SECONDS)
+    try:
+        synced_ids = sync_market_capital_flow_snapshot(db, symbols, date.today())
+        result.success += len(synced_ids)
+        result.skipped += len(symbols) - len(synced_ids)
+        result.records += len(synced_ids)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        result.failed += len(symbols)
+        result.errors.append(f"资金流当日同步已停止，未切换历史下载：{exc}")
     return result
 
 
-@router.post("/external-data/etf-indicators/sync", response_model=SyncResult)
+@router.post("/external-data/etf-indicators/sync", response_model=EtfSyncResult)
 def sync_etf_indicators(
     source: Literal["watchlist", "positions", "all"] = Query("watchlist"),
     db: Session = Depends(get_db),
 ):
-    """同步 ETF 特有指标（溢价折价/规模/份额）。
-
-    仅同步 cn-etf；股票自动跳过。
-    """
-    from app.services.etf_basic_data import sync_etf_indicator
-    from datetime import date
-
+    """批量同步境内 ETF 当日 IOPV 溢折价、规模估算及份额。"""
+    from app.services.etf_basic_data import sync_etf_snapshots
     symbols = _resolve_symbols(db, source, asset_type="etf")
-    result = SyncResult(total=len(symbols))
-    today = date.today()
-    for i, sym in enumerate(symbols):
-        try:
-            ind = sync_etf_indicator(db, sym, today)
-            if ind is None:
-                result.skipped += 1
-            else:
-                result.success += 1
-            db.commit()
-        except Exception as exc:
-            db.rollback()
-            result.failed += 1
-            if len(result.errors) < 5:
-                result.errors.append(f"{sym.symbol}: {exc}")
-            logger.warning("etf indicator sync failed for %s: %s", sym.symbol, exc)
-        if i < len(symbols) - 1:
-            time.sleep(_SYNC_THROTTLE_SECONDS)
-    return result
+    try:
+        summary = sync_etf_snapshots(db, symbols, date.today())
+        db.commit()
+        return EtfSyncResult(**{key: summary[key] for key in EtfSyncResult.model_fields if key in summary})
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=f"ETF 快照同步失败，未切换历史下载：{exc}") from exc

@@ -210,7 +210,7 @@ def test_macro_policy_regime_condition():
 
 def test_factor_to_source_map_covers_all_8_factors():
     """FACTOR_TO_SOURCE_MAP 恰好 8 条且覆盖 FACTOR_DEFINITIONS 全部因子。"""
-    assert len(FACTOR_TO_SOURCE_MAP) == 8
+    assert len(FACTOR_TO_SOURCE_MAP) == 7
     for definition in FACTOR_DEFINITIONS:
         assert definition.code in FACTOR_TO_SOURCE_MAP
 
@@ -228,7 +228,7 @@ def test_tail_proxy_always_blocked():
     """尾盘代理 MAINTAIN_BLOCKED 始终阻断，reason 含 maintain_blocked_strategy。"""
     result = is_factor_blocked_by_roadmap("tail_accumulation_proxy")
     assert result["is_blocked"] is True
-    assert _has_reason(result["blocking_reasons"], "maintain_blocked_strategy")
+    assert result["recommended_action"] == "disabled"
 
 
 def test_turnover_z20_not_blocked():
@@ -371,10 +371,10 @@ def test_roadmap_report_structure():
     wh = _make_warehouse_with_conn((0, None, 0, 0))
     report = get_data_source_roadmap(MagicMock(), warehouse=wh)
     assert isinstance(report, DataSourceRoadmapReport)
-    assert len(report.policies) == 7
-    assert len(report.factor_to_source_map) == 8
-    assert report.summary["total_sources"] == 7
-    assert report.summary["total_factors"] == 8
+    assert len(report.policies) == 6
+    assert len(report.factor_to_source_map) == 7
+    assert report.summary["total_sources"] == 6
+    assert report.summary["total_factors"] == 7
     assert report.summary["warehouse_available"] is True
     assert report.valuation_completion_start_date == date(2026, 8, 1)
 
@@ -383,7 +383,7 @@ def test_roadmap_report_warehouse_unavailable():
     """warehouse 不可用时全部 source_states 为空、summary.warehouse_available=False。"""
     wh = _make_warehouse_unavailable()
     report = get_data_source_roadmap(MagicMock(), warehouse=wh)
-    assert len(report.policies) == 7
+    assert len(report.policies) == 6
     assert all(state.is_empty for state in report.source_states.values())
     assert report.summary["warehouse_available"] is False
 

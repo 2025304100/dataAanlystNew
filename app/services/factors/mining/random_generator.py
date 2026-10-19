@@ -93,7 +93,6 @@ FIELD_TYPES: dict[str, str] = {
     "roe_ttm": T_QUALITY,
     "main_net_inflow": T_FLOW,
     "lhb_institution_net": T_FLOW, "hot_rank_pct": T_FLOW,
-    "proxy_score": T_FLOW,
     "etf_premium_discount": T_VALUATION, "etf_tracking_error": T_VALUATION,
     "etf_fund_size": T_VALUATION,
 }

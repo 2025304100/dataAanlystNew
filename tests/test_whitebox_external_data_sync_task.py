@@ -71,7 +71,7 @@ def test_overview_reads_real_external_tables(db_session):
     overview = service.get_external_data_overview(db_session)
     by_dataset = {item["dataset"]: item for item in overview["datasets"]}
 
-    assert len(overview["datasets"]) == 7
+    assert len(overview["datasets"]) == 6
     assert by_dataset["fundamental"]["records"] == 1
     assert by_dataset["fundamental"]["symbols"] == 1
     assert by_dataset["fundamental"]["latest_date"] == date(2026, 8, 1)
@@ -149,46 +149,6 @@ def test_market_data_task_has_priority_over_new_external_task(db_session, monkey
     # 同上：行情同步优先拦截提示已中文化（【行情同步优先级】…）
     with pytest.raises(RuntimeError, match="行情同步优先级"):
         service.start_external_data_sync("hot_rank", {"source": "watchlist"})
-
-
-def test_tail_proxy_bulk_sync_honors_selected_scope(db_session, monkeypatch):
-    """The async tail-proxy path must preserve watchlist/position scope."""
-    task = AsyncTaskRecord(
-        id="tail-scope-test",
-        task_type="external_sync_tail_proxy",
-        status="queued",
-        stage="prepare",
-        payload_json=json.dumps({"source": "watchlist", "limit": 7}),
-    )
-    db_session.add(task)
-    db_session.commit()
-    captured: dict[str, object] = {}
-
-    class Summary:
-        total = 1
-        written = 1
-        skipped = 0
-        failed = 0
-        errors = ()
-
-    monkeypatch.setattr(service, "_wait_for_market_priority", lambda *_args: True)
-
-    def fake_sync(_db, **kwargs):
-        captured.update(kwargs)
-        return Summary()
-
-    monkeypatch.setattr(
-        "app.services.tail_proxy_data.sync_tail_proxy_snapshots", fake_sync
-    )
-    result = service._run_bulk_sync(
-        db_session,
-        task.id,
-        "tail_proxy",
-        {"source": "watchlist", "limit": 7},
-    )
-
-    assert result["success"] == 1
-    assert captured == {"source": "watchlist", "limit": 7}
 
 
 def test_cancel_and_retry_resume_from_frozen_external_plan(db_session, monkeypatch):

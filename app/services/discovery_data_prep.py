@@ -730,7 +730,7 @@ def _invoke_market_data_sync(scope: str) -> None:
 
 
 def _invoke_external_data_sync() -> list[dict]:
-    """调用现有外部数据同步任务（财报/资金流/人气/龙虎榜/尾盘/宏观）。
+    """调用现有外部数据同步任务（财报/资金流/人气/龙虎榜/宏观）。
 
     每个任务独立调用，失败仅记录错误，不影响其他任务。
     返回错误列表，由调用方追加到 task.errors_json。
@@ -765,13 +765,6 @@ def _invoke_external_data_sync() -> list[dict]:
         create_lhb_institution_task(lookback_days=3)
     except Exception as exc:
         errors.append({"stage": "external_data.lhb_institution", "error": str(exc)})
-
-    # 5. 尾盘代理快照
-    try:
-        from app.services.tail_proxy_task import create_tail_proxy_task
-        create_tail_proxy_task(source="candidates", limit=20)
-    except Exception as exc:
-        errors.append({"stage": "external_data.tail_proxy", "error": str(exc)})
 
     return errors
 

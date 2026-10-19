@@ -69,12 +69,15 @@ def _market_code_for_akshare(symbol: Symbol) -> str:
 
 def _market_prefix(symbol: Symbol) -> str:
     """stock_individual_fund_flow 需要的市场前缀（sh/sz/bj）。"""
+    market = str(symbol.market or "").lower()
+    if market in {"sh", "sz", "bj"}:
+        return market
     code = _market_code_for_akshare(symbol)
     if code.startswith("6"):
         return "sh"
     if code.startswith(("0", "3")):
         return "sz"
-    if code.startswith(("4", "8")):
+    if code.startswith(("4", "8", "9")):
         return "bj"
     return "sh"
 
@@ -96,7 +99,7 @@ def _fetch_individual_fund_flow_history(
     market = _market_prefix(symbol)
     try:
         with _proxy_bypass(), quiet_akshare_output():
-            df = call_akshare_with_retry(ak.stock_individual_fund_flow, stock=code, market=market, api_key="stock_individual_fund_flow", db=db)
+            df = call_akshare_with_retry(ak.stock_individual_fund_flow, stock=code, market=market, api_key="stock_individual_fund_flow", db=db, max_attempts=2)
         if df is None or df.empty:
             return []
         # 列名：日期、收盘价、涨跌幅、主力净流入-净额、主力净流入-净占比、
@@ -176,7 +179,7 @@ def _upsert_capital_flow(
     actual_date = flow_data.get("trade_date")
     if not isinstance(actual_date, date):
         return None
-    main_net_inflow = flow_data.get("main_net_inflow")
+    main_net_inflow = _safe_float(flow_data.get("main_net_inflow"))
     if main_net_inflow is None:
         return None
 
@@ -204,11 +207,10 @@ def _upsert_capital_flow(
         existing = CapitalFlow(symbol_id=symbol.id, trade_date=actual_date)
         db.add(existing)
     existing.main_net_inflow = main_net_inflow
-    existing.super_large_net_inflow = flow_data.get("super_large_net_inflow")
-    existing.large_net_inflow = flow_data.get("large_net_inflow")
-    existing.medium_net_inflow = flow_data.get("medium_net_inflow")
-    existing.small_net_inflow = flow_data.get("small_net_inflow")
-    existing.main_net_inflow_pct = flow_data.get("main_net_inflow_pct")
+    for field in ("super_large_net_inflow", "large_net_inflow", "medium_net_inflow", "small_net_inflow", "main_net_inflow_pct"):
+        value = _safe_float(flow_data.get(field))
+        if value is not None:
+            setattr(existing, field, value)
     existing.main_net_inflow_score = score
     existing.source = "akshare"
     existing.raw_json = json.dumps(flow_data, ensure_ascii=False, default=str)
@@ -226,6 +228,8 @@ def sync_symbol_capital_flow_range(
     """Upsert all real fund-flow rows in a requested bounded date range."""
     if start_date > end_date:
         raise ValueError("start_date must be on or before end_date")
+    if end_date > date.today():
+        raise ValueError("资金流结束日期不能晚于今天")
     if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
         return 0
     rows = _fetch_individual_fund_flow_history(
@@ -233,7 +237,7 @@ def sync_symbol_capital_flow_range(
     )
     written = 0
     for row in rows:
-        if _upsert_capital_flow(db, symbol, row) is not None:
+        if start_date <= row["trade_date"] <= end_date and _upsert_capital_flow(db, symbol, row) is not None:
             written += 1
     return written
 
@@ -294,53 +298,39 @@ def sync_market_capital_flow_snapshot(
     db: Session,
     symbols: list[Symbol],
     trade_date: date | None = None,
+    *, should_cancel=None,
 ) -> set[int]:
-    """Upsert the whole-market daily fund flow with a single provider endpoint.
-
-    The per-symbol endpoint needs one request per stock, so an incremental
-    all-market sync would cost 5,000+ requests a day; the ranking endpoint
-    carries the same daily columns for every stock. Stocks the provider omits
-    (suspended, delisted) stay unwritten instead of being filled.
-    """
+    """Fetch selected current quotes in batches, writing only the requested day."""
+    from app.services.capital_flow_provider import BATCH_SIZE, fetch_capital_flow_quotes
+    from app.services.market_session import is_cn_trading_day
     requested_date = trade_date or date.today()
     if requested_date != date.today():
         raise ValueError("资金流排行仅提供当前快照；历史日期请使用历史回填接口")
+    if not is_cn_trading_day(db, requested_date):
+        return _SyncedSymbolIds()
     eligible = [
         symbol for symbol in symbols
         if symbol.asset_type == "stock" and region_from_market(symbol.market) == "cn"
     ]
     if not eligible:
         return set()
-    actual_date = _corroborate_trade_date(db, eligible, requested_date)
-    if actual_date is None:
-        raise RuntimeError(
-            "fund flow ranking has no corroborating session date; nothing was written"
-        )
-    by_code = {row["symbol_code"]: row for row in _fetch_market_fund_flow_rank(db)}
     synced: set[int] = set()
-    for symbol in eligible:
-        row = by_code.get(_market_code_for_akshare(symbol).zfill(6))
-        if row is None:
-            continue
-        flow_data = {"trade_date": actual_date}
-        flow_data.update(
-            {key: value for key, value in row.items() if key != "symbol_code"}
-        )
-        if _upsert_capital_flow(db, symbol, flow_data) is not None:
-            synced.add(symbol.id)
+    for offset in range(0, len(eligible), BATCH_SIZE):
+        batch = eligible[offset:offset + BATCH_SIZE]
+        secids = [f"{'1' if _market_prefix(s) == 'sh' else '0'}.{_market_code_for_akshare(s)}" for s in batch]
+        quotes = fetch_capital_flow_quotes(db, secids, should_cancel=should_cancel)
+        for symbol in batch:
+            row = quotes.get(_market_code_for_akshare(symbol))
+            if row is None or row.get("trade_date") != requested_date:
+                continue
+            if _upsert_capital_flow(db, symbol, row) is not None:
+                synced.add(symbol.id)
     db.flush()
-    return _SyncedSymbolIds(synced, trade_dates={actual_date} if synced else ())
+    return _SyncedSymbolIds(synced, trade_dates={requested_date} if synced else ())
 
 
 def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None) -> CapitalFlow | None:
-    """Persist the fetched session, seeding the whole available window when history is too thin to score.
-
-    The per-symbol endpoint already returns roughly 100 trading days per
-    request, so a symbol without local history is seeded from that same
-    response (oldest→newest, so every row's score uses real prior rows) instead
-    of waiting days for a scoreable window. Once history is deep enough, only
-    rows newer than what is stored get written.
-    """
+    """Sync one requested day; history is available only through explicit backfill."""
     if symbol.asset_type != "stock":
         return None
     region = region_from_market(symbol.market)
@@ -348,35 +338,29 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
         return None
 
     target_date = trade_date or date.today()
+    if target_date > date.today():
+        raise ValueError("资金流日期不能晚于今天")
+    if target_date == date.today():
+        synced = sync_market_capital_flow_snapshot(db, [symbol], target_date)
+        if symbol.id not in synced:
+            return None
+        item = db.execute(select(CapitalFlow).where(CapitalFlow.symbol_id == symbol.id,
+                                                   CapitalFlow.trade_date == target_date)).scalars().first()
+        item.sync_rows_written = 1
+        item.sync_written_dates = [target_date]
+        return item
     rows = _fetch_individual_fund_flow_history(
-        db, symbol, end_date=target_date
+        db, symbol, start_date=target_date, end_date=target_date
     )
     if not rows:
         logger.info("No fund flow data for %s, skip", symbol.symbol)
         return None
 
-    newest_stored = db.execute(
-        select(func.max(CapitalFlow.trade_date)).where(
-            CapitalFlow.symbol_id == symbol.id
-        )
-    ).scalar()
-    stored_count = db.execute(
-        select(func.count(CapitalFlow.id)).where(
-            CapitalFlow.symbol_id == symbol.id
-        )
-    ).scalar() or 0
-    if stored_count >= _FLOW_LOOKBACK_DAYS and newest_stored is not None:
-        pending = [row for row in rows if row["trade_date"] > newest_stored]
-        if not pending:
-            # 已经写过这一场：重写它，让分值随更满的历史一起刷新，并保持
-            # "本函数落的就是这次取到的那场"这一不变量。
-            pending = [rows[-1]]
-    else:
-        pending = rows
-
     written: CapitalFlow | None = None
     saved_dates: list[date] = []
-    for row in pending:
+    for row in rows:
+        if row.get("trade_date") != target_date:
+            continue
         saved = _upsert_capital_flow(db, symbol, row)
         if saved is not None:
             written = saved
@@ -389,10 +373,12 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
     return written
 
 
-def get_latest_capital_flow(db: Session, symbol_id: int) -> CapitalFlow | None:
+def get_latest_capital_flow(db: Session, symbol_id: int, *, as_of: date | None = None) -> CapitalFlow | None:
+    stmt = select(CapitalFlow).where(CapitalFlow.symbol_id == symbol_id)
+    if as_of is not None:
+        stmt = stmt.where(CapitalFlow.trade_date <= as_of)
     return db.execute(
-        select(CapitalFlow)
-        .where(CapitalFlow.symbol_id == symbol_id)
+        stmt
         .order_by(desc(CapitalFlow.trade_date))
         .limit(1)
     ).scalars().first()
@@ -406,12 +392,12 @@ def get_or_sync_capital_flow(db: Session, symbol: Symbol, trade_date: date) -> C
     if region != "cn":
         return None
 
-    latest = get_latest_capital_flow(db, symbol.id)
+    latest = get_latest_capital_flow(db, symbol.id, as_of=trade_date)
     if latest is not None:
         days_stale = (trade_date - latest.trade_date).days if hasattr(latest.trade_date, "year") else 0
         # 分值为 None 现在是一个合法状态（可比历史不足时不给分），不能再拿它当
         # "上次同步失败"的信号触发重拉，否则每次打分都会打外网。
-        if days_stale <= _FLOW_FRESHNESS_DAYS:
+        if 0 <= days_stale <= _FLOW_FRESHNESS_DAYS:
             return latest
 
     try:

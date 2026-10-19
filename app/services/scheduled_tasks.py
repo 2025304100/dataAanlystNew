@@ -19,6 +19,9 @@ from app.models.scheduled_task import (
     ScheduledTaskSeedState,
 )
 from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
+from app.services.feature_policy import (
+    TAIL_PROXY_DISABLED_REASON, is_tail_proxy_schedule, reject_tail_proxy,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -66,11 +69,6 @@ TASK_DEFINITIONS: dict[str, dict] = {
         "name": "东方财富人气榜快照",
         "description": "保存当前前100名人气榜，免费接口不支持历史回填",
         "default_payload": {},
-    },
-    "tail_proxy_snapshot": {
-        "name": "候选池尾盘量价代理",
-        "description": "抓取最新候选前20只的1分钟量价并计算尾盘代理",
-        "default_payload": {"source": "candidates", "limit": 20},
     },
     "lhb_institution_sync": {
         "name": "龙虎榜机构席位同步",
@@ -179,15 +177,6 @@ DEFAULT_SCHEDULES = (
         "time_of_day": "16:20",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["hot_rank_snapshot"]["default_payload"],
-        "enabled": False,
-    },
-    {
-        "name": "每日候选尾盘代理",
-        "task_type": "tail_proxy_snapshot",
-        "frequency": "daily",
-        "time_of_day": "15:10",
-        "weekdays": [],
-        "payload": TASK_DEFINITIONS["tail_proxy_snapshot"]["default_payload"],
         "enabled": False,
     },
     {
@@ -372,6 +361,7 @@ def _next_for_model(item: ScheduledTask, *, after: datetime | None = None) -> da
 
 
 def seed_default_schedules(db: Session) -> int:
+    disable_retired_schedules(db)
     if db.get(ScheduledTaskSeedState, DEFAULT_SCHEDULE_SEED_KEY) is not None:
         return 0
     created = 0
@@ -410,6 +400,8 @@ def validate_definition(task_type: str) -> None:
 
 def validate_task_payload(task_type: str, payload: dict) -> dict:
     """Validate task-specific settings when a schedule is saved."""
+    if is_tail_proxy_schedule(task_type, payload):
+        reject_tail_proxy()
     validate_definition(task_type)
     if task_type == "factor_grade_review":
         from app.schemas.scheduled_task import FactorGradeReviewPayload
@@ -434,14 +426,6 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         if payload:
             raise ValueError("hot_rank_snapshot payload must be empty")
         return {}
-    if task_type == "tail_proxy_snapshot":
-        source = str(payload.get("source") or "candidates")
-        if source not in {"candidates", "watchlist", "positions"}:
-            raise ValueError("unsupported tail proxy source")
-        limit = int(payload.get("limit", 20))
-        if not 1 <= limit <= 50:
-            raise ValueError("limit must be between 1 and 50")
-        return {"source": source, "limit": limit}
     if task_type == "lhb_institution_sync":
         lookback_days = int(payload.get("lookback_days", 3))
         if not 1 <= lookback_days <= 31:
@@ -630,6 +614,8 @@ def delete_schedule(db: Session, schedule_id: int) -> None:
 
 def _dispatch_task(item: ScheduledTask):
     payload = _json(item.payload_json, {})
+    if is_tail_proxy_schedule(item.task_type, payload):
+        reject_tail_proxy()
     if item.task_type == "universe_incremental_sync":
         from app.services.universe_sync_task import start_universe_incremental_sync
 
@@ -648,13 +634,6 @@ def _dispatch_task(item: ScheduledTask):
         from app.services.hot_rank_task import create_hot_rank_task
 
         return "async", create_hot_rank_task()
-    if item.task_type == "tail_proxy_snapshot":
-        from app.services.tail_proxy_task import create_tail_proxy_task
-
-        return "async", create_tail_proxy_task(
-            source=str(payload.get("source") or "candidates"),
-            limit=int(payload.get("limit") or 20),
-        )
     if item.task_type == "lhb_institution_sync":
         from app.services.lhb_institution_task import (
             create_lhb_institution_task,
@@ -939,12 +918,33 @@ def _schedule_dispatch_retry(
         db.close()
 
 
+def disable_retired_schedules(db: Session) -> int:
+    """Persistently stop both legacy schedule forms without deleting run history."""
+    rows = db.execute(select(ScheduledTask).where(
+        ScheduledTask.task_type.in_(("tail_proxy_snapshot", "external_data_sync")),
+    )).scalars().all()
+    changed = 0
+    for item in rows:
+        if is_tail_proxy_schedule(item.task_type, _json(item.payload_json, {})) and (
+            item.enabled or item.next_run_at is not None
+        ):
+            item.enabled = 0
+            item.next_run_at = None
+            item.last_error = TAIL_PROXY_DISABLED_REASON
+            item.updated_at = _now()
+            changed += 1
+    db.flush()
+    return changed
+
+
 def run_due_schedules() -> int:
     SessionLocal = get_session_local()
     db = SessionLocal()
     claimed: list[int] = []
     now = _now()
     try:
+        disable_retired_schedules(db)
+        db.commit()
         candidates = db.execute(
             select(ScheduledTask).where(
                 ScheduledTask.enabled == 1,

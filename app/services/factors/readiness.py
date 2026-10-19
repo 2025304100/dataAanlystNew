@@ -86,7 +86,6 @@ _READINESS_SOURCE_TABLES: dict[str, str] = {
     "raw_financial_reports": "announcement_date",
     "raw_fund_flows": "trade_date",
     "raw_sentiment": "trade_date",
-    "raw_tail_proxy": "trade_date",
 }
 
 # A 层覆盖率阈值

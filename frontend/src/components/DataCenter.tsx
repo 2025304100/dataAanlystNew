@@ -91,7 +91,7 @@ function CoverageDiagnostics() {
   };
 
   const rows = useMemo<CoverageRow[]>(
-    () => (coverage?.datasets || []).flatMap((dataset) =>
+    () => (coverage?.datasets || []).filter((dataset) => dataset.dataset !== "tail_proxy").flatMap((dataset) =>
       dataset.fields.map((field) => ({ ...field, dataset: dataset.dataset })),
     ), [coverage],
   );

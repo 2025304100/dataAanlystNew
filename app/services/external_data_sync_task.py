@@ -30,6 +30,7 @@ from app.models.tail_accumulation_snapshot import TailAccumulationSnapshot
 from app.models.universe import UniverseSymbol
 from app.schemas.async_task import AsyncTaskRead
 from app.services.async_tasks import _task_to_read, cancel_async_task, get_async_task
+from app.services.feature_policy import reject_tail_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,11 @@ EXTERNAL_DATASETS: tuple[ExternalDataset, ...] = (
     "financial",
     "lhb",
     "hot_rank",
-    "tail_proxy",
     "capital_flow",
     "etf",
 )
 
-_TASK_TYPES = {dataset: f"external_sync_{dataset}" for dataset in EXTERNAL_DATASETS}
+_TASK_TYPES = {dataset: f"external_sync_{dataset}" for dataset in (*EXTERNAL_DATASETS, "tail_proxy")}
 _DATASET_BY_TASK_TYPE = {value: key for key, value in _TASK_TYPES.items()}
 # Provider-level rate limiting is handled by akshare_registry. Keep only a
 # small cooperative yield between per-symbol historical requests; the daily
@@ -120,12 +120,11 @@ ExternalSyncMode = Literal["incremental", "backfill"]
 
 _DATASET_CAPABILITIES: dict[ExternalDataset, dict[str, Any]] = {
     "fundamental": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "当天仅请求缺失标的及指定交易日；历史回填在服务端按起止日期过滤。接口未返回的日期不会填补，当天失败不会切换历史下载。"},
-    "financial": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "按公告日保存可取得的报告历史。"},
-    "capital_flow": {"modes": {"incremental", "backfill"}, "history_limit_days": 100, "reason": "提供商每次返回近约 120 个交易日（2026-10-01 实测 120 行）；增量除当日外，还会为可比历史不足的标的顺带落这段窗口，超出可得范围必须接入新数据源或导入。"},
+    "financial": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "日更仅请求所选公告日期的新报告，不重复下载全历史；首次历史初始化请使用历史回填。财报可在休市日公告。"},
+    "capital_flow": {"modes": {"incremental", "backfill"}, "history_limit_days": 100, "reason": "提供商每次返回近约 120 个交易日（2026-10-01 实测 120 行）；当日仅按所选标的批量获取当日资金流，不下载历史；历史回填才使用近约 120 个交易日的个股接口。"},
     "lhb": {"modes": {"incremental", "backfill"}, "history_limit_days": 31, "reason": "龙虎榜为事件数据，单次区间受接口限制。"},
     "hot_rank": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "人气榜接口仅提供当前快照。"},
-    "tail_proxy": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "尾盘代理当前仅做候选池当天采集。"},
-    "etf": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "ETF 指标当前仅支持当日快照。"},
+    "etf": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "按所选境内 ETF 批量请求当日行情、IOPV 和份额；溢折价按 IOPV 计算，规模为同日 IOPV×份额估算。跟踪误差未接入基准历史；日更不下载净值历史。"},
 }
 
 
@@ -151,6 +150,8 @@ def resolve_external_symbols(
         universe_stmt = select(UniverseSymbol).where(UniverseSymbol.is_synced == 1)
         if asset_type:
             universe_stmt = universe_stmt.where(UniverseSymbol.asset_type == asset_type)
+        if asset_type == "etf":
+            universe_stmt = universe_stmt.where(UniverseSymbol.region == "cn")
         universe_rows = db.execute(universe_stmt.order_by(UniverseSymbol.id)).scalars().all()
 
         universe_codes = [row.symbol for row in universe_rows]
@@ -209,6 +210,8 @@ def resolve_external_symbols(
         return []
     if asset_type:
         stmt = stmt.where(Symbol.asset_type == asset_type)
+    if asset_type == "etf":
+        stmt = stmt.where(Symbol.market.in_(("sh", "sz", "bj", "cn")))
     return sorted(db.execute(stmt).scalars().all(), key=lambda symbol: symbol.id)
 
 
@@ -320,6 +323,8 @@ def build_external_sync_plan(
     today: date | None = None,
 ) -> dict[str, Any]:
     """Build a truthful sync plan before making any remote request."""
+    if dataset == "tail_proxy":
+        reject_tail_proxy()
     if dataset not in EXTERNAL_DATASETS:
         raise ValueError(f"Unsupported external dataset: {dataset}")
     capability = _DATASET_CAPABILITIES[dataset]
@@ -346,7 +351,9 @@ def build_external_sync_plan(
     if requested_end > reference_date:
         raise ValueError("结束日期不能晚于今天，请勿选择未来日期")
     if mode == "incremental":
-        if dataset in {"fundamental", "capital_flow"} and requested_end != reference_date:
+        if dataset in {"fundamental", "capital_flow", "etf", "hot_rank"} and requested_end != reference_date:
+            if dataset in {"etf", "hot_rank"}:
+                raise ValueError("实时快照仅支持当前日期，不能把实时行情用于历史日期")
             raise ValueError("估值和资金流增量仅支持当前日期；历史日期请使用历史回填模式")
         requested_start = requested_end
     span_days = (requested_end - requested_start).days + 1
@@ -647,11 +654,14 @@ def start_external_gap_repair(
         # Financial records are revisioned by announcement date. A missing
         # PIT baseline must re-fetch the symbol's complete published history,
         # not fabricate one row for each missing daily-bar date.
+        for spec in partition_specs:
+            spec["start_date"] = date(1990, 1, 1)
+            spec["end_date"] = end_date
         return start_external_data_sync(
             dataset,
             {
-                "source": "all", "mode": "incremental", "end_date": end_date,
-                "lookback_days": 1, "limit": 20,
+                "source": "all", "mode": "backfill", "start_date": date(1990, 1, 1), "end_date": end_date,
+                "lookback_days": (end_date - date(1990, 1, 1)).days + 1, "limit": 20,
                 "_partition_specs": partition_specs,
             },
         )
@@ -675,7 +685,6 @@ _DATASET_FORMULA_FIELDS: dict[ExternalDataset, tuple[str, ...]] = {
     "capital_flow": ("main_net_inflow",),
     "lhb": ("lhb_institution_net",),
     "hot_rank": ("hot_rank_pct",),
-    "tail_proxy": ("proxy_score",),
     "etf": ("etf_premium_discount", "etf_tracking_error", "etf_fund_size"),
 }
 
@@ -734,6 +743,8 @@ def get_external_data_coverage(db: Session) -> dict[str, Any]:
         availability = [str(item["availability"]) for item in selected_fields]
         if not selected_fields:
             readiness, reason = "not_applicable", "no_factor_field_mapping"
+        elif dataset == "etf" and any(value not in {"blocked", "unknown"} for value in availability) and any(value in {"blocked", "unknown"} for value in availability):
+            readiness, reason = "limited", "partial_fields_available"
         elif "blocked" in availability or "unknown" in availability:
             readiness, reason = "blocked", "field_data_unavailable"
         elif all(item == "available" for item in availability):
@@ -936,8 +947,27 @@ def _run_symbol_sync(
             result["errors"].append(f"northbound: {exc}")
             logger.warning("northbound sync failed in external task: %s", exc)
 
-    # Daily valuation uses date/code-bounded batches. Capital flow retains
-    # its market ranking endpoint. Neither daily path backfills valuation history.
+    if dataset == "financial" and plan.get("mode") != "backfill":
+        from app.services.financial_data import sync_financial_announcements
+        if not _wait_for_market_priority(db, task_id):
+            return None
+
+        def on_financial_result(symbol, count, summary):
+            _set_partition_status(db, partitions_by_symbol.get(symbol.id), "done" if count else "skipped", rows_written=int(count))
+            db.commit()
+            processed = summary["success"] + summary["skipped"]
+            _update_task(db, task_id, status="running", stage="sync", percent=min(99, 5 + 94 * processed / max(len(symbols), 1)),
+                         total=len(symbols), processed=processed, ok_count=summary["success"], failed_count=0,
+                         current_item=symbol.symbol, message=_progress_message(dataset, processed, len(symbols)))
+
+        result.update(sync_financial_announcements(db, symbols, range_end, range_end,
+            should_cancel=lambda: _is_cancelled(db, task_id), on_result=on_financial_result))
+        if sync_plan_id:
+            _refresh_sync_plan(db, sync_plan_id, terminal=True)
+        return result
+
+    # Daily valuation and fund flow use selected code/date batches. Failures
+    # never switch to individual history downloads.
     if dataset in {"fundamental", "capital_flow"} and plan.get("mode") != "backfill":
         if dataset == "capital_flow":
             from app.services.capital_flow_data import (
@@ -946,7 +976,7 @@ def _run_symbol_sync(
             )
 
             def _snapshot_sync(active_db: Session) -> set[int]:
-                return sync_market_capital_flow_snapshot(active_db, symbols, range_end)
+                return sync_market_capital_flow_snapshot(active_db, symbols, range_end, should_cancel=lambda: _is_cancelled(active_db, task_id))
 
             def _single_symbol_sync(active_db: Session, symbol: Symbol) -> Any:
                 return sync_symbol_capital_flow(active_db, symbol, range_end)
@@ -969,81 +999,9 @@ def _run_symbol_sync(
                 if _is_cancelled(db, task_id):
                     return None
                 raise RuntimeError(f"当日估值同步已停止，未切换历史接口：{exc}") from exc
-            # Only small, explicitly selected scopes may use historical
-            # fallback. A batch failure must not amplify into market-wide
-            # history downloads (each call can return thousands of rows).
-            if source == "all" or len(symbols) > 50:
-                logger.warning(
-                    "market snapshot failed; refusing large per-symbol fan-out: %s",
-                    exc,
-                )
-                raise RuntimeError(
-                    f"批量接口不可用，已停止同步，未执行逐标的兜底（避免大范围历史请求）；请稍后重试或缩小范围："
-                    f"{type(exc).__name__}: {exc}"
-                ) from exc
-            logger.warning(
-                "%s snapshot sync failed; falling back to per-symbol sync: %s", dataset, exc
-            )
-            result["errors"].append(
-                f"批量接口不可用，已切换个股接口: {type(exc).__name__}: {exc}"
-            )
-
-            def _fallback_worker(symbol_id: int):
-                worker_db = SessionLocal()
-                try:
-                    if _is_cancelled(worker_db, task_id):
-                        return symbol_id, "cancelled", 0, None, ()
-                    worker_symbol = worker_db.get(Symbol, symbol_id)
-                    if worker_symbol is None:
-                        return symbol_id, "failed", 0, "symbol not found", ()
-                    item = _single_symbol_sync(worker_db, worker_symbol)
-                    if dataset == "fundamental" and item is None:
-                        worker_db.rollback()
-                        return symbol_id, "failed", 0, "估值历史接口未返回所选日期范围内的有效数据", ()
-                    dates = getattr(item, "sync_written_dates", ()) or (getattr(item, "trade_date", None),)
-                    count = int(getattr(item, "sync_rows_written", 1)) if item is not None else 0
-                    worker_db.commit()
-                    return symbol_id, "done" if item is not None else "skipped", count, None, dates
-                except Exception as worker_exc:
-                    worker_db.rollback()
-                    return symbol_id, "failed", 0, str(worker_exc), ()
-                finally:
-                    worker_db.close()
-
-            fallback_workers = min(max(int(payload.get("max_workers", 4)), 1), 8)
-            with ThreadPoolExecutor(max_workers=fallback_workers, thread_name_prefix="valuation-fallback") as executor:
-                processed = 0
-                for batch_start in range(0, len(symbols), fallback_workers):
-                    if _is_cancelled(db, task_id):
-                        return None
-                    batch = symbols[batch_start:batch_start + fallback_workers]
-                    futures = {executor.submit(_fallback_worker, symbol.id): symbol for symbol in batch}
-                    for future in as_completed(futures):
-                        symbol = futures[future]
-                        symbol_id, status, count, worker_error, dates = future.result()
-                        if status == "cancelled":
-                            continue
-                        processed += 1
-                        result[{"done": "success", "failed": "failed", "skipped": "skipped"}[status]] += 1
-                        result["records"] += count
-                        if worker_error and len(result["errors"]) < 20:
-                            result["errors"].append(f"{symbol.symbol}: {worker_error}")
-                        _merge_written_dates(result, dates)
-                        partition = partitions_by_symbol.get(symbol_id)
-                        _set_partition_status(db, partition, status, rows_written=count, error_message=worker_error)
-                        _update_task(
-                            db, task_id, status="running", stage="sync",
-                            percent=min(99, 5 + 94 * processed / max(len(symbols), 1)),
-                            total=result["total"], processed=result["success"] + result["skipped"] + result["failed"],
-                            ok_count=result["success"], failed_count=result["failed"],
-                            current_item=symbol.symbol,
-                            message=_progress_message(dataset, processed, len(symbols)),
-                        )
-                    if _is_cancelled(db, task_id):
-                        return None
-            if sync_plan_id:
-                _refresh_sync_plan(db, sync_plan_id, terminal=True)
-            return result
+            if _is_cancelled(db, task_id):
+                return None
+            raise RuntimeError(f"资金流当日接口不可用，已停止同步，未执行逐标的兜底或历史下载：{exc}") from exc
         result["success"] += len(synced_ids)
         result["skipped"] += max(len(symbols) - len(synced_ids), 0)
         result["records"] += len(synced_ids)
@@ -1168,6 +1126,31 @@ def _run_symbol_sync(
             _refresh_sync_plan(db, sync_plan_id, terminal=True)
         return result
 
+    if dataset == "etf":
+        from app.services.etf_basic_data import sync_etf_snapshots
+
+        if not _wait_for_market_priority(db, task_id):
+            return None
+
+        def on_etf_result(symbol, item, summary):
+            partition = partitions_by_symbol.get(symbol.id)
+            _set_partition_status(db, partition, "running")
+            _set_partition_status(db, partition, "done" if item is not None else "skipped",
+                                  rows_written=1 if item is not None else 0)
+            db.commit()
+            processed = summary["success"] + summary["skipped"]
+            _update_task(db, task_id, status="running", stage="sync",
+                         percent=min(99, 5 + 94 * processed / max(summary["total"], 1)),
+                         total=summary["total"], processed=processed, ok_count=summary["success"],
+                         failed_count=summary["failed"], current_item=symbol.symbol,
+                         message=_progress_message("etf", processed, summary["total"]))
+
+        result.update(sync_etf_snapshots(db, symbols, range_end,
+            should_cancel=lambda: _is_cancelled(db, task_id), on_result=on_etf_result))
+        if sync_plan_id:
+            _refresh_sync_plan(db, sync_plan_id, terminal=True)
+        return result
+
     for index, symbol in enumerate(symbols):
         if _is_cancelled(db, task_id):
             return None
@@ -1201,7 +1184,7 @@ def _run_symbol_sync(
                         announcement_end=partition_end,
                     )
                 else:
-                    count = sync_symbol_financial_reports(db, symbol, announcement_end=range_end)
+                    count = sync_symbol_financial_reports(db, symbol, announcement_end=range_end, incremental=True)
             elif dataset == "capital_flow":
                 from app.services.capital_flow_data import sync_symbol_capital_flow
 
@@ -1223,7 +1206,9 @@ def _run_symbol_sync(
             if count > 0:
                 result["success"] += 1
                 result["records"] += count
-                if dataset in {"financial", "fundamental", "capital_flow"} and plan.get("mode") == "backfill":
+                if dataset == "financial" and hasattr(count, "sync_written_dates"):
+                    dates = count.sync_written_dates
+                elif dataset in {"financial", "fundamental", "capital_flow"} and plan.get("mode") == "backfill":
                     dates = _local_written_dates(db, dataset, symbol.id, partition_start, partition_end)
                 elif dataset == "financial":
                     dates = _local_written_dates(db, dataset, symbol.id, end=range_end)
@@ -1284,6 +1269,8 @@ def _run_bulk_sync(
     dataset: Literal["lhb", "hot_rank", "tail_proxy"],
     payload: dict,
 ) -> dict:
+    if dataset == "tail_proxy":
+        reject_tail_proxy()
     from app.services.market_session import is_cn_trading_day, range_is_cn_closed
 
     plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
@@ -1378,7 +1365,7 @@ def _run_bulk_sync(
             }
         if result["records"]:
             if dataset == "lhb":
-                dates = db.execute(select(func.min(LhbInstitutionTrade.trade_date), func.max(LhbInstitutionTrade.trade_date)).where(LhbInstitutionTrade.trade_date >= start_date, LhbInstitutionTrade.trade_date <= end_date)).one()
+                dates = getattr(summary, "written_dates", ())
             else:
                 dates = (getattr(summary, "trade_date", None),)
             _merge_written_dates(result, dates)
@@ -1513,9 +1500,31 @@ def _mirror_external_factor_inputs(
         return {"status": "warning", "records": 0, "error": str(exc)}
 
 
+def finalize_legacy_external_sync(db, task_id, dataset, records, dates, *, skip_reason=None):
+    """Older scheduled/discovery workers publish through the same warehouse path."""
+    if not records:
+        reason = skip_reason or "no_records_written"
+        return {"warehouse_mirror": {"status": "skipped", "records": 0, "reason": reason},
+                "quality_snapshot": {"status": "skipped", "reason": reason}}
+    actual_dates = [day for day in dates if isinstance(day, date)]
+    if not actual_dates:
+        raise ValueError("外部同步缺少实际写入日期，未执行仓库镜像")
+    plan = {"requested_start_date": min(actual_dates).isoformat(), "requested_end_date": max(actual_dates).isoformat()}
+    mirror = _mirror_external_factor_inputs(db, task_id, dataset, plan)
+    from app.services.data_quality import capture_field_quality_snapshots
+    try:
+        _update_task(db, task_id, stage="quality", percent=99, message="正在检查本次数据集的字段质量")
+        quality = capture_field_quality_snapshots(db, trigger=f"external_sync:{dataset}", dataset=dataset)
+    except Exception as exc:
+        quality = {"status": "warning", "error": str(exc)}
+    return {"warehouse_mirror": mirror, "quality_snapshot": quality}
+
+
 def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dict[str, Any]) -> None:
     db = SessionLocal()
     try:
+        if dataset == "tail_proxy":
+            reject_tail_proxy()
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status in {"done", "failed", "cancelled"} or task.is_terminal_locked:
             return
@@ -1535,6 +1544,11 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         if result is None or _is_cancelled(db, task_id):
             _mark_cancelled(db, task_id)
             return
+        if not result.get("records") and not payload.get("_mirror_only"):
+            if not result.get("failed") and not result.get("skip_reason"):
+                reason = "no_events" if dataset == "lhb" else "no_new_data" if dataset == "financial" else "data_unavailable"
+                message = {"no_events": "所选区间没有龙虎榜机构事件，无新增数据", "no_new_data": "所选公告日期没有新增或变更财报"}.get(reason, "接口未返回所选日期的有效数据，未写入记录")
+                result.update(skip_reason=reason, message=message)
         plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
         result["plan"] = plan
         if _is_cancelled(db, task_id):
@@ -1544,9 +1558,10 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         if result.get("written_start_date") and result.get("written_end_date"):
             mirror_plan["requested_start_date"] = result["written_start_date"]
             mirror_plan["requested_end_date"] = result["written_end_date"]
+        no_writes = not result.get("records") and not payload.get("_mirror_only")
         mirror = (
-            {"status": "skipped", "records": 0, "reason": result["skip_reason"]}
-            if result.get("skip_reason")
+            {"status": "skipped", "records": 0, "reason": result.get("skip_reason", "no_records_written")}
+            if result.get("skip_reason") or no_writes
             else _mirror_external_factor_inputs(db, task_id, dataset, mirror_plan)
         )
         mirror["start_date"] = mirror_plan.get("requested_start_date")
@@ -1560,10 +1575,12 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         try:
             from app.services.data_quality import capture_field_quality_snapshots
 
+            if not result.get("skip_reason") and not no_writes:
+                _update_task(db, task_id, stage="quality", percent=99, message="正在检查本次数据集的字段质量")
             result["quality_snapshot"] = (
-                {"status": "skipped", "reason": result["skip_reason"]}
-                if result.get("skip_reason")
-                else capture_field_quality_snapshots(db, trigger=f"external_sync:{dataset}")
+                {"status": "skipped", "reason": result.get("skip_reason", "no_records_written")}
+                if result.get("skip_reason") or no_writes
+                else capture_field_quality_snapshots(db, trigger=f"external_sync:{dataset}", dataset=dataset)
             )
         except Exception as exc:
             logger.warning("quality snapshot failed after external task %s: %s", task_id, exc)
@@ -1674,6 +1691,8 @@ def _await_market_preflight(db: Session, dataset: ExternalDataset) -> None:
 
 
 def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) -> AsyncTaskRead:
+    if dataset == "tail_proxy":
+        reject_tail_proxy()
     if dataset not in EXTERNAL_DATASETS:
         raise ValueError(f"Unsupported external dataset: {dataset}")
     payload = dict(payload)
@@ -2003,12 +2022,6 @@ def get_external_data_overview(db: Session) -> dict:
             StockHotRankSnapshot,
             StockHotRankSnapshot.symbol,
             StockHotRankSnapshot.trade_date,
-        ),
-        "tail_proxy": _table_stats(
-            db,
-            TailAccumulationSnapshot,
-            TailAccumulationSnapshot.symbol,
-            TailAccumulationSnapshot.trade_date,
         ),
         "capital_flow": _table_stats(db, CapitalFlow, CapitalFlow.symbol_id, CapitalFlow.trade_date),
         "etf": _table_stats(db, EtfIndicator, EtfIndicator.symbol_id, EtfIndicator.trade_date),

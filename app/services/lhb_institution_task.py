@@ -14,7 +14,7 @@ from app.services.async_tasks import (
     create_async_task,
     list_async_tasks,
 )
-from app.services.lhb_data import sync_lhb_institution_trades
+from app.services.lhb_data import sync_lhb_institution_trades, LhbInstitutionSyncResult
 
 
 logger = logging.getLogger(__name__)
@@ -54,24 +54,29 @@ def _run_lhb_institution_task(task_id: str) -> None:
             message="Fetching institution-seat LHB data",
             started_at=_now(),
         )
-        summary = sync_lhb_institution_trades(
-            db, start_date=start_date, end_date=end_date
-        )
+        from app.services.market_session import is_cn_trading_day
+        summary = (sync_lhb_institution_trades(db, start_date=start_date, end_date=end_date)
+                   if is_cn_trading_day(db, end_date) else
+                   LhbInstitutionSyncResult(start_date, end_date, 0, 0, 0, skip_reason="market_closed"))
         db.commit()
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status == "cancelled":
             return
+        from app.services.external_data_sync_task import finalize_legacy_external_sync
+        publication = finalize_legacy_external_sync(db, task_id, "lhb", summary.written,
+                                                  summary.written_dates, skip_reason=summary.skip_reason)
+        publication_failed = publication["warehouse_mirror"]["status"] == "warning"
         _set_task(
             db,
             task_id,
-            status="done",
-            stage="done",
+            status="failed" if publication_failed else "done",
+            stage="failed" if publication_failed else "done",
             percent=100,
             total=summary.received,
             processed=summary.received,
             ok_count=summary.written,
-            failed_count=summary.unmatched,
-            message="Institution-seat LHB synchronization completed",
+            failed_count=int(publication_failed),
+            message="龙虎榜已入库，仓库同步失败，请重试" if publication_failed else "A 股休市，已跳过龙虎榜采集" if summary.skip_reason == "market_closed" else "Institution-seat LHB synchronization completed",
             result_json=json.dumps(
                 {
                     "start_date": summary.start_date,
@@ -79,6 +84,8 @@ def _run_lhb_institution_task(task_id: str) -> None:
                     "received": summary.received,
                     "written": summary.written,
                     "unmatched": summary.unmatched,
+                    "skip_reason": summary.skip_reason,
+                    **publication,
                 },
                 ensure_ascii=False,
                 default=str,
@@ -89,7 +96,7 @@ def _run_lhb_institution_task(task_id: str) -> None:
         db.rollback()
         logger.exception("LHB institution task failed: %s", task_id)
         task = db.get(AsyncTaskRecord, task_id)
-        if task is not None:
+        if task is not None and task.status != "cancelled":
             task.status = "failed"
             task.stage = "failed"
             task.message = str(exc)

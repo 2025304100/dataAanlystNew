@@ -129,13 +129,13 @@ def test_mirror_factor_inputs_is_local_incremental_and_idempotent(
         db_session, warehouse=warehouse, batch_size=1
     )
 
-    assert first.rows_written == 8
+    assert first.rows_written == 7
     assert second.rows_written == 0
     assert first.valuation_watermark > 0
     assert first.financial_report_watermark > 0
     assert first.lhb_institution_watermark > 0
     assert first.hot_rank_watermark > 0
-    assert first.tail_proxy_watermark > 0
+    assert first.tail_proxy_watermark == 0
     assert first.fund_flow_watermark > 0
     assert first.macro_watermark > 0
 
@@ -173,7 +173,7 @@ def test_mirror_factor_inputs_is_local_incremental_and_idempotent(
     assert financial == ("600519", 2, 20.0)
     assert sentiment == ("600519", True, 500_000.0)
     assert hot_rank == ("600519", 1.0, 1.0)
-    assert tail_proxy == ("600519", 241, 0.9)
+    assert tail_proxy is None
     assert macro == ("cn_10y_yield", date(2026, 7, 10), 1.65)
 
 

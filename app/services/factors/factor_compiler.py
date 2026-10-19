@@ -24,6 +24,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from app.services.feature_policy import DISABLED_FACTOR_FIELDS, TAIL_PROXY_DISABLED_REASON
 
 from app.services.factors.dsl.dialect import (  # noqa: E402
     DIALECT_ERROR_CODE,
@@ -446,10 +447,6 @@ FIELD_CATALOG: dict[str, FieldSpec] = {
     ),
     "hot_rank_pct": FieldSpec(
         "hot_rank_pct", "raw_sentiment", "float", "热度百分比", layer="B"
-    ),
-    # C 层尾盘代理（raw_tail_proxy）
-    "proxy_score": FieldSpec(
-        "proxy_score", "raw_tail_proxy", "float", "尾盘代理分数", layer="C"
     ),
     "etf_premium_discount": FieldSpec(
         "etf_premium_discount", "raw_etf_indicators", "float", "ETF 溢折价率", layer="B"
@@ -1294,6 +1291,13 @@ class FactorCompiler:
 
         # 6. 依赖收集
         deps = _collect_dependencies(tree)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id in DISABLED_FACTOR_FIELDS:
+                errors.append(_error_at_token(
+                    source=source_formula, error_code="field_disabled",
+                    message=TAIL_PROXY_DISABLED_REASON, detail={"field": node.id}, token=node.id,
+                ))
 
         # 未知字段检查
         if strict_fields:

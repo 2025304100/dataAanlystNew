@@ -15,6 +15,7 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.tail_proxy_data import sync_tail_proxy_snapshots
+from app.services.feature_policy import reject_tail_proxy
 
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ TASK_TYPE = "tail_proxy_snapshot"
 
 
 def create_tail_proxy_task(*, source: str = "candidates", limit: int = 20):
+    reject_tail_proxy()
     existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
     if existing and existing[0].status in {"queued", "running"}:
         return existing[0]
@@ -39,6 +41,7 @@ def _run_tail_proxy_task(task_id: str) -> None:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status == "cancelled":
             return
+        reject_tail_proxy()
         payload = json.loads(task.payload_json or "{}")
         source = str(payload.get("source") or "candidates")
         limit = int(payload.get("limit") or 20)

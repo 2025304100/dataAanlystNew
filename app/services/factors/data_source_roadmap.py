@@ -25,6 +25,7 @@ from enum import Enum
 from typing import Any
 
 from app.services.factors.readiness import _READINESS_SOURCE_TABLES
+from app.services.feature_policy import DISABLED_FACTOR_CODES, TAIL_PROXY_DISABLED_REASON
 
 
 # ── 枚举 ──────────────────────────────────────────────────
@@ -63,7 +64,6 @@ FACTOR_TO_SOURCE_MAP: dict[str, str] = {
     "lhb_institution_net_ratio": "lhb",
     "turnover_z20": "daily_bars",  # A 层，已可用
     "hot_rank_attention": "hot_rank",
-    "tail_accumulation_proxy": "tail_proxy",
 }
 
 # 已可用、不纳入补齐路线的数据源（无对应 policy，不阻断）
@@ -513,6 +513,8 @@ def _query_source_table_stats(warehouse_conn) -> dict[str, DataSourceState]:
 
     result: dict[str, DataSourceState] = {}
     for source_key, policy in DATA_SOURCE_POLICIES.items():
+        if source_key == "tail_proxy":
+            continue
         table = policy.duckdb_table
         date_col = _ROADMAP_SOURCE_TABLES.get(table, "trade_date")
         row_count, latest_date, distinct_symbols, continuity_days = table_cache.get(
@@ -591,11 +593,13 @@ def get_data_source_roadmap(
     # 仓库不可用时，为每个源生成空状态
     if not source_states:
         for source_key, policy in DATA_SOURCE_POLICIES.items():
+            if source_key == "tail_proxy":
+                continue
             table = policy.duckdb_table
             date_col = _ROADMAP_SOURCE_TABLES.get(table, "trade_date")
             source_states[source_key] = _empty_state(source_key, table, date_col)
 
-    policies = list(DATA_SOURCE_POLICIES.values())
+    policies = [policy for key, policy in DATA_SOURCE_POLICIES.items() if key != "tail_proxy"]
 
     # 3. 各因子是否被 roadmap 策略阻断
     blocked_factors = 0
@@ -804,6 +808,10 @@ def is_factor_blocked_by_roadmap(
       REGIME_CONDITION：roadmap 策略本身不阻断（数据层阻断由 readiness 负责）
     - daily_bars（已可用源）：不阻断
     """
+    if factor_code in DISABLED_FACTOR_CODES:
+        return {"factor_code": factor_code, "source_key": "tail_proxy", "is_blocked": True,
+                "blocking_reasons": [TAIL_PROXY_DISABLED_REASON], "recommended_action": "disabled",
+                "completion_strategy": "disabled"}
     source_key = FACTOR_TO_SOURCE_MAP.get(factor_code)
 
     if source_key is None:

@@ -5,6 +5,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.services.feature_policy import is_tail_proxy_schedule
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskRun
 from app.schemas.scheduled_task import (
     ScheduledTaskCreate,
@@ -21,6 +22,7 @@ from app.services.scheduled_tasks import (
     run_to_dict,
     schedule_to_dict,
     update_schedule,
+    _json,
 )
 
 
@@ -46,7 +48,8 @@ def list_scheduled_tasks(db: Session = Depends(get_db)):
     rows = db.execute(
         select(ScheduledTask).order_by(ScheduledTask.id)
     ).scalars().all()
-    return [schedule_to_dict(db, item) for item in rows]
+    return [schedule_to_dict(db, item) for item in rows
+            if not is_tail_proxy_schedule(item.task_type, _json(item.payload_json, {}))]
 
 
 @router.get(

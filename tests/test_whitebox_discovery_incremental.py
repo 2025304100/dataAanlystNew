@@ -380,7 +380,7 @@ def test_multiple_data_updates_aggregate_reasons(db_session):
     assert DirtyReason.LATEST_BAR_CHANGED in reasons
     assert DirtyReason.CAPITAL_FLOW_UPDATED in reasons
     assert DirtyReason.HOT_RANK_UPDATED in reasons
-    assert DirtyReason.TAIL_ACCUMULATION_UPDATED in reasons
+    assert DirtyReason.TAIL_ACCUMULATION_UPDATED not in reasons
 
 
 def test_universe_resync_triggers_universe_resynced(db_session):

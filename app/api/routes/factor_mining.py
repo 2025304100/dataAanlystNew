@@ -556,7 +556,7 @@ def list_mining_fields() -> dict[str, Any]:
         "raw_financial_reports": ("financial", "财报"),
     }
     FLOW_FIELDS = ("main_net_inflow", "lhb_institution_net")
-    EVENT_FIELDS = ("hot_rank_pct", "proxy_score", "etf_premium_discount",
+    EVENT_FIELDS = ("hot_rank_pct", "etf_premium_discount",
                     "etf_tracking_error", "etf_fund_size")
     # 已知数据缺口（实测，未采集）→ blocked（补齐后自动恢复，不写死永久阻断）。
     # 文案两层（2026-09-22）：user 句进界面正文，detail 句进悬浮提示 —— 表名/物理列
@@ -565,10 +565,6 @@ def list_mining_fields() -> dict[str, Any]:
         "dividend_yield": (
             "股息率该列已存在，但当前估值快照里全为空值（未采集），补齐采集前不可用。",
             "实测 `raw_valuation_snapshots.dividend_yield` 全为空值（未采集）。",
-        ),
-        "proxy_score": (
-            "尾盘分钟代理当前不可用，缺少可评价的分钟历史数据。",
-            "尾盘分钟代理当前 maintained blocked，未接入可评价的分钟历史。",
         ),
     }
 
