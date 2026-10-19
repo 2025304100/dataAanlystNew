@@ -495,6 +495,26 @@ class TestResetTaskCancel:
 # ============================================================================
 
 
+class TestTaskCancelStateIsolationAcrossTests:
+    """守护 conftest._isolate_task_cancel_state：取消态不得跨用例泄漏。
+
+    `auto_trade_safety._task_cancel_state` 是单进程模块级全局；一旦泄漏，下游
+    `_execute_snapshot_order_plans` 会静默走 skipped_due_to_cancel（executed_orders=0），
+    表现为"只在全量单进程里红"。下面两条相邻用例一泄漏一校验，缺了 conftest 的
+    autouse 复位夹具时第二项必红。
+    """
+
+    def test_first_case_leaks_cancel_on_purpose(self):
+        """故意 cancel 且不复位，代表真实泄漏源。"""
+        cancel_task("QA 泄漏源")
+        assert check_task_cancelled() is True
+
+    def test_second_case_starts_from_clean_state(self):
+        """后置用例必须看不到上一条留下的取消态。"""
+        assert check_task_cancelled() is False
+        assert get_task_cancel_state() is None
+
+
 class TestRecordPortfolioState:
     """守护 record_portfolio_processed/skipped 记录到取消状态。"""
 

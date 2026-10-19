@@ -504,6 +504,21 @@ def _isolate_worker_stop_event(request):
             _at.WORKER_STOP_EVENT.clear()
 
 
+# auto_trade_safety 的单进程模块级取消态同样是"跨用例存活"的全局：
+# 任一处 cancel_task() 后未 reset_task_cancel()，其后所有
+# `_execute_snapshot_order_plans` 会静默走 skipped_due_to_cancel（executed_orders=0），
+# 表现为"只在全量单进程里红、单文件跑却绿"。这里在用例前后各复位一次。
+@pytest.fixture(autouse=True)
+def _isolate_task_cancel_state():
+    from app.services import auto_trade_safety as _ats
+
+    _ats.reset_task_cancel()
+    try:
+        yield
+    finally:
+        _ats.reset_task_cancel()
+
+
 # ===========================================================================
 # e2e 闸门的「至少真跑 N 例」最低覆盖断言
 # ===========================================================================
