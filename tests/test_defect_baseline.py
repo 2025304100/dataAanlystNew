@@ -588,29 +588,35 @@ class TestC10RealIndicatorTree:
 
 
 class TestC11AtomicSave:
-    """C-11 RED：策略保存必须是单事务，回滚时不能部分落库。"""
+    """C-11（原 RED，已随原子保存入口修复转 GREEN）：策略保存必须是单事务，回滚时不能部分落库。"""
 
     def test_atomic_upsert_rule_also_writes_signal_rule_and_auto_trade(self):
-        """RED：portfolios.upsert_portfolio_rule 或等价保存入口，必须在一个事务中
-        同时管理 PortfolioRule + SignalRule + auto_trade_enabled。"""
+        """GREEN：策略保存必须在一个事务中同时管理 PortfolioRule + SignalRule + auto_trade_enabled。
+
+        原始缺陷（C-11）是"分步保存、失败也可能提示成功"。修复后的原子入口是
+        `portfolios.save_strategy_configuration`：UI 保存策略走 `/strategy-configuration`
+        （`PortfolioStrategyRules.tsx`），且前端另有断言 `upsertPortfolioRule` 不再被调用。
+        该历史端点只写规则、仅保留兼容语义，故不再作为本项的判据。
+
+        这里锁定原子契约：三类写入齐备 + 子写入 commit=False（同事务）+ 统一 commit/rollback。
+        """
         from app.api.routes import portfolios as pf_routes
         import inspect
-        src = ""
-        upsert_fn = getattr(pf_routes, "upsert_portfolio_rule", None)
-        if upsert_fn is not None:
-            src = inspect.getsource(upsert_fn)
-        # 该函数必须同时管理三类写入
-        writes_rule = "PortfolioRule" in src or "portfolio_rule" in src
-        writes_signal = "SignalRule" in src or "signal_rule" in src or "get_active_signal_rule" in src
+        atomic_fn = getattr(pf_routes, "save_strategy_configuration", None)
+        assert atomic_fn is not None, "C-11：缺少策略原子保存入口 save_strategy_configuration"
+        src = inspect.getsource(atomic_fn)
+        writes_rule = "PortfolioRule" in src or "portfolio_rule" in src or "_persist_portfolio_rule" in src
+        writes_signal = "SignalRule" in src or "signal_rule" in src or "upsert_active_signal_rule" in src
         writes_auto = "auto_trade" in src
-        # 原子语义：要么 db.commit() 在最后统一调用，要么用 begin_nested 子事务保护
-        has_commit_at_end = "commit" in src
-        assert writes_rule and writes_signal and writes_auto and has_commit_at_end, (
-            "C-11 RED：upsert_portfolio_rule 源码中，"
-            f"writes_rule={writes_rule}, writes_signal={writes_signal}, "
-            f"writes_auto={writes_auto}, has_commit={has_commit_at_end}。"
-            "PortfolioRule/SignalRule/auto_trade 开关必须在同一事务中原子保存，"
-            "否则分步保存失败时会出现半保存半生效状态。"
+        # 原子语义：子写入不得各自提交，整体只有一次 commit，失败 rollback
+        single_tx = "commit=False" in src
+        has_commit = "db.commit()" in src
+        has_rollback = "db.rollback()" in src
+        assert writes_rule and writes_signal and writes_auto and single_tx and has_commit and has_rollback, (
+            "C-11：策略原子保存入口必须同事务管理 PortfolioRule/SignalRule/auto_trade，"
+            f"子写入不得各自提交，并统一提交/回滚。writes_rule={writes_rule}, "
+            f"writes_signal={writes_signal}, writes_auto={writes_auto}, single_tx={single_tx}, "
+            f"has_commit={has_commit}, has_rollback={has_rollback}"
         )
 
 
