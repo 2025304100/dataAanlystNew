@@ -508,10 +508,23 @@ def test_public_start_observes_market_completion_during_wait(db_session, monkeyp
     assert waits == [5.0]
 
 
+def _prior_trading_day(today: date | None = None) -> date:
+    """上一个 A 股交易日（按周末口径回退）。
+
+    本用例库无交易日历，`market_session.is_cn_trading_day` 对 weekday>=5 直接判休市。
+    若直接用 `today - 1`，每逢"昨天是周末"就会撞上休市预检（partition_specs 被清空），
+    使重试用例必红——只跟日期相关，与实现无关。
+    """
+    day = (today or date.today()) - timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
 def test_prior_day_failed_valuation_retries_real_history(db_session, monkeypatch):
     symbol = _symbols(db_session, count=1)[0]
     task, payload = _task(db_session, "fundamental", {"source": "all"}, monkeypatch)
-    yesterday = date.today() - timedelta(days=1)
+    yesterday = _prior_trading_day()
     row = db_session.get(AsyncTaskRecord, task.id)
     row.status = "failed"
     row.is_terminal_locked = 1
@@ -577,7 +590,7 @@ def test_capital_flow_incremental_history_rejected_at_api(db_session, monkeypatc
 def test_prior_day_failed_capital_flow_retries_real_history(db_session, monkeypatch):
     symbol = _symbols(db_session, count=1)[0]
     task, payload = _task(db_session, "capital_flow", {"source": "all", "include_northbound": False}, monkeypatch)
-    yesterday = date.today() - timedelta(days=1)
+    yesterday = _prior_trading_day()
     row = db_session.get(AsyncTaskRecord, task.id)
     row.status = "failed"
     row.is_terminal_locked = 1
