@@ -56,6 +56,12 @@ def _seed_snapshot_case(db_session):
             factor_model_run_id="stage1-idempotency-model",
             calc_batch_id=f"stage1-idempotency-{index}",
             published_at=datetime(2026, 1, 1),
+            # 绑定模型的 Score 血缘校验要求这三个字段；缺失 → 覆盖率 0 →
+            # SCORE_COVERAGE_BELOW_SLA → 全组合阻断，掩盖本用例要验证的幂等复用。
+            factor_data_cutoff_at=datetime(2026, 1, 1),
+            # 阈值口径 0～100（buy=70），故 alpha 用 80（0～1 的 0.8 会被判 SELL）。
+            model_alpha_score=80.0,
+            factor_set_id="fs-stage1-idempotency-model",
         ))
     snapshot = StrategyExecutionSnapshot(
         id="stage1-idempotency-snapshot",
@@ -71,6 +77,21 @@ def _seed_snapshot_case(db_session):
         effective_from=datetime(2026, 1, 1),
     )
     db_session.add(snapshot)
+    # 复用真实绑定夹具（已应用的模型绑定）；缺它入口 governor 会静默阻断。
+    from tests.portfolio_binding_helpers import bind_applied_snapshot
+    bind_applied_snapshot(db_session, snapshot)
+    # 引擎在 evaluate 内用绑定 readiness 的成员版本表做血缘校验（decision_engine:1475-1483）；
+    # 按同一来源回填 Score.factor_member_versions_json，否则 SCORE_FACTOR_VERSION_MISMATCH。
+    from app.services.factors.__facade__ import assess_score_model_readiness
+    _ready = assess_score_model_readiness(
+        db_session, snapshot.factor_model_run_id, snapshot.factor_set_id,
+        require_runtime_active=False)
+    _fmv = (_ready.get("details") or {}).get("factor_member_versions")
+    if _fmv:
+        db_session.query(Score).update(
+            {"factor_member_versions_json": json.dumps(_fmv)},
+            synchronize_session=False,
+        )
     db_session.commit()
     return portfolio, symbol, snapshot, days
 
@@ -267,6 +288,9 @@ def test_replay_preserves_original_plan_reason_when_evidence_has_match_outcome(d
         )
     ).scalar_one()
     exit_score.quality_score = 0.2
+    # 绑定快照的信号源固定为 model_alpha（0～100 标度），只有 alpha ≤ sell 阈值(35)
+    # 才会产生 SELL；只改 quality_score 不会触发策略退出，故同步下调 alpha。
+    exit_score.model_alpha_score = 20.0
     exit_score.action = "exit"
     db_session.commit()
 

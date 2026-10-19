@@ -249,6 +249,13 @@ def _seed_real_tri_entry_case(db_session):
             factor_model_run_id="stage1-real-tri-entry-model",
             calc_batch_id=f"stage1-real-tri-entry-{symbol.id}",
             published_at=datetime(2026, 1, 1, 0, 0),
+            # 绑定模型的 Score 血缘校验要求这三个字段；缺失 → 覆盖率 0 →
+            # SCORE_COVERAGE_BELOW_SLA → 全组合阻断，掩盖本用例要比较的订单计划。
+            factor_data_cutoff_at=datetime(2026, 1, 1, 0, 0),
+            # 信号阈值口径为 0～100（buy=70 / sell=35，见 _DEFAULT_SIGNAL_THRESHOLDS）；
+            # 本夹具 quality 用 0～1，故 alpha 需同乘 100，否则 0.9 < 70 会被判 SELL。
+            model_alpha_score=quality_score * 100,
+            factor_set_id="fs-stage1-real-tri-entry-model",
         ))
 
     snapshot = StrategyExecutionSnapshot(
@@ -276,11 +283,30 @@ def _seed_real_tri_entry_case(db_session):
         versions_json=json.dumps({
             "run_mode": "research",
             "pit_mode": "best_effort",
-            "signal_policy": {"buy_threshold": 0.7, "sell_threshold": 0.35},
+            # 快照信号阈值口径为 0～100（_real_signal_generator 要求 buy_th > 1），
+            # 与 model_alpha_score 的 0～100 标度一致；写成 0～1 会触发
+            # SIGNAL_POLICY_INVALID → 全组合 DATA_INCOMPLETE_PAUSED。
+            "signal_policy": {"buy_threshold": 70, "sell_threshold": 35},
         }),
         effective_from=datetime(2026, 1, 1),
     )
     db_session.add(snapshot)
+    # 复用真实绑定夹具：正式/研究执行都要求"已应用的模型绑定"，否则入口 governor
+    # 以 MODEL_INACTIVE / PORTFOLIO_NOT_READY 阻断、静默 0 单。
+    from tests.portfolio_binding_helpers import bind_applied_snapshot
+    bind_applied_snapshot(db_session, snapshot)
+    # 引擎在 evaluate 内用绑定 readiness 的成员版本表做血缘校验（decision_engine:1475-1483）；
+    # 按同一来源回填 Score.factor_member_versions_json，否则 SCORE_FACTOR_VERSION_MISMATCH。
+    from app.services.factors.__facade__ import assess_score_model_readiness
+    _ready = assess_score_model_readiness(
+        db_session, snapshot.factor_model_run_id, snapshot.factor_set_id,
+        require_runtime_active=False)
+    _fmv = (_ready.get("details") or {}).get("factor_member_versions")
+    if _fmv:
+        db_session.query(Score).update(
+            {"factor_member_versions_json": json.dumps(_fmv)},
+            synchronize_session=False,
+        )
     db_session.commit()
     return portfolio, (buy_symbol, hold_symbol), snapshot
 
