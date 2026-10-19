@@ -3,6 +3,7 @@ from datetime import timedelta
 
 import pytest
 
+from app.services.factors.definitions import FACTOR_DEFINITIONS
 from app.services.factors.factor_engine import calculate_stock_factors
 from app.services.factors.health import get_factor_health
 from app.services.factors.store import FactorWarehouse
@@ -40,7 +41,9 @@ def test_default_health_keeps_latest_complete_default_versions_after_research_tr
     after = get_factor_health(warehouse)
     assert before.calc_batch_id == after.calc_batch_id == "complete-defaults"
     assert [row.coverage for row in before.factors] == [row.coverage for row in after.factors]
-    assert len(after.factors) == 8
+    # 默认因子全集以 FACTOR_DEFINITIONS 为准（尾盘代理停用后由 8 → 7，
+    # 见 249edfae）；不再写死 8，避免因子增删时再次漏改。
+    assert len(after.factors) == len(FACTOR_DEFINITIONS)
 
 
 def test_new_complete_default_batch_with_real_missing_inputs_stays_degraded(tmp_path):
