@@ -677,17 +677,20 @@ class TestFactorLibraryLifecycleMigration:
     """WP1-06: 验证 wps_0023_021_factor_library_lifecycle 迁移的回填与幂等性。"""
 
     def test_0021_migration_backfills_system_factors(self, fresh_sqlite_url):
-        """0021 迁移幂等回填 8 个系统因子的生命周期/治理字段。"""
+        """0021 迁移幂等回填 系统因子全集的生命周期/治理字段。"""
         from alembic import command
         from sqlalchemy.orm import Session
 
-        from app.services.factors.definitions import seed_factor_definitions
+        from app.services.factors.definitions import (
+            FACTOR_DEFINITIONS,
+            seed_factor_definitions,
+        )
 
         # 1. 用 ORM metadata 创建全部表（含新列）
         engine = create_engine(fresh_sqlite_url)
         Base.metadata.create_all(engine)
 
-        # 2. 种子 8 个系统因子及其版本（lifecycle_status 等新字段为 NULL）
+        # 2. 种子 系统因子全集及其版本（lifecycle_status 等新字段为 NULL）
         with Session(engine) as session:
             seed_factor_definitions(session)
             session.commit()
@@ -697,14 +700,15 @@ class TestFactorLibraryLifecycleMigration:
         cfg = _make_alembic_config(fresh_sqlite_url)
         command.upgrade(cfg, "head")
 
-        # 4. 验证 8 个因子回填结果
+        # 4. 验证因子全集回填结果
         engine = create_engine(fresh_sqlite_url)
         with engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT code, lifecycle_status, origin, factor_kind, "
                 "active_version_id FROM factors ORDER BY code"
             )).fetchall()
-            assert len(rows) == 8, f"Expected 8 factors, got {len(rows)}"
+            assert len(rows) == len(FACTOR_DEFINITIONS), \
+                f"Expected {len(FACTOR_DEFINITIONS)} factors, got {len(rows)}"
             for code, ls, origin, kind, avid in rows:
                 assert ls == "active", \
                     f"Factor {code} lifecycle_status should be 'active', got {ls}"
@@ -715,13 +719,13 @@ class TestFactorLibraryLifecycleMigration:
                 assert avid is not None, \
                     f"Factor {code} active_version_id should not be NULL"
 
-            # 5. 验证 factor_transition_audits 有 8 条 actor='system_migration' 记录
+            # 5. 验证 factor_transition_audits 的 actor='system_migration' 记录数与因子数一致
             audit_count = conn.execute(text(
                 "SELECT COUNT(*) FROM factor_transition_audits "
                 "WHERE actor = 'system_migration'"
             )).scalar()
-            assert audit_count == 8, \
-                f"Expected 8 audit records with actor='system_migration', got {audit_count}"
+            assert audit_count == len(FACTOR_DEFINITIONS), \
+                f"Expected {len(FACTOR_DEFINITIONS)} audit records with actor='system_migration', got {audit_count}"
 
             # 6. 验证 factor_sets 有 legacy-system-v1 且 status='frozen'
             fs = conn.execute(text(
@@ -731,13 +735,13 @@ class TestFactorLibraryLifecycleMigration:
             assert fs[0] == "frozen", \
                 f"Factor set status should be 'frozen', got {fs[0]}"
 
-            # 7. 验证 factor_set_members 有 8 条 legacy-system-v1 成员
+            # 7. 验证 factor_set_members 的 legacy-system-v1 成员数与因子数一致
             member_count = conn.execute(text(
                 "SELECT COUNT(*) FROM factor_set_members "
                 "WHERE factor_set_id = 'legacy-system-v1'"
             )).scalar()
-            assert member_count == 8, \
-                f"Expected 8 factor set members for legacy-system-v1, got {member_count}"
+            assert member_count == len(FACTOR_DEFINITIONS), \
+                f"Expected {len(FACTOR_DEFINITIONS)} factor set members for legacy-system-v1, got {member_count}"
 
         engine.dispose()
 
@@ -746,9 +750,12 @@ class TestFactorLibraryLifecycleMigration:
         from alembic import command
         from sqlalchemy.orm import Session
 
-        from app.services.factors.definitions import seed_factor_definitions
+        from app.services.factors.definitions import (
+            FACTOR_DEFINITIONS,
+            seed_factor_definitions,
+        )
 
-        # 1. 用 ORM metadata 创建全部表 + 种子 8 个系统因子
+        # 1. 用 ORM metadata 创建全部表 + 种子 系统因子全集
         engine = create_engine(fresh_sqlite_url)
         Base.metadata.create_all(engine)
         with Session(engine) as session:
@@ -756,28 +763,28 @@ class TestFactorLibraryLifecycleMigration:
             session.commit()
         engine.dispose()
 
-        # 2. 第一次 upgrade head（0021 迁移回填，产生 8 审计 + 8 成员）
+        # 2. 第一次 upgrade head（0021 迁移回填，产生审计与成员）
         cfg = _make_alembic_config(fresh_sqlite_url)
         command.upgrade(cfg, "head")
 
         # 3. 第二次 upgrade head（应无错误，alembic 已在 head，不重复执行）
         command.upgrade(cfg, "head")
 
-        # 4. 验证审计记录仍为 8 条（非 16）
+        # 4. 验证审计记录仍为因子数条（非双倍）
         engine = create_engine(fresh_sqlite_url)
         with engine.connect() as conn:
             audit_count = conn.execute(text(
                 "SELECT COUNT(*) FROM factor_transition_audits"
             )).scalar()
-            assert audit_count == 8, \
-                f"Expected 8 audit records (idempotent), got {audit_count}"
+            assert audit_count == len(FACTOR_DEFINITIONS), \
+                f"Expected {len(FACTOR_DEFINITIONS)} audit records (idempotent), got {audit_count}"
 
-            # 5. 验证因子集成员仍为 8 条（非 16）
+            # 5. 验证因子集成员仍为因子数条（非双倍）
             member_count = conn.execute(text(
                 "SELECT COUNT(*) FROM factor_set_members "
                 "WHERE factor_set_id = 'legacy-system-v1'"
             )).scalar()
-            assert member_count == 8, \
-                f"Expected 8 factor set members (idempotent), got {member_count}"
+            assert member_count == len(FACTOR_DEFINITIONS), \
+                f"Expected {len(FACTOR_DEFINITIONS)} factor set members (idempotent), got {member_count}"
 
         engine.dispose()
