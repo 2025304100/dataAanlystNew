@@ -9,6 +9,8 @@ _ENDPOINTS = {
     "eastmoney": ("stock_zh_a_hist", "akshare:em:cn-stock:v1"),
     "sina": ("stock_zh_a_daily", "akshare:sina:cn-stock:v1"),
     "tencent": ("stock_zh_a_hist_tx", "akshare:tx:cn-stock:v1"),
+    "eastmoney_etf": ("fund_etf_hist_em", "akshare:em:cn-etf:v1"),
+    "baostock_etf": ("query_history_k_data_plus", "baostock:cn-etf:v1"),
 }
 
 
@@ -52,6 +54,26 @@ def resolve_cn_prefixed_symbol(code: str, market: str | None, asset_type: str | 
     return ("sh" if family.startswith("sh_") else "sz" if family.startswith("sz_") else "bj") + code
 
 
+def cn_history_instrument(code: str) -> dict[str, str]:
+    """Resolve traded CN ETF/stock families before preparing research inputs.
+
+    A six-digit code alone does not make an instrument a stock. Unknown
+    families fail instead of defaulting to the Shenzhen exchange.
+    """
+    if not isinstance(code, str) or not re.fullmatch(r"\d{6}", code):
+        raise ValueError("unknown_cn_symbol_code")
+    # SSE code allocation guide (2026, revision 3). LOFs, REITs, fund
+    # subscriptions and exchange money funds must not become equity ETFs.
+    sh_etf_prefixes = ('510', '512', '513', '515', '516', '517', '518', '526',
+                      '530', '551', '560', '561', '562', '563', '565', '566',
+                      '567', '581', '587', '588', '589')
+    is_etf = (code.startswith(sh_etf_prefixes) or code.startswith('159')
+              or '511000' <= code <= '511599' or '520500' <= code <= '520999')
+    asset_type = "etf" if is_etf else "stock"
+    prefixed = resolve_cn_prefixed_symbol(code, None, asset_type)
+    return {"asset_type": asset_type, "market": prefixed[:2]}
+
+
 def tencent_quantity_input_contract(symbol: str) -> dict:
     """Declare verified Tencent wire units by instrument family, never size."""
     if not isinstance(symbol, str) or not re.fullmatch(r"(?:sh|sz)\d{6}", symbol):
@@ -90,7 +112,8 @@ def history_source_tag(frame) -> str:
     provider = contract.get("provider")
     definition = _ENDPOINTS.get(provider) if isinstance(provider, str) else None
     if definition is None or any(contract.get(key) != expected for key, expected in {
-        "version": "cn-stock-shares-v1", "endpoint": definition[0],
+        "version": "cn-etf-shares-v1" if provider in {'eastmoney_etf', 'baostock_etf'} else "cn-stock-shares-v1",
+        "endpoint": definition[0],
         "volume_unit": "share", "amount_unit": "CNY", "turnover_unit": "percentage_point",
     }.items()):
         raise ValueError("Invalid CN stock history unit contract")
@@ -102,10 +125,17 @@ def is_cn_stock_history(symbol) -> bool:
             and (getattr(symbol, "market", None) or "").lower() in {"", "cn", "sh", "sz", "bj"})
 
 
+def is_cn_etf_history(symbol) -> bool:
+    return (getattr(symbol, 'asset_type', None) == 'etf'
+            and (getattr(symbol, 'market', None) or '').lower() in {'', 'cn', 'sh', 'sz'})
+
+
 def require_cn_stock_qfq(symbol, adjust: str) -> None:
     """Single-version production CN bars cannot store RAW/HFQ alongside qfq."""
     if is_cn_stock_history(symbol) and adjust != "qfq":
         raise ValueError("cn_stock_production_requires_qfq")
+    if is_cn_etf_history(symbol) and adjust != 'qfq':
+        raise ValueError('cn_etf_production_requires_qfq')
 
 
 def _declared_price_modes(frame) -> list:
@@ -128,7 +158,7 @@ def _declared_price_modes(frame) -> list:
 
 def mark_cn_stock_production_mode(frame, symbol, adjust: str):
     require_cn_stock_qfq(symbol, adjust)
-    if not is_cn_stock_history(symbol):
+    if not (is_cn_stock_history(symbol) or is_cn_etf_history(symbol)):
         return frame
     if any(mode != "qfq" for mode in _declared_price_modes(frame)):
         raise ValueError("cn_stock_production_price_mode_conflict")

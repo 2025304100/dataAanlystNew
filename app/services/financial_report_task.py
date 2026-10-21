@@ -18,6 +18,7 @@ from app.services.financial_data import (
     resolve_financial_report_symbols,
     sync_financial_announcements,
 )
+from app.services.sync_progress import CancellationProbe, ProgressCheckpoint
 
 
 logger = logging.getLogger(__name__)
@@ -72,9 +73,9 @@ def _run_financial_report_task(task_id: str) -> None:
         records = 0
         errors: list[dict[str, str]] = []
         def should_cancel():
-            db.expire_all()
-            active = db.get(AsyncTaskRecord, task_id)
-            return active is None or active.status == "cancelled"
+            with SessionLocal() as reader:
+                active = reader.get(AsyncTaskRecord, task_id)
+                return active is None or active.status == "cancelled" or bool(active.cancel_requested)
 
         def on_result(symbol, count, summary):
             db.commit()
@@ -83,8 +84,12 @@ def _run_financial_report_task(task_id: str) -> None:
                       total=total, processed=processed, ok_count=summary["success"], failed_count=0,
                       current_item=symbol.symbol, message=f"Financial reports {processed}/{total}")
 
-        summary = sync_financial_announcements(db, symbols, date.today(), date.today(),
-                                              should_cancel=should_cancel, on_result=on_result)
+        checkpoint = ProgressCheckpoint(on_result)
+        try:
+            summary = sync_financial_announcements(db, symbols, date.today(), date.today(),
+                should_cancel=CancellationProbe(should_cancel), on_result=checkpoint)
+        finally:
+            checkpoint.flush()
         if should_cancel():
             return
         success, skipped, failed, records = (summary[key] for key in ("success", "skipped", "failed", "records"))
@@ -125,6 +130,11 @@ def _run_financial_report_task(task_id: str) -> None:
         db.rollback()
         logger.exception("Financial report task failed: %s", task_id)
         task = db.get(AsyncTaskRecord, task_id)
+        if task is not None and task.cancel_requested:
+            task.status = task.stage = "cancelled"
+            task.finished_at = task.updated_at = _now()
+            db.commit()
+            return
         if task is not None and task.status != "cancelled":
             task.status = "failed"
             task.stage = "failed"

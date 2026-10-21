@@ -34,6 +34,40 @@ from app.models.symbol import Symbol
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.mark.parametrize("operation", ["patch", "archive", "pause", "restore"])
+def test_member_operations_cannot_modify_another_portfolio(client, db_session, operation):
+    owner = _make_portfolio(db_session, name="QA-MemberOwner")
+    other = _make_portfolio(db_session, name="QA-MemberOther")
+    symbol = _make_symbol(db_session, symbol="610791")
+    created = client.post(f"/api/v1/portfolios/{owner.id}/members", json={"symbol_id": symbol.id})
+    member_id = created.json()["id"]
+    if operation == "restore":
+        assert client.post(f"/api/v1/portfolios/{owner.id}/members/{member_id}/archive").status_code == 200
+    before = client.get(f"/api/v1/portfolios/{owner.id}/members?include_archived=true").json()
+    path = f"/api/v1/portfolios/{other.id}/members/{member_id}"
+    response = client.patch(path, json={"note": "wrong portfolio"}) if operation == "patch" else client.post(f"{path}/{operation}")
+    assert response.status_code == 404
+    assert client.get(f"/api/v1/portfolios/{owner.id}/members?include_archived=true").json() == before
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+@pytest.mark.parametrize("execution_mode", ["confirm", "CONFIRM", " confirm "])
+def test_unavailable_confirmation_mode_does_not_create_unfinishable_orders(client, db_session, operation, execution_mode):
+    portfolio = _make_portfolio(db_session, name="QA-ConfirmationUnavailable")
+    symbol = _make_symbol(db_session, symbol="610792")
+    base = f"/api/v1/portfolios/{portfolio.id}/members"
+    if operation == "create":
+        before = client.get(base).json()
+        response = client.post(base, json={"symbol_id": symbol.id, "execution_mode": execution_mode})
+    else:
+        member = client.post(base, json={"symbol_id": symbol.id}).json()
+        before = client.get(base).json()
+        response = client.patch(f"{base}/{member['id']}", json={"execution_mode": execution_mode, "note": "must not be partially saved"})
+    assert response.status_code == 503
+    assert response.json()["error_code"] == "CAPABILITY_BLOCKED"
+    assert client.get(base).json() == before
+
+
 # ----------------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------------
@@ -323,7 +357,7 @@ def test_patch_portfolio_member_updates_fields(client, db_session):
         f"/api/v1/portfolios/{pf.id}/members/{member_id}",
         json={
             "status": "paused",
-            "execution_mode": "confirm",
+            "execution_mode": "auto",
             "priority": 99,
             "note": "更新后笔记",
         },
@@ -331,7 +365,7 @@ def test_patch_portfolio_member_updates_fields(client, db_session):
     assert r_patch.status_code == 200
     data = r_patch.json()
     assert data["status"] == "paused"
-    assert data["execution_mode"] == "confirm"
+    assert data["execution_mode"] == "auto"
     assert data["priority"] == 99
     assert data["note"] == "更新后笔记"
     assert data["id"] == member_id

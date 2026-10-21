@@ -97,7 +97,7 @@ def _fetch_lhb_institution(
 
 
 def sync_lhb_institution_trades(
-    db: Session, *, start_date: date, end_date: date
+    db: Session, *, start_date: date, end_date: date, fill_missing_only: bool = False
 ) -> LhbInstitutionSyncResult:
     """Synchronize one bounded market-wide date range."""
     if start_date > end_date:
@@ -146,6 +146,7 @@ def sync_lhb_institution_trades(
                 LhbInstitutionTrade.source == source,
             )
         ).scalars().first()
+        was_existing = existing is not None
         if existing is None:
             existing = LhbInstitutionTrade(
                 symbol=code,
@@ -153,15 +154,24 @@ def sync_lhb_institution_trades(
                 source=source,
             )
             db.add(existing)
+        filled = []
         for field in ("buyer_institution_count", "seller_institution_count", "institution_buy", "institution_sell",
                       "institution_net", "market_amount", "institution_net_pct", "turnover_rate"):
             value = _nullable_int(row.get(field)) if field.endswith("_count") else _nullable_float(row.get(field))
-            if value is not None:
+            if value is not None and (not fill_missing_only or getattr(existing, field) is None):
                 setattr(existing, field, value)
+                filled.append(field)
         reason = row.get("reason")
-        if reason is not None and not pd.isna(reason):
+        if reason is not None and not pd.isna(reason) and (not fill_missing_only or existing.reason is None):
             existing.reason = str(reason)
-        existing.raw_json = raw_payloads.get((code, trade_date))
+            filled.append("reason")
+        if fill_missing_only and not filled:
+            continue
+        if fill_missing_only and was_existing:
+            from app.services.sync_write_policy import record_missing_fill
+            record_missing_fill(existing, filled, raw_payloads.get((code, trade_date)), source)
+        else:
+            existing.raw_json = raw_payloads.get((code, trade_date))
         written += 1
         written_dates.add(trade_date)
     db.flush()

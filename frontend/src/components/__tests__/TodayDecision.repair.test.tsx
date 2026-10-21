@@ -51,6 +51,8 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
       reason_codes: [],
       trade_date: "2026-07-24",
     })),
+    startAutoSimulation: vi.fn(async (_portfolioId: number, _payload: unknown) => ({ portfolio_id: 1, trade_date: "2026-07-24", task_id: "sim-task-1", status: "queued", created: true })),
+    getAsyncTask: vi.fn(async (_taskId: string) => ({ id: "sim-task-1", status: "running", percent: 20, message: "正在处理", errors: [] })),
     repairSymbolMarketData: vi.fn(async (_id: number, _payload: unknown) => ({ success: true })),
     repairAllSymbolMarketData: vi.fn(async (_payload: unknown) => ({
       success: true,
@@ -211,6 +213,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
       reason_codes: [],
       trade_date: "2026-07-24",
     });
+    mockApi.startAutoSimulation.mockReset();
+    mockApi.startAutoSimulation.mockResolvedValue({ portfolio_id: 1, trade_date: "2026-07-24", task_id: "sim-task-1", status: "queued", created: true });
+    mockApi.getAsyncTask.mockReset();
+    mockApi.getAsyncTask.mockResolvedValue({ id: "sim-task-1", status: "running", percent: 20, message: "正在处理", errors: [] });
     mockApi.getDataHealth.mockReset();
     mockApi.getDataHealth.mockResolvedValue(makeDataHealth(0));
     mockApi.repairSymbolMarketData.mockReset();
@@ -238,6 +244,172 @@ describe("TodayDecision 待修复样本交互测试", () => {
     });
     expect(screen.getByText("tdNoRepairSamples")).toBeInTheDocument();
     expect(screen.getByText("tdRepairAll").closest("button")).toBeDisabled();
+  });
+
+  it("starts a real simulation task only after checks and shows the task rather than claiming completion", async () => {
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /执行预检|检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    expect(mockApi.startAutoSimulation).not.toHaveBeenCalled();
+    fireEvent.click(check);
+    const start = await screen.findByRole("button", { name: /进入自动推演 \/ Shadow|开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await waitFor(() => expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce());
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledWith(1, { trade_date: "2026-07-24" });
+    expect(await screen.findByText("正在模拟交易")).toBeVisible();
+    expect(mockApi.getAsyncTask).toHaveBeenCalledWith("sim-task-1");
+    expect(mockContext.setActiveTab).not.toHaveBeenCalled();
+    expect(mockContext.showToast).not.toHaveBeenCalledWith("success", expect.stringContaining("完成"));
+  });
+
+  it.each([
+    ["2026-07-24T16:30:00Z", "2026-07-25"],
+    ["2026-07-24T12:30:00Z", "2026-07-24"],
+    ["2026-07-24T00:30:00Z", "2026-07-24"],
+  ])("checks the Shanghai business date for UTC %s", async (instant, expectedDate) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(instant));
+    try {
+      const view = render(<TodayDecision />);
+      const check = await screen.findByRole("button", { name: /执行预检|检查能否开始/ });
+      await waitFor(() => expect(check).toBeEnabled());
+      fireEvent.click(check);
+      await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalled());
+      expect(mockApi.preflightAutoSimulation.mock.calls[0][1]).toMatchObject({ trade_date: expectedDate });
+      view.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("explains a Shanghai trade-date mismatch in everyday Chinese and keeps starting disabled", async () => {
+    mockApi.preflightAutoSimulation.mockResolvedValue({ proceed: false, trade_date: "2026-07-24", skip_reason: "SCHEDULE_DATE_MISMATCH", skip_detail: "请按北京时间重新检查" } as any);
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    expect(await screen.findByText("交易日期与北京时间不一致")).toBeVisible();
+    expect(screen.queryByText("SCHEDULE_DATE_MISMATCH")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /开始模拟交易/ })).toBeDisabled();
+    expect(mockApi.startAutoSimulation).not.toHaveBeenCalled();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /开始模拟交易/ }).parentElement!);
+    const hint = await screen.findByRole("tooltip");
+    expect(hint).toHaveTextContent("交易日期与北京时间不一致");
+    expect(hint).not.toHaveTextContent("SCHEDULE_DATE_MISMATCH");
+  });
+
+  it("keeps a failed start on the same page and requires fresh checks before another start", async () => {
+    mockApi.startAutoSimulation.mockRejectedValueOnce({ status_code: 409, detail: { title_zh: "组合状态已改变", detail_zh: "请重新检查" } });
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    const start = screen.getByRole("button", { name: /开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    expect(await screen.findByText("没有启动模拟交易。组合状态已改变：请重新检查")).toBeVisible();
+    expect(start).toBeDisabled();
+    expect(mockContext.setActiveTab).not.toHaveBeenCalled();
+    expect(mockApi.getAsyncTask).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["partial", "模拟交易只完成了一部分，请查看任务记录"],
+    ["failed", "模拟交易没有完成，请查看任务记录"],
+    ["cancelled", "模拟交易已停止"],
+  ])("shows a %s task truthfully without reporting success or starting another task", async (status, expectedMessage) => {
+    mockApi.getAsyncTask.mockResolvedValue({ id: "sim-task-1", status, percent: 100, message: "任务记录", errors: [] });
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    const start = screen.getByRole("button", { name: /开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    expect(await screen.findByText(expectedMessage)).toBeVisible();
+    expect(screen.queryByText("模拟交易已完成")).not.toBeInTheDocument();
+    expect(start).toBeDisabled();
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "查看任务记录" })).toBeEnabled();
+  });
+
+  it("retries reading the original simulation task without creating another task", async () => {
+    mockApi.getAsyncTask.mockRejectedValueOnce(new Error("network down"));
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    const start = screen.getByRole("button", { name: /开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    const retry = await screen.findByRole("button", { name: "重新查看任务进度" });
+    expect(screen.queryByText("模拟交易已完成")).not.toBeInTheDocument();
+    fireEvent.click(retry);
+    expect(await screen.findByText("正在模拟交易")).toBeVisible();
+    expect(mockApi.getAsyncTask.mock.calls.every(([id]) => id === "sim-task-1")).toBe(true);
+    expect(mockApi.getAsyncTask).toHaveBeenCalledTimes(2);
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+    expect(start).toBeDisabled();
+  });
+
+  it.each(["failed", "partial", "cancelled"])("allows an explicit fresh check and start after the original task is %s", async (status) => {
+    mockApi.startAutoSimulation.mockResolvedValueOnce({ portfolio_id: 1, trade_date: "2026-07-24", task_id: "sim-task-1", status: "queued", created: true })
+      .mockResolvedValueOnce({ portfolio_id: 1, trade_date: "2026-07-24", task_id: "sim-task-2", status: "queued", created: true });
+    mockApi.getAsyncTask.mockResolvedValueOnce({ id: "sim-task-1", status, percent: 100, message: "任务记录", errors: [] });
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    const start = screen.getByRole("button", { name: /开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await screen.findByRole("button", { name: "查看任务记录" });
+    await waitFor(() => expect(mockApi.getAsyncTask).toHaveBeenCalledWith("sim-task-1"));
+    expect(start).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /重新检查/ }));
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+    fireEvent.click(start);
+    expect(await screen.findByText("正在模拟交易")).toBeVisible();
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledTimes(2);
+    expect(mockApi.getAsyncTask).toHaveBeenLastCalledWith("sim-task-2");
+  });
+
+  it("distinguishes a finished daily process from orders still waiting to fill", async () => {
+    mockApi.getAsyncTask.mockResolvedValue({ id: "sim-task-1", status: "done", percent: 100,
+      message: "当天处理完成，仍有订单待成交", errors: [],
+      result: { execution_result: { pending_order_count: 2, pending_order_plan_ids: ["original-a", "original-b"] } },
+    } as any);
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    const start = screen.getByRole("button", { name: /开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    expect(await screen.findByText("当天处理完成，仍有订单待成交")).toBeVisible();
+    expect(screen.getByText("待成交订单 2 笔，已完成的成交不会重复执行。")).toBeVisible();
+    expect(screen.queryByText("模拟交易已完成")).not.toBeInTheDocument();
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a completed day protected while allowing the next trade date after fresh checks", async () => {
+    mockApi.getAsyncTask.mockResolvedValue({ id: "sim-task-1", status: "done", percent: 100, message: "完成", errors: [] });
+    render(<TodayDecision />);
+    const check = await screen.findByRole("button", { name: /检查能否开始/ });
+    await waitFor(() => expect(check).toBeEnabled());
+    fireEvent.click(check);
+    const start = screen.getByRole("button", { name: /开始模拟交易/ });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    await screen.findByText("模拟交易已完成");
+    fireEvent.click(screen.getByRole("button", { name: /重新检查/ }));
+    await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalledTimes(2));
+    expect(start).toBeDisabled();
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+    mockApi.preflightAutoSimulation.mockResolvedValue({ proceed: true, gate: "PASSED", reason_codes: [], trade_date: "2026-07-25" });
+    fireEvent.click(screen.getByRole("button", { name: /重新检查/ }));
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
   });
 
   it("非 READY 状态的治理诊断按钮同时切换组合页和治理子 Tab", async () => {

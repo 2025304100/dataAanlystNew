@@ -192,6 +192,7 @@ def sync_etf_snapshots(
     db: Session, symbols: list[Symbol], trade_date: date,
     *, should_cancel: Callable[[], bool] | None = None,
     on_result: Callable[[Symbol, EtfIndicator | None, dict], None] | None = None,
+    fill_missing_only: bool = False,
 ) -> dict:
     """Collect only same-day IOPV snapshots in selected-symbol batches.
 
@@ -221,6 +222,14 @@ def sync_etf_snapshots(
         if should_cancel and should_cancel():
             raise InterruptedError("ETF 同步已取消")
         quotes = fetch_etf_quotes(db, [_etf_code(symbol) for symbol in batch], should_cancel=should_cancel)
+        if should_cancel and should_cancel():
+            raise InterruptedError("ETF 同步已取消")
+        existing = {item.symbol_id: item for item in db.execute(
+            select(EtfIndicator).where(
+                EtfIndicator.symbol_id.in_([symbol.id for symbol in batch]),
+                EtfIndicator.trade_date == trade_date,
+            )
+        ).scalars().all()}
         for symbol in batch:
             if should_cancel and should_cancel():
                 raise InterruptedError("ETF 同步已取消")
@@ -235,29 +244,45 @@ def sync_etf_snapshots(
                 fresh = {"etf_premium_discount": premium, "etf_fund_size": size, "etf_total_shares": shares}
                 # A local closing price or a returned quote alone is not an ETF metric.
                 if any(value is not None and math.isfinite(value) for value in fresh.values()):
-                    item = db.execute(select(EtfIndicator).where(
-                        EtfIndicator.symbol_id == symbol.id, EtfIndicator.trade_date == trade_date,
-                    )).scalars().first()
+                    item = existing.get(symbol.id)
+                    was_existing = item is not None
                     if item is None:
                         item = EtfIndicator(symbol_id=symbol.id, trade_date=trade_date)
                         db.add(item)
+                        existing[symbol.id] = item
                     prior_source = item.source
-                    retained = [key for key, value in {"nav": nav, "close": close,
-                        "total_shares": shares, "fund_size": size, "premium_discount": premium}.items()
-                        if value is None and getattr(item, key) is not None]
-                    for key, value in {"nav": nav, "close": close, "total_shares": shares,
-                                       "fund_size": size, "premium_discount": premium}.items():
-                        if value is not None and math.isfinite(value):
-                            setattr(item, key, value)
-                    if premium is not None:
-                        item.premium_discount_score = calc_premium_discount_score(premium)
-                    item.source = "eastmoney:etf_snapshot"
-                    item.raw_json = json.dumps({"quote": quote,
-                        "nav_basis": "iopv" if nav is not None else "retained_same_day" if item.nav is not None else None,
-                        "fund_size_basis": "same_day_iopv_times_shares" if size is not None else "retained_same_day" if item.fund_size is not None else None,
-                        "retained_same_day_fields": retained, "retained_source": prior_source if retained else None,
-                        "tracking_error_status": "benchmark_history_unavailable"}, ensure_ascii=False, default=str)
-                    db.flush()
+                    if fill_missing_only:
+                        from app.services.sync_write_policy import fill_missing_values, record_missing_fill
+
+                        filled = fill_missing_values(item, {"nav": nav, "close": close, "total_shares": shares})
+                        effective_nav, effective_close, effective_shares = item.nav, item.close, item.total_shares
+                        effective_premium = ((effective_close / effective_nav - 1) * 100
+                                             if effective_nav and effective_close else None)
+                        effective_size = effective_nav * effective_shares if effective_nav and effective_shares else None
+                        filled += fill_missing_values(item, {
+                            "premium_discount": effective_premium if effective_premium is not None and math.isfinite(effective_premium) else None,
+                            "fund_size": effective_size if effective_size is not None and math.isfinite(effective_size) else None,
+                        })
+                        filled += fill_missing_values(item, {"premium_discount_score":
+                            calc_premium_discount_score(item.premium_discount)})
+                        if not filled:
+                            item = None
+                        elif was_existing:
+                            record_missing_fill(item, filled, {"quote": quote,
+                                "calculation_inputs": {"nav": effective_nav, "close": effective_close,
+                                                       "total_shares": effective_shares},
+                                "fund_size_basis": "retained_same_day_nav_times_shares",
+                                "tracking_error_status": "benchmark_history_unavailable"}, "eastmoney:etf_snapshot")
+                        else:
+                            item.source = "eastmoney:etf_snapshot"
+                            item.raw_json = json.dumps({"quote": quote, "nav_basis": "iopv",
+                                "fund_size_basis": "same_day_iopv_times_shares",
+                                "tracking_error_status": "benchmark_history_unavailable"}, ensure_ascii=False, default=str)
+                        if item is not None:
+                            db.flush()
+                    else:
+                        _write_etf_snapshot(item, quote, nav, close, shares, size, premium, prior_source)
+                        db.flush()
             if item is None:
                 result["skipped"] += 1
             else:
@@ -268,6 +293,8 @@ def sync_etf_snapshots(
                         result["field_coverage"][key]["available"] += 1
             if on_result:
                 on_result(symbol, item, result)
+        if on_result and hasattr(on_result, "flush"):
+            on_result.flush()
     counts = result["field_coverage"]
     total = len(symbols)
     result["warnings"] = [TRACKING_ERROR_UNAVAILABLE]
@@ -281,7 +308,26 @@ def sync_etf_snapshots(
     return result
 
 
-def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = None) -> EtfIndicator | None:
+def _write_etf_snapshot(item, quote, nav, close, shares, size, premium, prior_source):
+    retained = [key for key, value in {"nav": nav, "close": close,
+        "total_shares": shares, "fund_size": size, "premium_discount": premium}.items()
+        if value is None and getattr(item, key) is not None]
+    for key, value in {"nav": nav, "close": close, "total_shares": shares,
+                       "fund_size": size, "premium_discount": premium}.items():
+        if value is not None and math.isfinite(value):
+            setattr(item, key, value)
+    if premium is not None:
+        item.premium_discount_score = calc_premium_discount_score(premium)
+    item.source = "eastmoney:etf_snapshot"
+    item.raw_json = json.dumps({"quote": quote,
+        "nav_basis": "iopv" if nav is not None else "retained_same_day" if item.nav is not None else None,
+        "fund_size_basis": "same_day_iopv_times_shares" if size is not None else "retained_same_day" if item.fund_size is not None else None,
+        "retained_same_day_fields": retained, "retained_source": prior_source if retained else None,
+        "tracking_error_status": "benchmark_history_unavailable"}, ensure_ascii=False, default=str)
+
+
+def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = None, *,
+                       fill_missing_only: bool = False) -> EtfIndicator | None:
     """同步单个 ETF symbol 的指标数据。"""
     if symbol.asset_type != "etf":
         return None
@@ -294,7 +340,8 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     if target_date > date.today():
         return None
     if target_date == date.today():
-        result = sync_etf_snapshots(db, [symbol], target_date)
+        result = sync_etf_snapshots(db, [symbol], target_date,
+            **({"fill_missing_only": True} if fill_missing_only else {}))
         if not result["records"]:
             return None
         return db.execute(select(EtfIndicator).where(
@@ -364,12 +411,31 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
         default=str,
     )
 
+    was_existing = existing is not None
     if existing is None:
         existing = EtfIndicator(
             symbol_id=symbol.id,
             trade_date=actual_date,
         )
         db.add(existing)
+
+    if fill_missing_only:
+        from app.services.sync_write_policy import fill_missing_values, record_missing_fill
+        filled = fill_missing_values(existing, {"nav": nav, "close": close})
+        retained_premium = ((existing.close / existing.nav - 1) * 100
+                            if existing.nav and existing.close else premium_discount)
+        filled += fill_missing_values(existing, {"premium_discount": retained_premium})
+        filled += fill_missing_values(existing, {"premium_discount_score":
+            calc_premium_discount_score(existing.premium_discount)})
+        if not filled:
+            return None
+        if was_existing:
+            record_missing_fill(existing, filled, json.loads(raw_json), "akshare")
+        else:
+            existing.source = "akshare"
+            existing.raw_json = raw_json
+        db.flush()
+        return existing
 
     existing.nav = nav
     existing.close = close

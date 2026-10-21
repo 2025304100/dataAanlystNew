@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Tooltip, Typography } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Tooltip, Typography } from "antd";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -35,6 +35,7 @@ const STATUS_COLORS: Record<string, string> = {
   queued: "#d97706",
   paused: "#d97706",
 };
+const DOMAIN_LABELS: Record<string, string> = { market: '行情更新', external: '其他数据', discovery: '机会扫描', other: '其他任务' };
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   done: <CheckCircleOutlined />,
@@ -75,6 +76,11 @@ export default function TaskCenter() {
   const { showToast } = useApp();
   const [tasks, setTasks] = useState<UnifiedTask[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+  const [tasksReadAt, setTasksReadAt] = useState<number | null>(null);
+  const [statisticsError, setStatisticsError] = useState<string | null>(null);
+  const [statisticsLoading, setStatisticsLoading] = useState(false);
+  const mounted = useRef(true), taskReadRequest = useRef(0), statisticsReadRequest = useRef(0);
   const [filter, setFilter] = useState<string>("all");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [abortingId, setAbortingId] = useState<string | null>(null);
@@ -85,35 +91,50 @@ export default function TaskCenter() {
   const [batchLoadingId, setBatchLoadingId] = useState<string | null>(null);
 
   const loadTasks = useCallback(async (silent = false) => {
+    const request = ++taskReadRequest.current;
     if (!silent) setLoading(true);
     try {
-      const [data, observation] = await Promise.all([
-        api.getTaskHistory(undefined, 50),
-        api.getTaskObservability(),
-      ]);
+      const data = await api.getTaskHistory(undefined, 50);
+      if (!Array.isArray(data?.tasks)) throw new Error('任务记录格式不完整。');
+      if (!mounted.current || request !== taskReadRequest.current) return;
       setTasks(data.tasks);
-      setObservability(observation);
+      setTasksError(null); setTasksReadAt(Date.now());
     } catch (error: unknown) {
-      // 收窄 unknown 类型，安全提取错误消息
-      const msg = error instanceof Error ? error.message : "";
-      showToast("error", msg || t("loadFailed"));
+      if (mounted.current && request === taskReadRequest.current) setTasksError(error instanceof Error ? error.message : String(error));
     } finally {
-      if (!silent) setLoading(false);
+      if (mounted.current && request === taskReadRequest.current) setLoading(false);
     }
-  }, [showToast]);
+  }, []);
+
+  const loadStatistics = useCallback(async () => {
+    const request = ++statisticsReadRequest.current;
+    setStatisticsLoading(true);
+    try {
+      const data = await api.getTaskObservability();
+      if (!data?.domains || typeof data.domains !== 'object' || Array.isArray(data.domains)) throw new Error('运行统计格式不完整。');
+      if (!mounted.current || request !== statisticsReadRequest.current) return;
+      setObservability(data); setStatisticsError(null);
+    } catch (error: unknown) {
+      if (mounted.current && request === statisticsReadRequest.current) setStatisticsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (mounted.current && request === statisticsReadRequest.current) setStatisticsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    mounted.current = true;
+    void loadTasks(); void loadStatistics();
+    return () => { mounted.current = false; ++taskReadRequest.current; ++statisticsReadRequest.current; };
+  }, [loadTasks, loadStatistics]);
 
   // VIZ-0929-15：列表里还有 running/queued 时静默轮询，否则"执行中"会一直停在页面上
   // 需要用户手动刷新才变终态。没有活动任务时不轮询，避免持续打后端。
   const hasActiveTasks = tasks.some((task) => ["running", "queued"].includes(task.status));
   useEffect(() => {
     if (!hasActiveTasks) return undefined;
-    const timer = window.setInterval(() => { loadTasks(true); }, 10000);
+    const timer = window.setInterval(() => { void loadTasks(true); void loadStatistics(); }, 10000);
     return () => window.clearInterval(timer);
-  }, [hasActiveTasks, loadTasks]);
+  }, [hasActiveTasks, loadTasks, loadStatistics]);
 
   // 判断任务是否可中止:运行中/排队中/已暂停(discovery)均可中止，但若 is_terminal_locked=true 一律禁止（FR-P1-2 终态锁）
   const canAbort = useCallback((task: UnifiedTask): boolean => {
@@ -397,8 +418,8 @@ export default function TaskCenter() {
             <Tag color="blue" icon={<LoadingOutlined />}>{activeCount} {t("taskActive")}</Tag>
           )}
           {observability && Object.entries(observability.domains).map(([domain, slot]) => (
-            <Tag key={domain} color={slot.waiting ? "warning" : "default"}>
-              {domain} {slot.running}/{slot.slot_limit}{slot.waiting ? ` · waiting ${slot.waiting}` : ""}
+            <Tag key={domain} color={slot.waiting ? "warning" : "default"} title={`最多同时运行${slot.slot_limit}项`}>
+              {DOMAIN_LABELS[domain] || '其他任务'}：{slot.running}项运行{slot.waiting ? `，${slot.waiting}项等待` : ''}
             </Tag>
           ))}
         </div>
@@ -422,17 +443,26 @@ export default function TaskCenter() {
             ]}
           />
           {/* 必须包一层：直接 onClick={loadTasks} 会把 MouseEvent 当成 silent 参数（永远 truthy），手动刷新就不再显示 loading */}
-          <Button icon={<ReloadOutlined />} onClick={() => loadTasks()} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={() => { void loadTasks(); void loadStatistics(); }} loading={loading}>
             {t("refresh")}
           </Button>
         </Space>
       </div>
 
+      {tasksError && <Alert type="error" showIcon message="任务记录暂时读不到"
+        description={<><p>{tasksReadAt === null ? '尚未读到任务记录，请重试读取。' : `下方保留上次读到的任务记录（${formatTime(new Date(tasksReadAt).toISOString())}），当前状态还需重新确认。`}</p>
+          <details><summary>查看错误详情</summary>{tasksError}</details></>}
+        action={<Button loading={loading} onClick={() => void loadTasks()}>重试读取任务记录</Button>} style={{ marginBottom: 12 }} />}
+      {statisticsError && <Alert type="warning" showIcon message="运行统计暂时读不到"
+        description={<><p>{observability ? '统计未更新，保留上次读到的数值。任务记录仍可单独查看。' : '任务记录仍可单独查看，可以稍后重试读取统计。'}</p>
+          <details><summary>查看错误详情</summary>{statisticsError}</details></>}
+        action={<Button loading={statisticsLoading} onClick={() => void loadStatistics()}>重试读取运行统计</Button>} style={{ marginBottom: 12 }} />}
+
       {/* Task list */}
       {loading && tasks.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>
       ) : filteredTasks.length === 0 ? (
-        <Empty description={t("taskNoTasks")} style={{ padding: 40 }} />
+        tasksError ? null : <Empty description={t("taskNoTasks")} style={{ padding: 40 }} />
       ) : (
         <Collapse
           accordion

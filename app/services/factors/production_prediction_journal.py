@@ -24,14 +24,17 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _candidate(db, plan_id):
+def _candidate(db, plan_id, *, allow_released=False):
     contract, sha = execution.load_execution(plan_id)
     result = _json(execution.EXECUTION_ROOT / (plan_id + '.result.json'))
     if result.get('plan_id') != plan_id or result.get('execution_sha256') != sha:
         raise ValueError('production_prediction_execution_changed')
     model_id = result['candidate']['model_run_id']
     model = db.get(FactorModelRun, model_id)
-    if model is None or model.status != 'pending_validation':
+    if model is not None and model.status == 'validated' and not allow_released:
+        from app.services.factors.production_release import _confirmation
+        allow_released = _confirmation(db, model_id) is not None
+    if model is None or model.status not in ({'pending_validation', 'validated'} if allow_released else {'pending_validation'}):
         raise ValueError('production_prediction_requires_pending_candidate')
     hp = json.loads(model.hyperparameters_json or '{}')
     if (hp.get('production_admission') != {'plan_id': plan_id, 'execution_sha256': sha}
@@ -205,9 +208,19 @@ def journal_status(db, plan_id, *, bundle_id=None):
             and bundle['last_date'] == str(local.date())
             and bundle['symbols'] == contract['protocol']['symbols']
             and str(local.date()) not in dates)
+    from app.services.factors.production_release import _confirmation
+    confirmed = _confirmation(db, candidate['model_id']) if db is not None else None
+    if confirmed:
+        from app.services.factors.production_release import verify_release_confirmation
+        model = db.get(FactorModelRun, candidate['model_id'])
+        verify_release_confirmation(db, model, json.loads(model.hyperparameters_json)['production_admission'])
+        can_record = False
+    from app.services.factors.production_execution import current_runtime_baseline
+    runtime = current_runtime_baseline(db) if confirmed else None
     return {'plan_id': plan_id, 'candidate_model_id': candidate['model_id'],
         'independent_after': contract['protocol']['observed_through'],
         'journal_dates': dates, 'journal_count': len(dates),
-        'required_independent_dates': 50, 'independent_validation_complete': False,
-        'cost_evaluation_complete': False, 'qualification_issued': False,
-        'can_record_today': can_record, 'model_activated': False, 'read_only': True}
+        'required_independent_dates': 50, 'independent_validation_complete': bool(confirmed),
+        'cost_evaluation_complete': bool(confirmed), 'qualification_issued': bool(confirmed),
+        'can_record_today': can_record, 'model_activated': bool(runtime and runtime['active_model_run_id']==candidate['model_id']
+            and runtime['weight_mode']=='ridge'), 'read_only': True}

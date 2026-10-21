@@ -116,6 +116,8 @@ def _make_daily_bar(
         volume=100000.0,
     )
     db_session.add(bar)
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol_id, [trade_date])
     db_session.commit()
     return bar
 

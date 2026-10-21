@@ -134,7 +134,7 @@ it("TR-7.4 前往因子中心按钮 → navigate('/factors') 精确命中 1 次"
   render(<FactorModelSettings initialTrainModel={false} />);
   fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
   const btn = await waitFor(() => screen.getByTestId("goto-factor-center-global"));
-  expect(btn.textContent).toContain("前往因子中心"); expect(mockNavigate).not.toHaveBeenCalled();
+  expect(btn.textContent).toContain("前往因子与模型"); expect(mockNavigate).not.toHaveBeenCalled();
   fireEvent.click(btn);
   expect(mockNavigate).toHaveBeenCalledTimes(1);
   expect(mockNavigate).toHaveBeenCalledWith("/factors");

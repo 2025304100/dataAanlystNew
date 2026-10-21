@@ -12,6 +12,11 @@ import ExternalDataSync from "./ExternalDataSync";
 import TaskCenter from "./TaskCenter";
 import UniverseDataPanel from "./UniverseDataPanel";
 import DataMirrorPage from "./factors/mining/config/DataMirrorPage";
+import SecurityStatusImportPanel from "./SecurityStatusImportPanel";
+import SecurityStatusDownloadPanel from "./SecurityStatusDownloadPanel";
+import ETFHistoryPanel from "./ETFHistoryPanel";
+import ETFTrainingHistoryPanel from "./ETFTrainingHistoryPanel";
+import type { BacktestRepairContext } from "../utils/backtestDraft";
 
 type CoverageRow = ExternalFieldCoverage & { dataset: string };
 
@@ -21,7 +26,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const DATASET_LABELS: Record<string, string> = { fundamental: "股票估值", financial: "财报历史", lhb: "龙虎榜机构", hot_rank: "今日人气榜", tail_proxy: "候选尾盘代理", capital_flow: "资金流", etf: "ETF 指标" };
 const FIELD_LABELS: Record<string, string> = { pe_ttm: "市盈率（PE-TTM）", pb: "市净率（PB）", roe_ttm: "净资产收益率（ROE-TTM）", lhb_institution_net: "龙虎榜机构净买额", hot_rank_pct: "人气榜排名百分位", proxy_score: "尾盘代理分数", main_net_inflow: "主力净流入", etf_premium_discount: "ETF 溢折价率", etf_tracking_error: "ETF 跟踪误差", etf_fund_size: "ETF 基金规模" };
-const STATUS_LABELS: Record<string, string> = { available: "可用", limited: "范围有限", event: "事件数据", snapshot: "快照数据", blocked: "暂不可用于因子评价", unknown: "待确认" };
+const STATUS_LABELS: Record<string, string> = { available: "可用", limited: "范围有限", event: "有事件时才有记录", snapshot: "只有最近数据", blocked: "暂不能用于因子评价", unknown: "待确认" };
 
 function CoverageDiagnostics() {
   const [coverage, setCoverage] = useState<ExternalDataCoverage | null>(null);
@@ -96,21 +101,21 @@ function CoverageDiagnostics() {
     ), [coverage],
   );
   const columns: ColumnsType<CoverageRow> = [
-    { title: "数据集", dataIndex: "dataset", width: 130, render: (value: string) => DATASET_LABELS[value] || value },
-    { title: "字段", dataIndex: "field", width: 190, render: (value: string) => FIELD_LABELS[value] || value },
+    { title: "数据类型", dataIndex: "dataset", width: 130, render: (value: string) => DATASET_LABELS[value] || value },
+    { title: "数据项目", dataIndex: "field", width: 190, render: (value: string) => FIELD_LABELS[value] || value },
     { title: "状态", dataIndex: "availability", width: 145, render: (value: string) => <Tag color={STATUS_COLORS[value] || "default"}>{STATUS_LABELS[value] || value}</Tag> },
-    { title: "真实日期范围", width: 210, render: (_, row) => `${row.first_date || "-"} ~ ${row.latest_date || "-"}` },
+    { title: "已有数据日期", width: 210, render: (_, row) => `${row.first_date || "-"} ~ ${row.latest_date || "-"}` },
     {
       title: "覆盖", width: 205,
       render: (_, row) => {
         const nonnull = row.table_rows > 0 ? `${((row.nonnull_rows / row.table_rows) * 100).toFixed(1)}%` : "-";
         const daily = row.latest_daily_coverage == null ? "-" : `${(row.latest_daily_coverage * 100).toFixed(1)}%`;
-        return `非空 ${nonnull} · 日覆盖 ${daily} · 连续 ${row.continuity_days} 日`;
+        return `有数值 ${nonnull} · 当天覆盖 ${daily} · 连续 ${row.continuity_days} 日`;
       },
     },
-    { title: "评价许可", width: 105, render: (_, row) => row.evaluation_enabled ? "允许" : "受限" },
+    { title: "能否用于因子评价", width: 150, render: (_, row) => row.evaluation_enabled ? "可以" : "暂不可以" },
     {
-      title: "质量快照", width: 230,
+      title: "最近检查", width: 230,
       render: (_, row) => {
         const snapshot = snapshots[row.field];
         if (!snapshot) return "尚未采集";
@@ -124,17 +129,17 @@ function CoverageDiagnostics() {
     { title: "原因", dataIndex: "reason", ellipsis: true },
   ];
   if (loading && !coverage) return <Spin />;
-  if (error && !coverage) return <Alert type="error" showIcon message="覆盖诊断读取失败" description={error} action={<Button loading={loading} onClick={() => void retryRead()}>重试读取</Button>} />;
+  if (error && !coverage) return <Alert type="error" showIcon message="数据检查结果读取失败" description={error} action={<Button loading={loading} onClick={() => void retryRead()}>重试读取</Button>} />;
   return <div>
-    {error && <Alert type="warning" showIcon message="覆盖或质量快照读取失败" description={error} action={<Button size="small" loading={loading} onClick={() => void retryRead()}>重试读取</Button>} style={{ marginBottom: 10 }} />}
+    {error && <Alert type="warning" showIcon message="部分检查记录暂时读不到，下方保留已读到的数据" description={error} action={<Button size="small" loading={loading} onClick={() => void retryRead()}>重试读取</Button>} style={{ marginBottom: 10 }} />}
     <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }} align="start">
       <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-        覆盖诊断基于实际写入因子仓库的字段；质量快照保存历史趋势和最近一次同步失败原因。
+        查看本地已有数据的日期、缺失情况和最近更新失败原因。“重新检查”只检查本地数据，不会重新下载。
       </Typography.Paragraph>
-      <Button onClick={() => void refreshQuality()} loading={loading}>刷新质量快照</Button>
+      <Button onClick={() => void refreshQuality()} loading={loading}>重新检查本地数据</Button>
     </Space>
-    <Table<CoverageRow> rowKey={(row) => `${row.dataset}:${row.field}`} columns={columns} dataSource={rows} pagination={false} size="middle" scroll={{ x: 1400 }} locale={{ emptyText: "暂无可诊断的外部因子字段" }} />
-    <Modal title={`字段质量趋势：${FIELD_LABELS[historyField || ""] || historyField || ""}`} open={historyField !== null} footer={null} onCancel={() => { ++historyRequest.current; setHistoryField(null); setQualityHistory(null); }} width={760}>
+    <Table<CoverageRow> rowKey={(row) => `${row.dataset}:${row.field}`} columns={columns} dataSource={rows} pagination={false} size="middle" scroll={{ x: 1400 }} locale={{ emptyText: "还没有检查结果。先到“其他数据”更新需要的数据，再回这里检查。" }} />
+    <Modal title={`历次检查：${FIELD_LABELS[historyField || ""] || historyField || ""}`} open={historyField !== null} footer={null} onCancel={() => { ++historyRequest.current; setHistoryField(null); setQualityHistory(null); }} width={760}>
       {historyError && <Alert type="error" message={historyError} action={<Button onClick={() => historyField && void openHistory(historyField)}>重试读取</Button>} />}
       <Table<DataQualitySnapshot>
         loading={historyLoading}
@@ -145,7 +150,7 @@ function CoverageDiagnostics() {
         columns={[
           { title: "采集时间", dataIndex: "captured_at", render: (value) => value ? new Date(value).toLocaleString() : "-" },
           { title: "状态", dataIndex: "readiness", render: (value: string) => STATUS_LABELS[value] || value },
-          { title: "非空率", render: (_, item) => item.row_count ? `${((item.nonnull_rows / item.row_count) * 100).toFixed(1)}%` : "-" },
+          { title: "有数值的记录占比", render: (_, item) => item.row_count ? `${((item.nonnull_rows / item.row_count) * 100).toFixed(1)}%` : "-" },
           { title: "覆盖日期", render: (_, item) => `${item.first_date || "-"} ~ ${item.latest_date || "-"}` },
           { title: "最近失败", dataIndex: "failure_reason", ellipsis: true },
         ]}
@@ -154,7 +159,7 @@ function CoverageDiagnostics() {
   </div>;
 }
 
-export default function DataCenter() {
+export default function DataCenter({ backtestRepair }: { backtestRepair?: BacktestRepairContext | null }) {
   const [activeTab, setActiveTab] = useState<"market" | "inputs" | "coverage" | "tasks" | "mirror">(() => {
     if (typeof window === "undefined") return "market";
     const stored = window.localStorage.getItem("settings_data_center_tab");
@@ -165,21 +170,33 @@ export default function DataCenter() {
     window.localStorage.setItem("settings_data_center_tab", activeTab);
   }, [activeTab]);
 
+  useEffect(() => {
+    const show = (event: Event) => {
+      const tab = (event as CustomEvent).detail;
+      if (["market", "inputs", "coverage", "tasks", "mirror"].includes(tab)) setActiveTab(tab);
+    };
+    window.addEventListener("data-center:navigate", show);
+    return () => window.removeEventListener("data-center:navigate", show);
+  }, []);
+
   return <section data-testid="data-center" style={{ width: "100%" }}>
     <div style={{ marginBottom: 14 }}>
       <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
-        <DatabaseOutlined style={{ color: "#1677ff", marginRight: 8 }} />数据中心
+        <DatabaseOutlined style={{ color: "#1677ff", marginRight: 8 }} />数据管理
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 13 }}>
-        行情底座保持原有同步方式；外部输入、覆盖证据和任务批次在此统一查看。
+        平时在“行情数据”更新价格；财报、资金流等资料在“其他数据”更新。遇到问题时，可查看“更新记录”。
       </Typography.Paragraph>
     </div>
     <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} items={[
-      { key: "market", label: "行情底座", children: <UniverseDataPanel /> },
-      { key: "inputs", label: "因子输入", children: <ExternalDataSync /> },
-      { key: "coverage", label: "覆盖诊断", children: <CoverageDiagnostics /> },
-      { key: "tasks", label: "任务与批次", children: <TaskCenter /> },
-      { key: "mirror", label: "数据镜像", children: <DataMirrorPage /> },
+      { key: "market", label: "行情数据", children: <><ETFTrainingHistoryPanel /><ETFHistoryPanel /><UniverseDataPanel /></> },
+      { key: "inputs", label: "其他数据", children: <ExternalDataSync /> },
+      { key: "coverage", label: "数据检查", children: <><SecurityStatusDownloadPanel
+        portfolioId={backtestRepair?.portfolioId}
+        requestedRange={backtestRepair ? { start: backtestRepair.startDate, end: backtestRepair.endDate } : undefined}
+      /><SecurityStatusImportPanel /><CoverageDiagnostics /></> },
+      { key: "tasks", label: "更新记录", children: <TaskCenter /> },
+      { key: "mirror", label: "本地副本", children: <DataMirrorPage /> },
     ]} />
   </section>;
 }

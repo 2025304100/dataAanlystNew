@@ -128,7 +128,8 @@ def test_snapshot_auto_simulation_injects_locked_state_and_pit_prices(
     assert context.total_capital == portfolio.total_capital
     assert context.current_by_symbol == {}
     assert context.price_data_by_symbol[symbol.id]["close_price"] == 10.0
-    assert context.price_data_by_symbol[symbol.id]["open_price"] == 10.5
+    assert context.price_data_by_symbol[symbol.id]["open_price"] == 10.0
+    assert context.price_data_by_symbol[symbol.id]["decision_reference_price"] == 10.0
     assert context.cost_config["slippage_buy_bps"] == 5
 
 

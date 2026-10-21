@@ -63,6 +63,8 @@ def _seed_snapshot_case(db_session):
             model_alpha_score=80.0,
             factor_set_id="fs-stage1-idempotency-model",
         ))
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, days)
     snapshot = StrategyExecutionSnapshot(
         id="stage1-idempotency-snapshot",
         snapshot_no=1,

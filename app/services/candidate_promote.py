@@ -19,11 +19,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.discovery_candidate import DiscoveryCandidate
-from app.models.discovery_score_snapshot import DiscoveryScoreSnapshotItem
+from app.models.discovery_score_snapshot import DiscoveryScoreSnapshot, DiscoveryScoreSnapshotItem
 from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.symbol import Symbol
@@ -340,7 +340,7 @@ def get_latest_scan_run_candidates(
     limit: int = 50,
     scope: str | None = None,
 ) -> list[dict[str, Any]]:
-    """获取最新一次挖掘任务的候选列表（从 discovery_candidates 表读）。
+    """Read the latest completed discovery or snapshot-backed fast scan.
 
     与 discovery_results.get_latest_discovery_candidates 语义一致，
     但数据源从 ScanResult 改为 DiscoveryCandidate，带 is_promoted 字段。
@@ -349,14 +349,37 @@ def get_latest_scan_run_candidates(
     """
     from app.models.discovery import DiscoveryTaskRecord
 
-    # 1. 找最新 done 状态的挖掘任务
+    # Choose the run first, including empty runs. Candidate absence must never
+    # resurrect results from an older scan.
     task_stmt = select(DiscoveryTaskRecord).where(DiscoveryTaskRecord.status == "done")
     if scope:
-        task_stmt = task_stmt.where(DiscoveryTaskRecord.scope == scope)
+        task_stmt = task_stmt.where(DiscoveryTaskRecord.scope.in_(
+            (scope.replace("_", "-"), scope.replace("-", "_")),
+        ))
     task_stmt = task_stmt.order_by(
-        DiscoveryTaskRecord.finished_at.desc(), DiscoveryTaskRecord.id.desc()
+        func.coalesce(DiscoveryTaskRecord.finished_at, DiscoveryTaskRecord.created_at).desc(),
+        DiscoveryTaskRecord.id.desc(),
     )
-    latest_task = db.execute(task_stmt).scalars().first()
+    latest_task = db.execute(task_stmt.limit(1)).scalars().first()
+
+    fast_stmt = select(ScanRun).join(
+        DiscoveryScoreSnapshot, DiscoveryScoreSnapshot.id == ScanRun.snapshot_id,
+    ).where(
+        ScanRun.status.in_(("done", "success", "completed")),
+        DiscoveryScoreSnapshot.status.in_(("ready", "superseded")),
+    )
+    if scope:
+        fast_stmt = fast_stmt.where(DiscoveryScoreSnapshot.scope == scope.replace("-", "_"))
+    fast_run = db.scalars(fast_stmt.order_by(
+        func.coalesce(ScanRun.finished_at, ScanRun.created_at).desc(), ScanRun.id.desc(),
+    ).limit(1)).first()
+    fast_key = (fast_run.finished_at or fast_run.created_at, fast_run.id) if fast_run else None
+    legacy_key = (latest_task.finished_at or latest_task.created_at, latest_task.scan_run_id or 0) if latest_task else None
+    if fast_run is not None and (latest_task is None or (
+        fast_run.id != latest_task.scan_run_id and fast_key > legacy_key
+    )):
+        return _fallback_legacy_candidates(db, scan_run_id=fast_run.id, min_score=min_score,
+                                           limit=limit, result_type="executable")
     if latest_task is None or latest_task.scan_run_id is None:
         return []
 
@@ -627,7 +650,7 @@ def get_latest_candidate_pools(
 
 
 def _fallback_legacy_candidates(
-    db: Session, *, scan_run_id: int, min_score: float, limit: int
+    db: Session, *, scan_run_id: int, min_score: float, limit: int, result_type: str = "quality"
 ) -> list[dict[str, Any]]:
     """回退逻辑：P1 改造前的历史任务查 ScanResult，is_promoted 固定为 None（未知）。
 
@@ -641,7 +664,7 @@ def _fallback_legacy_candidates(
         .join(Symbol, Symbol.id == ScanResult.symbol_id)
         .where(
             ScanResult.scan_run_id == scan_run_id,
-            ScanResult.result_type == "quality",
+            ScanResult.result_type == result_type,
         )
         .order_by(ScanResult.priority_score.desc(), ScanResult.created_at.desc())
     ).all()

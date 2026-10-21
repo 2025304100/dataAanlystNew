@@ -266,9 +266,12 @@ def test_run_discovery_task_resume_aborts_when_local_universe_is_empty(monkeypat
 # 5. data_credibility 边界（_data_credibility 各 bar_count 阈值）
 # ============================================================================
 
-def _make_bars(count: int) -> list:
-    """构造 count 个 DailyBar mock（_data_credibility 只用 len(bars)）。"""
-    return [MagicMock() for _ in range(count)]
+def _make_bars(count: int, last_day: date | None = None) -> list:
+    """Provide actual quote dates for the freshness boundary checks."""
+    from types import SimpleNamespace
+    last_day = last_day or date.today()
+    return [SimpleNamespace(trade_date=last_day - timedelta(days=count-i-1))
+        for i in range(count)]
 
 
 def test_data_credibility_below_5_bars_returns_02():
@@ -319,9 +322,9 @@ def test_data_credibility_with_stale_date_decreases():
     days_30_ago = today - timedelta(days=30)
 
     # 50 根 + 7 天前：1.0 * 0.3 = 0.3
-    assert _data_credibility(_make_bars(50), days_7_ago) == 0.3
+    assert _data_credibility(_make_bars(50, days_7_ago), today) == 0.3
     # 50 根 + 30 天前：1.0 * 0.1 = 0.1
-    assert _data_credibility(_make_bars(50), days_30_ago) == 0.1
+    assert _data_credibility(_make_bars(50, days_30_ago), today) == 0.1
 
 
 # ============================================================================

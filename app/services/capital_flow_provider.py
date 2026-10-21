@@ -4,10 +4,14 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.services.akshare_utils import call_akshare_with_retry
+from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
+from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
 
-URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
+# Anonymous clients use the public visitor route. The legacy /api route can
+# disconnect before sending an HTTP response even when the quotes exist.
+URL = "https://push2.eastmoney.com/webguest/api/qt/ulist.np/get"
+_RETRY_URL = "https://82.push2.eastmoney.com/webguest/api/qt/ulist.np/get"
 BATCH_SIZE = 100
 FIELD_MAP = {
     "main_net_inflow": "f62", "main_net_inflow_pct": "f184",
@@ -30,13 +34,26 @@ def fetch_capital_flow_quotes(db, secids: list[str], *, should_cancel=None) -> d
     params = {"secids": ",".join(secids), "fields": "f12,f13,f124,f297," + ",".join(FIELD_MAP.values()),
               "fltt": "2", "invt": "2"}
 
+    attempt = 0
     def request():
+        nonlocal attempt
+        if should_cancel and should_cancel():
+            raise InterruptedError("资金流同步已取消")
+        # Use the same quote endpoint on the provider's alternate host for the
+        # existing second network attempt; never add retries or expand scope.
+        url = URL if attempt == 0 else _RETRY_URL
+        attempt += 1
         with _proxy_bypass():
-            response = requests.get(URL, params=params, timeout=(5, 15))
+            response = requests.get(url, params=params, timeout=(5, 15),
+                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"})
             response.raise_for_status()
             return response.json()
 
-    payload = call_akshare_with_retry(request, api_key="stock_individual_fund_flow_rank", db=db, max_attempts=2)
+    api_key = "stock_individual_fund_flow_rank"
+    assert_akshare_api_enabled(api_key)
+    payload = coalesced_read(request_key(api_key, URL, params),
+        lambda: call_akshare_with_retry(request, api_key=api_key, db=db, max_attempts=2), should_cancel=should_cancel)
+    assert_akshare_api_enabled(api_key)
     if not isinstance(payload, dict) or payload.get("rc") != 0:
         raise ValueError("资金流当日接口返回异常，未切换历史下载")
     data = payload.get("data")
@@ -63,5 +80,6 @@ def fetch_capital_flow_quotes(db, secids: list[str], *, should_cancel=None) -> d
                 raise ValueError("行情日期与更新时间不一致")
         except (KeyError, TypeError, ValueError, OSError, OverflowError) as exc:
             raise ValueError(f"资金流 {code} 缺少可信日期：{exc}") from exc
-        quotes[code] = {"trade_date": day, **{field: row.get(key) for field, key in FIELD_MAP.items()}}
+        quotes[code] = {"trade_date": day, "updated_at": stamp.isoformat(),
+                        **{field: row.get(key) for field, key in FIELD_MAP.items()}}
     return quotes

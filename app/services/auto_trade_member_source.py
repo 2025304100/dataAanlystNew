@@ -29,7 +29,7 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Portfolio, Position
@@ -77,6 +77,31 @@ def _snapshot_member_symbol_ids(snapshot: Any) -> set[int]:
     return symbol_ids
 
 
+def _check_resume_fill_dates(db: Session, portfolio_id: int, trade_date: date) -> None:
+    if not db.info.get("portfolio_resume_processing_day"):
+        return
+    from app.models.decision_engine import DecisionOrderPlanRecord, DecisionEvidence
+    from app.models.sim_account import SimTrade
+    from app.services.decision_clock import utc_naive_to_shanghai
+    # Older automatic fills used insertion timestamps. Their immutable plan
+    # and successful retry trace establish the actual sessions. Do not edit
+    # those rows or fill another old leg before checking the current state.
+    for order in db.scalars(select(SimOrder).where(SimOrder.portfolio_id == portfolio_id, SimOrder.filled_quantity > 0)):
+        trades = list(db.scalars(select(SimTrade).where(SimTrade.order_id == order.id).order_by(SimTrade.id)))
+        plan = db.get(DecisionOrderPlanRecord, order.client_order_key) if order.client_order_key else None
+        evidence = db.get(DecisionEvidence, order.decision_evidence_id) if order.decision_evidence_id else None
+        dates = []
+        if plan is not None and evidence is not None:
+            dates = [plan.execution_date]
+            dates.extend(date.fromisoformat(entry["execution_date"]) for entry in json.loads(evidence.rejections_trace_json or "[]")
+                if entry.get("reason") == "PARTIAL_FILL_RETRY" and float(entry.get("filled_quantity") or 0) > 0)
+        if len(dates) != len(trades):
+            dates = [utc_naive_to_shanghai(row.created_at).date() for row in trades]
+        later = max(dates, default=trade_date)
+        if later > trade_date:
+            raise ValueError(f"已有 {later.isoformat()} 的成交，晚于待补决定 {trade_date.isoformat()}；不能用后来的持仓补算过去，请先检查历史成交记录。")
+
+
 def _build_snapshot_decision_state_context(
     db: Session | None,
     *,
@@ -91,13 +116,13 @@ def _build_snapshot_decision_state_context(
     while omitting its cash and PIT price inputs.  That made the allocator emit
     a different plan than the same snapshot through dry-run/backtest.  Keep the
     state assembly at the public auto adapter boundary, matching the backtest
-    contract: T-day bars provide decision inputs and the first later bar
-    provides the declared NEXT_OPEN price assumption.
+    contract: T-day bars provide decision inputs. Future execution prices
+    belong only to matching and never change the saved decision quantity.
     """
     if db is None:
         return None
 
-    from app.models.decision_engine import StrategyExecutionSnapshot
+    from app.models.decision_engine import StrategyExecutionSnapshot, DecisionOrderPlanRecord, DecisionEvidence
     from app.models.sim_account import CashLedger
     from app.services.decision_engine import DecisionStateContext, _stub_snapshot_loader, _resolve_snapshot_clock
     from app.models.portfolio_equity_snapshot import PortfolioEquitySnapshot
@@ -150,6 +175,31 @@ def _build_snapshot_decision_state_context(
         ensure_sim_account_seed(db, portfolio)
         available_cash = float(cash_balance(db, portfolio_id))
 
+    pending_orders = {}
+    if db.info.get("portfolio_resume_processing_day"):
+        rows = db.execute(select(DecisionOrderPlanRecord, DecisionEvidence).join(DecisionEvidence,
+            DecisionEvidence.id == DecisionOrderPlanRecord.evidence_id).outerjoin(SimOrder,
+                SimOrder.client_order_key == DecisionOrderPlanRecord.order_plan_id).where(
+                DecisionOrderPlanRecord.portfolio_id == portfolio_id,
+                DecisionOrderPlanRecord.signal_date < trade_date,
+                DecisionOrderPlanRecord.action.in_(("BUY", "SELL")),
+                or_(DecisionEvidence.rejection_reason.in_(("EXECUTION_BAR_MISSING", "EXECUTION_TIME_NOT_REACHED", "PARTIAL_FILL_PENDING")),
+                    SimOrder.status == "partial"),
+            )).all()
+        for plan, evidence in rows:
+            order = db.scalar(select(SimOrder).where(SimOrder.client_order_key == plan.order_plan_id))
+            if order is not None and order.status not in {"partial", "pending"}:
+                continue
+            remaining = max(0.0, plan.target_quantity - float(order.filled_quantity or 0.0) if order else plan.target_quantity)
+            if remaining <= 0:
+                continue
+            pending_orders[plan.order_plan_id] = {"symbol_id": plan.symbol_id, "action": plan.action,
+                "remaining_quantity": remaining, "order_plan_id": plan.order_plan_id}
+            if plan.action == "BUY":
+                # Reserve only cash, never inventory, for an unfinished BUY.
+                available_cash = max(0.0, available_cash - remaining * float(plan.intended_price or 0.0)
+                    * (1 + float(snapshot_cost.get("commission_rate") or 0) + float(snapshot_cost.get("transfer_fee_rate") or 0)))
+
     if not symbol_ids:
         return DecisionStateContext(
             available_cash=available_cash,
@@ -175,17 +225,13 @@ def _build_snapshot_decision_state_context(
         bars_by_symbol.setdefault(int(bar.symbol_id), []).append(bar)
     signal_bars: dict[int, DailyBar] = {}
     previous_bars: dict[int, DailyBar] = {}
-    next_bars: dict[int, DailyBar] = {}
     for symbol_id, bars in bars_by_symbol.items():
         same_day = [bar for bar in bars if bar.trade_date == trade_date]
         if same_day:
             signal_bars[symbol_id] = same_day[-1]
         before = [bar for bar in bars if bar.trade_date < trade_date]
-        after = [bar for bar in bars if bar.trade_date > trade_date]
         if before:
             previous_bars[symbol_id] = before[-1]
-        if after:
-            next_bars[symbol_id] = after[0]
 
     total_capital = float(portfolio.total_capital or 0.0)
     current_by_symbol: dict[int, dict[str, Any]] = {}
@@ -224,19 +270,10 @@ def _build_snapshot_decision_state_context(
         signal_bar = signal_bars.get(symbol_id)
         if signal_bar is None:
             continue
-        next_bar = next_bars.get(symbol_id)
         previous_bar = previous_bars.get(symbol_id)
-        intended_open = (
-            float(next_bar.open)
-            if next_bar is not None and next_bar.open is not None
-            else (
-                float(next_bar.close)
-                if next_bar is not None and next_bar.close is not None
-                else float(signal_bar.open)
-            )
-        )
         price_data_by_symbol[symbol_id] = {
-            "open_price": intended_open,
+            "decision_reference_price": float(signal_bar.close),
+            "open_price": float(signal_bar.open),
             "close_price": float(signal_bar.close),
             "high_price": float(signal_bar.high),
             "low_price": float(signal_bar.low),
@@ -258,6 +295,7 @@ def _build_snapshot_decision_state_context(
         current_by_symbol=current_by_symbol,
         current_asset_pct=current_asset_pct,
         current_sector_pct=current_sector_pct,
+        pending_orders=pending_orders,
         available_cash=available_cash,
         total_capital=total_capital,
         price_data_by_symbol=price_data_by_symbol,
@@ -1086,6 +1124,7 @@ def _execute_snapshot_order_plans(
     strategy_snapshot_id: str,
     trade_date: date,
     dry_run: bool,
+    execution_trigger_trade_date: date | None = None,
 ) -> dict[str, Any]:
     """Execute the immutable DecisionEngine plan set for auto simulation.
 
@@ -1093,13 +1132,14 @@ def _execute_snapshot_order_plans(
     selection, action and quantity are owned by DecisionEngine; this adapter
     only translates a plan into the existing simulated-account order API.
     """
-    from app.models.decision_engine import DecisionEvidence, StrategyExecutionSnapshot
-    from app.services.decision_engine import auto_simulation_governance_reasons, default_engine
+    from app.models.decision_engine import DecisionEvidence, DecisionRun, DecisionOrderPlanRecord, StrategyExecutionSnapshot
+    from app.services.decision_engine import (
+        BACKTEST_PRICE_REFERENCE_POLICY_VERSION, auto_simulation_governance_reasons, default_engine,
+    )
     from app.services.sim_accounts import (
         apply_sim_order_fill,
         cash_balance,
         ensure_sim_account_seed,
-        latest_price_for_symbol,
         place_sim_order,
     )
     from app.services.simulation_matching_engine import (
@@ -1109,7 +1149,22 @@ def _execute_snapshot_order_plans(
         OrderSide,
         match_order_plan,
     )
+    from app.services.market_rules import compute_price_limits, min_tick_size, prev_close_for_symbol, lot_size_for_symbol
     from dataclasses import replace
+    retry_trade_date = execution_trigger_trade_date or trade_date
+
+    def _date_new_fill(order, trade, execution_at):
+        if not db.info.get("portfolio_resume_processing_day"):
+            return
+        from app.models.sim_account import CashLedger
+        # Only this newly written fill is dated. Existing trades and cash
+        # entries are immutable; their execution evidence is checked below.
+        trade.created_at = execution_at
+        order.filled_at = execution_at
+        ledger = db.scalar(select(CashLedger).where(CashLedger.portfolio_id == portfolio_id,
+            CashLedger.ref_type == "sim_order", CashLedger.ref_id == order.id).order_by(CashLedger.id.desc()).limit(1))
+        if ledger is not None:
+            ledger.created_at = execution_at
 
     result: dict[str, Any] = {
         "portfolio_id": portfolio_id,
@@ -1134,31 +1189,90 @@ def _execute_snapshot_order_plans(
         record_portfolio_processed,
         record_portfolio_skipped,
     )
-    if check_task_cancelled():
+    def task_cancelled() -> bool:
+        check = db.info.get("portfolio_execution_cancelled") if db is not None else None
+        return check_task_cancelled() or bool(check and check())
+
+    if task_cancelled():
         record_portfolio_skipped(portfolio_id)
         result["skipped_due_to_cancel"] = True
         return result
 
-    state_context = _build_snapshot_decision_state_context(
-        db,
-        portfolio_id=portfolio_id,
-        strategy_snapshot_id=strategy_snapshot_id,
-        trade_date=trade_date,
-        dry_run=bool(dry_run),
-    )
-    evaluated = default_engine.evaluate(
-        db,
-        portfolio_id=portfolio_id,
-        strategy_snapshot_id=strategy_snapshot_id,
-        trade_date=trade_date,
-        run_type="auto_simulation",
-        dry_run=bool(dry_run),
-        state_context=state_context,
-        match_mode="NEXT_OPEN",
-        # Preserve verified SELL exits and existing partial-plan retries. The
-        # shared engine rejects every new BUY when entry governance is locked.
-        governance_exit_only=True,
-    )
+    if db is not None:
+        # The price policy changed without changing automatic-order IDs.
+        # Inspect the snapshot/day before evaluation: a changed holding state
+        # can produce another ID, and persisting first could revive old FAILED
+        # evidence. Old partial fills also retain their original policy on a
+        # later scheduler day and must never be silently resumed under this one.
+        prior_runs = list(db.scalars(select(DecisionRun).where(
+            DecisionRun.portfolio_id == portfolio_id,
+            DecisionRun.strategy_snapshot_id == strategy_snapshot_id,
+            DecisionRun.run_type == "auto_simulation",
+            DecisionRun.trade_date == trade_date,
+        )))
+        partial_runs = list(db.scalars(select(DecisionRun)
+            .join(DecisionEvidence, DecisionEvidence.decision_run_id == DecisionRun.id)
+            .join(SimOrder, SimOrder.decision_evidence_id == DecisionEvidence.id)
+            .where(DecisionRun.portfolio_id == portfolio_id,
+                DecisionRun.strategy_snapshot_id == strategy_snapshot_id,
+                DecisionRun.run_type == "auto_simulation",
+                SimOrder.portfolio_id == portfolio_id,
+                SimOrder.source_type == "decision_engine", SimOrder.status == "partial")))
+        legacy_run_ids = set()
+        for prior in [*prior_runs, *partial_runs]:
+            try:
+                versions = json.loads(prior.versions_json or "{}")
+            except (TypeError, ValueError):
+                versions = {}
+            if not isinstance(versions, dict) or versions.get("price_reference_policy_version") != BACKTEST_PRICE_REFERENCE_POLICY_VERSION:
+                legacy_run_ids.add(str(prior.id))
+        if legacy_run_ids:
+            result["blocked"] = True
+            result["legacy_decision_run_ids"] = sorted(legacy_run_ids)
+            result["rejected_decisions"].append({
+                "rejection_code": "PRICE_REFERENCE_POLICY_REAPPLY_REQUIRED",
+                "rejection_detail": "旧自动推演使用不同的价格定量口径；已有成交与部分成交账本保持原状。请重新保存并应用策略生成新快照后运行。",
+            })
+            return result
+
+    # A retry executes the saved decision; filled cash/positions must never
+    # become new inputs that create a second same-day decision identity.
+    evaluated = None
+    if db is not None:
+        for prior in sorted(prior_runs, key=lambda row: str(row.created_at)):
+            if prior.status != "SUCCEEDED" or prior.blocking_status != "READY":
+                continue
+            records = list(db.scalars(select(DecisionOrderPlanRecord).where(
+                DecisionOrderPlanRecord.decision_run_id == prior.id).order_by(DecisionOrderPlanRecord.order_plan_id)))
+            evidence_count = db.scalar(select(func.count()).select_from(DecisionEvidence).where(
+                DecisionEvidence.decision_run_id == prior.id))
+            if len(records) != evidence_count:
+                continue  # Legacy incomplete plan ledgers still use engine repair.
+            evaluated = SimpleNamespace(decision_run_id=prior.id, order_plans=[SimpleNamespace(
+                decision_run_id=row.decision_run_id, evidence_id=row.evidence_id, order_plan_id=row.order_plan_id,
+                symbol_id=row.symbol_id, action=row.action, target_quantity=row.target_quantity,
+                direction=row.direction, intended_price=row.intended_price, reason_code=row.reason_code,
+                signal_date=row.signal_date, execution_date=row.execution_date,
+                rejection_trace=json.loads(row.rejection_trace_json or "[]"),
+            ) for row in records])
+            break
+    if evaluated is None:
+        if db is not None:
+            _check_resume_fill_dates(db, portfolio_id, trade_date)
+        from app.services.decision_engine import can_retry_blocked_decision
+        retry_of = next((row.id for row in sorted(prior_runs, key=lambda row: str(row.created_at), reverse=True)
+            if can_retry_blocked_decision(db, row.id, portfolio_id=portfolio_id,
+                strategy_snapshot_id=strategy_snapshot_id, trade_date=trade_date)), None) if db is not None else None
+        state_context = _build_snapshot_decision_state_context(
+            db, portfolio_id=portfolio_id, strategy_snapshot_id=strategy_snapshot_id,
+            trade_date=trade_date, dry_run=bool(dry_run),
+        )
+        evaluated = default_engine.evaluate(
+            db, portfolio_id=portfolio_id, strategy_snapshot_id=strategy_snapshot_id,
+            trade_date=trade_date, run_type="auto_simulation", dry_run=bool(dry_run),
+            state_context=state_context, match_mode="NEXT_OPEN", governance_exit_only=True,
+            **({"retry_of_decision_run_id": retry_of} if retry_of else {}),
+        )
     snapshot_row = (
         db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
         if db is not None else None
@@ -1167,7 +1281,8 @@ def _execute_snapshot_order_plans(
         snapshot_cost = json.loads(snapshot_row.cost_config_json or "{}") if snapshot_row else {}
     except (TypeError, json.JSONDecodeError):
         snapshot_cost = {}
-    default_commission_rate = float(snapshot_cost.get("commission_rate", 0.0003) or 0.0003)
+    raw_commission_rate = snapshot_cost.get("commission_rate")
+    default_commission_rate = float(raw_commission_rate if raw_commission_rate is not None else 0.0003)
     buy_commission_rate = float(
         snapshot_cost.get("buy_commission_pct", default_commission_rate) or 0.0
     )
@@ -1177,10 +1292,9 @@ def _execute_snapshot_order_plans(
     matching_cfg = CostModelConfig(
         commission_rate=default_commission_rate,
         min_commission=float(snapshot_cost.get("min_commission", 5.0) or 0.0),
-        stamp_tax_rate=float(
-            snapshot_cost.get("stamp_tax_rate", snapshot_cost.get("stamp_duty_pct", 0.001))
-            or 0.0
-        ),
+        stamp_tax_rate=next((float(snapshot_cost[key]) for key in
+            ("stamp_tax_rate", "stamp_duty_rate", "stamp_duty_pct")
+            if snapshot_cost.get(key) is not None), None),
         transfer_fee_rate=float(snapshot_cost.get("transfer_fee_rate", 0.00001) or 0.0),
         slippage_buy_bps=int(float(
             snapshot_cost.get("slippage_buy_bps", snapshot_cost.get("buy_slippage_bps", 5)) or 0
@@ -1353,10 +1467,12 @@ def _execute_snapshot_order_plans(
                 signal_date = date.fromisoformat(str(payload.get("signal_date")))
             except (TypeError, ValueError):
                 signal_date = evidence.trade_date
+            if retry_trade_date <= signal_date:
+                continue
             trace = _json_trace(evidence.rejections_trace_json)
             if any(
                 entry.get("reason") == "PARTIAL_FILL_RETRY"
-                and str(entry.get("trigger_trade_date")) == trade_date.isoformat()
+                and str(entry.get("trigger_trade_date")) == retry_trade_date.isoformat()
                 for entry in trace
             ):
                 # Replaying the same scheduler cycle must not advance the
@@ -1372,6 +1488,7 @@ def _execute_snapshot_order_plans(
                 .where(
                     DailyBar.symbol_id == int(order.symbol_id),
                     DailyBar.trade_date > original_execution_date,
+                    DailyBar.trade_date <= retry_trade_date,
                 )
                 .distinct()
                 .order_by(DailyBar.trade_date.asc())
@@ -1412,6 +1529,9 @@ def _execute_snapshot_order_plans(
             seen_plan_ids.add(str(plan.order_plan_id))
 
     for plan in plans_to_process:
+        if task_cancelled():
+            result["skipped_due_to_cancel"] = True
+            break
         pending_order = pending_retry_orders.get(str(plan.order_plan_id))
         requested_quantity = float(
             pending_order.quantity if pending_order is not None else plan.target_quantity
@@ -1437,6 +1557,13 @@ def _execute_snapshot_order_plans(
             result["sell_decisions"].append(item)
         else:
             result["signal_decisions"].append(item)
+        if plan.action == "REJECTED" and str(getattr(plan, "reason_code", "")) == "PENDING_ORDER_CONFLICT":
+            evidence = db.get(DecisionEvidence, str(plan.evidence_id))
+            detail = evidence.rejection_detail if evidence else "原订单尚未完成，与当天的新操作冲突，请先查看原订单。"
+            result["rejected_decisions"].append({**item, "rejection_code": "PENDING_ORDER_CONFLICT", "rejection_detail": detail})
+            result["errors"].append(detail)
+            db.commit()
+            continue
         # 方案B：引擎级治理拒绝（governance_exit_only 下 BUY 被折成 REJECTED +
         # PORTFOLIO_EXECUTION_BLOCKED）不会产生可执行 BUY plan，但必须保留可审计留痕：
         # 放行这类 plan 进入下面的 durable 治理门控分支（记录 rejected_decisions +
@@ -1513,6 +1640,12 @@ def _execute_snapshot_order_plans(
                             "existing_order_id": existing.id,
                             "reason": "idempotent_skip",
                         })
+                        if existing.status == "partial":
+                            result["pending_orders"].append({
+                                "order_plan_id": str(plan.order_plan_id), "order_id": existing.id,
+                                "reason": "PARTIAL_FILL_PENDING", "retry_status": "PENDING_RETRY",
+                                "remaining_quantity": max(0.0, float(existing.quantity or 0) - float(existing.filled_quantity or 0)),
+                            })
                         continue
                     pending_order = existing
             # G6 manual-stop path: a new BUY must pass the durable composite
@@ -1593,9 +1726,6 @@ def _execute_snapshot_order_plans(
             symbol = db.get(Symbol, int(plan.symbol_id))
             if portfolio is None or symbol is None:
                 raise ValueError("portfolio or symbol not found")
-            price = plan.intended_price or latest_price_for_symbol(db, int(plan.symbol_id))
-            if price is None or price <= 0:
-                raise ValueError("no usable execution price")
             # The matching engine is the single source of market-rule
             # decisions.  Auto simulation may only use the account API after
             # this preflight succeeds; the API remains responsible for the
@@ -1607,6 +1737,52 @@ def _execute_snapshot_order_plans(
                     DailyBar.trade_date == plan.execution_date,
                 )
             ).scalars().first()
+            from app.services.decision_clock import (
+                resolve as resolve_execution_clock, shanghai_to_utc_naive, utc_naive_to_shanghai,
+            )
+            execution_evidence = db.get(DecisionEvidence, str(plan.evidence_id))
+            execution_at = getattr(execution_evidence, "execution_at", None)
+            if execution_at is None:
+                execution_at = getattr(getattr(evaluated, "clock", None), "execution_at", None)
+            if execution_at is None:
+                execution_at = resolve_execution_clock(plan.execution_date, execution_offset_days=0).execution_at
+            if execution_at.tzinfo is not None:
+                execution_at = execution_at.astimezone(timezone.utc).replace(tzinfo=None)
+            local_execution = utc_naive_to_shanghai(execution_at)
+            if local_execution.date() != plan.execution_date:
+                # A durable retry keeps the snapshot's time of day on its
+                # later execution session, rather than falling back to 09:30.
+                execution_at = shanghai_to_utc_naive(datetime.combine(
+                    plan.execution_date, local_execution.timetz(),
+                ))
+            pending_reason = (
+                "EXECUTION_BAR_MISSING" if bar is None
+                else "EXECUTION_TIME_NOT_REACHED" if utcnow_naive() < execution_at or (
+                    db.info.get("portfolio_resume_processing_day") and plan.execution_date > db.info["portfolio_resume_processing_day"]
+                ) else None
+            )
+            if pending_reason:
+                reason = pending_reason
+                detail = (
+                    f"等待 {plan.execution_date.isoformat()} 的执行行情，参考价不能作为成交价"
+                    if bar is None else f"等待执行时点 {execution_at.isoformat()} UTC"
+                )
+                evidence = db.get(DecisionEvidence, str(plan.evidence_id))
+                if evidence is not None:
+                    _write_execution_evidence(
+                        evidence, status="PENDING_EXECUTION_MARKET_DATA",
+                        requested_quantity=requested_quantity, filled_quantity=filled_before,
+                        reason=reason, detail=detail, retry_status="PENDING_RETRY",
+                    )
+                db.commit()
+                result["pending_orders"].append({**item, "reason": reason, "detail": detail})
+                continue
+            price = float(bar.open or 0.0)
+            prev_close = prev_close_for_symbol(db, int(plan.symbol_id), before_date=plan.execution_date)
+            upper_limit, lower_limit = (
+                compute_price_limits(prev_close, symbol)
+                if prev_close is not None and prev_close > 0 else (None, None)
+            )
             matching_bar = MarketBar(
                 trade_date=plan.execution_date,
                 open=float(bar.open) if bar is not None and bar.open is not None else float(price),
@@ -1616,6 +1792,16 @@ def _execute_snapshot_order_plans(
                 volume=float(bar.volume) if bar is not None and bar.volume is not None else None,
                 amount=float(bar.amount) if bar is not None and bar.amount is not None else None,
                 halted=bool(bar is not None and (bar.volume or 0) <= 0),
+                pre_close=prev_close,
+                upper_limit_price=upper_limit,
+                lower_limit_price=lower_limit,
+                limit_up_locked=bool(upper_limit is not None and price >= upper_limit
+                    and float(bar.high or price) <= price),
+                limit_down_locked=bool(lower_limit is not None and price <= lower_limit
+                    and float(bar.low or price) >= price),
+                tick_size=min_tick_size(symbol),
+                asset_type=symbol.asset_type,
+                market=symbol.market,
             )
             matching_plan = MatchingOrderPlan(
                 order_plan_id=str(plan.order_plan_id),
@@ -1625,7 +1811,7 @@ def _execute_snapshot_order_plans(
                 price_type="NEXT_OPEN",
                 side=OrderSide.BUY if plan.action == "BUY" else OrderSide.SELL,
                 target_quantity=int(float(plan.target_quantity)),
-                min_lot_size=100 if getattr(symbol, "market", None) in {"SH", "SZ", "BJ"} else 1,
+                min_lot_size=lot_size_for_symbol(symbol),
                 intended_price=float(price),
             )
             plan_matching_cfg = replace(
@@ -1637,6 +1823,19 @@ def _execute_snapshot_order_plans(
             match_result = match_order_plan(matching_plan, matching_bar, cfg=plan_matching_cfg)
             if match_result.final_status not in {"FILLED", "PARTIAL_FILL"}:
                 evidence = db.get(DecisionEvidence, str(plan.evidence_id))
+                if match_result.retry_on_next_session and not is_retry:
+                    reason = match_result.reason_codes[0] if match_result.reason_codes else match_result.final_status
+                    detail = match_result.note or ",".join(match_result.reason_codes)
+                    _write_execution_evidence(
+                        evidence, status="PENDING_RETRY", requested_quantity=requested_quantity,
+                        filled_quantity=0.0, reason=reason, detail=detail, retry_status="PENDING_RETRY",
+                    )
+                    db.commit()
+                    result["pending_orders"].append({
+                        **item, "reason": reason, "detail": detail,
+                        "remaining_quantity": requested_quantity, "retry_status": "PENDING_RETRY",
+                    })
+                    continue
                 if evidence is not None:
                     reason = match_result.reason_codes[0] if match_result.reason_codes else match_result.final_status
                     detail = match_result.note or ",".join(match_result.reason_codes)
@@ -1654,7 +1853,7 @@ def _execute_snapshot_order_plans(
                             trace_entry={
                                 "date": plan.execution_date.isoformat(),
                                 "execution_date": plan.execution_date.isoformat(),
-                                "trigger_trade_date": trade_date.isoformat(),
+                                "trigger_trade_date": retry_trade_date.isoformat(),
                                 "reason": "PARTIAL_FILL_RETRY",
                                 "retry_result": reason,
                                 "remaining_quantity": max(0.0, requested_quantity - filled_before),
@@ -1721,7 +1920,7 @@ def _execute_snapshot_order_plans(
                         trace_entry={
                             "date": plan.execution_date.isoformat(),
                             "execution_date": plan.execution_date.isoformat(),
-                            "trigger_trade_date": trade_date.isoformat(),
+                            "trigger_trade_date": retry_trade_date.isoformat(),
                             "reason": "PARTIAL_FILL_RETRY",
                             "retry_result": "INSUFFICIENT_CASH",
                             "required_cash": required_cash,
@@ -1811,6 +2010,7 @@ def _execute_snapshot_order_plans(
                         fee_override=float(match_result.total_cost),
                         execution_price_is_final=True,
                     )
+                _date_new_fill(order, _trade, execution_at)
                 order.quantity = requested_quantity
                 order.status = "partial"
                 order.client_order_key = str(plan.order_plan_id)
@@ -1844,7 +2044,7 @@ def _execute_snapshot_order_plans(
                     trace_entry={
                         "date": plan.execution_date.isoformat(),
                         "execution_date": plan.execution_date.isoformat(),
-                        "trigger_trade_date": trade_date.isoformat(),
+                        "trigger_trade_date": retry_trade_date.isoformat(),
                         "reason": "PARTIAL_FILL_RETRY" if is_retry else "PARTIAL_FILL",
                         "requested_quantity": requested_quantity,
                         "filled_quantity": filled_quantity,
@@ -1905,6 +2105,7 @@ def _execute_snapshot_order_plans(
                     fee_override=float(match_result.total_cost),
                     execution_price_is_final=True,
                 )
+            _date_new_fill(order, _trade, execution_at)
             order.client_order_key = str(plan.order_plan_id)
             order.source_type = "decision_engine"
             # SimOrder.source_id is an integer legacy attribution field; the
@@ -1929,7 +2130,7 @@ def _execute_snapshot_order_plans(
                         {
                             "date": plan.execution_date.isoformat(),
                             "execution_date": plan.execution_date.isoformat(),
-                            "trigger_trade_date": trade_date.isoformat(),
+                            "trigger_trade_date": retry_trade_date.isoformat(),
                             "reason": "PARTIAL_FILL_RETRY",
                             "filled_quantity": float(match_result.filled_quantity),
                             "remaining_quantity": 0.0,
@@ -1960,10 +2161,8 @@ def _execute_snapshot_order_plans(
 
     # ── PT-DEF-6 层3（选项 X）：为快照中被 universe_builder 过滤的 manual/confirm
     # 成员恢复文档不变量要求的用户可见输出：manual → 仅信号提示（不建单）；
-    # confirm → 落一张待确认占位单（status=pending_confirmation，quantity/price=0，
-    # 不产生现金流，供后续人工确认转真实下单；Q1 决策）。universe_builder 已保证
-    # 二者都不进 order_plan、不自动成交。复用 get_signal_candidates 口径：无持仓 +
-    # action ∈ _BUY_ACTIONS 才输出。confirm 用确定性 pending_key 幂等防同日重跑重建。
+    # confirm → 明确说明暂不支持确认成交，不创建无法处理的占位订单。
+    # 二者都不进 order_plan、不自动成交。仅对无持仓且有买入信号的标的提示。
     if db is not None:
         _snap_row = db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
         try:
@@ -1992,9 +2191,6 @@ def _execute_snapshot_order_plans(
             _action = str(_sig.get("action", "hold"))
             if _action not in _BUY_ACTIONS:
                 continue
-            _status = (
-                "pending_confirmation" if _mode == EXECUTION_CONFIRM else "signal_only"
-            )
             result["signal_decisions"].append({
                 "symbol_id": _sym_id,
                 "action": _action,
@@ -2002,59 +2198,23 @@ def _execute_snapshot_order_plans(
                 "signal_id": _signal_id,
                 "score": _sig.get("score"),
             })
-            _order_id = None
-            if not dry_run and _mode == EXECUTION_CONFIRM:
-                # Q1 决策：confirm 落一张待确认占位单（quantity/price=0，不产生现金流），
-                # 供后续人工确认转真实下单。confirm 不走 DecisionEngine order_plan，
-                # 故用确定性 pending_key 做幂等，防同日重跑重复建单。
-                _pending_key = f"confirm:{portfolio_id}:{_sym_id}:{trade_date.isoformat()}"
-                _existing_pending = db.execute(
-                    select(SimOrder).where(SimOrder.client_order_key == _pending_key)
-                ).scalars().first()
-                if _existing_pending is None:
-                    _sym_row = db.get(Symbol, _sym_id)
-                    _pending_order = SimOrder(
-                        portfolio_id=portfolio_id,
-                        symbol_id=_sym_id,
-                        side="buy",
-                        order_type="market",
-                        quantity=0,
-                        submitted_price=0,
-                        status="pending_confirmation",
-                        filled_quantity=0,
-                        filled_price=0,
-                        filled_amount=0,
-                        fee=0,
-                        note=(
-                            f"Confirm pending "
-                            f"{_sym_row.symbol if _sym_row is not None else _sym_id} "
-                            f"{trade_date.isoformat()}"
-                        ),
-                        source_type="decision_engine",
-                        client_order_key=_pending_key,
-                        execution_mode=EXECUTION_CONFIRM,
-                        decision_snapshot_json=json.dumps({
-                            "action": _action,
-                            "symbol_id": _sym_id,
-                            "execution_mode": EXECUTION_CONFIRM,
-                            "signal_id": _signal_id,
-                            "trade_date": trade_date.isoformat(),
-                        }, ensure_ascii=False),
-                    )
-                    db.add(_pending_order)
-                    db.commit()
-                    _order_id = _pending_order.id
-                else:
-                    _order_id = _existing_pending.id
+            if _mode == EXECUTION_CONFIRM:
+                # There is no approval-to-execution capability yet. Preserve
+                # existing records, but never create another dead-end order.
+                result["pending_orders"].append({
+                    "symbol_id": _sym_id, "action": _action,
+                    "execution_mode": _mode,
+                    "reason": "CONFIRMATION_NOT_SUPPORTED",
+                    "detail": "目前不支持确认后成交；这里只显示信号，没有创建订单。",
+                })
+                continue
             if not dry_run:
                 _exec_item = {
                     "symbol_id": _sym_id,
                     "action": _action,
                     "execution_mode": _mode,
-                    "status": _status,
+                    "status": "signal_only",
                 }
-                if _order_id is not None:
-                    _exec_item["order_id"] = _order_id
                 result["executed_orders"].append(_exec_item)
 
     # WP6.5：正常完成，记录已处理组合（与 cancel 跳过的 skipped_portfolios 对称）
@@ -2255,13 +2415,48 @@ def run_idempotent_member_source(
         strategy_snapshot_id=strategy_snapshot_id,
         trade_date=trade_date,
     )
-    return _execute_snapshot_order_plans(
+    recovered = []
+    if db is not None and not dry_run:
+        from app.models.decision_engine import DecisionEvidence, DecisionRun
+        rows = db.execute(select(DecisionEvidence, DecisionRun).join(
+            DecisionRun, DecisionEvidence.decision_run_id == DecisionRun.id).outerjoin(SimOrder,
+                SimOrder.decision_evidence_id == DecisionEvidence.id).where(
+                DecisionRun.portfolio_id == portfolio_id, DecisionRun.run_type == "auto_simulation",
+                DecisionRun.status == "SUCCEEDED", DecisionRun.blocking_status == "READY",
+                DecisionRun.trade_date < resolved_trade_date,
+                or_(DecisionEvidence.rejection_reason.in_(("EXECUTION_BAR_MISSING", "EXECUTION_TIME_NOT_REACHED", "PARTIAL_FILL_PENDING")),
+                    SimOrder.status == "partial"),
+            ).order_by(DecisionRun.trade_date, DecisionRun.created_at)).all()
+        if rows:
+            _check_resume_fill_dates(db, portfolio_id, resolved_trade_date)
+        seen = set()
+        for _evidence, run in rows:
+            if run.id in seen:
+                continue
+            seen.add(run.id)
+            prior = _execute_snapshot_order_plans(db, portfolio_id=portfolio_id,
+                strategy_snapshot_id=run.strategy_snapshot_id, trade_date=run.trade_date,
+                execution_trigger_trade_date=resolved_trade_date, dry_run=False)
+            recovered.append(prior)
+            if prior.get("errors") or prior.get("blocked") or prior.get("skipped_due_to_cancel") or (
+                prior.get("pending_orders") and not db.info.get("portfolio_resume_processing_day")
+            ):
+                # Earlier intent must finish (or be explicitly resolved) before
+                # a fresh daily decision can increase the same exposure.
+                return prior
+    current = _execute_snapshot_order_plans(
         db,
         portfolio_id=portfolio_id,
         strategy_snapshot_id=resolved_snapshot_id,
         trade_date=resolved_trade_date,
         dry_run=dry_run,
     )
+    for prior in recovered:
+        for field in ("executed_orders", "skipped_orders", "rejected_decisions", "errors", "pending_orders"):
+            current[field] = list(prior.get(field, [])) + list(current.get(field, []))
+    if recovered:
+        current["recovered_decision_run_ids"] = [item["decision_run_id"] for item in recovered]
+    return current
 
 
 __all__ = [

@@ -93,7 +93,7 @@ describe("FactorModelSettings — one operation page per wizard step", () => {
     expect(screen.getByRole("button", { name: /第 2 步：训练模型/ })).toHaveAttribute("data-step-state", "complete");
     expect(screen.getByRole("button", { name: /第 3 步：验证与启用/ })).toHaveAttribute("data-step-state", "current");
     const row = (await screen.findByText(pending.id)).closest("tr")!;
-    expect(within(row).getByText("候选统计验证通过，待独立验证")).toBeInTheDocument();
+    expect(within(row).getByText("训练结果通过，仍需检查后续预测")).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: /正式启用/ })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "配置重新训练" })).not.toBeInTheDocument();
     expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();

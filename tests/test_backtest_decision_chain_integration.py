@@ -62,6 +62,8 @@ def test_backtest_persists_unified_decision_chain_and_links_trades(db_session):
             published_at=datetime(2025, 1, 1, 0, 0),
         ))
 
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, days)
     snapshot = StrategyExecutionSnapshot(
         id="snapshot-integration",
         snapshot_no=1,
@@ -219,6 +221,8 @@ def test_decision_driven_backtest_failure_is_traceable_and_has_no_partial_trade(
             weight_mode="manual", factor_model_run_id="model-failure",
             calc_batch_id=f"failure-batch-{i}", published_at=datetime(2025, 1, 1),
         ))
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, days)
     snapshot = StrategyExecutionSnapshot(
         id="snapshot-failure",
         snapshot_no=1,

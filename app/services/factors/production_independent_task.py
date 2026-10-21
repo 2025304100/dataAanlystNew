@@ -12,7 +12,7 @@ TASK_TYPE = 'factor_independent_evaluation'
 
 
 def submit_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256):
-    review = evidence.review_independent_evidence(db, plan_id, bundle_id=bundle_id)
+    review = evidence.review_independent_evidence(db, plan_id, bundle_id=bundle_id, require_execution_constraints=True)
     if not review['ready']:
         raise ValueError('production_evidence_not_ready:' + ','.join(review['blockers']))
     if review['sha256'] != expected_sha256:
@@ -51,9 +51,10 @@ def get_independent_report(db,task_id):
     plan_id,sha=payload['plan_id'],payload['expected_sha256']
     if not admission.HEX.fullmatch(plan_id) or not admission.HEX.fullmatch(sha):
         raise ValueError('production_evidence_invalid_artifact_identity')
-    review=evidence.review_independent_evidence(db,plan_id,bundle_id=payload['bundle_id'])
-    if review['sha256']!=sha:raise ValueError('production_evidence_report_source_changed')
     envelope=_json(evidence.REPORT_ROOT/plan_id/(sha+'.json'))
+    review=evidence.review_independent_evidence(db,plan_id,bundle_id=payload['bundle_id'],
+        require_execution_constraints='execution_constraints_sha256' in envelope['evaluation']['identity'])
+    if review['sha256']!=sha:raise ValueError('production_evidence_report_source_changed')
     if (envelope.get('sha256')!=admission.fingerprint(envelope['evaluation'])
             or envelope['evaluation']['identity']!=review['identity']
             or compact_result(payload,envelope)!=task.result):
@@ -70,7 +71,7 @@ def _run(task_id):
             task = db.get(AsyncTaskRecord, task_id)
             if task is None or task.cancel_requested or task.status in ('cancelled','failed') or async_tasks.is_worker_stop_requested():
                 raise InterruptedError('production_evidence_cancelled')
-        update(status='running',stage=stage,percent=percent,message='独立证据与成本回放处理中：'+str(percent)+'%',
+        update(status='running',stage=stage,percent=percent,message='正在核对独立预测和费用：'+str(percent)+'%',
             heartbeat_at=datetime.now(timezone.utc).replace(tzinfo=None),stage_budget_seconds=1200)
     try:
         with SessionLocal() as db:
@@ -79,14 +80,14 @@ def _run(task_id):
             payload = json.loads(row.payload_json)
         update(started_at=datetime.now(timezone.utc).replace(tzinfo=None))
         with SessionLocal() as db:
-            report = evidence.run_independent_evaluation(db, **payload, progress=progress)
+            report = evidence.run_independent_evaluation(db, **payload, progress=progress, require_execution_constraints=True)
         passed = report['evaluation']['evidence_pass']
         # MySQL async_tasks.result_json is TEXT. Keep large order traces only
         # in the checksummed local artifact, not a >64KiB task result field.
         compact = compact_result(payload,report)
         update(status='done',stage='done',percent=100,
-            message='独立证据及成本回放已通过；尚未签发生产资格或启用模型。' if passed else
-                '独立证据及成本回放已完成，但统计或净成本门槛未通过；模型未启用。',
+            message='验证已通过，请核对结果后确认启用模型' if passed else
+                '已完成验证，但预测效果或扣除费用后的收益未达到要求，模型未启用',
             result_json=json.dumps(compact,ensure_ascii=False,default=str),
             finished_at=datetime.now(timezone.utc).replace(tzinfo=None))
     except InterruptedError:

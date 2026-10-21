@@ -250,10 +250,11 @@ const ActionCard: React.FC<{
   portfolioId: number;
   toggling: boolean;
   canToggle: boolean;
+  primary?: boolean;
   onToggleEnabled: () => void;
   onOpenAddCandidate: () => void;
   onResolved: () => void;
-}> = ({ item, portfolioId, toggling, canToggle, onToggleEnabled, onOpenAddCandidate, onResolved }) => {
+}> = ({ item, portfolioId, toggling, canToggle, primary = false, onToggleEnabled, onOpenAddCandidate, onResolved }) => {
   const { setActiveTab } = useApp();
   const [reviewOpen, setReviewOpen] = useState(false);
   const action = resolveItemAction(item);
@@ -277,24 +278,24 @@ const ActionCard: React.FC<{
   let actionBtn: React.ReactNode = null;
   if (action.kind === "toggle") {
     actionBtn = canToggle ? (
-      <Button size="small" loading={toggling} onClick={onToggleEnabled} icon={<ChevronRight size={13} />}>
+      <Button size="small" type={primary ? "primary" : "default"} loading={toggling} onClick={onToggleEnabled} icon={<ChevronRight size={13} />}>
         {t("repairDrawer.enable")}
       </Button>
     ) : (
       // HG1 非健康态：不原地绕过门禁，引导到总览（那里有硬禁/软警告二次确认）
-      <Button size="small" onClick={() => requestPortfolioSubtab("overview")} icon={<ChevronRight size={13} />}>
+      <Button size="small" type={primary ? "primary" : "default"} onClick={() => requestPortfolioSubtab("overview")} icon={<ChevronRight size={13} />}>
         {t("repairDrawer.enableOnOverview")}
       </Button>
     );
   } else if (action.kind === "open-modal") {
     actionBtn = (
-      <Button size="small" type="primary" onClick={exec}>
+      <Button size="small" type={primary ? "primary" : "default"} onClick={exec}>
         {action.modal === "model-binding-review" ? t("repairDrawer.binding.open") : t("portfolioTrading.header.addCandidate")}
       </Button>
     );
   } else if (action.kind === "redirect" || action.kind === "subtab") {
     actionBtn = (
-      <Button size="small" onClick={exec} icon={<ChevronRight size={13} />}>
+      <Button size="small" type={primary ? "primary" : "default"} onClick={exec} icon={<ChevronRight size={13} />}>
         {t("repairDrawer.goProcess")}
       </Button>
     );
@@ -371,9 +372,20 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
   onOpenAddCandidate,
 }) => {
   const items = data?.items ?? [];
+  const orderedItems = (["blocker", "warning", "info"] as const).flatMap((severity) => items.filter((item) => item.severity === severity));
+  const blockers = orderedItems.filter((item) => item.severity === "blocker");
+  // 保持接口原有顺序；有下单限制时，不能先让用户开自动交易开关。
+  const firstItem = blockers.find((item) => {
+    const kind = resolveItemAction(item).kind;
+    return kind !== "none" && kind !== "toggle";
+  }) ?? blockers[0] ?? orderedItems[0];
+  const remainingItems = orderedItems.filter((item) => item !== firstItem);
+  const firstItemTitle = firstItem && resolveItemAction(firstItem).kind === "none"
+    ? t(SEVERITY_META[firstItem.severity].titleKey)
+    : t("repairDrawer.nextStep");
   const groups = (["blocker", "warning", "info"] as const).map((sev) => ({
     sev,
-    list: items.filter((i) => i.severity === sev),
+    list: remainingItems.filter((i) => i.severity === sev),
   }));
   const checks = data?.checks ?? null;
   const ready = !!data?.summary.ready && data?.summary.blockers === 0;
@@ -427,7 +439,7 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
               return (
                 <span key={key} style={{ fontSize: 12, color: ok ? "#34d399" : "#f87171", whiteSpace: "nowrap" }}>
                   {t(labelKey as "repairDrawer.light.enabled")}{" "}
-                  <strong>{ok ? "OK" : "NO"}</strong>
+                  <strong>{ok ? t("repairDrawer.checkPassed") : t("repairDrawer.checkPending")}</strong>
                 </span>
               );
             })}
@@ -457,6 +469,14 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
           </div>
         )}
 
+        {!loadError && firstItem && <section aria-label={firstItemTitle} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{firstItemTitle}</div>
+          <ActionCard key={`${portfolioId}:${firstItem.id}`} item={firstItem} portfolioId={portfolioId} toggling={toggling} canToggle={canToggle}
+            primary onToggleEnabled={onToggleEnabled} onOpenAddCandidate={onOpenAddCandidate} onResolved={onRefresh} />
+        </section>}
+
+        {!loadError && remainingItems.length > 0 && <details>
+          <summary style={{ fontSize: 12, cursor: "pointer", marginBottom: 12 }}>{template("repairDrawer.otherItems", { count: remainingItems.length })}</summary>
         {groups.map(
           ({ sev, list }) =>
             list.length > 0 && (
@@ -481,6 +501,7 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
               </div>
             ),
         )}
+        </details>}
 
         {lastCheck && (
           <div style={{ fontSize: 11, color: "#475569", marginTop: 16 }}>

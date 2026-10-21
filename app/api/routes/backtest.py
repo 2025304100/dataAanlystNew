@@ -354,6 +354,14 @@ def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_d
     except ValueError as exc:
         # 将可由用户修复的数据问题转换为明确的 4xx，避免被全局异常处理器
         # 包装成“服务暂时不可用”。前端可据 error_code 提供直达修复入口。
+        from app.services.security_status.backtest_guard import BacktestHistoryUnavailable
+        if isinstance(exc, BacktestHistoryUnavailable):
+            raise HTTPException(status_code=409, detail={
+                "code": exc.code, "error_code": exc.code, "message": str(exc),
+                "impact": "本次回测未开始，请先补齐历史资料。",
+                "missing_count": len(exc.missing), "missing_sample": exc.missing[:20],
+                "fix_link": {"tab": "settings-data-center", "label_zh": "查看历史股票状态资料"},
+            }) from exc
         if str(exc) == "No trading data found in date range":
             raise HTTPException(
                 status_code=422,
@@ -537,12 +545,12 @@ def _enrich_backtest_result_contract(
         commission_value = cost.get("commission_rate", 0.0003)
     stamp_value = result.get("stamp_tax_rate")
     if stamp_value is None:
-        stamp_value = cost.get("stamp_tax_rate", cost.get("stamp_duty_rate", 0.001))
+        stamp_value = cost.get("stamp_tax_rate", cost.get("stamp_duty_rate"))
     slippage_value = result.get("slippage_bps")
     if slippage_value is None:
         slippage_value = cost.get("slippage_bps", cost.get("slippage", cost.get("slippage_buy_bps", 5)))
     result["commission_rate"] = float(commission_value)
-    result["stamp_tax_rate"] = float(stamp_value)
+    result["stamp_tax_rate"] = float(stamp_value) if stamp_value is not None else None
     result["slippage_bps"] = int(slippage_value)
     for key in ("price_type", "volume_limit_pct", "rebalance_frequency"):
         if result.get(key) is None and cost.get(key) is not None:
@@ -1182,8 +1190,8 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, request: Re
     自动构造与 auto_trade 信号逻辑一致的 rule_config（基于 Score.action），
     复用 portfolio 的 active rule 限制仓位与持仓数。
 
-    前提：portfolio 必须是 simulated 账户且 auto_trade_enabled=1。
-    否则回测的信号源（Score.action）与实际执行逻辑不一致，结果无意义。
+    portfolio 必须是 simulated 账户。研究回测不要求开启自动交易，
+    不会修改执行开关或向模拟账户下单。
 
     WP7.3：接受 only_auto 参数，仅在 member 来源生效时跳过 manual/confirm 成员。
     """
@@ -1218,22 +1226,6 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, request: Re
                 correlation_id=correlation_id,
                 impact="本次回测请求被阻断，不创建 run；DB 自增 ID 不消耗",
                 fix_link="/docs/precheck-requirements#not-simulated",
-                retryable=False,
-            ),
-        )
-    if not _pf_guard.auto_trade_enabled:
-        raise HTTPException(
-            status_code=409,
-            detail=_build_structured_error(
-                error_code="BACKTEST_AUTO_TRADE_DISABLED",
-                title_zh="组合自动交易未开启",
-                detail_zh=(
-                    f"Portfolio {payload.portfolio_id} auto_trade_enabled is 0. "
-                    "Whole-portfolio backtest requires auto_trade_enabled=1."
-                ),
-                correlation_id=correlation_id,
-                impact="本次回测请求被阻断，不创建 run；DB 自增 ID 不消耗",
-                fix_link="/docs/precheck-requirements#auto-trade",
                 retryable=False,
             ),
         )
@@ -1400,7 +1392,7 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, request: Re
             # WP0-5 C-05 契约参数 8 项（显式透传；run_portfolio_backtest 内部取默认值兜底）
             initial_capital=getattr(payload, "initial_capital", None),
             commission_rate=getattr(payload, "commission_rate", 0.0003),
-            stamp_tax_rate=getattr(payload, "stamp_tax_rate", 0.001),
+            stamp_tax_rate=getattr(payload, "stamp_tax_rate", None),
             slippage_bps=getattr(payload, "slippage_bps", 5),
             price_type=getattr(payload, "price_type", "NEXT_OPEN"),
             volume_limit_pct=getattr(payload, "volume_limit_pct", 0.10),

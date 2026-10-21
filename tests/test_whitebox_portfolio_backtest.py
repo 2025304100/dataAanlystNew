@@ -86,6 +86,8 @@ def _make_daily_bar(db_session, symbol_id: int, trade_date: date, close: float =
         volume=100000.0,
     )
     db_session.add(bar)
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol_id, [trade_date])
     db_session.commit()
     return bar
 
@@ -382,14 +384,21 @@ class TestRunPortfolioBacktestErrors:
                 start_date=date(2026, 1, 1), end_date=date(2026, 3, 31),
             )
 
-    def test_auto_trade_disabled_raises(self, db_session):
-        """auto_trade_enabled=0 → ValueError('auto_trade_enabled')。"""
+    def test_auto_trade_disabled_can_research_without_enabling_execution(self, db_session, member_source_disabled):
+        """Research can finish while the user's automatic execution switch remains off."""
         p = _make_portfolio(db_session, name="QA-Disabled", auto_trade_enabled=False)
-        with pytest.raises(ValueError, match="auto_trade_enabled"):
-            run_portfolio_backtest(
-                db_session, portfolio_id=p.id,
-                start_date=date(2026, 1, 1), end_date=date(2026, 3, 31),
-            )
+        sym = _make_symbol(db_session, symbol="600734")
+        _make_active_rule(db_session, p.id)
+        _make_position(db_session, p.id, sym.id, quantity=100, avg_cost=10.0, latest_price=10.0)
+        for day in (date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7)):
+            _make_daily_bar(db_session, sym.id, day, close=10.0)
+        result = run_portfolio_backtest(
+            db_session, portfolio_id=p.id,
+            start_date=date(2026, 1, 5), end_date=date(2026, 1, 7),
+        )
+        assert result["status"] == "completed"
+        db_session.refresh(p)
+        assert p.auto_trade_enabled == 0
 
     def test_total_capital_zero_raises(self, db_session):
         """total_capital=0 → ValueError('total_capital')。"""
@@ -804,8 +813,8 @@ class TestPortfolioBacktestEndpoint:
         )
         assert resp.status_code == 409
 
-    def test_api_auto_trade_disabled_returns_409(self, db_session):
-        """auto_trade_enabled=0 → 409。"""
+    def test_api_auto_trade_disabled_still_checks_missing_data_without_enabling_execution(self, db_session):
+        """The execution switch is not a research gate; data checks still fail closed."""
         p = _make_portfolio(db_session, name="QA-API-Disabled", auto_trade_enabled=False)
         client = self._client_with_db(db_session)
         resp = client.post(
@@ -816,7 +825,10 @@ class TestPortfolioBacktestEndpoint:
                 "end_date": "2026-01-06",
             },
         )
-        assert resp.status_code == 409
+        assert resp.status_code == 400
+        assert resp.json()["error_code"] == "PRECHECK_BLOCKED"
+        db_session.refresh(p)
+        assert p.auto_trade_enabled == 0
 
     def test_api_no_symbols_returns_400(self, db_session):
         """无标的可回测 → 400。"""

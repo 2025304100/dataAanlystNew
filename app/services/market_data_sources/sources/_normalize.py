@@ -83,6 +83,19 @@ def normalize_cn_stock_em_history(frame: pd.DataFrame) -> pd.DataFrame:
     return attach_cn_stock_history_contract(normalized, "eastmoney")
 
 
+def normalize_cn_etf_em_history(frame: pd.DataFrame) -> pd.DataFrame:
+    """EM ETF K-line quantity is lots of 100 fund units; cash stays in CNY."""
+    normalized = normalize_cn_em_history(frame).copy()
+    if not normalized.empty:
+        normalized['volume'] = normalized['volume'] * 100.
+    normalized.attrs['history_contract'] = {
+        'provider': 'eastmoney_etf', 'endpoint': 'fund_etf_hist_em',
+        'version': 'cn-etf-shares-v1', 'volume_unit': 'share',
+        'amount_unit': 'CNY', 'turnover_unit': 'percentage_point',
+    }
+    return normalized
+
+
 def normalize_us_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
     """标准化美股返回的 DataFrame,并按日期过滤。"""
     if frame.empty:

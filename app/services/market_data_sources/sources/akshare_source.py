@@ -28,7 +28,7 @@ import pandas as pd
 from app.services.akshare_utils import call_akshare_with_retry
 from app.services.market_data_sources.sources._normalize import (
     cn_prefixed_symbol,
-    normalize_cn_em_history,
+    normalize_cn_etf_em_history,
     normalize_cn_etf_sina_history,
     normalize_cn_stock_em_history,
     normalize_cn_stock_tx_history,
@@ -100,7 +100,7 @@ class EMETFSource:
                 api_key="fund_etf_hist_em",
                 max_attempts=2,
             )
-            return normalize_cn_em_history(frame)
+            return normalize_cn_etf_em_history(frame)
         except Exception as e:
             raise SourceUnavailable(f"em_etf failed for {symbol.symbol}: {e}") from e
 
@@ -152,6 +152,8 @@ class SinaETFSource:
         return symbol.asset_type == "etf" and (symbol.market or "").lower() in {"sh", "sz", "cn"}
 
     def fetch(self, symbol, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
+        if adjust != '':
+            raise SourceUnavailable('新浪ETF接口只提供不复权行情，不能替代前复权或后复权数据。')
         try:
             frame = call_akshare_with_retry(
                 ak.fund_etf_hist_sina,

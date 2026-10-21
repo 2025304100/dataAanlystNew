@@ -1273,7 +1273,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       <div className="factor-settings-head">
         <div>
           <p className="panel-kicker">数据 · 模型 · 评分</p>
-          <h1>因子流水线</h1>
+          <h1>{t("factorModelTabTitle")}</h1>
           <p className="factor-page-intro">按顺序准备输入、训练模型、确认启用，再生成评分。</p>
         </div>
         <Space wrap>
@@ -1351,7 +1351,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
                   onClick={() => navigateApp("/factors?next=pipeline")}
                   className="goto-factor-center-btn"
                 >
-                  去因子中心新建→
+                  去因子与模型新建→
                 </Button>
               )}
             </div>
@@ -1405,7 +1405,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         />
       </section>
 
-          <div className="factor-goto-center-row"><Button data-testid="goto-factor-center-global" onClick={() => navigateApp("/factors")}>↗ 前往因子中心</Button></div>
+          <div className="factor-goto-center-row"><Button data-testid="goto-factor-center-global" onClick={() => navigateApp("/factors")}>↗ 前往因子与模型</Button></div>
         </>}
 
         {wizardStep === "score" && <>

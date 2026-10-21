@@ -24,19 +24,19 @@ it.each(['zh-CN','en-US'] as const)('reviews costs before the sole training POST
     throw new Error('Unexpected request '+url);
   }));
   render(<ProductionCandidateStep modelId="parent" bundleId="trusted-training" planId={plan}/>);
-  const review=()=>screen.getByRole('button',{name:locale==='zh-CN'?'查看成本和训练范围':'Review costs and training scope'});
+  const review=()=>screen.getByRole('button',{name:locale==='zh-CN'?'查看费用和训练范围':'Review costs and training scope'});
   await waitFor(()=>expect(review()).toBeEnabled());
   expect(writes).toHaveLength(0);
   fireEvent.click(review());
   await waitFor(()=>expect(screen.getByText('450,000 CNY')).toBeVisible());
   expect(screen.getByText('applied-snapshot')).toBeVisible();
-  fireEvent.click(screen.getByRole('button',{name:locale==='zh-CN'?'锁定参数并训练候选（不启用）':'Lock and train candidate (no activation)'}));
+  fireEvent.click(screen.getByRole('button',{name:locale==='zh-CN'?'按以上设置训练模型':'Lock and train candidate (no activation)'}));
   await waitFor(()=>expect(screen.getByText('task-one')).toBeVisible());
   expect(writes).toHaveLength(1);
   expect(writes[0]).toContain('/parent/production-candidate');
   expect(writes.some(url=>url.includes('/activate'))).toBe(false);
-  expect(await screen.findByText(locale==='zh-CN'?'开盘前预测留痕：已保存 0 个信号日':'Pre-open prediction journal: 0 signal days saved')).toBeVisible();
-  expect(screen.queryByRole('button',{name:locale==='zh-CN'?'锁定参数并训练候选（不启用）':'Lock and train candidate (no activation)'})).not.toBeInTheDocument();
+  expect(await screen.findByText(locale==='zh-CN'?'每日预测记录：已保存 0 天':'Daily prediction records: 0 days saved')).toBeVisible();
+  expect(screen.queryByRole('button',{name:locale==='zh-CN'?'按以上设置训练模型':'Lock and train candidate (no activation)'})).not.toBeInTheDocument();
 });
 
 it('recovers an unknown daily save by reading the journal and never repeats the POST',async()=>{
@@ -53,9 +53,9 @@ it('recovers an unknown daily save by reading the journal and never repeats the 
     throw new Error('Unexpected request '+url);
   }));
   render(<ProductionCandidateStep modelId="parent" bundleId="today-input" planId={plan}/>);
-  fireEvent.click(await screen.findByRole('button',{name:'保存今日预测留痕（不启用、不交易）'}));
-  expect(await screen.findByText('开盘前预测留痕：已保存 1 个信号日')).toBeVisible();
+  fireEvent.click(await screen.findByRole('button',{name:'保存今日预测'}));
+  expect(await screen.findByText('每日预测记录：已保存 1 天')).toBeVisible();
   expect(writes).toEqual([expect.stringContaining('/predictions')]);
-  expect(screen.queryByRole('button',{name:'保存今日预测留痕（不启用、不交易）'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'保存今日预测'})).not.toBeInTheDocument();
   expect(writes.some(url=>/activate|production-candidate$/.test(url))).toBe(false);
 });

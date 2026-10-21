@@ -148,18 +148,14 @@ def _legacy_calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date
             stage = "cooldown"
             action = "hold"
 
-    # 数据可信度计算（P0-4.3）
-    # 基于 K 线数量 + 行情时效综合评估
-    # 注意：<5 分支已在上方 if 块中赋值 data_credibility = 0.2，此处不可无条件重置
-    bar_count = len(bars)
-    if bar_count >= 5:
-        # K 线数量因子: 5根=0.4, 20根=0.7, 50+=1.0
-        bar_factor = min(1.0, 0.4 + (bar_count - 5) * 0.02)
-        # 行情时效因子: 当天=1.0, 1天前=0.95, 3天前=0.8, 7天前=0.5
-        days_stale = (date.today() - _safe_date(trade_date)).days
-        freshness_factor = max(0.3, 1.0 - days_stale * 0.1) if days_stale <= 7 else max(0.1, 0.5 - (days_stale - 7) * 0.05)
-        data_credibility = round(min(1.0, bar_factor * freshness_factor), 2)
-    # bar_count < 5 时 data_credibility 保持 if 块中赋的 0.2
+    # The legacy database fallback uses the same actual-quote dates as the
+    # configured scorer; a missing config table cannot make stale data fresh.
+    from app.services.scoring_config_engine import (
+        _data_credibility, _expected_quote_date, _record_quote_dates,
+    )
+    expected_quote_date = _expected_quote_date(db)
+    data_credibility = _data_credibility(bars, trade_date,
+        expected_latest_date=expected_quote_date)
 
     priority_score = round(timing_score * 0.4 + quality_score * 0.3 + liquidity_score * 0.2 + breadth_score * 0.1, 2)
     calc_batch_id = f"manual-{trade_date.isoformat() if hasattr(trade_date, 'isoformat') else str(trade_date)}"
@@ -199,5 +195,6 @@ def _legacy_calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date
     existing.overheat_penalty = overheat_penalty
     # 数据可信度（P0-4.3）
     existing.data_credibility = data_credibility
+    _record_quote_dates(existing, bars, expected_quote_date)
     db.flush()
     return existing

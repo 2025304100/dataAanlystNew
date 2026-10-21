@@ -79,6 +79,12 @@ def tmp_alembic_db():
         finally:
             conn.exec_driver_sql("PRAGMA foreign_keys = ON")
 
+    # These legacy migrations did not create the simulated-account tables.
+    # A complete reconciliation fixture must include real cash/fill evidence.
+    from app.models.sim_account import CashLedger, SimOrder, SimTrade
+    for model in (CashLedger, SimOrder, SimTrade):
+        model.__table__.create(engine, checkfirst=True)
+
     try:
         yield sess
     finally:
@@ -109,6 +115,11 @@ def _seed_portfolio(db, capital=1_000_000.0) -> int:
     db.add(p)
     db.flush()
     db.refresh(p)
+    from app.models.sim_account import CashLedger
+    db.add(CashLedger(portfolio_id=p.id, entry_type="deposit", amount=capital,
+        balance_after=capital, ref_type="portfolio", ref_id=p.id,
+        note="Initial simulated funding"))
+    db.flush()
     return p.id
 
 
@@ -337,6 +348,7 @@ def test_g3_rec_01_passed_promotes_last_reconciled(tmp_alembic_db):
     from app.services.portfolio_reconciliation import reconcile_trade_date
     from app.models.portfolio import Portfolio
     rep = reconcile_trade_date(db, pid, td, trades_provider=tp,
+                               positions_provider=lambda *_: {sid: 1000},
                                correlation_id="C_REC_01")
     db.commit()
     assert rep.status == "PASSED"
@@ -366,7 +378,8 @@ def test_g3_rec_02_partial_fill_unfilled_plan(tmp_alembic_db):
     from app.services.data_governance_audit import DataGovernanceAuditEvent
     import json
     from sqlalchemy import select
-    rep = reconcile_trade_date(db, pid, td, trades_provider=tp, correlation_id="C_REC_02")
+    rep = reconcile_trade_date(db, pid, td, trades_provider=tp,
+        positions_provider=lambda *_: {sid: 700}, correlation_id="C_REC_02")
     db.commit()
     assert rep.status == "BLOCKED"
     kinds = [d.kind for d in rep.differences if d.kind != "NOT_CHECKED"]
@@ -479,6 +492,7 @@ def test_g3_stm_02_confirm_reconciliation_fixed(tmp_alembic_db):
 
     def patched_bad(db_arg, pid_arg, td_arg, **kw):
         kw.setdefault("trades_provider", tp_bad)
+        kw.setdefault("positions_provider", lambda *_: {sid: 700})
         return _orig_rec(db_arg, pid_arg, td_arg, **kw)
 
     _prec_mod.reconcile_trade_date = patched_bad  # type: ignore[attr-defined]
@@ -498,6 +512,7 @@ def test_g3_stm_02_confirm_reconciliation_fixed(tmp_alembic_db):
 
     def patched_good(db_arg, pid_arg, td_arg, **kw):
         kw.setdefault("trades_provider", tp_good)
+        kw.setdefault("positions_provider", lambda *_: {sid: 1000})
         return _orig_rec(db_arg, pid_arg, td_arg, **kw)
 
     _prec_mod.reconcile_trade_date = patched_good  # type: ignore[attr-defined]

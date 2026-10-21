@@ -49,11 +49,13 @@ async function chooseInputSelect(index: number, label: string) {
 
 async function setInputDraft() {
   const user = userEvent.setup();
-  await chooseInputSelect(0, "全量已同步标的");
-  const northbound = screen.getByRole("checkbox", { name: "同时同步北向资金" });
+  const settings = screen.getByRole("button", { name: /日期和更新设置/ });
+  if (settings.getAttribute("aria-expanded") === "false") await user.click(settings);
+  await chooseInputSelect(0, "已保存行情的全部股票和 ETF");
+  const northbound = screen.getByRole("checkbox", { name: "一并更新北向资金" });
   await waitFor(() => expect(northbound).toBeEnabled());
   await user.click(northbound);
-  await chooseInputSelect(1, "真实历史范围");
+  await chooseInputSelect(1, "指定历史日期");
   await user.clear(screen.getByPlaceholderText("开始日期"));
   await user.type(screen.getByPlaceholderText("开始日期"), "2026-08-01");
   await user.keyboard("{Enter}");
@@ -62,13 +64,15 @@ async function setInputDraft() {
   await user.keyboard("{Enter}");
 }
 
-function expectInputDraft() {
-  expect(screen.getAllByText("全量已同步标的").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("真实历史范围").length).toBeGreaterThan(0);
+async function expectInputDraft() {
+  const settings = screen.getByRole("button", { name: /日期和更新设置/ });
+  if (settings.getAttribute("aria-expanded") === "false") fireEvent.click(settings);
+  expect(screen.getAllByText("已保存行情的全部股票和 ETF").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("指定历史日期").length).toBeGreaterThan(0);
   expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-08-01");
   expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-08-13");
   expect(screen.getByText("自定义")).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "同时同步北向资金" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "一并更新北向资金" })).not.toBeChecked();
 }
 
 describe("factor pipeline input preparation", () => {
@@ -83,19 +87,19 @@ describe("factor pipeline input preparation", () => {
     render(<FactorPipelinePrepareStep {...props} />);
 
     expect(screen.getByRole("heading", { name: "检查因子输入" })).toBeInTheDocument();
-    expect(screen.queryByText("外部数据同步")).not.toBeInTheDocument();
+    expect(screen.queryByText("财报和其他数据")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "准备因子输入" }));
 
-    expect(await screen.findByText("外部数据同步")).toBeInTheDocument();
+    expect(await screen.findByText("财报和其他数据")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "检查因子输入" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "刷新评分特征" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "刷新评分" })).not.toBeInTheDocument();
     expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
     expect(props.onViewChange).toHaveBeenLastCalledWith("inputs");
 
     await user.click(screen.getByRole("button", { name: "返回输入检查" }));
     expect(screen.getByRole("heading", { name: "检查因子输入" })).toBeInTheDocument();
-    expect(screen.queryByText("外部数据同步")).not.toBeInTheDocument();
+    expect(screen.queryByText("财报和其他数据")).not.toBeInTheDocument();
     expect(props.onRefresh).toHaveBeenCalledOnce();
     expect(props.onViewChange).toHaveBeenLastCalledWith("check");
   });
@@ -132,13 +136,13 @@ describe("factor pipeline input preparation", () => {
     render(<FactorPipelinePrepareStep {...createProps()} />);
     await user.click(screen.getByRole("button", { name: "准备因子输入" }));
     await setInputDraft();
-    expectInputDraft();
+    await expectInputDraft();
 
     await user.click(screen.getByRole("button", { name: "返回输入检查" }));
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "准备因子输入" }));
 
-    expectInputDraft();
+    await expectInputDraft();
     expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
   });
@@ -155,7 +159,7 @@ describe("factor pipeline input preparation", () => {
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "准备因子输入" }));
 
-    expectInputDraft();
+    await expectInputDraft();
     expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
   });
@@ -170,7 +174,7 @@ describe("factor pipeline input preparation", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "准备因子输入" }));
 
     expect(screen.getByText("当前观察池")).toBeInTheDocument();
-    expect(screen.getByText("最近快照")).toBeInTheDocument();
+    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
   });
@@ -183,9 +187,9 @@ describe("factor pipeline input preparation", () => {
     render(<ExternalDataSync />);
 
     expect(await screen.findByText("当前观察池")).toBeInTheDocument();
-    expect(screen.getByText("最近快照")).toBeInTheDocument();
+    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新评分" })).toBeInTheDocument();
   });
 
   it("retains an explicit custom preset even when its saved dates match a day preset", async () => {
@@ -196,6 +200,7 @@ describe("factor pipeline input preparation", () => {
     render(<FactorPipelinePrepareStep {...createProps()} />);
     await userEvent.setup().click(screen.getByRole("button", { name: "准备因子输入" }));
 
+    fireEvent.click(screen.getByRole("button", { name: /日期和更新设置/ }));
     expect(screen.getByText("自定义")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-08-01");
     expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-08-14");

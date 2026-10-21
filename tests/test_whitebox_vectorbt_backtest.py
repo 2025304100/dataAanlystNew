@@ -198,6 +198,7 @@ def test_vectorbt_engine_returns_portfolio_metrics_and_trades():
             position_pct=0.5,
             max_positions=2,
             disable_numba=True,
+            stamp_tax_rate=0.0005,
         ),
     )
 
@@ -582,6 +583,7 @@ def test_vectorbt_engine_handles_staggered_listing_without_backfill():
             slow_window=2,
             execution_lag=0,
             disable_numba=True,
+            stamp_tax_rate=0.0005,
         ),
     )
 

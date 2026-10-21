@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Card, Button, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, Table, message, Input, Popconfirm } from "antd";
+import { Card, Button, Collapse, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, Table, message, Input, Popconfirm } from "antd";
 import type { IndexSyncTaskRead } from "../api/client";
 import {
   PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined,
@@ -68,6 +68,15 @@ interface ScopeStat {
   total: number;
   synced: number;
   coverage: number;
+}
+
+function progressMessage(value: UniverseTask) {
+  if (/[\u3400-\u9fff]/.test(value.message)) return value.message;
+  if (value.status === 'failed') return '这次更新没有完成，请查看错误详情后重试。';
+  if (value.status === 'cancelled') return '这次更新已停止。';
+  if (value.status === 'done') return '这次更新已结束，请查看处理数量。';
+  if (value.status === 'running') return '正在更新行情，请稍候。';
+  return '正在等待更新行情。';
 }
 
 interface UniverseStats {
@@ -191,6 +200,7 @@ type RepairScopeSummary = {
 
 type SyncTabKey = "daily" | "history" | "advanced";
 type SyncPanelKey = "smart" | "incremental" | "init" | "backfill" | "repair";
+type ProgressKind = SyncPanelKey | "industry";
 
 const DEFAULT_SYNC_PANEL_SELECTION: Record<SyncTabKey, SyncPanelKey> = {
   daily: "incremental",
@@ -324,6 +334,16 @@ export default function UniverseDataPanel() {
   const [smartTask, setSmartTask] = useState<UniverseTask | null>(null);
   const [incrTask, setIncrTask] = useState<UniverseTask | null>(null);
   const [loading, setLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [progressErrors, setProgressErrors] = useState<Partial<Record<ProgressKind, string>>>({});
+  const [progressReading, setProgressReading] = useState<Partial<Record<ProgressKind, boolean>>>({});
+  const progressRequests = useRef<Partial<Record<ProgressKind, number>>>({});
+  const progressReadId = useRef(0);
+  const progressMounted = useRef(true);
+  useEffect(() => {
+    progressMounted.current = true;
+    return () => { progressMounted.current = false; progressRequests.current = {}; };
+  }, []);
   const [starting, setStarting] = useState(false);
   const [smartStarting, setSmartStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -709,70 +729,49 @@ export default function UniverseDataPanel() {
   ]);
 
   const refreshStats = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await api.getUniverseStats();
       setStats(data as UniverseStats);
-    } catch {
-      // ignore
+      setStatsError(null);
+    } catch (error: unknown) {
+      setStatsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  const refreshTask = useCallback(async () => {
+  const readProgress = useCallback(async (kind: ProgressKind, read: () => Promise<UniverseTask | null>, accept: (value: UniverseTask | null) => void) => {
+    const request = ++progressReadId.current;
+    progressRequests.current[kind] = request;
+    setProgressReading(current => ({ ...current, [kind]: true }));
     try {
-      const data = await api.getUniverseInitStatus();
-      setTask(data as UniverseTask | null);
-    } catch {
-      // ignore
+      const data = await read();
+      if (data !== null && (!data || typeof data.id !== 'string' || typeof data.status !== 'string')) throw new Error('进度记录不完整。');
+      if (!progressMounted.current || progressRequests.current[kind] !== request) return;
+      accept(data);
+      setProgressErrors(current => ({ ...current, [kind]: undefined }));
+    } catch (error: unknown) {
+      if (progressMounted.current && progressRequests.current[kind] === request) {
+        setProgressErrors(current => ({ ...current, [kind]: error instanceof Error ? error.message : String(error) }));
+      }
+    } finally {
+      if (progressMounted.current && progressRequests.current[kind] === request) setProgressReading(current => ({ ...current, [kind]: false }));
     }
   }, []);
 
-  const refreshSmartTask = useCallback(async () => {
-    try {
-      const data = await api.getUniverseSmartSyncStatus();
-      setSmartTask(data as UniverseTask | null);
-    } catch {
-      // ignore
-    }
-  }, []);
+  const refreshTask = useCallback(() => readProgress('init', api.getUniverseInitStatus, setTask), [readProgress]);
+  const refreshSmartTask = useCallback(() => readProgress('smart', api.getUniverseSmartSyncStatus, setSmartTask), [readProgress]);
 
-  const refreshIncrTask = useCallback(async () => {
-    try {
-      const data = await api.getUniverseIncrementalSyncStatus();
-      setIncrTask(data as UniverseTask | null);
+  const refreshIncrTask = useCallback(() => readProgress('incremental', api.getUniverseIncrementalSyncStatus, data => {
+      setIncrTask(data);
       if (data && !["running", "queued"].includes(data.status)) {
         void refreshStats();
       }
-    } catch {
-      // ignore
-    }
-  }, [refreshStats]);
-
-  const refreshBfTask = useCallback(async () => {
-    try {
-      const data = await api.getUniverseBackfillStatus();
-      setBfTask(data as UniverseTask | null);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const refreshRepairTask = useCallback(async () => {
-    try {
-      const data = await api.getUniverseRangeRepairStatus();
-      setRepairTask(data as UniverseTask | null);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const refreshIndustryTask = useCallback(async () => {
-    try {
-      const data = await api.getUniverseIndustryBackfillStatus();
-      setIndustryTask(data as UniverseTask | null);
-    } catch {
-      // ignore
-    }
-  }, []);
+  }), [readProgress, refreshStats]);
+  const refreshBfTask = useCallback(() => readProgress('backfill', api.getUniverseBackfillStatus, setBfTask), [readProgress]);
+  const refreshRepairTask = useCallback(() => readProgress('repair', api.getUniverseRangeRepairStatus, setRepairTask), [readProgress]);
+  const refreshIndustryTask = useCallback(() => readProgress('industry', api.getUniverseIndustryBackfillStatus, setIndustryTask), [readProgress]);
 
   // 初始加载
   useEffect(() => {
@@ -1208,6 +1207,18 @@ export default function UniverseDataPanel() {
   const activeSyncTab = syncTabMeta[syncTab];
   const activeSyncGuideItems = syncTabQuickGuides[syncTab];
   const activeSyncPanel = syncPanelSelection[syncTab];
+  const progressReaders = { init: refreshTask, smart: refreshSmartTask, incremental: refreshIncrTask,
+    backfill: refreshBfTask, repair: refreshRepairTask, industry: refreshIndustryTask };
+  const progressTasks = { init: task, smart: smartTask, incremental: incrTask, backfill: bfTask, repair: repairTask };
+  const progressDetails = (value: UniverseTask | null) => value?.message && !/[\u3400-\u9fff]/.test(value.message)
+    && <details style={{ marginBottom: 12 }}><summary>{value.status === 'failed' ? '查看错误详情' : '查看进度详情'}</summary>{value.message}</details>;
+  const progressUnconfirmed = (kind: ProgressKind) => !!progressErrors[kind] || !!progressReading[kind];
+  const progressErrorAlert = (kind: ProgressKind) => progressErrors[kind] && <Alert type="error" showIcon
+    message={kind === 'industry' ? '行业资料更新进度暂时读不到' : '行情更新进度暂时读不到'}
+    description={<><p>进度尚未确认，任务可能仍在运行。请先重新读取，避免重复开始更新。</p>
+      <details><summary>查看错误详情</summary>{progressErrors[kind]}</details></>}
+    action={<Button loading={progressReading[kind]} onClick={() => void progressReaders[kind]()}>{kind === 'industry' ? '重试读取行业资料进度' : '重试读取更新进度'}</Button>}
+    style={{ marginBottom: 12 }} />;
 
   const handleSyncPanelSelect = useCallback((panel: SyncPanelKey) => {
     setSyncPanelSelection((prev) => ({
@@ -1233,6 +1244,7 @@ export default function UniverseDataPanel() {
           <p style={{ color: "var(--text-muted, #888)", marginBottom: 16 }}>{t("universeDesc")}</p>
 
           {/* ─── 复权口径说明 ─── */}
+          <Collapse size="small" style={{ marginBottom: 12 }} items={[{ key: "price-notes", label: "价格和分红的计算说明", children:
           <Alert
             type="info"
             showIcon
@@ -1282,14 +1294,26 @@ export default function UniverseDataPanel() {
               </Space>
             }
           />
+          }]} />
 
           {/* 数据健康度 */}
+          {statsError && <Alert
+            type={stats ? "warning" : "error"}
+            showIcon
+            message="行情数据状态暂时读不到"
+            description={<><p>{stats ? '下方保留上次读到的数据，请重新读取后再确认。' : '尚未确认本地行情数据的状态，请重试读取。'}</p>
+              <details><summary>查看错误详情</summary>{statsError}</details></>}
+            action={<Button loading={loading} onClick={() => void refreshStats()}>重试读取行情状态</Button>}
+            style={{ marginBottom: 12 }}
+          />}
           <Card title={t("universeStatsTitle")} size="small" style={{ marginBottom: 16 }} loading={loading && !stats}>
             {stats ? (
               <>
                 {stats.is_empty && (
                   <Alert
-                    message={t("universeEmpty")}
+                    message="还没有行情数据"
+                    description="第一次使用，先下载所选范围的历史行情。之后再补最近的行情。"
+                    action={<Button onClick={() => { setSyncTab("history"); setSyncPanelSelection((current) => ({ ...current, history: "init" })); }}>下载历史行情</Button>}
                     type="info"
                     showIcon
                     style={{ marginBottom: 12 }}
@@ -1310,6 +1334,10 @@ export default function UniverseDataPanel() {
                   </Col>
                 </Row>
 
+                {(Boolean(stats.freshness) || [stats.by_scope, stats.by_board, stats.by_type].some((items) => Object.keys(items || {}).length > 0)) && <Collapse
+                  size="small"
+                  style={{ marginTop: 12 }}
+                  items={[{ key: "statistics", label: "查看行情统计明细", children: <>
                 {/* 按 scope 覆盖率 */}
                 {stats.by_scope && Object.keys(stats.by_scope).length > 0 && (
                   <div style={{ marginTop: 16 }}>
@@ -1410,6 +1438,8 @@ export default function UniverseDataPanel() {
                     ))}
                   </Row>
                 )}
+                  </> }]}
+                />}
                 {stats.latest_synced_at && (
                   <p style={{ marginTop: 12, color: "var(--text-muted, #888)", fontSize: 12 }}>
                     {t("universeLatestSync")}：{new Date(stats.latest_synced_at).toLocaleString()}
@@ -1420,6 +1450,7 @@ export default function UniverseDataPanel() {
           </Card>
 
           {/* ─── 基准指数数据同步（回测基准曲线 + 板块同步） ─── */}
+          <Collapse size="small" style={{ marginBottom: 12 }} items={[{ key: "indices", label: "回测用的指数行情", children:
           <Card
             title={
               <Space wrap>
@@ -1758,6 +1789,7 @@ export default function UniverseDataPanel() {
               ]}
             />
           </Card>
+          }]} />
 
           {/* 智能同步任务 */}
           <Tabs
@@ -1782,6 +1814,10 @@ export default function UniverseDataPanel() {
           <div style={{ marginBottom: 8, fontSize: 12, color: "var(--text-muted, #888)" }}>
             {t("universeViewingNow")}<strong style={{ color: "var(--text-primary, #333)", marginLeft: 4 }}>{t(activeSyncGuideItems.find((item) => item.key === activeSyncPanel)?.titleKey || activeSyncGuideItems[0].titleKey)}</strong>
           </div>
+          {(activeSyncPanel === "incremental" || activeSyncPanel === "smart" || activeSyncPanel === "init") && <p style={{ marginBottom: 10, fontSize: 12, color: "var(--text-muted, #888)" }}>
+            范围：{initScopes.length ? initScopes.map(scopeLabel).join("、") : "尚未选择"} · 下载历史设置：{i18nHistoryDaysOptions.find((option) => option.value === historyDays)?.label ?? `${historyDays} 天`}
+          </p>}
+          <Collapse key={syncTab} size="small" defaultActiveKey={syncTab === "daily" ? [] : ["methods"]} style={{ marginBottom: 12 }} items={[{ key: "methods", label: syncTab === "daily" ? "其他更新方式" : syncTab === "history" ? "下载方式" : "检查说明", children:
           <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
             {activeSyncGuideItems.map((item) => {
               const isActive = activeSyncPanel === item.key;
@@ -1820,7 +1856,12 @@ export default function UniverseDataPanel() {
               );
             })}
           </Row>
+          }]} />
 
+          {progressErrorAlert(activeSyncPanel)}
+          {activeSyncPanel === 'backfill' && progressErrorAlert('industry')}
+          {progressDetails(progressTasks[activeSyncPanel])}
+          {activeSyncPanel === 'backfill' && progressDetails(industryTask)}
           {syncTab === "daily" && (
             <>
           {activeSyncPanel === "smart" && (
@@ -1850,7 +1891,7 @@ export default function UniverseDataPanel() {
                 </div>
                 <p style={{ marginBottom: 8 }}>
                   <strong>{t("universeSmartStage")}</strong>
-                  {smartTask.message ? ` — ${smartTask.message}` : ""}
+                  {smartTask.message ? ` — ${progressMessage(smartTask)}` : ""}
                 </p>
                 {smartTask.total > 0 ? (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
@@ -1918,7 +1959,7 @@ export default function UniverseDataPanel() {
                 )}
               </>
             ) : (
-              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeSmartNoTask")}</p>
+              !progressErrors.smart && <p style={{ color: "var(--text-muted, #888)" }}>{t("universeSmartNoTask")}</p>
             )}
 
             <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
@@ -1978,7 +2019,7 @@ export default function UniverseDataPanel() {
                       icon={<PlayCircleOutlined />}
                       onClick={handleSmartStart}
                       loading={smartStarting}
-                      disabled={anyRunning || initScopes.length === 0}
+                      disabled={anyRunning || progressUnconfirmed('smart') || initScopes.length === 0}
                     >
                       {t("universeSmartStart")}
                     </Button>
@@ -2027,7 +2068,7 @@ export default function UniverseDataPanel() {
                   icon={<PlayCircleOutlined />}
                   onClick={handleIncrStart}
                   loading={incrStarting}
-                  disabled={anyRunning || initScopes.length === 0}
+                  disabled={anyRunning || progressUnconfirmed('incremental') || initScopes.length === 0 || !stats || stats.is_empty}
                 >
                   {t("universeIncrementalStart")}
                 </Button>
@@ -2051,7 +2092,7 @@ export default function UniverseDataPanel() {
                 </div>
                 <p style={{ marginBottom: 8 }}>
                   <strong>{t("universeIncrementalStageSync")}</strong>
-                  {incrTask.message ? ` — ${incrTask.message}` : ""}
+                  {incrTask.message ? ` — ${progressMessage(incrTask)}` : ""}
                 </p>
                 {incrTask.total > 0 && (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
@@ -2080,7 +2121,7 @@ export default function UniverseDataPanel() {
                 )}
               </>
             ) : (
-              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeIncrementalNoTask")}</p>
+              !progressErrors.incremental && <p style={{ color: "var(--text-muted, #888)" }}>{t("universeIncrementalNoTask")}</p>
             )}
 
             {/* 控制区 */}
@@ -2100,20 +2141,22 @@ export default function UniverseDataPanel() {
                     disabled={anyRunning}
                   />
                 </Space>
-                <Space wrap>
-                  <span>{t("universeWorkers")}：</span>
-                  <InputNumber
-                    min={1}
-                    max={8}
-                    value={maxWorkers}
-                    onChange={(v) => setMaxWorkers(v ?? 5)}
-                    disabled={anyRunning}
-                    style={{ width: 80 }}
-                  />
-                  <Tooltip title={t("universeIncrementalTip")}>
-                    <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
-                  </Tooltip>
-                </Space>
+                <Collapse size="small" items={[{ key: "speed", label: "更新速度设置", children:
+                  <Space wrap>
+                    <span>{t("universeWorkers")}：</span>
+                    <InputNumber
+                      min={1}
+                      max={8}
+                      value={maxWorkers}
+                      onChange={(v) => setMaxWorkers(v ?? 5)}
+                      disabled={anyRunning}
+                      style={{ width: 80 }}
+                    />
+                    <Tooltip title={t("universeIncrementalTip")}>
+                      <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
+                    </Tooltip>
+                  </Space>
+                }]} />
               </Space>
             </div>
           </Card>
@@ -2158,7 +2201,7 @@ export default function UniverseDataPanel() {
                 </div>
                 <p style={{ marginBottom: 8 }}>
                   <strong>{stageLabel(task.stage)}</strong>
-                  {task.message ? ` — ${task.message}` : ""}
+                  {task.message ? ` — ${progressMessage(task)}` : ""}
                 </p>
                 {task.total > 0 && (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
@@ -2197,7 +2240,7 @@ export default function UniverseDataPanel() {
                 )}
               </>
             ) : (
-              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeNoTask")}</p>
+              !progressErrors.init && <p style={{ color: "var(--text-muted, #888)" }}>{t("universeNoTask")}</p>
             )}
 
             {/* 控制区 */}
@@ -2258,7 +2301,7 @@ export default function UniverseDataPanel() {
                       icon={<PlayCircleOutlined />}
                       onClick={handleStart}
                       loading={starting}
-                      disabled={anyRunning || initScopes.length === 0}
+                      disabled={anyRunning || progressUnconfirmed('init') || initScopes.length === 0}
                     >
                       {t("universeStart")}
                     </Button>
@@ -2269,7 +2312,7 @@ export default function UniverseDataPanel() {
                       icon={<ReloadOutlined />}
                       onClick={handleRetry}
                       loading={starting}
-                      disabled={anyRunning || initScopes.length === 0}
+                      disabled={anyRunning || progressUnconfirmed('init') || initScopes.length === 0}
                     >
                       {t("universeRetry")}
                     </Button>
@@ -2318,12 +2361,12 @@ export default function UniverseDataPanel() {
                   status={industryTask.status === "failed" ? "exception" : industryTask.status === "done" ? "success" : industryTask.status === "cancelled" ? "exception" : "active"}
                 />
                 <p style={{ color: "var(--text-muted, #888)", fontSize: 12, margin: "8px 0 12px" }}>
-                  {industryTask.message || t("universeIndustryBackfillPreparing")}
+                  {industryTask.message ? progressMessage(industryTask) : t("universeIndustryBackfillPreparing")}
                   {industryTask.total > 0 ? `；${t("universeProcessed")} ${industryTask.processed}/${industryTask.total}，${t("universeIndustryBackfillUpdated")} ${industryTask.ok_count}` : ""}
                 </p>
               </>
             ) : (
-              <p style={{ color: "var(--text-muted, #888)", fontSize: 12 }}>{t("universeIndustryBackfillNoTask")}</p>
+              !progressErrors.industry && <p style={{ color: "var(--text-muted, #888)", fontSize: 12 }}>{t("universeIndustryBackfillNoTask")}</p>
             )}
             <Space>
               {!industryIsRunning && (
@@ -2332,7 +2375,7 @@ export default function UniverseDataPanel() {
                   icon={<CloudSyncOutlined />}
                   onClick={handleIndustryStart}
                   loading={industryStarting}
-                  disabled={anyRunning}
+                  disabled={anyRunning || progressUnconfirmed('industry')}
                 >
                   {t("universeIndustryBackfillStart")}
                 </Button>
@@ -2374,7 +2417,7 @@ export default function UniverseDataPanel() {
                 </div>
                 <p style={{ marginBottom: 8 }}>
                   <strong>{t("universeBackfillStageSync")}</strong>
-                  {bfTask.message ? ` — ${bfTask.message}` : ""}
+                  {bfTask.message ? ` — ${progressMessage(bfTask)}` : ""}
                 </p>
                 {bfTask.total > 0 ? (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
@@ -2449,7 +2492,7 @@ export default function UniverseDataPanel() {
                 )}
               </>
             ) : (
-              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeBackfillNoTask")}</p>
+              !progressErrors.backfill && <p style={{ color: "var(--text-muted, #888)" }}>{t("universeBackfillNoTask")}</p>
             )}
 
             {/* 控制区 */}
@@ -2509,7 +2552,7 @@ export default function UniverseDataPanel() {
                       icon={<PlayCircleOutlined />}
                       onClick={handleBfStart}
                       loading={bfStarting}
-                      disabled={anyRunning}
+                      disabled={anyRunning || progressUnconfirmed('backfill')}
                     >
                       {t("universeBackfillStart")}
                     </Button>
@@ -2564,7 +2607,7 @@ export default function UniverseDataPanel() {
                 </div>
                 <p style={{ marginBottom: 8 }}>
                   <strong>{t("universeRangeRepairStageSync")}</strong>
-                  {repairTask.message ? ` - ${repairTask.message}` : ""}
+                  {repairTask.message ? ` - ${progressMessage(repairTask)}` : ""}
                 </p>
                 {repairTask.total > 0 ? (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
@@ -2636,7 +2679,7 @@ export default function UniverseDataPanel() {
                 )}
               </>
             ) : (
-              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeRangeRepairNoTask")}</p>
+              !progressErrors.repair && <p style={{ color: "var(--text-muted, #888)" }}>{t("universeRangeRepairNoTask")}</p>
             )}
 
             <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
@@ -2707,7 +2750,7 @@ export default function UniverseDataPanel() {
                       icon={<PlayCircleOutlined />}
                       onClick={handleRepairStart}
                       loading={repairStarting}
-                      disabled={anyRunning || repairScopes.length === 0}
+                      disabled={anyRunning || progressUnconfirmed('repair') || repairScopes.length === 0}
                     >
                       {t("universeRangeRepairStart")}
                     </Button>

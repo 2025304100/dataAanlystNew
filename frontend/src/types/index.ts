@@ -1996,6 +1996,7 @@ export interface AsyncTaskCancelResponse {
 export type AutoSimulationSkipReason =
   | "PORTFOLIO_NOT_READY"
   | "SCHEDULE_TOO_EARLY"
+  | "SCHEDULE_DATE_MISMATCH"
   | "DUAL_EXECUTION_RISK_PROHIBITED"
   | "RECONCILIATION_GAP_WARNING"
   | null;
@@ -2081,6 +2082,7 @@ export interface SnapshotStatusRead {
   ready_snapshot_id: number | null;
   ready_snapshot_generated_at: string | null;
   ready_snapshot_trade_date: string | null;
+  ready_snapshot_data_cutoff_at?: string | null;
   ready_snapshot_symbol_count: number | null;
   ready_snapshot_dirty_symbol_count: number | null;
   has_building_snapshot: boolean;

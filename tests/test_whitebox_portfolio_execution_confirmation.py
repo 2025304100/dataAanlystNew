@@ -204,6 +204,7 @@ def test_actual_ledger_buy_boundary_blocks_entry_but_fills_sell(binding, monkeyp
     run = DecisionRun(
         id="execution-confirmation-run", portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id,
         trade_date=TRADE_DATE, run_type="auto_simulation", status="SUCCEEDED",
+        versions_json=json.dumps({"price_reference_policy_version": "signal-close-v1"}),
         decision_at=datetime(2026, 9, 2, 7, 5), data_cutoff_at=datetime(2026, 9, 2, 7), execution_at=datetime(2026, 9, 3, 1, 30),
     )
     db.add(run)
@@ -268,6 +269,8 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
     order = db.execute(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id)).scalar_one()
     original = (order.id, order.client_order_key, order.decision_evidence_id)
     assert order.status == "partial" and order.quantity == 1000 and order.filled_quantity == 100
+    original_plan = db.get(DecisionOrderPlanRecord, order.client_order_key)
+    assert original_plan.signal_date == TRADE_DATE and original_plan.execution_date == date(2026, 9, 3)
     if lock == "unconfirmed":
         portfolio.status_model = "MODEL_INACTIVE"
     elif lock == "global_model_switch":
@@ -280,14 +283,16 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
             total_equity=200000, created_at=datetime(2026, 9, 2, 6)))
     db.commit()
 
-    second = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 3), dry_run=False)
+    # The first 100 shares already consumed Sep 3's volume. A retry must
+    # reach Sep 4 before it may consume Sep 4's bar, even under an entry lock.
+    second = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 4), dry_run=False)
     assert second["errors"] == []
     db.refresh(order)
     assert (order.id, order.client_order_key, order.decision_evidence_id) == original
     assert order.status == "partial" and order.filled_quantity == 200
     # The fresh BUY really went through the shared engine and was rejected;
     # only the original persisted plan reached the matching/account adapter.
-    later = db.execute(select(DecisionEvidence).where(DecisionEvidence.trade_date == date(2026, 9, 3))).scalar_one()
+    later = db.execute(select(DecisionEvidence).where(DecisionEvidence.trade_date == date(2026, 9, 4))).scalar_one()
     assert later.action == "REJECTED" and later.id != original[2]
     assert later.rejection_reason == ("DRAWDOWN_CIRCUIT_TRIGGERED" if lock == "drawdown" else "PORTFOLIO_EXECUTION_BLOCKED")
     assert db.scalar(select(func.count()).select_from(SimOrder)) == 1
@@ -295,14 +300,14 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
     assert db.scalar(select(Position.quantity).where(Position.portfolio_id == portfolio.id, Position.symbol_id == symbol.id)) == 200
     cash_after_retry = db.scalar(select(func.sum(CashLedger.amount)).where(CashLedger.portfolio_id == portfolio.id))
 
-    replay = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 3), dry_run=False)
+    replay = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 4), dry_run=False)
     assert replay["errors"] == [] and replay["executed_orders"] == []
     db.refresh(order)
     assert order.filled_quantity == 200
     assert db.scalar(select(func.count()).select_from(SimTrade)) == 2
     assert db.scalar(select(func.sum(CashLedger.amount)).where(CashLedger.portfolio_id == portfolio.id)) == cash_after_retry
 
-    final = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 4), dry_run=False)
+    final = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 7), dry_run=False)
     assert final["errors"] == []
     db.refresh(order)
     assert (order.id, order.client_order_key, order.decision_evidence_id) == original
@@ -310,3 +315,7 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
     assert db.scalar(select(func.count()).select_from(SimOrder)) == 1
     assert db.scalar(select(func.sum(SimTrade.quantity))) == 1000
     assert db.scalar(select(Position.quantity).where(Position.portfolio_id == portfolio.id, Position.symbol_id == symbol.id)) == 1000
+    trace = json.loads(db.get(DecisionEvidence, original[2]).rejections_trace_json)
+    retries = [item for item in trace if item.get("reason") == "PARTIAL_FILL_RETRY"]
+    assert [item["execution_date"] for item in retries] == ["2026-09-04", "2026-09-07"]
+    assert all(item["execution_date"] <= item["trigger_trade_date"] for item in retries)

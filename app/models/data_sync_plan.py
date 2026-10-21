@@ -24,6 +24,7 @@ class DataSyncPlan(Base):
     )
     dataset: Mapped[str] = mapped_column(String(32), index=True)
     mode: Mapped[str] = mapped_column(String(16), index=True)
+    sync_policy: Mapped[str] = mapped_column(String(16), default="normal", server_default="normal")
     source: Mapped[str] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     requested_start_date: Mapped[date] = mapped_column(Date)

@@ -25,3 +25,15 @@ export interface ProductionPredictionStatus {
   independent_validation_complete:boolean;cost_evaluation_complete:boolean;
   qualification_issued:boolean;model_activated:boolean;read_only:boolean;can_record_today:boolean;
 }
+
+export interface ProductionReleaseReview {
+  plan_id:string; candidate_model_id:string; ready:boolean; sha256:string;
+  blockers:string[]; qualification_issued:boolean; model_activated:boolean; message:string;
+  independent_signal_days?:number; mature_signal_days?:number;
+  result?:{mean_daily_ic:number;net_return:number;evidence_pass:boolean}|null;
+}
+
+export interface ProductionIndependentReview {
+  ready:boolean; sha256:string; blockers:string[]; mature_signal_count:number;
+  missing_journal_dates:string[];
+}

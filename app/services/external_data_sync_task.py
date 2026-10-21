@@ -31,6 +31,7 @@ from app.models.universe import UniverseSymbol
 from app.schemas.async_task import AsyncTaskRead
 from app.services.async_tasks import _task_to_read, cancel_async_task, get_async_task
 from app.services.feature_policy import reject_tail_proxy
+from app.services.external_sync_policy import resolve_policy_ranges, requested_days, sync_policy, subtract_ranges
 
 logger = logging.getLogger(__name__)
 
@@ -226,11 +227,16 @@ def _update_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord | None
     if int(getattr(task, "cancel_requested", 0) or 0) == 1 and updates.get("status") != "cancelled":
         return task
     for key, value in updates.items():
+        if key == "started_at" and task.started_at is not None:
+            continue
         setattr(task, key, value)
     if task.status in ("done", "failed", "cancelled"):
         task.is_terminal_locked = 1
         if task.finished_at is None:
             task.finished_at = _now()
+        db.execute(update(DataSyncPlan).where(DataSyncPlan.task_id == task_id).values(
+            status=task.status, started_at=task.started_at, finished_at=task.finished_at,
+        ))
     task.updated_at = _now()
     if task.status in ("queued", "running"):
         task.heartbeat_at = _now()
@@ -262,6 +268,9 @@ def _mark_cancelled(db: Session, task_id: str, message: str = "Sync cancelled by
     task.finished_at = _now()
     task.updated_at = _now()
     task.is_terminal_locked = 1
+    db.execute(update(DataSyncPlan).where(DataSyncPlan.task_id == task_id).values(
+        status="cancelled", started_at=task.started_at, finished_at=task.finished_at,
+    ))
     db.commit()
 
 
@@ -336,6 +345,7 @@ def build_external_sync_plan(
     if dataset == "tail_proxy" and source == "all":
         raise ValueError("尾盘分钟采集仅支持候选、观察池或持仓范围，不支持全市场")
     mode = str(payload.get("mode", "incremental"))
+    policy = sync_policy(payload)
     if mode not in capability["modes"]:
         raise ValueError(f"{dataset} does not support {mode}: {capability['reason']}")
     reference_date = today or date.today()
@@ -367,6 +377,7 @@ def build_external_sync_plan(
     return {
         "dataset": dataset,
         "mode": mode,
+        "sync_policy": policy,
         "requested_start_date": requested_start.isoformat(),
         "requested_end_date": requested_end.isoformat(),
         "requested_span_days": span_days,
@@ -415,12 +426,20 @@ def _create_persisted_sync_plan(
             symbols = resolve_external_symbols(
                 db, payload.get("source", "watchlist"), asset_type, payload.get("watchlist_id"), payload.get("portfolio_id")
             )
-            if dataset == "fundamental" and frozen_plan.get("mode") != "backfill":
+            if dataset == "fundamental" and frozen_plan.get("mode") != "backfill" and sync_policy(payload) == "normal":
                 from app.services.fundamental_data import complete_daily_valuation_ids
 
                 current_ids = complete_daily_valuation_ids(db, [symbol.id for symbol in symbols], end_date)
                 payload["_already_current_count"] = len(current_ids)
                 symbols = [symbol for symbol in symbols if symbol.id not in current_ids]
+            ranges = resolve_policy_ranges(db, dataset, [symbol.id for symbol in symbols],
+                                           start_date, end_date, sync_policy(payload))
+            payload["_policy_ranges"] = {
+                str(sid): [[a.isoformat(), b.isoformat()] for a, b in values]
+                for sid, values in ranges.items()
+            }
+            payload["_covered_symbol_count"] = sum(not ranges[symbol.id] for symbol in symbols)
+            symbols = [symbol for symbol in symbols if ranges[symbol.id]]
             partition_specs = [
                 {
                     "partition_key": f"symbol:{symbol.id}:{start_date}:{end_date}",
@@ -450,6 +469,7 @@ def _create_persisted_sync_plan(
         parent_plan_id=parent_plan_id,
         dataset=dataset,
         mode=str(frozen_plan.get("mode", "incremental")),
+        sync_policy=sync_policy(payload),
         source=str(payload.get("source", "watchlist")),
         status="queued",
         requested_start_date=start_date,
@@ -496,6 +516,8 @@ def _refresh_sync_plan(db: Session, plan_id: str, *, terminal: bool = False) -> 
         else:
             plan_record.status = "partial" if plan_record.failed_partitions else "done"
         plan_record.finished_at = _now()
+        if plan_record.started_at is None:
+            plan_record.started_at = plan_record.finished_at
     elif plan_record.status == "queued":
         plan_record.status = "running"
         plan_record.started_at = _now()
@@ -651,17 +673,17 @@ def start_external_gap_repair(
         for (symbol_id, symbol), days in sorted(by_symbol.items())
     ]
     if dataset == "financial":
-        # Financial records are revisioned by announcement date. A missing
-        # PIT baseline must re-fetch the symbol's complete published history,
-        # not fabricate one row for each missing daily-bar date.
+        # A repair must respect the user's requested announcement range.
+        # Earlier PIT baselines require an explicit earlier history request.
         for spec in partition_specs:
-            spec["start_date"] = date(1990, 1, 1)
+            spec["start_date"] = start_date
             spec["end_date"] = end_date
         return start_external_data_sync(
             dataset,
             {
-                "source": "all", "mode": "backfill", "start_date": date(1990, 1, 1), "end_date": end_date,
-                "lookback_days": (end_date - date(1990, 1, 1)).days + 1, "limit": 20,
+                "source": "all", "mode": "backfill", "sync_policy": "missing",
+                "start_date": start_date, "end_date": end_date,
+                "lookback_days": (end_date - start_date).days + 1, "limit": 20,
                 "_partition_specs": partition_specs,
             },
         )
@@ -670,11 +692,14 @@ def start_external_gap_repair(
         {
             "source": "all",
             "mode": "backfill",
+            "sync_policy": "missing",
             "start_date": start_date,
             "end_date": end_date,
             "lookback_days": (end_date - start_date).days + 1,
             "limit": 20,
             "_partition_specs": partition_specs,
+            "_selected_gap_dates": {str(sid): [day.isoformat() for day in sorted(set(days))]
+                                    for (sid, _), days in by_symbol.items()},
         },
     )
 
@@ -786,6 +811,98 @@ def _local_written_dates(db: Session, dataset: ExternalDataset, symbol_id: int, 
     return db.execute(stmt).one()
 
 
+def _record_source_points(db, dataset, symbol_ids, start, end, task_id, *, allowed=None):
+    """Record actual source points, never a synthetic min/max covered range."""
+    from app.services.sync_coverage import existing_dates, source_covered_dates, record_coverage_points
+
+    observed = existing_dates(db, dataset, symbol_ids, start, end)
+    final = source_covered_dates(db, dataset, symbol_ids, start, end, require_complete=True)
+    if allowed is not None:
+        observed = {sid: days & allowed.get(sid, set()) for sid, days in observed.items()}
+    complete = {sid: days & final.get(sid, set()) for sid, days in observed.items()}
+    partial = {sid: days - final.get(sid, set()) for sid, days in observed.items()}
+    record_coverage_points(db, dataset, complete, task_id=task_id, complete=True)
+    record_coverage_points(db, dataset, partial, task_id=task_id, complete=False)
+
+
+def _record_financial_scan(db, symbols, ranges, task_id):
+    """Past announcement scans may be empty; today's announcements stay open."""
+    from app.services.sync_coverage import record_coverage_points
+
+    points = {symbol.id: {day for start, end in ranges.get(symbol.id, ())
+                         for day in requested_days(db, "financial", start, end) if day < date.today()}
+              for symbol in symbols}
+    record_coverage_points(db, "financial", points, task_id=task_id, complete=True)
+
+
+class _SymbolBatchCheckpoint:
+    """Commit source rows, partition outcomes and progress together in batches."""
+    def __init__(self, db, task_id, dataset, partitions, policy_ranges=None):
+        self.db, self.task_id, self.dataset, self.partitions = db, task_id, dataset, partitions
+        self.pending = []
+        self.written_points = {}
+        self.processed_symbols = []
+        self.policy_ranges = policy_ranges or {}
+        self.count = 0
+        self.last = None
+        self.updated_at = time.monotonic()
+
+    def __call__(self, symbol, rows_written, summary):
+        if self.dataset == "financial":
+            self.processed_symbols.append(symbol)
+        if rows_written:
+            days = getattr(rows_written, "sync_written_dates", ()) if self.dataset == "financial" else (rows_written.trade_date,)
+            self.written_points.setdefault(symbol.id, set()).update(day for day in days if day is not None)
+        rows_written = int(rows_written is not None) if self.dataset == "etf" else int(rows_written)
+        partition = self.partitions.get(symbol.id)
+        if partition is not None:
+            self.pending.append({"partition_id": partition.id,
+                                 "sync_status": "done" if rows_written else "skipped",
+                                 "sync_rows": rows_written})
+        self.count += 1
+        self.last = (symbol.symbol, dict(summary))
+        if self.count >= 100 or time.monotonic() - self.updated_at >= 1:
+            self.flush()
+
+    def flush(self):
+        if self.last is None:
+            return
+        from sqlalchemy import bindparam
+        db, now = self.db, _now()
+        db.flush()
+        if self.processed_symbols:
+            _record_financial_scan(db, self.processed_symbols, self.policy_ranges, self.task_id)
+        if self.written_points:
+            days = [day for values in self.written_points.values() for day in values]
+            if days:
+                _record_source_points(db, self.dataset, list(self.written_points), min(days), max(days),
+                                      self.task_id, allowed=self.written_points)
+        if self.pending:
+            table = DataSyncPartition.__table__
+            stmt = table.update().where(
+                table.c.id == bindparam("partition_id"),
+                or_(table.c.status != "cancelled", bindparam("sync_status") == "done"),
+            ).values(status=bindparam("sync_status"), rows_written=bindparam("sync_rows"),
+                     attempts=table.c.attempts + 1, started_at=func.coalesce(table.c.started_at, now),
+                     finished_at=now, updated_at=now, error_message=None)
+            db.execute(stmt, self.pending)
+        symbol, summary = self.last
+        processed = summary["success"] + summary["skipped"] + summary["failed"]
+        task = _update_task(db, self.task_id, status="running", stage="sync",
+            percent=min(99, 5 + 94 * processed / max(summary["total"], 1)),
+            total=summary["total"], processed=processed, ok_count=summary["success"],
+            failed_count=summary["failed"], current_item=symbol,
+            message=_progress_message(self.dataset, processed, summary["total"]))
+        # Cancellation may suppress the progress update. Already processed
+        # source rows and their outcomes must still be durable for retry.
+        if task is None or task.status in {"done", "failed", "cancelled"} or task.cancel_requested:
+            db.commit()
+        self.pending.clear()
+        self.written_points.clear()
+        self.processed_symbols.clear()
+        self.count, self.last, self.updated_at = 0, None, time.monotonic()
+
+
 def _run_symbol_sync(
     db: Session,
     task_id: str,
@@ -839,9 +956,18 @@ def _run_symbol_sync(
         "records": 0,
         "errors": [],
     }
-    local_current = int(payload.get("_already_current_count", 0)) if dataset == "fundamental" else 0
+    policy = sync_policy(payload)
+    write_options = {"fill_missing_only": True} if policy == "missing" else {}
+    local_current = (int(payload.get("_already_current_count", 0)) if dataset == "fundamental" else 0) + int(payload.get("_covered_symbol_count", 0))
     result["total"] += local_current
     result["skipped"] += local_current
+    pending_northbound = dataset == "capital_flow" and payload.get("include_northbound", True) and (
+        not sync_plan_id or bool(db.scalar(select(DataSyncPartition.id).where(
+            DataSyncPartition.plan_id == sync_plan_id,
+            DataSyncPartition.partition_key.like("northbound:%"),
+            DataSyncPartition.status.in_(("queued", "failed", "cancelled")),
+        ).limit(1)))
+    )
     if dataset == "fundamental":
         missing_industry = [symbol.symbol for symbol in symbols if not symbol.industry]
         result["field_coverage"] = {"industry": {
@@ -869,8 +995,8 @@ def _run_symbol_sync(
             _refresh_sync_plan(db, sync_plan_id, terminal=True)
         return result
 
-    if not symbols and local_current:
-        return finish_without_fetch("already_current", "所选标的估值已是最新，无需更新")
+    if not symbols and local_current and not pending_northbound:
+        return finish_without_fetch("already_current", "所选范围已覆盖，无需重复同步")
 
     if dataset in {"fundamental", "capital_flow", "etf"} and plan.get("mode") != "backfill":
         from app.services.market_session import is_cn_trading_day
@@ -883,7 +1009,7 @@ def _run_symbol_sync(
         if range_is_cn_closed(db, range_start, range_end):
             return finish_without_fetch("market_closed", "所选日期范围均为 A 股休市日，无需更新")
 
-    if dataset == "fundamental" and plan.get("mode") != "backfill" and symbols:
+    if dataset == "fundamental" and plan.get("mode") != "backfill" and symbols and policy == "normal":
         from app.services.fundamental_data import complete_daily_valuation_ids
 
         complete_ids = complete_daily_valuation_ids(db, [symbol.id for symbol in symbols], range_end)
@@ -899,6 +1025,40 @@ def _run_symbol_sync(
                 partition.rows_written = 0
                 partition.finished_at = partition.updated_at = _now()
         db.commit()
+    raw_ranges = payload.get("_policy_ranges")
+    if isinstance(raw_ranges, dict):
+        policy_ranges = {symbol.id: [(_as_date(a), _as_date(b)) for a, b in raw_ranges.get(str(symbol.id), ())]
+                         for symbol in symbols}
+    else:
+        policy_ranges = resolve_policy_ranges(db, dataset, [symbol.id for symbol in symbols],
+                                              range_start, range_end, policy)
+    for symbol in symbols:
+        partition = partitions_by_symbol.get(symbol.id)
+        if partition is not None:
+            policy_ranges[symbol.id] = [(max(a, partition.start_date), min(b, partition.end_date))
+                                       for a, b in policy_ranges.get(symbol.id, ())
+                                       if a <= partition.end_date and b >= partition.start_date]
+    # Gap-repair requests freeze exact selected dates instead of widening a
+    # sparse selection to every date between its minimum and maximum.
+    selected = payload.get("_selected_gap_dates") or {}
+    for symbol in symbols:
+        if str(symbol.id) in selected:
+            wanted = {_as_date(value) for value in selected[str(symbol.id)]}
+            available = {day for a, b in policy_ranges[symbol.id] for day in requested_days(db, dataset, a, b)}
+            days = requested_days(db, dataset, range_start, range_end)
+            policy_ranges[symbol.id] = subtract_ranges(days, set(days) - (wanted & available))
+    inactive = {symbol.id for symbol in symbols if not policy_ranges.get(symbol.id)}
+    for sid in inactive:
+        partition = partitions_by_symbol.pop(sid, None)
+        if partition is not None:
+            partition.status, partition.rows_written = "skipped", 0
+            partition.finished_at = partition.updated_at = _now()
+    result["skipped"] += len(inactive)
+    symbols = [symbol for symbol in symbols if symbol.id not in inactive]
+    if inactive:
+        db.commit()
+    if not symbols and result["skipped"] and not pending_northbound:
+        return finish_without_fetch("already_current", "所选范围已覆盖，无需重复同步")
     _update_task(
         db,
         task_id,
@@ -925,7 +1085,7 @@ def _run_symbol_sync(
             northbound_start = range_start if plan.get("mode") == "backfill" else None
             northbound_days = min(max((range_end - range_start).days + 1, 1), 100)
             count = sync_northbound_flow(
-                db, days=northbound_days, start_date=northbound_start, end_date=range_end
+                db, days=northbound_days, start_date=northbound_start, end_date=range_end, **write_options
             )
             result["records"] += count
             result["success" if count else "skipped"] += 1
@@ -949,19 +1109,21 @@ def _run_symbol_sync(
 
     if dataset == "financial" and plan.get("mode") != "backfill":
         from app.services.financial_data import sync_financial_announcements
+        from app.services.sync_progress import CancellationProbe
         if not _wait_for_market_priority(db, task_id):
             return None
 
-        def on_financial_result(symbol, count, summary):
-            _set_partition_status(db, partitions_by_symbol.get(symbol.id), "done" if count else "skipped", rows_written=int(count))
-            db.commit()
-            processed = summary["success"] + summary["skipped"]
-            _update_task(db, task_id, status="running", stage="sync", percent=min(99, 5 + 94 * processed / max(len(symbols), 1)),
-                         total=len(symbols), processed=processed, ok_count=summary["success"], failed_count=0,
-                         current_item=symbol.symbol, message=_progress_message(dataset, processed, len(symbols)))
-
-        result.update(sync_financial_announcements(db, symbols, range_end, range_end,
-            should_cancel=lambda: _is_cancelled(db, task_id), on_result=on_financial_result))
+        checkpoint = _SymbolBatchCheckpoint(db, task_id, dataset, partitions_by_symbol, policy_ranges)
+        previously_skipped = result["skipped"]
+        try:
+            result.update(sync_financial_announcements(db, symbols, range_end, range_end,
+                should_cancel=CancellationProbe(lambda: _is_cancelled(db, task_id)),
+                on_result=checkpoint, **write_options))
+        finally:
+            checkpoint.flush()
+        result["total"] += previously_skipped
+        result["skipped"] += previously_skipped
+        db.commit()
         if sync_plan_id:
             _refresh_sync_plan(db, sync_plan_id, terminal=True)
         return result
@@ -976,7 +1138,8 @@ def _run_symbol_sync(
             )
 
             def _snapshot_sync(active_db: Session) -> set[int]:
-                return sync_market_capital_flow_snapshot(active_db, symbols, range_end, should_cancel=lambda: _is_cancelled(active_db, task_id))
+                return sync_market_capital_flow_snapshot(active_db, symbols, range_end,
+                    should_cancel=lambda: _is_cancelled(active_db, task_id), **write_options)
 
             def _single_symbol_sync(active_db: Session, symbol: Symbol) -> Any:
                 return sync_symbol_capital_flow(active_db, symbol, range_end)
@@ -987,7 +1150,7 @@ def _run_symbol_sync(
 
             def _snapshot_sync(active_db: Session) -> set[int]:
                 return sync_market_valuation_snapshot(active_db, symbols, range_end,
-                    should_cancel=lambda: _is_cancelled(active_db, task_id))
+                    should_cancel=lambda: _is_cancelled(active_db, task_id), **write_options)
 
         if _is_cancelled(db, task_id):
             return None
@@ -1012,6 +1175,8 @@ def _run_symbol_sync(
             partition.rows_written = 1 if symbol_id in synced_ids else 0
             partition.finished_at = _now()
             partition.updated_at = _now()
+        if synced_ids:
+            _record_source_points(db, dataset, list(synced_ids), range_end, range_end, task_id)
         db.commit()
         if _is_cancelled(db, task_id):
             return None
@@ -1045,16 +1210,21 @@ def _run_symbol_sync(
                 worker_symbol = worker_db.get(Symbol, symbol_id)
                 if worker_symbol is None:
                     return symbol_id, 0, "symbol not found", ()
-                count = sync_symbol_valuation_range(
-                    worker_db,
-                    worker_symbol,
-                    start_date=start,
-                    end_date=end,
-                    quiet_output=False,
-                )
-                dates = _local_written_dates(worker_db, dataset, symbol_id, start, end) if count else ()
+                count, dates = 0, set()
+                for begin, finish in policy_ranges.get(symbol_id, [(start, end)]):
+                    if _is_cancelled(worker_db, task_id):
+                        raise InterruptedError("同步已取消")
+                    allowed = {_as_date(day) for day in selected[str(symbol_id)]} if str(symbol_id) in selected else None
+                    options = {**write_options, **({"allowed_dates": allowed} if allowed is not None else {})}
+                    written = sync_symbol_valuation_range(worker_db, worker_symbol,
+                        start_date=begin, end_date=finish, quiet_output=False, **options)
+                    count += int(written)
+                    dates.update(getattr(written, "sync_written_dates", ()))
+                if dates:
+                    _record_source_points(worker_db, dataset, [symbol_id], start, end, task_id,
+                                          allowed={symbol_id: dates})
                 worker_db.commit()
-                return symbol_id, count, None, dates
+                return symbol_id, count, None, tuple(dates)
             except Exception as exc:
                 worker_db.rollback()
                 return symbol_id, 0, str(exc), ()
@@ -1128,25 +1298,21 @@ def _run_symbol_sync(
 
     if dataset == "etf":
         from app.services.etf_basic_data import sync_etf_snapshots
+        from app.services.sync_progress import CancellationProbe
 
         if not _wait_for_market_priority(db, task_id):
             return None
 
-        def on_etf_result(symbol, item, summary):
-            partition = partitions_by_symbol.get(symbol.id)
-            _set_partition_status(db, partition, "running")
-            _set_partition_status(db, partition, "done" if item is not None else "skipped",
-                                  rows_written=1 if item is not None else 0)
-            db.commit()
-            processed = summary["success"] + summary["skipped"]
-            _update_task(db, task_id, status="running", stage="sync",
-                         percent=min(99, 5 + 94 * processed / max(summary["total"], 1)),
-                         total=summary["total"], processed=processed, ok_count=summary["success"],
-                         failed_count=summary["failed"], current_item=symbol.symbol,
-                         message=_progress_message("etf", processed, summary["total"]))
-
-        result.update(sync_etf_snapshots(db, symbols, range_end,
-            should_cancel=lambda: _is_cancelled(db, task_id), on_result=on_etf_result))
+        checkpoint = _SymbolBatchCheckpoint(db, task_id, dataset, partitions_by_symbol)
+        previously_skipped = result["skipped"]
+        try:
+            result.update(sync_etf_snapshots(db, symbols, range_end,
+                should_cancel=CancellationProbe(lambda: _is_cancelled(db, task_id)),
+                on_result=checkpoint, **write_options))
+        finally:
+            checkpoint.flush()
+        result["total"] += previously_skipped
+        result["skipped"] += previously_skipped
         if sync_plan_id:
             _refresh_sync_plan(db, sync_plan_id, terminal=True)
         return result
@@ -1161,15 +1327,19 @@ def _run_symbol_sync(
         partition_end = partition.end_date if partition is not None else range_end
         _set_partition_status(db, partition, "running")
         try:
+            actual_dates = set()
+            segments = policy_ranges.get(symbol.id, [(partition_start, partition_end)])
             if dataset == "fundamental":
                 from app.services.fundamental_data import sync_symbol_valuation
 
                 if plan.get("mode") == "backfill":
                     from app.services.fundamental_data import sync_symbol_valuation_range
 
-                    count = sync_symbol_valuation_range(
-                        db, symbol, start_date=partition_start, end_date=partition_end
-                    )
+                    count = 0
+                    for begin, finish in segments:
+                        written = sync_symbol_valuation_range(db, symbol, start_date=begin, end_date=finish, **write_options)
+                        count += int(written)
+                        actual_dates.update(getattr(written, "sync_written_dates", ()))
                 else:
                     item = sync_symbol_valuation(db, symbol, range_end)
                     count = 1 if item is not None else 0
@@ -1177,12 +1347,15 @@ def _run_symbol_sync(
                 from app.services.financial_data import sync_symbol_financial_reports
 
                 if plan.get("mode") == "backfill":
-                    count = sync_symbol_financial_reports(
-                        db,
-                        symbol,
-                        announcement_start=partition_start,
-                        announcement_end=partition_end,
-                    )
+                    count = 0
+                    for begin, finish in segments:
+                        if _is_cancelled(db, task_id):
+                            raise InterruptedError("财报同步已取消")
+                        written = sync_symbol_financial_reports(db, symbol,
+                            announcement_start=begin, announcement_end=finish, **write_options)
+                        count += int(written)
+                        actual_dates.update(getattr(written, "sync_written_dates", ()))
+                    _record_financial_scan(db, [symbol], {symbol.id: segments}, task_id)
                 else:
                     count = sync_symbol_financial_reports(db, symbol, announcement_end=range_end, incremental=True)
             elif dataset == "capital_flow":
@@ -1191,9 +1364,12 @@ def _run_symbol_sync(
                 if plan.get("mode") == "backfill":
                     from app.services.capital_flow_data import sync_symbol_capital_flow_range
 
-                    count = sync_symbol_capital_flow_range(
-                        db, symbol, start_date=partition_start, end_date=partition_end
-                    )
+                    allowed = {day for begin, finish in segments for day in requested_days(db, dataset, begin, finish)}
+                    if str(symbol.id) in selected:
+                        allowed &= {_as_date(day) for day in selected[str(symbol.id)]}
+                    count = sync_symbol_capital_flow_range(db, symbol,
+                        start_date=min(allowed), end_date=max(allowed), allowed_dates=allowed, **write_options)
+                    actual_dates.update(getattr(count, "sync_written_dates", ()))
                 else:
                     item = sync_symbol_capital_flow(db, symbol, range_end)
                     count = 1 if item is not None else 0
@@ -1206,15 +1382,16 @@ def _run_symbol_sync(
             if count > 0:
                 result["success"] += 1
                 result["records"] += count
-                if dataset == "financial" and hasattr(count, "sync_written_dates"):
-                    dates = count.sync_written_dates
-                elif dataset in {"financial", "fundamental", "capital_flow"} and plan.get("mode") == "backfill":
-                    dates = _local_written_dates(db, dataset, symbol.id, partition_start, partition_end)
+                if plan.get("mode") == "backfill":
+                    dates = actual_dates
                 elif dataset == "financial":
                     dates = _local_written_dates(db, dataset, symbol.id, end=range_end)
                 else:
                     dates = getattr(item, "sync_written_dates", ()) or (getattr(item, "trade_date", None),)
                 _merge_written_dates(result, dates)
+                if actual_dates:
+                    _record_source_points(db, dataset, [symbol.id], partition_start, partition_end, task_id,
+                                          allowed={symbol.id: actual_dates})
                 _set_partition_status(db, partition, "done", rows_written=count)
             else:
                 result["skipped"] += 1
@@ -1276,6 +1453,8 @@ def _run_bulk_sync(
     plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
     start = _as_date(plan["requested_start_date"])
     end = _as_date(plan["requested_end_date"])
+    policy = sync_policy(payload)
+    write_options = {"fill_missing_only": True} if policy == "missing" else {}
     closed = (
         range_is_cn_closed(db, start, end) if plan.get("mode") == "backfill"
         else not is_cn_trading_day(db, end)
@@ -1316,6 +1495,14 @@ def _run_bulk_sync(
         ).scalars().first()
         _refresh_sync_plan(db, sync_plan_id)
         _set_partition_status(db, partition, "running")
+    segments = resolve_policy_ranges(db, dataset, [0], start, end, policy)[0]
+    if not segments:
+        _set_partition_status(db, partition, "skipped")
+        if sync_plan_id:
+            _refresh_sync_plan(db, sync_plan_id, terminal=True)
+        return {"dataset": dataset, "total": 0, "success": 0, "skipped": 0,
+                "failed": 0, "records": 0, "errors": [], "skip_reason": "already_current",
+                "message": "所选范围已确认覆盖，无需重复同步"}
     _update_task(
         db,
         task_id,
@@ -1332,16 +1519,28 @@ def _run_bulk_sync(
             plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
             start_date = _as_date(plan.get("requested_start_date")) or date.today()
             end_date = _as_date(plan.get("requested_end_date")) or date.today()
-            summary = sync_lhb_institution_trades(db, start_date=start_date, end_date=end_date)
-            result = {
-                "dataset": dataset, "total": summary.received,
-                "success": summary.written, "skipped": summary.unmatched,
-                "failed": 0, "records": summary.written, "errors": [],
-            }
+            from app.services.sync_coverage import record_coverage_points
+
+            result = {"dataset": dataset, "total": 0, "success": 0, "skipped": 0,
+                      "failed": 0, "records": 0, "errors": []}
+            for begin, finish in segments:
+                if _is_cancelled(db, task_id):
+                    raise InterruptedError("龙虎榜同步已取消")
+                summary = sync_lhb_institution_trades(db, start_date=begin, end_date=finish, **write_options)
+                result["total"] += summary.received
+                result["success"] += summary.written
+                result["records"] += summary.written
+                result["skipped"] += summary.unmatched
+                _merge_written_dates(result, getattr(summary, "written_dates", ()))
+                # A completed past event-list scan also proves genuine empty
+                # days. Unmatched records must remain repairable after import.
+                if not summary.unmatched:
+                    days = [day for day in requested_days(db, dataset, begin, finish) if day < date.today()]
+                    record_coverage_points(db, dataset, {0: days}, task_id=task_id, complete=True)
         elif dataset == "hot_rank":
             from app.services.hot_rank_data import sync_hot_rank_snapshot
 
-            summary = sync_hot_rank_snapshot(db)
+            summary = sync_hot_rank_snapshot(db, **write_options)
             result = {
                 "dataset": dataset, "total": summary.received,
                 "success": summary.written, "skipped": summary.unmatched,
@@ -1369,6 +1568,12 @@ def _run_bulk_sync(
             else:
                 dates = (getattr(summary, "trade_date", None),)
             _merge_written_dates(result, dates)
+            if dataset in {"hot_rank", "lhb"}:
+                from app.services.sync_coverage import record_coverage_points
+                # Popularity is a current snapshot, with no provider closing
+                # timestamp proving a day's final ranking.
+                record_coverage_points(db, dataset, {0: [day for day in dates if day is not None]},
+                                       task_id=task_id, complete=False)
     except Exception as exc:
         # Provider outages and schema drift should remain inspectable in the
         # task result instead of collapsing into a vague top-level failure.
@@ -1528,6 +1733,11 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.status in {"done", "failed", "cancelled"} or task.is_terminal_locked:
             return
+        if task.started_at is None:
+            task.started_at = _now()
+            db.commit()
+        if payload.get("sync_plan_id"):
+            _refresh_sync_plan(db, payload["sync_plan_id"])
         if payload.get("_preflight_skip"):
             result = {"dataset": dataset, "total": 0, "success": 0, "skipped": 0,
                       "failed": 0, "records": 0, "errors": [],
@@ -1627,6 +1837,11 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
             db.commit()
     except Exception as exc:
         db.rollback()
+        if _is_cancelled(db, task_id):
+            if payload.get("sync_plan_id"):
+                _refresh_sync_plan(db, payload["sync_plan_id"], terminal=True)
+            _mark_cancelled(db, task_id)
+            return
         logger.exception("external data task %s failed", task_id)
         sync_plan_id = str(payload.get("sync_plan_id") or "")
         if sync_plan_id:
@@ -1698,6 +1913,8 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
     payload = dict(payload)
     payload.pop("_preflight_skip", None)
     payload.pop("_already_current_count", None)
+    payload.pop("_covered_symbol_count", None)
+    payload.pop("_policy_ranges", None)
     plan = build_external_sync_plan(dataset, payload)
     parent_plan_id = payload.pop("_parent_plan_id", None)
     partition_specs = payload.pop("_partition_specs", None)
@@ -1832,6 +2049,7 @@ def get_external_sync_partitions(task_id: str) -> dict[str, Any] | None:
                 "parent_plan_id": plan_record.parent_plan_id,
                 "dataset": plan_record.dataset,
                 "mode": plan_record.mode,
+                "sync_policy": plan_record.sync_policy,
                 "source": plan_record.source,
                 "status": plan_record.status,
                 "requested_start_date": plan_record.requested_start_date,

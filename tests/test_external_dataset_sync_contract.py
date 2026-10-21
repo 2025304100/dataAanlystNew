@@ -275,15 +275,16 @@ def test_101_symbols_use_two_bounded_batches(environment, db_session, monkeypatc
     assert [len(batch) for batch in calls] == [100,1]
 
 
-def test_financial_gap_repair_is_explicit_bounded_history(environment, db_session, monkeypatch):
+def test_financial_gap_repair_respects_selected_announcement_range(environment, db_session, monkeypatch):
     _, symbols, _ = environment
     captured=[]
     monkeypatch.setattr(tasks, "start_external_data_sync", lambda dataset, payload: captured.append(payload))
     tasks.start_external_gap_repair("financial", start_date=TODAY-timedelta(days=60), end_date=TODAY,
         gaps=[{"symbol_id": symbols[0].id, "symbol": symbols[0].symbol, "trade_date": TODAY}])
     assert captured[0]["mode"] == "backfill"
-    assert captured[0]["start_date"] == date(1990,1,1)
-    assert captured[0]["_partition_specs"][0]["start_date"] == date(1990,1,1)
+    assert captured[0]["sync_policy"] == "missing"
+    assert captured[0]["start_date"] == TODAY-timedelta(days=60)
+    assert captured[0]["_partition_specs"][0]["start_date"] == TODAY-timedelta(days=60)
 
 
 @pytest.mark.parametrize("dataset", ["financial", "hot_rank", "lhb"])

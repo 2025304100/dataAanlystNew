@@ -100,6 +100,10 @@ export default function AlertCenter() {
   const [events, setEvents] = useState<AlertEventType[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(false);
+  const [eventsError, setEventsError] = useState(false);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesError, setRulesError] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [form, setForm] = useState<RuleFormData>(DEFAULT_FORM);
@@ -113,19 +117,26 @@ export default function AlertCenter() {
     try {
       const data = await api.getActiveAlerts(100);
       setEvents(data.events);
+      setEventsError(false);
+      return true;
     } catch {
-      // silent
+      setEventsError(true);
+      return false;
     } finally {
       setLoading(false);
     }
   }, []);
 
   const loadRules = useCallback(async () => {
+    setRulesLoading(true);
     try {
       const data = await api.getAlertRules();
       setRules(data);
+      setRulesError(false);
     } catch {
-      // silent
+      setRulesError(true);
+    } finally {
+      setRulesLoading(false);
     }
   }, []);
 
@@ -155,14 +166,19 @@ export default function AlertCenter() {
   }, [alertEvalSchedule]);
 
   const handleEvaluate = useCallback(async () => {
+    if (evaluating) return;
+    setEvaluating(true);
     try {
       const result = await api.evaluateAlerts();
-      await loadEvents();
-      showToast("success", template("alertEvaluated", { count: result.new_events }));
+      const refreshed = await loadEvents();
+      if (refreshed) showToast("success", template("alertEvaluated", { count: result.new_events }));
+      else showToast("info", "评估已完成，但暂时读不到结果。请重新读取告警。");
     } catch (error: any) {
       showToast("error", error?.message || t("loadFailed"));
+    } finally {
+      setEvaluating(false);
     }
-  }, [loadEvents, showToast]);
+  }, [evaluating, loadEvents, showToast]);
 
   const handleAcknowledge = useCallback(async (eventId: number) => {
     try {
@@ -294,7 +310,7 @@ export default function AlertCenter() {
         <div className="alert-tab-content">
           <div className="alert-actions-bar">
             <Space>
-              <Button icon={<ThunderboltOutlined />} onClick={handleEvaluate}>{t("alertEvaluate")}</Button>
+              <Button icon={<ThunderboltOutlined />} onClick={handleEvaluate} loading={evaluating}>{t("alertEvaluate")}</Button>
               {events.length > 0 && (
                 <Button icon={<CheckOutlined />} onClick={handleAcknowledgeAll}>{t("alertAcknowledgeAll")}</Button>
               )}
@@ -302,10 +318,15 @@ export default function AlertCenter() {
             </Space>
           </div>
 
-          {loading ? (
+          {eventsError && <Alert type="error" showIcon
+            message="暂时无法读取告警，不能确认当前是否有风险。请重试。"
+            description={events.length > 0 ? "下面保留上次读取的告警，尚未更新。" : undefined}
+            action={<Button onClick={loadEvents} loading={loading}>重新读取告警</Button>}
+            style={{ marginBottom: 12 }} />}
+          {loading && events.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>
           ) : events.length === 0 ? (
-            <Empty description={t("alertNoEvents")} style={{ padding: 40 }} />
+            !eventsError && <Empty description={t("alertNoEvents")} style={{ padding: 40 }} />
           ) : (
             <div className="alert-event-list">
               {events.map((ev) => (
@@ -392,8 +413,15 @@ export default function AlertCenter() {
             <Button type="primary" icon={<PlusOutlined />} onClick={openNewRule}>{t("alertNewRule")}</Button>
           </div>
 
-          {rules.length === 0 ? (
-            <Empty description={t("alertNoRules")} style={{ padding: 40 }} />
+          {rulesError && <Alert type="error" showIcon
+            message="暂时无法读取告警规则，请重试。"
+            description={rules.length > 0 ? "下面保留上次读取的规则，尚未更新。" : undefined}
+            action={<Button onClick={loadRules} loading={rulesLoading}>重新读取规则</Button>}
+            style={{ marginBottom: 12 }} />}
+          {rulesLoading && rules.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>
+          ) : rules.length === 0 ? (
+            !rulesError && <Empty description={t("alertNoRules")} style={{ padding: 40 }} />
           ) : (
             <div className="alert-rule-list">
               {rules.map((rule) => {

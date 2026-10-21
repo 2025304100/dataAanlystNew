@@ -1,6 +1,7 @@
 import json
 from datetime import date as date_type
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -50,6 +51,7 @@ from app.services.portfolio_members import (
     MemberHasPositionError,
     archive_member,
     create_member,
+    get_member,
     list_members,
     pause_member,
     restore_member,
@@ -1011,6 +1013,22 @@ def _member_to_dict(member, symbol_obj: Symbol | None = None) -> dict:
     return d
 
 
+def _require_portfolio_member(db: Session, portfolio_id: int, member_id: int):
+    member = get_member(db, member_id=member_id)
+    if member is None or member.portfolio_id != portfolio_id:
+        raise HTTPException(status_code=404, detail="当前组合没有这个成员。")
+    return member
+
+
+def _require_supported_execution_mode(execution_mode: str | None) -> None:
+    if str(execution_mode or "").strip().lower() == "confirm":
+        raise HTTPException(status_code=503, detail={
+            "error_code": "CAPABILITY_BLOCKED",
+            "user_message": "目前不支持确认后成交，请使用仅提醒模式。",
+            "impact": "没有保存本次修改，也不会创建订单。",
+        })
+
+
 def _member_read(db: Session, member) -> PortfolioMemberRead:
     """FIX: 统一构造 PortfolioMemberRead，自动附带 Symbol 的代码/名称。
     用于 update/archive/pause/restore 这类单成员返回的端点。
@@ -1139,6 +1157,7 @@ def create_portfolio_member(
     symbol = db.get(Symbol, payload.symbol_id)
     if portfolio is None or symbol is None:
         raise HTTPException(status_code=404, detail="Portfolio or symbol not found")
+    _require_supported_execution_mode(payload.execution_mode)
     try:
         ensure_symbol_in_scope(portfolio, symbol)
     except ValueError as exc:
@@ -1176,6 +1195,8 @@ def update_portfolio_member(
     db: Session = Depends(get_db),
 ) -> PortfolioMemberRead:
     """更新组合成员字段（WP4.4）。"""
+    _require_portfolio_member(db, portfolio_id, member_id)
+    _require_supported_execution_mode(payload.execution_mode)
     member = update_member(
         db,
         member_id=member_id,
@@ -1208,6 +1229,7 @@ def archive_portfolio_member(
     存在持仓时返回 409，提示选择"仅停止买入"或先卖出。
     传 {"force": true} 时即使有持仓也强制归档（用于先卖出后归档的场景）。
     """
+    _require_portfolio_member(db, portfolio_id, member_id)
     force = payload.force if payload else False
     try:
         member = archive_member(db, member_id=member_id, force=force)
@@ -1237,6 +1259,7 @@ def pause_portfolio_member(
     db: Session = Depends(get_db),
 ) -> PortfolioMemberRead:
     """暂停组合成员（WP4.4，仅停止买入，卖出规则继续）。"""
+    _require_portfolio_member(db, portfolio_id, member_id)
     member = pause_member(db, member_id=member_id)
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -1257,6 +1280,7 @@ def restore_portfolio_member(
 
     若同组合同标的已有新的有效成员，返回 409。
     """
+    _require_portfolio_member(db, portfolio_id, member_id)
     try:
         member = restore_member(db, member_id=member_id)
     except ValueError as e:
@@ -1436,7 +1460,7 @@ class PortfolioResumePlanRequest(BaseModel):
 class PortfolioResumeExecuteRequest(BaseModel):
     max_days: int = Field(default=20, ge=1, le=60)
     today: date_type | None = None
-    task_type: str = Field(default="portfolio_resume", max_length=64)
+    task_type: Literal["portfolio_resume"] = "portfolio_resume"
     dry_run: bool = Field(default=True, description="True=仅返回 plan（不创建任务），False=实际创建异步任务执行恢复")
 
 
@@ -1496,6 +1520,17 @@ def portfolio_resume_execute(portfolio_id: int,
         plan_portfolio_resume, create_resume_tasks_from_plan,
     )
     p = payload or PortfolioResumeExecuteRequest()
+    if not p.dry_run:
+        from app.services.decision_schedule_gate import shanghai_now, as_shanghai
+        from datetime import timedelta
+        now = as_shanghai(shanghai_now())
+        latest = now.date() if now.hour >= 20 else now.date() - timedelta(days=1)
+        if p.today is not None and p.today > latest:
+            raise HTTPException(status_code=400, detail={
+                "code": "eval.portfolio.resume_future_date", "title_zh": "这一天还不能恢复执行",
+                "detail_zh": "恢复范围不能超过服务器当前已到执行时间的日期。",
+            })
+        p = p.model_copy(update={"today": p.today or latest})
     try:
         plan = plan_portfolio_resume(
             db, portfolio_id,
@@ -1525,7 +1560,8 @@ def portfolio_resume_execute(portfolio_id: int,
         "next_unprocessed_trade_date": plan["next_unprocessed_trade_date"],
         "pending_days": plan["pending_days"],
         "created_tasks": created,
-        "created_count": len(created),
+        "created_count": sum(1 for task in created if task.get("created", True)),
+        "dispatched_count": len(created),
         "skipped_count": plan["will_skip_days"],
     }
 

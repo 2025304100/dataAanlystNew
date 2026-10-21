@@ -94,7 +94,7 @@ def test_public_guarded_turnover_training_reads_only_its_frozen_input_dependenci
         event.remove(engine, "before_cursor_execute", before_sql)
 
 
-def test_public_general_refresh_keeps_default_eight_factor_batch(
+def test_public_general_refresh_skips_disabled_features(
     turnover_client, db_session, tmp_path,
 ):
     from app.services.factors.definitions import seed_factor_definitions
@@ -112,9 +112,8 @@ def test_public_general_refresh_keeps_default_eight_factor_batch(
     result = task["result"]
     assert result["completion_status"] == "COMPLETED"
     assert result["input_mirror"]["valuation_rows"] == 24 * len(days)
-    assert result["factors"]["rows_written"] == 8 * 24 * len(days)
+    assert result["factors"]["rows_written"] == 7 * 24 * len(days)
     assert set(result["factors"]["coverage_by_factor"]) == {
         "ep_ttm", "negative_pb", "roe_yoy_growth", "main_inflow_5d_ratio",
         "lhb_institution_net_ratio", "turnover_z20", "hot_rank_attention",
-        "tail_accumulation_proxy",
     }

@@ -9,7 +9,7 @@
 // - 已排除/扫描记录显示建设状态占位
 // - 数据来源：AppContext + useSymbolRelationships hook
 import { useState, useCallback } from "react";
-import { Tabs, Alert } from "antd";
+import { Tabs } from "antd";
 import { useApp } from "../context/AppContext";
 import { t } from "../i18n";
 import CandidatePool from "./opportunity/CandidatePool";
@@ -18,6 +18,7 @@ import ExcludedPool from "./opportunity/ExcludedPool";
 import ScanHistory from "./opportunity/ScanHistory";
 import { LocalFavoritesMigration } from "./opportunity/LocalFavoritesMigration";
 import { DataPrepActions } from "./opportunity/DataPrepActions";
+import type { DiscoveryRefreshRequest } from "./Discovery";
 
 export const OPPORTUNITY_TAB_KEYS = ["candidate", "observation", "excluded", "scan-history"] as const;
 export type OpportunityTabKey = (typeof OPPORTUNITY_TAB_KEYS)[number];
@@ -25,6 +26,12 @@ export type OpportunityTabKey = (typeof OPPORTUNITY_TAB_KEYS)[number];
 export default function OpportunityCenter() {
   const ctx = useApp();
   const [activeKey, setActiveKey] = useState<OpportunityTabKey>("candidate");
+  const [candidateScope, setCandidateScope] = useState("cn-stock");
+  const [refreshRequest, setRefreshRequest] = useState<DiscoveryRefreshRequest | null>(null);
+  const handlePrepared = useCallback((scope: string, taskId: string) => {
+    if (scope !== candidateScope) return;
+    setRefreshRequest((previous) => previous?.scope === scope && previous.taskId === taskId ? previous : { scope, taskId });
+  }, [candidateScope]);
 
   const handleChange = useCallback((key: string) => {
     setActiveKey(key as OpportunityTabKey);
@@ -35,16 +42,14 @@ export default function OpportunityCenter() {
       {/* WP2.5：本地收藏迁移工具（首次检测到 ic_favorites 时弹窗提示） */}
       <LocalFavoritesMigration />
 
-      {/* 顶部信息架构说明 */}
-      <Alert
-        type="info"
-        showIcon
-        message={t("opportunityCenterTitle")}
-        description={t("opportunityCenterDesc")}
-        style={{ marginBottom: 12 }}
-      />
+      <header style={{ marginBottom: 12 }}>
+        <h2 style={{ margin: "0 0 4px" }}>{t("opportunityCenterTitle")}</h2>
+        <p style={{ margin: 0 }}>{t("opportunityCenterDesc")}</p>
+      </header>
 
-      <DataPrepActions scope="cn-stock" />
+      <div hidden={activeKey !== "candidate"}>
+        <DataPrepActions scope={candidateScope} onPrepared={handlePrepared} simpleMode />
+      </div>
 
       <Tabs
         activeKey={activeKey}
@@ -54,7 +59,7 @@ export default function OpportunityCenter() {
           {
             key: "candidate",
             label: t("opportunityTabCandidate"),
-            children: <CandidatePool />,
+            children: <CandidatePool refreshRequest={refreshRequest} onScopeChange={setCandidateScope} simpleMode />,
           },
           {
             key: "observation",

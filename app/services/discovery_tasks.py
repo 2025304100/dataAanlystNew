@@ -130,7 +130,29 @@ def _task_to_dict(task: DiscoveryTaskRecord) -> dict:
 _TERMINAL_STATES = ("done", "failed", "cancelled", "expired")
 
 
+class _DiscoveryWorkerStopped(Exception):
+    """This worker no longer owns the task's current attempt."""
+
+
+def _worker_generation(task: DiscoveryTaskRecord) -> str:
+    return str(_json_loads(task.payload_json, {}).get("_worker_generation") or "")
+
+
+def _new_worker_generation(task: DiscoveryTaskRecord) -> None:
+    payload = _json_loads(task.payload_json, {})
+    payload["_worker_generation"] = uuid.uuid4().hex
+    task.payload_json = json.dumps(payload, ensure_ascii=False)
+
+
 def _set_task(db: Session, task_id: str, **updates) -> DiscoveryTaskRecord:
+    if "discovery_worker_generation" in db.info:
+        with db.no_autoflush:
+            current = db.execute(select(DiscoveryTaskRecord.status, DiscoveryTaskRecord.payload_json)
+                .where(DiscoveryTaskRecord.id == task_id).with_for_update()).first()
+        if (current is None or current.status != "running" or
+            str(_json_loads(current.payload_json, {}).get("_worker_generation") or "")
+                != db.info["discovery_worker_generation"]):
+            raise _DiscoveryWorkerStopped()
     task = db.get(DiscoveryTaskRecord, task_id)
     if task is None:
         raise ValueError("Discovery task not found")
@@ -222,6 +244,7 @@ def _expire_paused_task(task: DiscoveryTaskRecord) -> None:
 
 
 def _resume_task(db: Session, task: DiscoveryTaskRecord, *, message: str) -> dict:
+    _new_worker_generation(task)
     task.status = "queued"
     task.stage = "queued"
     task.message = message
@@ -288,6 +311,7 @@ def create_discovery_task(payload: DiscoveryTaskCreate) -> dict:
             synced_symbol_ids_json="[]",
             errors_json="[]",
         )
+        _new_worker_generation(task)
         db.add(task)
         db.commit()
         db.refresh(task)
@@ -383,6 +407,7 @@ def retry_discovery_task(task_id: str) -> dict:
         if existing is not None:
             raise ValueError("已有正在运行的发现任务，请等待完成后再重试")
         # 保留 processed_symbol_ids_json 实现断点续扫；清空 errors 重新开始
+        _new_worker_generation(task)
         task.status = "queued"
         task.stage = "queued"
         task.percent = 0
@@ -403,7 +428,12 @@ def retry_discovery_task(task_id: str) -> dict:
 
 
 def _start_worker(task_id: str) -> None:
-    worker = threading.Thread(target=_run_discovery_task, args=(task_id,), daemon=True)
+    with SessionLocal() as db:
+        task = db.get(DiscoveryTaskRecord, task_id)
+        if task is None:
+            return
+        generation = _worker_generation(task)
+    worker = threading.Thread(target=_run_discovery_task, args=(task_id, generation), daemon=True)
     worker.start()
 
 
@@ -1010,9 +1040,14 @@ def _cleanup_discovery_symbols(
 def _check_stop_state(db: Session, task_id: str) -> str | None:
     # 只查 task 的 status 字段，不调用 db.expire_all()（会过期所有已加载的 Symbol 对象，
     # 导致后续访问属性触发大量懒加载查询，严重拖慢挖掘速度）
-    row = db.execute(
-        select(DiscoveryTaskRecord.status).where(DiscoveryTaskRecord.id == task_id)
-    ).scalar_one_or_none()
+    with db.no_autoflush:
+        control = db.execute(select(DiscoveryTaskRecord.status, DiscoveryTaskRecord.payload_json)
+            .where(DiscoveryTaskRecord.id == task_id).with_for_update()).first()
+    if control is not None and "discovery_worker_generation" in db.info:
+        generation = str(_json_loads(control.payload_json, {}).get("_worker_generation") or "")
+        if generation != db.info["discovery_worker_generation"]:
+            return "cancelled"
+    row = control.status if control else None
     if row is None:
         return "cancelled"
     if row == "paused":
@@ -1031,7 +1066,7 @@ def _check_stop_state(db: Session, task_id: str) -> str | None:
     return None
 
 
-def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
+def _watchdog_heartbeat(task_id: str, stop_event: threading.Event, generation: str | None = None) -> None:
     """watchdog 心跳线程：每 30s 更新 task.updated_at，防止 _expire_stale_tasks 误判。
 
     风控加固（P1-7 竞态修复）：
@@ -1054,6 +1089,8 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
                 task_snapshot = db.get(DiscoveryTaskRecord, task_id)
                 if task_snapshot is None or task_snapshot.status in _TERMINAL_STATES:
                     return
+                if generation is not None and _worker_generation(task_snapshot) != generation:
+                    return
                 if task_snapshot.stage == "prepare":
                     # prepare 有独立的 universe 超时保护；跳过心跳可以让 stale
                     # 检测在外部调用永久卡死时继续发挥最后一道兜底作用。
@@ -1068,6 +1105,7 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
                         DiscoveryTaskRecord.id == task_id,
                         DiscoveryTaskRecord.status.notin_(_TERMINAL_STATES),
                         DiscoveryTaskRecord.stage != "prepare",
+                        DiscoveryTaskRecord.payload_json == task_snapshot.payload_json,
                     )
                     .values(updated_at=now)
                 )
@@ -1197,33 +1235,39 @@ def _refresh_universe_with_timeout(db: Session, payload: DiscoveryTaskCreate) ->
             return None
 
 
-def _run_discovery_task(task_id: str) -> None:
+def _run_discovery_task(task_id: str, generation: str | None = None) -> None:
     db = SessionLocal()
     # 启动 watchdog 心跳线程，防止长时间同步任务被 _expire_stale_tasks 误判
     watchdog_stop = threading.Event()
     watchdog_thread = threading.Thread(
         target=_watchdog_heartbeat,
-        args=(task_id, watchdog_stop),
+        args=(task_id, watchdog_stop, generation),
         daemon=True,
         name=f"discovery-watchdog-{task_id}",
     )
     watchdog_thread.start()
     try:
         task = db.get(DiscoveryTaskRecord, task_id)
-        if task is None:
+        if task is None or task.status != "queued":
             return
+        if generation is not None and generation != _worker_generation(task):
+            return
+        generation = _worker_generation(task)
+        db.info["discovery_worker_generation"] = generation
+        claimed = db.execute(update(DiscoveryTaskRecord).where(
+            DiscoveryTaskRecord.id == task_id, DiscoveryTaskRecord.status == "queued",
+            DiscoveryTaskRecord.payload_json == task.payload_json,
+        ).values(status="running", stage="prepare", percent=TASK_STAGE_PERCENT["prepare"],
+            message="正在整理扫描范围", started_at=task.started_at or _now()))
+        db.commit()
+        if claimed.rowcount != 1:
+            return
+        db.refresh(task)
         payload = _payload_from_task(task)
         adaptive_delay = task.adaptive_delay_seconds or payload.delay_seconds
         processed_ids = set(_json_loads(task.processed_symbol_ids_json, []))
         synced_symbol_ids: list[int] = _json_loads(task.synced_symbol_ids_json, [])
         portfolio_id, portfolio_rule_id = _resolve_portfolio_refs(db, payload.portfolio_id, payload.portfolio_rule_id)
-
-        task.status = "running"
-        task.stage = "prepare"
-        task.percent = TASK_STAGE_PERCENT["prepare"]
-        task.message = "正在整理扫描范围"
-        task.started_at = task.started_at or _now()
-        db.commit()
 
         if not processed_ids:
             # P1 改造：从基础表 universe_symbols 读已同步标的，不再调 akshare 刷新
@@ -1235,8 +1279,7 @@ def _run_discovery_task(task_id: str) -> None:
                     finished_at=_now(),
                 )
                 return
-            task.message = f"已从基础表载入 {len(universe_pairs)} 个标的"
-            db.commit()
+            task = _set_task(db, task_id, message=f"已从基础表载入 {len(universe_pairs)} 个标的")
         else:
             # 断点续传：重新从 universe_symbols 载入标的列表
             universe_pairs = _resolve_universe_symbols_for_discovery(db, payload)
@@ -1647,8 +1690,12 @@ def _run_discovery_task(task_id: str) -> None:
             message="机会挖掘完成",
             finished_at=_now(),
         )
+    except _DiscoveryWorkerStopped:
+        db.rollback()
     except Exception as exc:
         db.rollback()
+        if _check_stop_state(db, task_id):
+            return
         task = db.get(DiscoveryTaskRecord, task_id)
         if task is not None:
             # failed 清理：只保留观察池 + 持仓，没有 executable
@@ -1683,7 +1730,7 @@ def _run_discovery_task(task_id: str) -> None:
         # payload_json 损坏时跳过 scope（避免回退默认 scope 误清其他范围），只清 synced_ids
         try:
             task = db.get(DiscoveryTaskRecord, task_id)
-            if task is not None and task.status == "cancelled":
+            if task is not None and task.status == "cancelled" and _worker_generation(task) == generation:
                 synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
                 cancelled_scope = None
                 try:

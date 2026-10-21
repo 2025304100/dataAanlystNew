@@ -104,6 +104,9 @@ import ChainStepsBar, { type ChainState } from "./ChainStepsBar";
 import FactorModelTrainingEvidence, { FactorModelResearchWarning } from "./FactorModelTrainingEvidence";
 import useFactorModelReviewEvidence, { FactorModelReviewEvidenceNotice } from "./useFactorModelReviewEvidence";
 import ResearchRetrainModal from "./ResearchRetrainModal";
+import ETFTrainingModal from "./ETFTrainingModal";
+import { ETF_TRAINING_OPEN_EVENT, ETF_TRAINING_SELECTION_KEY, readETFTrainingSelection } from "../../utils/etfTrainingNavigation";
+import type { ETFTrainingSelection } from "../../api/client";
 
 const { Text, Paragraph } = Typography;
 
@@ -197,7 +200,7 @@ function computeTrainGate(fs: FactorSet | null | undefined): { disabled: boolean
   if (!fs) return { disabled: true, tooltip: "未选择集合" };
   // Task 2 训练门禁(2)：集合状态 ≠ frozen → 禁用
   if (fs.status !== "frozen") return { disabled: true, tooltip: "需先冻结集合" };
-  if (String(fs.asset_type ?? "stock").toLowerCase() !== "stock") return { disabled: true, tooltip: "当前真实训练流水线仅支持股票集合" };
+  if (!["stock", "etf"].includes(String(fs.asset_type ?? "stock").toLowerCase())) return { disabled: true, tooltip: "当前训练入口支持股票和ETF，其他品种暂未接入" };
   return { disabled: false, tooltip: "" };
 }
 
@@ -307,6 +310,7 @@ interface AuditEntry {
 export default function FactorModelPage() {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [runtime, setRuntime] = useState<FactorRuntime | null>(null);
   const [warehouseReady, setWarehouseReady] = useState(false);
   const [navigationRevision, setNavigationRevision] = useState(0);
@@ -374,6 +378,35 @@ export default function FactorModelPage() {
 
   // 真实训练任务 Modal；成功提交后由任务中心跟踪异步流水线。
   const [trainModalOpen, setTrainModalOpen] = useState(false);
+  const [etfTrainingOpen, setETFTrainingOpen] = useState(false);
+  const [etfTrainingSource, setETFTrainingSource] = useState<{ selection?: ETFTrainingSelection; error?: string }>(() => {
+    try {
+      const saved = localStorage.getItem(ETF_TRAINING_SELECTION_KEY);
+      if (saved === null) return {};
+      const selection = readETFTrainingSelection(saved);
+      if (!selection) throw new Error();
+      return { selection };
+    } catch { return { error: '本次准备的资料记录读不到，请回到历史数据页重新查看训练条件。' }; }
+  });
+  useEffect(() => {
+    const showChecks = (event?: Event) => {
+      try {
+        const raw = event instanceof CustomEvent ? event.detail : localStorage.getItem(ETF_TRAINING_OPEN_EVENT);
+        const selection = readETFTrainingSelection(raw ?? '1');
+        if (selection) {
+          localStorage.setItem(ETF_TRAINING_SELECTION_KEY, JSON.stringify({ version: 1, selection }));
+          setETFTrainingSource({ selection });
+        }
+      } catch {
+        setETFTrainingSource({ error: '本次准备的资料记录读不到，请回到历史数据页重新查看训练条件。' });
+      }
+      try { localStorage.removeItem(ETF_TRAINING_OPEN_EVENT); } catch { /* Navigation can still open the checks. */ }
+      setETFTrainingOpen(true);
+    };
+    try { if (localStorage.getItem(ETF_TRAINING_OPEN_EVENT) !== null) showChecks(); } catch { /* Keep the manual entry available. */ }
+    window.addEventListener(ETF_TRAINING_OPEN_EVENT, showChecks);
+    return () => window.removeEventListener(ETF_TRAINING_OPEN_EVENT, showChecks);
+  }, []);
   const [researchRetrainId, setResearchRetrainId] = useState<string | null>(null);
   const [trainTarget, setTrainTarget] = useState<FactorSet | null>(null);
   const [trainNote, setTrainNote] = useState("");
@@ -453,8 +486,10 @@ export default function FactorModelPage() {
         api.scoringGetOverviewAsFactor(),
         api.scoringListTasks("factor_pipeline", 20),
       ]);
+      if (!scoringOverview?.runtime) throw new Error('模型状态暂时读不到，请刷新后重试。');
       const displayModels = await hydrateResearchModelPresentation<FactorModelRun>(modelList.items, (id) => api.getFactorModel(id));
       if (!pageMounted.current || request !== pageLoadRequest.current) return;
+      setLoadError(null);
       // The model-list compatibility adapter cannot reliably infer runtime
       // state from model statuses. Read the authoritative scoring overview
       // so activation refreshes show ridge/shadow immediately.
@@ -473,7 +508,7 @@ export default function FactorModelPage() {
     } catch (err) {
       if (!pageMounted.current || request !== pageLoadRequest.current) return;
       setWarehouseReady(false);
-      message.error(t("factorModelLoadFailed") + ": " + String(err));
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       if (pageMounted.current && request === pageLoadRequest.current) setLoading(false);
     }
@@ -519,7 +554,7 @@ export default function FactorModelPage() {
   }, []);
 
   useEffect(() => {
-    if (trainModalOpen && trainTarget?.id) void checkTrainReadiness(trainTarget.id);
+    if (trainModalOpen && trainTarget?.id && String(trainTarget.asset_type || 'stock').toLowerCase() !== 'etf') void checkTrainReadiness(trainTarget.id);
     else setTrainReadiness(null);
     return () => { trainReadinessRequest.current += 1; };
   }, [trainModalOpen, trainTarget?.id, checkTrainReadiness]);
@@ -686,7 +721,7 @@ export default function FactorModelPage() {
           break;
         }
         case 5: {
-          const frozenFs = factorSets.find((fs) => !computeTrainGate(fs).disabled);
+          const frozenFs = factorSets.find((fs) => !computeTrainGate(fs).disabled && String(fs.asset_type || 'stock').toLowerCase() === 'stock');
           if (frozenFs) {
             setTrainTarget(frozenFs);
             setTrainNote("");
@@ -2594,6 +2629,10 @@ export default function FactorModelPage() {
 
   return (
     <div className="factor-model-page">
+      {loadError && <Alert aria-label="模型资料读取失败" type="error" showIcon message="模型资料暂时读不到"
+        description={<><p>{runtime ? '下方保留上次读到的资料，请重新读取后再确认当前状态。' : '尚未读到模型资料，请重试读取。'}</p>
+          <details><summary>查看错误详情</summary>{loadError}</details></>}
+        action={<Button loading={loading} onClick={() => void loadData()}>重试读取模型资料</Button>} style={{ marginBottom: 16 }} />}
       <Spin spinning={loading}>
         <Alert
           type="info"
@@ -2699,6 +2738,7 @@ export default function FactorModelPage() {
           extra={
             <Space>
               {/* Task 2 ⑨ 顶部主按钮（与①同逻辑，空列表时也有一个副本在页面中央） */}
+              <Button onClick={() => setETFTrainingOpen(true)}>ETF训练</Button>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -3359,6 +3399,15 @@ export default function FactorModelPage() {
       </Spin>
 
       {/* 激活确认 Modal */}
+      <ETFTrainingModal open={etfTrainingOpen || (trainModalOpen && String(trainTarget?.asset_type || 'stock').toLowerCase() === 'etf')}
+        factorSets={factorSets} initialFactorSetId={trainModalOpen ? trainTarget?.id : undefined}
+        historySelection={etfTrainingSource.selection} historySelectionError={etfTrainingSource.error}
+        onPrepared={factorSet => setFactorSets(previous => [factorSet, ...previous.filter(item => item.id !== factorSet.id)])}
+        onClose={() => { setETFTrainingOpen(false); setTrainModalOpen(false); }} onSubmitted={task => {
+          submittedTrainingTaskId.current = task.id; setTrainingEvidenceTask(task);
+          setETFTrainingOpen(false); setTrainModalOpen(false);
+          message.success('已打开这次ETF训练记录，请查看任务状态和结果。'); void loadData();
+        }} />
       <ResearchRetrainModal modelId={researchRetrainId} onClose={() => setResearchRetrainId(null)} onSubmitted={task => {
         submittedTrainingTaskId.current = task.id; setTrainingEvidenceTask(task); setResearchRetrainId(null);
         message.success(t("factorResearchRetrainSubmitted")); void loadData();
@@ -3656,7 +3705,7 @@ export default function FactorModelPage() {
             <Text strong>训练模型（基于当前集合）</Text>
           </Space>
         }
-        open={trainModalOpen}
+        open={trainModalOpen && String(trainTarget?.asset_type || 'stock').toLowerCase() !== 'etf'}
         onOk={handleTrain}
         onCancel={() => {
           setTrainModalOpen(false);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import ReadinessRepairDrawer, {
   ReconciliationGuide,
 } from "../ReadinessRepairDrawer";
@@ -87,6 +87,21 @@ beforeEach(() => {
 });
 
 describe("T7 修复抽屉动作", () => {
+  it("先显示可处理的下单限制，其他事项收起，避免先让用户打开开关", () => {
+    const r = renderDrawer({ data: response([
+      item({ id: "disabled", code: "PORTFOLIO_DISABLED", title: "自动交易没有打开", primary_action: { action_type: "toggle" } }),
+      item({ id: "stale", code: "MARKET_DATA_STALE", title: "请先更新行情", primary_action: { action_type: "redirect", target: "settings:data-center" } }),
+      item({ id: "missing", severity: "warning", title: "尚未设置通知", primary_action: null }),
+    ]) });
+    const next = screen.getByRole("region", { name: "先处理这一项" });
+    expect(within(next).getByText("请先更新行情")).toBeVisible();
+    expect(within(next).getByRole("button", { name: "前往处理" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "开启自动接管" })).not.toBeVisible();
+    fireEvent.click(screen.getByText("其他待处理事项（2）"));
+    expect(screen.getByRole("button", { name: "开启自动接管" })).toBeVisible();
+    expect(r.onToggleEnabled).not.toHaveBeenCalled();
+  });
+
   it("redirect 动作直达设置数据中心", () => {
     renderDrawer();
     fireEvent.click(screen.getByRole("button", { name: "前往处理" }));
@@ -171,6 +186,7 @@ describe("T7 修复抽屉动作", () => {
     expect(screen.getByText("正常等待买入信号，无需处理")).toBeTruthy();
     expect(screen.queryByText("暂不下单，点开查看处理项")).toBeNull();
     expect(screen.queryByRole("button", { name: "添加候选标的" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "先处理这一项" })).not.toBeInTheDocument();
   });
 });
 

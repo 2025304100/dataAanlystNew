@@ -1205,7 +1205,7 @@ def train_rolling_ridge(
     model = FactorModelRun(
         id=run_id,
         model_type="ridge",
-        asset_type="stock",
+        asset_type=trusted_history_identity.get('asset_type', 'stock') if research_identity else 'stock',
         target_code=TARGET_CODE,
         train_start_date=training_dates[0] if training_dates else None,
         train_end_date=training_dates[-1] if training_dates else None,

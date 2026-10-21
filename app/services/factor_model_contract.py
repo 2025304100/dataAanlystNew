@@ -151,12 +151,20 @@ def assess_factor_model_readiness(
         # Qualification cannot be asserted through a client flag. A dedicated
         # issuer must bind independently observed predictions and net costs to
         # this exact candidate; pending candidates stay blocked everywhere.
-        return _result(
-            False, 'MODEL_INDEPENDENT_QUALIFICATION_PENDING',
-            '生产候选尚待冻结边界之后的成熟独立样本、可得时点及成本后评估；不能启用或发布正式评分。',
-            model_run_id=model_run_id, factor_set_id=factor_set_id,
-            production_admission=production,
-        )
+        from app.services.factors.production_release import verify_release_confirmation
+        try:
+            confirmation = verify_release_confirmation(db, model, production)
+        except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
+            return _result(False, 'MODEL_RELEASE_EVIDENCE_CHANGED',
+                '模型确认所需的资料或记录不一致，已停止使用，请检查独立验证记录。',
+                model_run_id=model_run_id, factor_set_id=factor_set_id, reason=str(exc))
+        if confirmation is None:
+            return _result(
+                False, 'MODEL_INDEPENDENT_QUALIFICATION_PENDING',
+                '候选模型需要完成后续独立样本和费用验证，并由本人确认后才能启用。',
+                model_run_id=model_run_id, factor_set_id=factor_set_id,
+                production_admission=production,
+            )
     if model.status in {"retired", "deprecated"}:
         return _result(
             False,

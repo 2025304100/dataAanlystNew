@@ -20,13 +20,14 @@ import logging
 import math
 import threading
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from statistics import mean, pstdev
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from zoneinfo import ZoneInfo
 
 from app.models.daily_bar import DailyBar
 from app.models.score import Score
@@ -554,12 +555,57 @@ def _compute_external_factors(
     return factors
 
 
-def _data_credibility(bars: list[DailyBar], trade_date: date) -> float:
+def _expected_quote_date(db: Session) -> date:
+    """Read the latest closed session once per scoring session; never sync."""
+    from app.models.market_data import MarketCalendar
+    now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai"))
+    cutoff = now.date() if now.hour >= 15 else now.date() - timedelta(days=1)
+    key = (cutoff, now.hour >= 15)
+    cached = db.info.get("scoring_expected_quote_date")
+    if cached and cached[0] == key:
+        return cached[1]
+    result = cutoff
+    if inspect(db.connection()).has_table("trade_calendar"):
+        rows = db.execute(select(MarketCalendar.trade_date, MarketCalendar.is_trading_day)
+            .where(MarketCalendar.trade_date <= cutoff)
+            .order_by(MarketCalendar.trade_date.desc()).limit(40)).all()
+        expected = cutoff
+        for row in rows:
+            if row.trade_date != expected:
+                break  # A gap is not evidence that missing days were closed.
+            if row.is_trading_day == 1:
+                result = row.trade_date
+                break
+            expected -= timedelta(days=1)
+    db.info["scoring_expected_quote_date"] = (key, result)
+    return result
+
+
+def _record_quote_dates(score: Score, bars: list, expected_date: date) -> Score:
+    dates = [_safe_date(getattr(bar, "trade_date", None)) for bar in bars]
+    latest = max((day for day in dates if day is not None), default=None)
+    detail = json.loads(score.factor_scores_json or "{}")
+    detail["_data_freshness"] = {
+        "latest_bar_trade_date": latest.isoformat() if latest else None,
+        "expected_trade_date": expected_date.isoformat(),
+    }
+    score.factor_scores_json = json.dumps(detail, ensure_ascii=False)
+    return score
+
+
+def _data_credibility(bars: list[DailyBar], trade_date: date,
+        *, expected_latest_date: date | None = None) -> float:
     bar_count = len(bars)
     if bar_count < 5:
         return 0.2
     bar_factor = min(1.0, 0.4 + (bar_count - 5) * 0.02)
-    days_stale = (date.today() - _safe_date(trade_date)).days
+    expected_latest_date = expected_latest_date or datetime.now(timezone.utc).astimezone(
+        ZoneInfo("Asia/Shanghai")).date()
+    bar_dates = [_safe_date(getattr(bar, "trade_date", None)) for bar in bars]
+    if any(day is None or day > expected_latest_date for day in bar_dates):
+        return 0.0
+    latest_bar_date = max(bar_dates)
+    days_stale = max(0, (expected_latest_date - latest_bar_date).days)
     if days_stale <= 7:
         freshness_factor = max(0.3, 1.0 - days_stale * 0.1)
     else:
@@ -773,13 +819,14 @@ def calculate_symbol_score_with_config(
 
     # 因子
     factor_scores = _compute_builtin_factors(bars, symbol)
-    credibility = _data_credibility(bars, trade_date)
+    expected_quote_date = _expected_quote_date(db)
+    credibility = _data_credibility(bars, trade_date, expected_latest_date=expected_quote_date)
 
     if config is None or not config_json:
         # 无配置兜底（理论上不会发生，因为 init_db 会种子系统预设）
-        return _legacy_score_write(
+        return _record_quote_dates(_legacy_score_write(
             db, symbol, trade_date, factor_scores, credibility
-        )
+        ), bars, expected_quote_date)
 
     # P2：只拉取当前配置实际启用的外部因子，避免默认预设全市场扫描时打爆外部接口。
     external_factor_keys = _enabled_external_factor_keys(config_json)
@@ -836,6 +883,7 @@ def calculate_symbol_score_with_config(
     existing.scoring_config_snapshot_json = config.config_json
     existing.dimension_scores_json = json.dumps(dim_scores, ensure_ascii=False)
     existing.factor_scores_json = json.dumps(factor_detail, ensure_ascii=False)
+    _record_quote_dates(existing, bars, expected_quote_date)
 
     db.flush()
     return existing
@@ -893,10 +941,12 @@ def calculate_universe_symbol_score(
 
     # 因子计算（_compute_builtin_factors 只用 bar.close/amount/turnover_rate，鸭子类型兼容）
     factor_scores = _compute_builtin_factors(bars, symbol)
-    credibility = _data_credibility(bars, trade_date)
+    expected_quote_date = _expected_quote_date(db)
+    credibility = _data_credibility(bars, trade_date, expected_latest_date=expected_quote_date)
 
     if config is None or not config_json:
-        return _legacy_score_write(db, symbol, trade_date, factor_scores, credibility)
+        return _record_quote_dates(_legacy_score_write(db, symbol, trade_date, factor_scores, credibility),
+            bars, expected_quote_date)
 
     # 外部因子（PE/PB 等，按需拉取，失败不阻断）
     external_factor_keys = _enabled_external_factor_keys(config_json)
@@ -963,6 +1013,7 @@ def calculate_universe_symbol_score(
     existing.scoring_config_snapshot_json = config.config_json
     existing.dimension_scores_json = json.dumps(dim_scores, ensure_ascii=False)
     existing.factor_scores_json = json.dumps(factor_detail, ensure_ascii=False)
+    _record_quote_dates(existing, bars, expected_quote_date)
 
     db.flush()
     return existing

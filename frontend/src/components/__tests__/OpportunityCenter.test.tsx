@@ -16,11 +16,20 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // 使用 vi.hoisted 提升 mock context
-const { mockContext } = vi.hoisted(() => ({
+const { mockContext, mockApi } = vi.hoisted(() => ({
   mockContext: {
     portfolioId: 1 as number | null,
+    showToast: vi.fn(),
+    setActiveTab: vi.fn(),
+  },
+  mockApi: {
+    getSnapshotStatus: vi.fn(async () => ({ has_ready_snapshot: false, has_building_snapshot: false, last_data_prep_status: null })),
+    getDiscoveryScopeStats: vi.fn(async (scope: string) => ({ scope, total_symbols: 0, cached_symbols: 0, active_symbols: 0 })),
+    startDataPrep: vi.fn(),
+    getAsyncTask: vi.fn(),
   },
 }));
+vi.mock("../../api/client", () => ({ api: mockApi, requestJson: vi.fn(async () => []) }));
 
 // Mock i18n：t 返回 key，template 返回拼接后的字符串
 vi.mock("../../i18n", () => ({
@@ -102,6 +111,16 @@ describe("OpportunityCenter 组件测试", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockContext.portfolioId = 1;
+    mockApi.startDataPrep.mockResolvedValue({ id: "one-step", status: "queued" });
+    mockApi.getAsyncTask.mockResolvedValue({ id: "one-step", status: "done", result: { fast_scan: { status: "ok" } } });
+  });
+
+  it("机会中心从一个更新按钮直接完成筛选，不要求先选同步方式", async () => {
+    render(<OpportunityCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "opportunity.updateAndScreen" }));
+    expect(await screen.findByText("opportunity.prepCompleted")).toBeVisible();
+    expect(mockApi.startDataPrep).toHaveBeenCalledWith({ scope: "cn-stock", trigger_fast_scan_after_ready: true });
+    expect(screen.queryByRole("button", { name: "opportunity.runIncrementalSync" })).not.toBeInTheDocument();
   });
 
   // 1. 默认显示候选池页签

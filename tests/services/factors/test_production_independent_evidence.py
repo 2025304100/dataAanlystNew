@@ -97,7 +97,7 @@ def test_public_review_and_not_ready_post_never_create_tasks(prospective,monkeyp
         assert client.post(url+'/independent-evaluation',json={**body,**extra}).status_code == 422
 
 
-def test_duplicate_dispatch_has_one_deterministic_task_identity(prospective,monkeypatch):
+def test_missing_dated_execution_constraints_never_dispatch_a_production_evaluation(prospective,monkeypatch,db_session):
     from app.services import async_tasks
     from app.services.factors.production_independent_task import submit_independent_evaluation
     contract,_,_,_ = prospective;seen=[];started=[]
@@ -105,13 +105,13 @@ def test_duplicate_dispatch_has_one_deterministic_task_identity(prospective,monk
         seen.append((kind,payload,kwargs));return SimpleNamespace(id=kwargs['task_id']),len(seen)==1
     monkeypatch.setattr(async_tasks,'create_async_task_once',create_once)
     monkeypatch.setattr(async_tasks,'_start_worker',lambda *args:started.append(args))
-    review = evidence.review_independent_evidence(None,contract['plan_id'],bundle_id='mature-input')
-    assert review['ready']
+    review = evidence.review_independent_evidence(db_session,contract['plan_id'],bundle_id='mature-input',
+        require_execution_constraints=True)
+    assert not review['ready']
     for _ in range(2):
-        submit_independent_evaluation(None,contract['plan_id'],bundle_id='mature-input',expected_sha256=review['sha256'])
-    assert seen[0] == seen[1] and len(started) == 1
-    with pytest.raises(ValueError,match='review_changed'):
-        submit_independent_evaluation(None,contract['plan_id'],bundle_id='mature-input',expected_sha256='f'*64)
+        with pytest.raises(ValueError,match='not_ready'):
+            submit_independent_evaluation(db_session,contract['plan_id'],bundle_id='mature-input',expected_sha256=review['sha256'])
+    assert not seen and not started
 
 
 def test_raw_receipt_units_adjustment_time_and_duplicate_conflicts(tmp_path):

@@ -25,7 +25,8 @@ DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS = 240
 class DataCutoffInfo(BaseModel):
     """回测/预检响应返回的数据截止信息（5+1 要素）。
 
-    三者不一致时，调用方按 unified_earliest 作为回测有效终点。
+    三类资料均有日期时，unified_earliest 为各自最新日期中的最早日期。
+    任一类缺失时为 None；日期存在仍不代表所选股票和区间覆盖完整。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -33,7 +34,7 @@ class DataCutoffInfo(BaseModel):
     bars_date: Optional[date] = Field(default=None, description="行情(universe_daily_bars)截止日期")
     status_date: Optional[date] = Field(default=None, description="状态(security_status_daily)截止日期")
     factors_date: Optional[date] = Field(default=None, description="因子/评分(scores/factor_scores)截止日期")
-    unified_earliest: Optional[date] = Field(default=None, description="bars/status/factors 三者有效值中的最小值")
+    unified_earliest: Optional[date] = Field(default=None, description="三类资料均有日期时取各自最新日期中的最早日期；任一类缺失则为空，不代表范围覆盖完整")
     sync_at: Optional[datetime] = Field(default=None, description="本次查询时的数据同步时间(UTC)")
     version: Optional[str] = Field(default=None, description="数据快照版本，格式如 bfg-dataset-YYYYMMDD")
 
@@ -93,12 +94,19 @@ class BacktestPrecheckRequest(BaseModel):
     minimum_trade_days: int = Field(default=DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS, ge=1, le=10000)
 
 
+class BacktestPrecheckSymbol(BaseModel):
+    id: int
+    symbol: str
+    name: str | None = None
+
+
 class BacktestPrecheckResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     requested_trade_days: int
     usable_trade_days: int
     minimum_trade_days: int
+    symbols: list[BacktestPrecheckSymbol] = Field(default_factory=list)
     excluded_symbol_days: ExcludedSymbolDays = Field(
         default_factory=ExcludedSymbolDays
     )

@@ -108,6 +108,7 @@ def sync_symbol_financial_reports(
     announcement_start: date | None = None,
     announcement_end: date | None = None,
     incremental: bool = False,
+    fill_missing_only: bool = False,
 ) -> int:
     """Fetch and upsert report versions within an optional announcement range."""
     if symbol.asset_type != "stock":
@@ -127,10 +128,12 @@ def sync_symbol_financial_reports(
     if incremental and announcement_start is None:
         announcement_start = effective_end
     normalized, raw_rows = _fetch_financial_analysis(db, symbol, start=announcement_start, end=effective_end)
-    return _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_start, effective_end)
+    return _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_start, effective_end,
+                                       fill_missing_only=fill_missing_only)
 
 
-def _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_start, effective_end):
+def _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_start, effective_end, *, existing_reports=None,
+                                fill_missing_only: bool = False):
     written = 0
     written_dates = []
     for row in normalized.to_dict("records"):
@@ -146,16 +149,20 @@ def _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_s
             continue
         report_type = str(row["report_type"])
         source = str(row["source"])
-        existing = db.execute(
-            select(StockFinancialReport).where(
-                StockFinancialReport.symbol_id == symbol.id,
-                StockFinancialReport.report_period == report_period,
-                StockFinancialReport.announcement_date
-                == announcement_date,
-                StockFinancialReport.report_type == report_type,
-                StockFinancialReport.source == source,
-            )
-        ).scalars().first()
+        key = (symbol.id, report_period, announcement_date, report_type, source)
+        if existing_reports is None:
+            existing = db.execute(
+                select(StockFinancialReport).where(
+                    StockFinancialReport.symbol_id == symbol.id,
+                    StockFinancialReport.report_period == report_period,
+                    StockFinancialReport.announcement_date == announcement_date,
+                    StockFinancialReport.report_type == report_type,
+                    StockFinancialReport.source == source,
+                )
+            ).scalars().first()
+        else:
+            existing = existing_reports.get(key)
+        is_new = existing is None
         if existing is None:
             existing = StockFinancialReport(
                 symbol_id=symbol.id,
@@ -165,14 +172,23 @@ def _persist_financial_analysis(db, symbol, normalized, raw_rows, announcement_s
                 source=source,
             )
             db.add(existing)
-        changed = existing.id is None
+            if existing_reports is not None:
+                existing_reports[key] = existing
+        changed = is_new
+        filled = []
         for field, value in values.items():
-            if value is not None and getattr(existing, field) != value:
+            if (value is not None and getattr(existing, field) != value
+                    and (not fill_missing_only or getattr(existing, field) is None)):
                 setattr(existing, field, value)
                 changed = True
+                filled.append(field)
         if not changed:
             continue
-        existing.raw_json = raw_rows.get((report_period, announcement_date))
+        if fill_missing_only and not is_new:
+            from app.services.sync_write_policy import record_missing_fill
+            record_missing_fill(existing, filled, raw_rows.get((report_period, announcement_date)), source)
+        else:
+            existing.raw_json = raw_rows.get((report_period, announcement_date))
         written += 1
         written_dates.append(announcement_date)
     db.flush()
@@ -191,7 +207,8 @@ class FinancialWriteCount(int):
         return value
 
 
-def sync_financial_announcements(db, symbols, start, end, *, should_cancel=None, on_result=None):
+def sync_financial_announcements(db, symbols, start, end, *, should_cancel=None, on_result=None,
+                                 fill_missing_only: bool = False):
     """Daily scope is fetched in code/date batches; unchanged reports are skipped."""
     from app.services.financial_provider import BATCH_SIZE, fetch_financial_rows
     eligible = [s for s in symbols if s.asset_type == "stock" and region_from_market(s.market) == "cn"]
@@ -200,13 +217,35 @@ def sync_financial_announcements(db, symbols, start, end, *, should_cancel=None,
     for offset in range(0, len(eligible), BATCH_SIZE):
         batch = eligible[offset:offset+BATCH_SIZE]
         observations.extend(fetch_financial_rows(db, [_akshare_financial_symbol(s) for s in batch], start, end, should_cancel=should_cancel))
-    for symbol in eligible:
+    by_code = {}
+    for row in observations:
+        by_code.setdefault(row["SECUCODE"], []).append(row)
+    existing_reports = {}
+    for index, symbol in enumerate(eligible):
         if should_cancel and should_cancel():
             raise InterruptedError("财报同步已取消")
+        if index % BATCH_SIZE == 0:
+            # Load just the batch about to be persisted. Earlier checkpoints
+            # commit/expire ORM rows, so preloading later batches wastes reads.
+            observed_ids = [item.id for item in eligible[index:index + BATCH_SIZE]
+                            if _akshare_financial_symbol(item) in by_code]
+            existing_reports = {
+                (item.symbol_id, item.report_period, item.announcement_date, item.report_type, item.source): item
+                for item in db.execute(select(StockFinancialReport).where(
+                    StockFinancialReport.symbol_id.in_(observed_ids),
+                    StockFinancialReport.announcement_date >= start,
+                    StockFinancialReport.announcement_date <= end,
+                )).scalars().all()
+            } if observed_ids else {}
         code = _akshare_financial_symbol(symbol)
-        frame = pd.DataFrame([row for row in observations if row["SECUCODE"] == code])
-        normalized = normalize_financial_analysis_frame(frame, symbol=code)
-        count = _persist_financial_analysis(db, symbol, normalized, _raw_rows_by_identity(frame), start, end)
+        rows = by_code.get(code)
+        if rows:
+            frame = pd.DataFrame(rows)
+            normalized = normalize_financial_analysis_frame(frame, symbol=code)
+            count = _persist_financial_analysis(db, symbol, normalized, _raw_rows_by_identity(frame), start, end,
+                existing_reports=existing_reports, fill_missing_only=fill_missing_only)
+        else:
+            count = FinancialWriteCount(0, ())
         result["success" if count else "skipped"] += 1
         result["records"] += int(count)
         dates = count.sync_written_dates

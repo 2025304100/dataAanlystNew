@@ -35,8 +35,8 @@ def test_real_matcher_minimum_commission_sell_tax_slippage_and_cash_conserve(pan
     assert first['buy']['executed_price'] == 100.05
     assert first['sell']['executed_price'] == 99.95
     assert first['sell']['commission'] == 5.
-    assert first['sell']['stamp_tax'] == 79.96
-    assert first['net_profit'] == pytest.approx(-171.56)
+    assert first['sell']['stamp_tax'] == 39.98
+    assert first['net_profit'] == pytest.approx(-131.58)
     assert result['round_trips'] == 50 and result['net_return'] < 0
     assert result['ending_cash'] == pytest.approx(450000 + sum(o['net_profit'] for t in result['traces'] for o in t['orders']))
     assert result['ending_cash'] == pytest.approx(sum(result['sleeve_ending_cash']))
@@ -105,6 +105,17 @@ def test_expensive_stock_keeps_cash_without_negative_balance(panel):
     assert result['ending_cash'] == 100. and result['round_trips'] == 0
 
 
+def test_buy_size_includes_the_matchers_actual_tick_rounding(panel):
+    panel['cost']['evaluation_capital'] = 50075.
+    for key,row in panel['raw_bars'].items():
+        row.update(open=10.003,close=10.003,high=10.1,low=9.9)
+        panel['qfq_closes'][key] = 10.003
+    result = evaluation.replay_cash_sleeves(**panel)
+    first = result['traces'][0]['orders'][0]
+    assert first['buy']['filled_quantity'] == 900
+    assert first['entry_debit'] <= 10015.
+
+
 @pytest.mark.parametrize('value', [-1.,True,float('nan'),float('inf')])
 def test_invalid_fee_cannot_become_a_profitable_rebate(panel,value):
     panel['cost']['fees']['min_commission'] = value
@@ -161,7 +172,7 @@ def test_http_status_is_readonly_and_never_claims_a_net_cost_result(tmp_path,mon
     assert result['net_cost_result'] is None and result['journal_count'] == 0
     assert not result['qualification_issued'] and not result['model_activated']
     assert result['cash_replay_engine_supported'] and result['independent_evidence_binding_supported']
-    assert not result['qualification_issuer_supported']
+    assert result['qualification_issuer_supported']
     assert 'COST_POLICY_NOT_FROZEN' in result['blockers']
     assert not {'INSERT','UPDATE','DELETE','REPLACE'} & set(statements)
     assert not execution.EXECUTION_ROOT.exists()

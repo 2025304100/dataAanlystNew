@@ -228,7 +228,7 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
     // 跳转按钮存在
     const gotoBtn = await screen.findByTestId("goto-factor-center");
     expect(gotoBtn).toBeInTheDocument();
-    expect(gotoBtn.textContent).toContain("去因子中心新建→");
+    expect(gotoBtn.textContent).toContain("去因子与模型新建→");
 
     // 点击 → navigate 被调用 1 次
     expect(mockNavigate).not.toHaveBeenCalled();

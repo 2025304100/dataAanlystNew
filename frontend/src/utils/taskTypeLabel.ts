@@ -23,6 +23,8 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
   universe_smart_sync: "taskTypeUniverseSmartSync",
   data_mirror: "taskTypeDataMirror",
   history_initialization: "taskTypeHistory",
+  security_status_download: "taskTypeSecurityStatusDownload",
+  etf_history_prepare: "taskTypeETFHistoryPrepare",
   index_daily_sync: "taskTypeIndexDailySync",
   index_prices_sync: "taskTypeIndexPricesSync",
   // 因子与挖掘
@@ -46,6 +48,7 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
   wp5_evaluation: "taskTypeFactorEvaluation",
   // 组合交易
   portfolio_auto_trade: "taskTypePortfolioAutoTrade",
+  portfolio_auto_simulation: "taskTypePortfolioAutoSimulation",
   portfolio_equity_snapshot: "taskTypePortfolioEquitySnapshot",
   // 告警
   alert_evaluation: "taskTypeAlertEvaluation",

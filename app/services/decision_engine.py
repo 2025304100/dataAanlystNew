@@ -41,6 +41,25 @@ PitSafeFlag = Literal["PIT_SAFE", "NOT_PIT_SAFE", "UNKNOWN"]
 # DB CheckConstraint / Pydantic Schema 对齐的标准枚举
 RunType = Literal["backtest", "auto_simulation", "research_preflight"]
 
+
+def can_retry_blocked_decision(db: Session, run_id: str, *, portfolio_id: int,
+                               strategy_snapshot_id: str, trade_date: date) -> bool:
+    """Only a calculation with no executable intent or order may be retried."""
+    from app.models.sim_account import SimOrder
+    run = db.get(DecisionRun, run_id)
+    if not run or (run.portfolio_id, run.strategy_snapshot_id, run.trade_date, run.run_type) != (
+        portfolio_id, strategy_snapshot_id, trade_date, "auto_simulation"
+    ) or run.blocking_status == "READY" or run.status not in {"SUCCEEDED", "FAILED"}:
+        return False
+    executable = db.scalar(select(DecisionOrderPlanRecord.order_plan_id).where(
+        DecisionOrderPlanRecord.decision_run_id == run_id, DecisionOrderPlanRecord.action.in_(("BUY", "SELL")),
+        DecisionOrderPlanRecord.target_quantity > 0).limit(1))
+    evidence = db.scalar(select(DecisionEvidence.id).where(DecisionEvidence.decision_run_id == run_id,
+        DecisionEvidence.action.in_(("BUY", "SELL")), DecisionEvidence.target_quantity > 0).limit(1))
+    order = db.scalar(select(SimOrder.id).join(DecisionEvidence,
+        SimOrder.decision_evidence_id == DecisionEvidence.id).where(DecisionEvidence.decision_run_id == run_id).limit(1))
+    return not executable and not evidence and not order
+
 # 旧值 → 新值 兼容映射（G1 过渡期，避免旧 task/前端入参写库失败）
 _RUN_TYPE_ALIASES: dict[str, RunType] = {
     "auto_sim": "auto_simulation",
@@ -96,6 +115,7 @@ def _run_type_from_db(db_value: str | None) -> RunType:
 DEFAULT_SLIPPAGE_BUY_BPS = 5.0
 DEFAULT_SLIPPAGE_SELL_BPS = 5.0
 DECISION_SCORE_POLICY_VERSION = "factor-score-v2"
+BACKTEST_PRICE_REFERENCE_POLICY_VERSION = "signal-close-v1"
 _FORMAL_PIT_RUN_MODES = frozenset({
     "production",
     "strict_pit",
@@ -534,6 +554,7 @@ class DecisionEngine:
         match_mode: MatchMode | str | None = None,
         allow_t_close_research_override: bool | None = None,
         governance_exit_only: bool = False,
+        retry_of_decision_run_id: str | None = None,
     ) -> EvaluateResult:
         """Q25：统一 evaluate 入口。dry_run 只返回证据，不写库。
 
@@ -645,9 +666,9 @@ class DecisionEngine:
                 "total_capital": total_capital,
             }
             snap.price_hints = {
-                int(symbol_id): float(data.get("open_price") or data.get("close_price"))
+                int(symbol_id): float(data.get("decision_reference_price") or data.get("open_price") or data.get("close_price"))
                 for symbol_id, data in state_context.price_data_by_symbol.items()
-                if data.get("open_price") or data.get("close_price")
+                if data.get("decision_reference_price") or data.get("open_price") or data.get("close_price")
             }
             if state_context.cost_config:
                 snap.cost_config = {
@@ -883,6 +904,31 @@ class DecisionEngine:
         # （key_member 识别留待 allocator 细化；这里骨架只对全阻断统一放行 NO_ACTION）
         # Step 7-8: Signal + Allocation
         signal_res = self.generate_signal(db, snap, scored)
+        pending_by_symbol: dict[int, list[dict]] = {}
+        pending_conflicts: set[int] = set()
+        entry_paused_symbols: set[int] = set()
+        if state_context is not None:
+            for pending in state_context.pending_orders.values():
+                if pending.get("symbol_id") is not None and float(pending.get("remaining_quantity") or 0) > 0:
+                    pending_by_symbol.setdefault(int(pending["symbol_id"]), []).append(pending)
+        pending_buy = any(order["action"] == "BUY" for orders in pending_by_symbol.values() for order in orders)
+        for item in signal_res.items:
+            sid = int(item["symbol_id"])
+            if sid not in pending_by_symbol:
+                if pending_buy and item.get("direction") == "BUY":
+                    # Do not commit the same portfolio capacity twice while
+                    # an original BUY still waits. Exits keep their normal path.
+                    item["direction"] = "HOLD"
+                    item.setdefault("reasons", []).append("PENDING_BUY_ENTRY_PAUSED")
+                    entry_paused_symbols.add(sid)
+                continue
+            direction = item.get("direction")
+            if direction in {"BUY", "SELL"} and any(order["action"] != direction for order in pending_by_symbol[sid]):
+                pending_conflicts.add(sid)
+            # Pending orders reserve cash, not shares. Keep today's real
+            # inventory and let normal risk evaluation still run below.
+            item["direction"] = "HOLD"
+            item.setdefault("reasons", []).append("WAITING_EXISTING_ORDER")
         if any("SIGNAL_POLICY_INVALID" in item.get("reasons", []) for item in signal_res.items):
             blocking_status = "DATA_INCOMPLETE_PAUSED"
             is_result_production_eligible = False
@@ -900,6 +946,46 @@ class DecisionEngine:
             match_mode=resolved_match_mode.value,
             manual_overrides_context=ta9_context,
         )
+        for ev in evidence:
+            actual = (state_context.current_by_symbol.get(ev.symbol_id) or {}) if state_context is not None else {}
+            if ev.symbol_id in entry_paused_symbols and ev.action in {"BUY", "HOLD", "NO_ACTION"}:
+                ev.action = "HOLD"
+                ev.action_subtype = "PENDING_BUY_ENTRY_PAUSED"
+                ev.blocking_reason = "原买单尚未完成，暂缓新增买入"
+                ev.target_quantity = float(actual.get("qty") or 0)
+                ev.target_position_pct = float(actual.get("pct") or 0)
+                ev.target_qty_delta = 0.0
+                ev.executed_price = None
+            pending = pending_by_symbol.get(ev.symbol_id)
+            if not pending:
+                continue
+            conflict = ev.symbol_id in pending_conflicts or (
+                ev.action in {"BUY", "SELL"} and any(order["action"] != ev.action for order in pending))
+            if not conflict:
+                if ev.action in {"BUY", "SELL"}:
+                    # The original same-side order already carries this
+                    # exit/entry. Keep the risk trigger visible without
+                    # creating a second order for the same remaining shares.
+                    ev.action = "HOLD"
+                    ev.action_subtype = "WAITING_EXISTING_ORDER"
+                    ev.target_quantity = float(actual.get("qty") or 0)
+                    ev.target_position_pct = float(actual.get("pct") or 0)
+                    ev.target_qty_delta = 0.0
+                    ev.executed_price = None
+                    ev.blocking_reason = "沿用原待成交订单：" + "、".join(order["order_plan_id"] for order in pending)
+                continue
+            # A forced exit must remain visible. An unfinished opposite order
+            # needs explicit resolution, rather than two contradictory fills.
+            ev.action = "REJECTED"
+            ev.action_subtype = "PENDING_ORDER_CONFLICT"
+            ev.rejection_reason = "PENDING_ORDER_CONFLICT"
+            ev.rejection_detail = "原订单尚未完成，与当天的新操作或止损冲突，请先查看原订单：" + "、".join(order["order_plan_id"] for order in pending)
+            ev.blocking_reason = ev.rejection_detail
+            ev.target_quantity = float(actual.get("qty") or 0)
+            ev.target_position_pct = float(actual.get("pct") or 0)
+            ev.target_qty_delta = 0.0
+            ev.executed_price = None
+            ev.reason_codes.append("PENDING_ORDER_CONFLICT")
         if governance_reasons:
             # The automatic order adapter may continue verified exits under
             # an entry lock. A guarded run never creates a new BUY plan.
@@ -952,6 +1038,18 @@ class DecisionEngine:
             state_context.state_hash if state_context is not None else None,
             DECISION_SCORE_POLICY_VERSION,
         )
+        if retry_of_decision_run_id:
+            if run_type != "auto_simulation" or not can_retry_blocked_decision(db, retry_of_decision_run_id,
+                portfolio_id=portfolio_id, strategy_snapshot_id=strategy_snapshot_id, trade_date=trade_date):
+                raise ValueError("已有可执行计划或成交，不能重新计算原决定，请继续处理原计划。")
+            decision_run_id = content_hash("auto_simulation_retry", decision_run_id, retry_of_decision_run_id)
+        if run_type == "backtest":
+            # Pre-fix plans may have sized using tomorrow's open. Keep them
+            # as audit history, never reuse their identity for corrected runs.
+            decision_run_id = content_hash(
+                "backtest_price_reference", decision_run_id,
+                BACKTEST_PRICE_REFERENCE_POLICY_VERSION,
+            )
         if governance_reasons:
             # A governance change is a different decision input: its BUY
             # evidence cannot reuse a succeeded run with another action/id.
@@ -1128,6 +1226,10 @@ class DecisionEngine:
             versions_json=canonical_json({
                 **snap.versions,
                 "decision_score_policy_version": DECISION_SCORE_POLICY_VERSION,
+                **({"price_reference_policy_version": BACKTEST_PRICE_REFERENCE_POLICY_VERSION}
+                   if run_type in {"backtest", "auto_simulation"} else {}),
+                **({"backtest_price_reference_policy_version": BACKTEST_PRICE_REFERENCE_POLICY_VERSION}
+                   if run_type == "backtest" else {}),
                 "gate_policy_version": snap.gate_policy_version,
                 "gate_result": gate_result,
             }),

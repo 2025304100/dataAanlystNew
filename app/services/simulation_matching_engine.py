@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from enum import Enum
 from typing import Any, Literal
 
@@ -71,6 +72,10 @@ class MarketBar:
     lower_limit_price: float | None = None
     limit_up_locked: bool = False  # 开盘封涨停，买侧无法入场
     limit_down_locked: bool = False  # 开盘封跌停，卖侧无法离场
+    tick_size: float = 0.01
+    asset_type: str = "stock"
+    market: str = "cn"
+    price_limit_mode: Literal["LIMITED", "NO_LIMIT"] | None = None
 
 
 @dataclass
@@ -93,7 +98,7 @@ class MatchResult:
 class CostModelConfig:
     commission_rate: float = 0.0003   # 万3
     min_commission: float = 5.0       # A 股最低 5 元
-    stamp_tax_rate: float = 0.001     # 卖出单边千1
+    stamp_tax_rate: float | None = None  # None: resolve by execution date and instrument
     transfer_fee_rate: float = 0.00001  # 过户费（双边），默认 0.001%
     slippage_buy_bps: int = 5         # 买侧滑点 bps
     slippage_sell_bps: int = 5        # 卖侧滑点 bps
@@ -106,11 +111,13 @@ class CostModelConfig:
 
 # ──────────────────────────────────────────────────────────── 1. 撮合
 def _resolve_limit_prices(bar: MarketBar, cfg: CostModelConfig) -> tuple[float | None, float | None]:
+    if bar.price_limit_mode == "NO_LIMIT":
+        return None, None
     up = bar.upper_limit_price
     dn = bar.lower_limit_price
-    if up is None and bar.pre_close:
+    if up is None and bar.pre_close and bar.price_limit_mode != "LIMITED":
         up = round(float(bar.pre_close) * (1.0 + cfg.default_limit_up_pct), 4)
-    if dn is None and bar.pre_close:
+    if dn is None and bar.pre_close and bar.price_limit_mode != "LIMITED":
         dn = round(float(bar.pre_close) * (1.0 - cfg.default_limit_down_pct), 4)
     return up, dn
 
@@ -185,8 +192,21 @@ def match_order_plan(
         )
 
     up, dn = _resolve_limit_prices(bar, cfg)
+    if bar.price_limit_mode not in {None, "LIMITED", "NO_LIMIT"}:
+        return MatchResult(order_plan_id=plan.order_plan_id, final_status="REJECTED_TRADE_HALTED",
+            filled_quantity=0, executed_price=None, slippage_bps=None, reason_codes=["PRICE_LIMIT_MODE_INVALID"])
+    if bar.price_limit_mode != "NO_LIMIT" and str(bar.market).lower() in {"cn", "sh", "sz", "bj"} and (
+        up is None or dn is None or not math.isfinite(up) or not math.isfinite(dn)
+        or dn <= 0 or up < dn
+    ):
+        return MatchResult(
+            order_plan_id=plan.order_plan_id, final_status="REJECTED_TRADE_HALTED",
+            filled_quantity=0, executed_price=None, slippage_bps=None,
+            reason_codes=["PRICE_LIMIT_DATA_MISSING", "CANNOT_FILL_AT_NEXT_OPEN"],
+            retry_on_next_session=True,
+        )
     raw_price = _pick_raw_price(bar, effective_price_type)
-    if raw_price is None or raw_price <= 0:
+    if raw_price is None or not math.isfinite(raw_price) or raw_price <= 0:
         base_reasons.append("NO_VALID_BAR_PRICE")
         return MatchResult(
             order_plan_id=plan.order_plan_id,
@@ -195,6 +215,26 @@ def match_order_plan(
             executed_price=None,
             slippage_bps=None,
             reason_codes=base_reasons + ["CANNOT_FILL_AT_NEXT_OPEN"],
+            retry_on_next_session=True,
+        )
+
+    if (up is not None and raw_price > up) or (dn is not None and raw_price < dn):
+        return MatchResult(
+            order_plan_id=plan.order_plan_id, final_status="REJECTED_TRADE_HALTED",
+            filled_quantity=0, executed_price=None, slippage_bps=None,
+            reason_codes=["BAR_PRICE_OUTSIDE_LIMITS", "CANNOT_FILL_AT_NEXT_OPEN"],
+            retry_on_next_session=True,
+        )
+    if (
+        any(not math.isfinite(value) or value <= 0 for value in (bar.high, bar.low) if value is not None)
+        or (bar.high is not None and raw_price > bar.high)
+        or (bar.low is not None and raw_price < bar.low)
+        or (bar.high is not None and bar.low is not None and bar.low > bar.high)
+    ):
+        return MatchResult(
+            order_plan_id=plan.order_plan_id, final_status="REJECTED_TRADE_HALTED",
+            filled_quantity=0, executed_price=None, slippage_bps=None,
+            reason_codes=["INVALID_BAR_PRICE_RANGE", "CANNOT_FILL_AT_NEXT_OPEN"],
             retry_on_next_session=True,
         )
 
@@ -234,7 +274,41 @@ def match_order_plan(
         s_bps = float(cfg.slippage_sell_bps)
         executed_price = raw_price * (1.0 - s_bps / 10_000.0)
 
-    executed_price = round(float(executed_price), 6)
+    if up is not None:
+        executed_price = min(executed_price, up)
+    if dn is not None:
+        executed_price = max(executed_price, dn)
+    price_ceiling = min(value for value in (up, bar.high) if value is not None) if up is not None or bar.high is not None else None
+    price_floor = max(value for value in (dn, bar.low) if value is not None) if dn is not None or bar.low is not None else None
+    if price_ceiling is not None:
+        executed_price = min(executed_price, price_ceiling)
+    if price_floor is not None:
+        executed_price = max(executed_price, price_floor)
+    tick = Decimal(str(bar.tick_size))
+    if not tick.is_finite() or tick <= 0:
+        return MatchResult(
+            order_plan_id=plan.order_plan_id, final_status="REJECTED_TRADE_HALTED",
+            filled_quantity=0, executed_price=None, slippage_bps=None,
+            reason_codes=["INVALID_PRICE_TICK", "CANNOT_FILL_AT_NEXT_OPEN"],
+            retry_on_next_session=True,
+        )
+    ticks = (Decimal(str(executed_price)) / tick).to_integral_value(
+        rounding=ROUND_CEILING if buy_side else ROUND_FLOOR,
+    )
+    ceiling_ticks = (Decimal(str(price_ceiling)) / tick).to_integral_value(rounding=ROUND_FLOOR) if price_ceiling is not None else None
+    floor_ticks = (Decimal(str(price_floor)) / tick).to_integral_value(rounding=ROUND_CEILING) if price_floor is not None else None
+    if ceiling_ticks is not None and floor_ticks is not None and floor_ticks > ceiling_ticks:
+        return MatchResult(
+            order_plan_id=plan.order_plan_id, final_status="REJECTED_TRADE_HALTED",
+            filled_quantity=0, executed_price=None, slippage_bps=None,
+            reason_codes=["INVALID_BAR_PRICE_RANGE", "CANNOT_FILL_AT_NEXT_OPEN"],
+            retry_on_next_session=True,
+        )
+    if ceiling_ticks is not None:
+        ticks = min(ticks, ceiling_ticks)
+    if floor_ticks is not None:
+        ticks = max(ticks, floor_ticks)
+    executed_price = float(ticks * tick)
     filled_qty = int(plan.target_quantity)
     partial_fill = False
     if cfg.volume_limit_pct is not None and bar.volume is not None and float(bar.volume) > 0:
@@ -261,6 +335,9 @@ def match_order_plan(
         filled_qty,
         executed_price,
         cfg=cfg,
+        trade_date=bar.trade_date,
+        asset_type=bar.asset_type,
+        market=bar.market,
     )
     return MatchResult(
         order_plan_id=plan.order_plan_id,
@@ -285,6 +362,9 @@ def apply_cost_model(
     price: float,
     *,
     cfg: CostModelConfig | None = None,
+    trade_date: date | None = None,
+    asset_type: str = "stock",
+    market: str = "cn",
 ) -> dict[str, float]:
     """统一成本：手续费+印花税（卖单）+过户费（双边）。"""
     cfg = cfg or CostModelConfig()
@@ -295,7 +375,10 @@ def apply_cost_model(
     commission = float(max(cfg.min_commission, commission_raw) if cfg.min_commission > 0 else commission_raw)
     stamp_tax = 0.0
     if side is OrderSide.SELL:
-        stamp_tax = gross * float(cfg.stamp_tax_rate)
+        from app.services.cost_model import resolve_stamp_tax_rate
+        stamp_tax = gross * resolve_stamp_tax_rate(
+            trade_date, asset_type=asset_type, market=market, override=cfg.stamp_tax_rate,
+        )
     transfer_fee = gross * float(cfg.transfer_fee_rate)
     total = round(commission + stamp_tax + transfer_fee, 8)
     return {

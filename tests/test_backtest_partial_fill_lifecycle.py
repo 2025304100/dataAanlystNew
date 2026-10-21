@@ -77,6 +77,8 @@ def test_partial_buy_retry_accumulates_the_original_plan_on_one_trade(db_session
             published_at=datetime(2025, 1, 1),
         ))
 
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, days)
     snapshot = StrategyExecutionSnapshot(
         id="snapshot-partial-lifecycle",
         snapshot_no=1,

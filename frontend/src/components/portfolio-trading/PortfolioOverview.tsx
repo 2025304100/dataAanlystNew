@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Shield, ShieldCheck, Activity, LineChart, Settings2, AlertTriangle, ShieldAlert, type LucideIcon } from "lucide-react";
 import { message } from "antd";
 import { api } from "../../api/client";
@@ -67,6 +67,8 @@ interface ActiveRule {
 
 type ChartRange = "1m" | "3m" | "1y" | "all";
 type RiskKey = "stopLoss" | "drawdown" | "volatility";
+const OVERVIEW_RESOURCES = ["account", "performance", "allocation", "positions", "signal", "detail"] as const;
+type OverviewResource = (typeof OVERVIEW_RESOURCES)[number];
 
 const CHART_RANGES: { key: ChartRange; label: string }[] = [
   { key: "1m", label: t("portfolioTrading.overview.range1m") },
@@ -92,7 +94,7 @@ const sectionSubStyle: React.CSSProperties = { fontSize: 12, color: "var(--pt-mu
 
 /** 金额占位：缺失/无效时显示 ¥-- */
 const fmtMoney = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(Number(v)) ? "¥--" : money(v);
+  v == null || !Number.isFinite(Number(v)) ? "¥--" : money(v, 2);
 
 /** 百分比占位：缺失/无效时显示 --%，可选正号 */
 const fmtPct = (v: number | null | undefined, withSign = false): string => {
@@ -107,6 +109,11 @@ const pnlColor = (v: number | null | undefined): string => {
   return Number(v) > 0 ? "var(--pt-state-success)" : Number(v) < 0 ? "var(--pt-state-error)" : "var(--pt-muted-foreground)";
 };
 
+// 名称沿用后端 signal_rules.PRESETS；mode 表示样本匹配条件，不是调仓频率。
+const SIGNAL_MODE_NAMES: Record<string, string> = {
+  conservative: "保守模式", balanced: "均衡模式", aggressive: "进取模式", expert: "专家模式",
+};
+
 const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNavigate, portfolioStatus, perm }) => {
   // FR-P1-8a HG1：禁止开启自动交易的状态（终态硬禁）；另外 requires_manual_ack 必须手动确认解除
   const currentState = portfolioStatus?.current_state ?? "UNKNOWN";
@@ -118,12 +125,12 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
   const softWarningAutoOn = currentState !== "READY";
   const hardBlockHint = (() => {
     switch (currentState) {
-      case "ADMIN_PAUSED": return "管理员紧急刹车已触发：需管理员在治理 Tab 解除后才可开启自动交易";
-      case "RECONCILIATION_BLOCKED": return "对账存在非零差异：需在治理 Tab 单人确认差异后才可开启自动交易";
-      case "PENDING_INITIAL_REVIEW": return "新建组合尚未通过管理员合规审查：需管理员在治理 Tab 确认后才可开启自动交易";
-      case "MODEL_INACTIVE": return "绑定因子模型已退役/未激活：请在策略设置中更换/激活模型，或在治理 Tab 修复";
+      case "ADMIN_PAUSED": return "组合已暂停，请到“检查与对账”查看原因并处理。";
+      case "RECONCILIATION_BLOCKED": return "请到“检查与对账”核对差异，处理后再继续。";
+      case "PENDING_INITIAL_REVIEW": return "组合还未完成首次检查，请到“检查与对账”确认。";
+      case "MODEL_INACTIVE": return "当前策略不能用于交易，请到“策略规则”检查。";
       default:
-        return requiresManualAck ? "当前组合状态需要人工确认/解除，请在治理 Tab 处理后再开启自动交易" : "";
+        return requiresManualAck ? "还有事项需要你确认，请到“检查与对账”处理。" : "请到“检查与对账”查看当前限制。";
     }
   })();
 
@@ -135,50 +142,80 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
   const [signalRule, setSignalRule] = useState<SignalRule | null>(null);
   const [activeRule, setActiveRule] = useState<ActiveRule | null>(null);
   const [chartRange, setChartRange] = useState<ChartRange>("3m");
-  const [autoEnabled, setAutoEnabled] = useState(true);
-  const [riskEnabled, setRiskEnabled] = useState<Record<RiskKey, boolean>>({
-    stopLoss: true,
-    drawdown: true,
-    volatility: false,
-  });
+  const [autoEnabled, setAutoEnabled] = useState<boolean | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [loadErrors, setLoadErrors] = useState<Partial<Record<OverviewResource, string>>>({});
+  const [retrying, setRetrying] = useState<OverviewResource | null>(null);
+  const [loadedPortfolioId, setLoadedPortfolioId] = useState<number | null>(null);
+  const currentPortfolioIdRef = useRef(portfolioId);
+  currentPortfolioIdRef.current = portfolioId;
+  const loadRequestRef = useRef(0);
+  const autoRequestRef = useRef(0);
+  const mountedRef = useRef(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (retryResource?: OverviewResource) => {
     if (!portfolioId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    // 6 个独立请求并行，任一失败不阻塞其余，缺失字段以占位值兜底
-    const [portfoliosRes, perfRes, allocRes, posRes, signalRes, detailRes] = await Promise.allSettled([
-      api.getPortfolios(),
-      api.getPortfolioPerformance(portfolioId, {}),
-      api.getAllocation(portfolioId),
-      api.getPositions(portfolioId),
-      api.getSignalRule(portfolioId),
-      api.getPortfolioDetail(portfolioId),
-    ]);
-    if (portfoliosRes.status === "fulfilled") {
-      const found = (portfoliosRes.value as PortfolioMeta[]).find((p) => Number(p.id) === Number(portfolioId)) ?? null;
-      setPortfolio(found);
-      setAutoEnabled(found ? Number(found.auto_trade_enabled) === 1 : true);
+    const requestId = ++loadRequestRef.current;
+    if (!retryResource) {
+      setLoading(true);
+      setAutoSaving(false);
     }
-    if (perfRes.status === "fulfilled") setPerf((perfRes.value as PerformanceResult) ?? null);
-    else setPerf(null);
-    if (allocRes.status === "fulfilled") setAllocation((allocRes.value as AllocationSnapshot) ?? null);
-    else setAllocation(null);
-    if (posRes.status === "fulfilled") setPositions((posRes.value as Position[]) ?? []);
-    else setPositions([]);
-    setSignalRule(signalRes.status === "fulfilled" ? (signalRes.value as SignalRule) ?? null : null);
-    setActiveRule(
-      detailRes.status === "fulfilled"
-        ? ((detailRes.value as { active_rule?: ActiveRule | null })?.active_rule ?? null)
-        : null,
-    );
+    setRetrying(retryResource ?? null);
+    const resources: readonly OverviewResource[] = retryResource ? [retryResource] : OVERVIEW_RESOURCES;
+    const loaders: Record<OverviewResource, () => Promise<unknown>> = {
+      account: () => api.getPortfolios(),
+      performance: () => api.getPortfolioPerformance(portfolioId, {}),
+      allocation: () => api.getAllocation(portfolioId),
+      positions: () => api.getPositions(portfolioId),
+      signal: () => api.getSignalRule(portfolioId),
+      detail: () => api.getPortfolioDetail(portfolioId),
+    };
+    const results = await Promise.allSettled(resources.map((resource) => loaders[resource]()));
+    if (!mountedRef.current || requestId !== loadRequestRef.current || portfolioId !== currentPortfolioIdRef.current) return;
+    const errors: Partial<Record<OverviewResource, string>> = {};
+    results.forEach((result, index) => {
+      const resource = resources[index];
+      const value = result.status === "fulfilled" ? result.value : null;
+      if (result.status === "rejected") {
+        const detail = result.reason instanceof Error ? result.reason.message : String(result.reason ?? "");
+        errors[resource] = detail.trim() || t(`portfolioTrading.overview.${resource}LoadFailed`);
+      }
+      switch (resource) {
+        case "account": {
+          const found = (Array.isArray(value) ? value as PortfolioMeta[] : []).find((p) => Number(p.id) === Number(portfolioId)) ?? null;
+          setPortfolio(found);
+          setAutoEnabled(found ? Number(found.auto_trade_enabled) === 1 : null);
+          if (!found && result.status === "fulfilled") errors.account = t("portfolioTrading.overview.selectedAccountMissing");
+          break;
+        }
+        case "performance": setPerf(value as PerformanceResult | null); break;
+        case "allocation": setAllocation(value as AllocationSnapshot | null); break;
+        case "positions": setPositions((value as Position[] | null) ?? []); break;
+        case "signal": setSignalRule(value as SignalRule | null); break;
+        case "detail": setActiveRule((value as { active_rule?: ActiveRule | null } | null)?.active_rule ?? null); break;
+      }
+    });
+    setLoadErrors((previous) => {
+      const next = { ...previous };
+      resources.forEach((resource) => { delete next[resource]; });
+      return { ...next, ...errors };
+    });
+    setRetrying(null);
+    setLoadedPortfolioId(portfolioId);
     setLoading(false);
   }, [portfolioId]);
 
   useEffect(() => {
-    load();
+    mountedRef.current = true;
+    void load();
+    return () => {
+      mountedRef.current = false;
+      loadRequestRef.current += 1;
+      autoRequestRef.current += 1;
+    };
   }, [load]);
 
   const stats = perf?.stats;
@@ -187,9 +224,8 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
   const sharpe = stats?.sharpe_ratio ?? null;
   const cumulativePnL = stats?.total_return ?? null;
 
-  const totalAssets =
-    (allocation?.cash_amount ?? 0) + (allocation?.used_amount ?? 0);
-  const totalAssetsValue = totalAssets > 0 ? totalAssets : portfolio?.total_capital ?? null;
+  const totalAssetsValue = allocation?.cash_amount != null && allocation.used_amount != null
+    ? allocation.cash_amount + allocation.used_amount : null;
   const positionCount = allocation?.position_count ?? null;
   const holdingsTotalPct = allocation?.total_position_pct ?? null;
 
@@ -234,12 +270,11 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
     return { linePath, areaPath };
   }, [perf, chartRange]);
 
-  const enabledRiskCount = Object.values(riskEnabled).filter(Boolean).length;
-
   // 自动接管配置卡片的 4 个配置值：优先 signal-rule，回退 active_rule，再回退占位「—」
   const configValues = useMemo(() => {
-    const model = signalRule?.rule_name || activeRule?.rule_name || "—";
-    const freq = signalRule?.mode || "—";
+    const ruleName = signalRule?.rule_name || activeRule?.rule_name;
+    const model = ruleName ? (SIGNAL_MODE_NAMES[ruleName] ?? ruleName) : "—";
+    const freq = signalRule?.mode ? (SIGNAL_MODE_NAMES[signalRule.mode] ?? "请到策略规则查看") : "—";
     const maxSingle = activeRule?.max_single_position_pct ?? null;
     const maxLoss = activeRule?.max_loss_per_trade_pct ?? null;
     return {
@@ -264,43 +299,65 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
   // 自动接管开关：调 api.updatePortfolio 持久化 auto_trade_enabled，失败回滚
   // FR-P1-8a HG1：硬禁状态下禁止从 OFF → ON；其它非 READY 开启前二次确认
   const handleToggleAuto = useCallback(async () => {
+    if (autoEnabled === null || autoSaving || loadedPortfolioId !== portfolioId) return;
     const prev = autoEnabled;
     const next = !prev;
     // 从 OFF → ON 必须检查 HG1
     if (!prev && next) {
       if (hardBlockAutoOn) {
-        message.error("HG1 门禁：" + (hardBlockHint || "当前组合状态禁止开启自动交易"));
+        message.error(hardBlockHint);
         return;
       }
       if (softWarningAutoOn) {
         const ok = window.confirm(
-          `⚠️ HG1 提示：当前组合状态为「${govStatusLabel(currentState)}」，尚未就绪。\n\n` +
-          `在该状态下开启自动交易，将受到如下治理权限约束：\n` +
+          `当前组合还没有准备好：${govStatusLabel(currentState)}。\n\n` +
+          `打开开关后，下单仍受以下限制：\n` +
           `  · ${actionLabel("NEW_BUY")}：${perm?.allow_new_buys ? "允许" : "禁止"}\n` +
           `  · ${actionLabel("RISK_EXIT")}：${perm?.allow_risk_exits ? "允许" : "禁止"}\n` +
           `  · 自动恢复：${allowAutoRecovery ? "允许" : "禁止"}\n\n` +
-          `如果在开启后触发管理员紧急暂停或对账差异阻断，系统将自动强制关闭自动交易并发送告警。\n\n确认仍要开启？`,
+          `如果之后暂停组合或发现对账差异，系统会关闭自动交易并提醒你。\n\n确认打开开关？`,
         );
         if (!ok) return;
       }
     }
+    const targetPortfolioId = portfolioId;
+    const requestId = ++autoRequestRef.current;
+    const isCurrent = () => mountedRef.current && requestId === autoRequestRef.current && targetPortfolioId === currentPortfolioIdRef.current;
+    setAutoSaving(true);
     setAutoEnabled(next);
     try {
-      await api.updatePortfolio(portfolioId, { auto_trade_enabled: next ? 1 : 0 });
+      await api.updatePortfolio(targetPortfolioId, { auto_trade_enabled: next ? 1 : 0 });
+      if (!isCurrent()) return;
+      setAutoEnabled(next);
       message.success(next ? t("portfolioTrading.overview.autoTradeOn") : t("portfolioTrading.overview.autoTradeOff"));
     } catch (err: any) {
+      if (!isCurrent()) return;
       setAutoEnabled(prev);
       message.error(t("portfolioTrading.overview.autoTradeToggleFailed") + (err?.message ? ": " + err.message : ""));
+    } finally {
+      if (isCurrent()) setAutoSaving(false);
     }
-  }, [autoEnabled, portfolioId, hardBlockAutoOn, hardBlockHint, softWarningAutoOn, currentState, perm, allowAutoRecovery]);
+  }, [autoEnabled, autoSaving, loadedPortfolioId, portfolioId, hardBlockAutoOn, hardBlockHint, softWarningAutoOn, currentState, perm, allowAutoRecovery]);
 
   const handleViewAllHoldings = useCallback(() => {
     onNavigate?.("members");
   }, [onNavigate]);
 
-  if (loading) {
+  const renderLoadError = (resource: OverviewResource) => loadErrors[resource] ? (
+    <div role="alert" aria-label={t(`portfolioTrading.overview.${resource}LoadFailed`)} style={{ padding: 12, color: "var(--pt-state-error)" }}>
+      <p>{t(`portfolioTrading.overview.${resource}LoadFailed`)}：{loadErrors[resource]}</p>
+      <button type="button" className="pt-btn pt-btn-secondary pt-btn-sm" disabled={retrying !== null} onClick={() => { void load(resource); }}>
+        {t(`portfolioTrading.overview.${resource}Retry`)}
+      </button>
+    </div>
+  ) : null;
+
+  if (!portfolioId) return <section role="status" style={{ padding: 16 }}>{t("portfolioTrading.header.noPortfolio")}</section>;
+
+  // 当前组合的数据尚未到达时，在本次渲染就隐藏上个组合的数据与错误。
+  if (loading || loadedPortfolioId !== portfolioId) {
     return (
-      <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      <section role="status" aria-label={t("portfolioTrading.overview.loadingOverview")} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
         <style>{`@keyframes pt-sk-pulse{0%,100%{opacity:1}50%{opacity:0.4}}.pt-sk{animation:pt-sk-pulse 1.4s ease-in-out infinite;}`}</style>
         <div className="pt-card" style={{ padding: 24 }}>
           <div className="pt-sk" style={{ background: "var(--pt-surface-3)", borderRadius: "var(--pt-radius-md)", height: 18, width: "30%", marginBottom: 20 }} />
@@ -324,6 +381,7 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
 
   return (
     <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      {renderLoadError("allocation")}
       {/* ========== SubTask 4.1: 5 列账户摘要带 ========== */}
       <div className="pt-card" style={{ overflow: "hidden" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)" }}>
@@ -404,17 +462,23 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
                 <div title={govStatusCodeForTooltip(currentState) ?? undefined} style={{ marginTop: 6, fontSize: 11, color: hardBlockAutoOn ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
                   {hardBlockAutoOn ? <ShieldAlert size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} /> : <AlertTriangle size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} />}
                   {/* currentState 是治理枚举原值（如 RECONCILIATION_BLOCKED），不能直接给用户看 */}
-                  HG1 状态：「{govStatusLabel(currentState)}」{hardBlockAutoOn ? "（禁止开启自动交易）" : "（开启前会二次确认）"}
+                  {autoEnabled ? (hardBlockAutoOn ? "自动交易开关已打开，当前仍不能下单。" : "自动交易开关已打开，下单仍受当前交易限制。") : (hardBlockAutoOn ? "当前不能开启自动交易。" : "打开开关前，请先查看当前交易限制。")}
+                  <div style={{ marginTop: 4 }}>{hardBlockHint}</div>
+                  {onNavigate && <button type="button" className="pt-btn pt-btn-secondary pt-btn-sm" style={{ marginTop: 8 }} onClick={() => onNavigate(currentState === "MODEL_INACTIVE" ? "strategy" : "governance")}>
+                    {currentState === "MODEL_INACTIVE" ? "检查策略规则" : "查看待处理事项"}
+                  </button>}
                 </div>
               )}
             </div>
             <button
               type="button"
               className={`pt-toggle${autoEnabled ? " active" : ""}`}
-              aria-pressed={autoEnabled}
+              aria-label={t("portfolioTrading.overview.autoTradeToggle")}
+              aria-pressed={autoEnabled ?? undefined}
+              aria-busy={autoSaving}
               onClick={handleToggleAuto}
-              disabled={hardBlockAutoOn && !autoEnabled}
-              title={hardBlockAutoOn && !autoEnabled ? ("HG1 门禁：" + hardBlockHint) : t("portfolioTrading.overview.autoTradeToggle")}
+              disabled={autoEnabled === null || autoSaving || (hardBlockAutoOn && !autoEnabled)}
+              title={hardBlockAutoOn && !autoEnabled ? hardBlockHint : t("portfolioTrading.overview.autoTradeToggle")}
               style={{
                 opacity: hardBlockAutoOn && !autoEnabled ? 0.45 : 1,
                 cursor: hardBlockAutoOn && !autoEnabled ? "not-allowed" : undefined,
@@ -422,6 +486,10 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
               }}
             />
           </div>
+          {autoEnabled === null && <p style={sectionSubStyle}>{t("portfolioTrading.overview.autoStateUnknown")}</p>}
+          {renderLoadError("account")}
+          {renderLoadError("signal")}
+          {renderLoadError("detail")}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <ConfigRow label={t("portfolioTrading.overview.currentModel")} value={configValues.currentModel} />
             <ConfigRow label={t("portfolioTrading.overview.rebalanceFreq")} value={configValues.rebalanceFreq} />
@@ -441,15 +509,15 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
           </div>
         </div>
 
-        {/* 风险规则卡片 */}
-        <div className="pt-card" style={{ padding: 16 }}>
+        {/* 仅说明规则含义；未绑定执行的控件不能表示组合已受保护。 */}
+        <section className="pt-card" aria-label={t("portfolioTrading.overview.riskRulesRegion")} style={{ padding: 16 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
             <div>
               <h3 style={sectionTitleStyle}>{t("portfolioTrading.overview.riskRulesTitle")}</h3>
               <p style={sectionSubStyle}>{t("portfolioTrading.overview.riskRulesSub")}</p>
             </div>
-            <span className="pt-tag pt-tag-primary">
-              {enabledRiskCount} {t("portfolioTrading.overview.rulesEnabled")}
+            <span className="pt-tag pt-tag-warning">
+              {t("portfolioTrading.overview.riskRulesReadOnly")}
             </span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -460,12 +528,15 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
                 tone={tone}
                 title={t(`portfolioTrading.overview.risk_${key}`)}
                 desc={t(`portfolioTrading.overview.risk_${key}_desc`)}
-                active={riskEnabled[key]}
-                onToggle={() => setRiskEnabled((prev) => ({ ...prev, [key]: !prev[key] }))}
               />
             ))}
           </div>
-        </div>
+          {onNavigate && (
+            <button type="button" className="pt-btn pt-btn-secondary pt-btn-sm" style={{ marginTop: 16 }} onClick={handleDetailConfig}>
+              {t("portfolioTrading.overview.riskRulesViewConfig")}
+            </button>
+          )}
+        </section>
       </div>
 
       {/* ========== SubTask 4.4: 收益曲线 + 持仓分布 ========== */}
@@ -500,7 +571,7 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
               background: "var(--pt-surface-3)",
             }}
           >
-            {sparkline ? (
+            {loadErrors.performance ? renderLoadError("performance") : sparkline ? (
               <svg viewBox="0 0 100 40" preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
                 <defs>
                   <linearGradient id="pt-equity-fill" x1="0" y1="0" x2="0" y2="1">
@@ -542,7 +613,7 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
             </button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {topHoldings.length === 0 ? (
+            {loadErrors.positions ? renderLoadError("positions") : topHoldings.length === 0 ? (
               <p style={{ fontSize: 12, color: "var(--pt-muted-foreground)", textAlign: "center", padding: "24px 0" }}>
                 {t("portfolioTrading.overview.noHoldings")}
               </p>
@@ -620,9 +691,7 @@ const RiskRuleRow: React.FC<{
   tone: "warning" | "error" | "info";
   title: string;
   desc: string;
-  active: boolean;
-  onToggle: () => void;
-}> = ({ Icon, tone, title, desc, active, onToggle }) => {
+}> = ({ Icon, tone, title, desc }) => {
   const toneVar = TONE_VAR[tone];
   return (
     <div
@@ -653,12 +722,9 @@ const RiskRuleRow: React.FC<{
         <p style={{ fontSize: 13, fontWeight: 500, color: "var(--pt-foreground)", margin: 0 }}>{title}</p>
         <p style={{ fontSize: 12, color: "var(--pt-muted-foreground)", margin: 0 }}>{desc}</p>
       </div>
-      <button
-        type="button"
-        className={`pt-toggle${active ? " active" : ""}`}
-        aria-pressed={active}
-        onClick={onToggle}
-      />
+      <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)", flexShrink: 0 }}>
+        {t("portfolioTrading.overview.riskRuleNotConnected")}
+      </span>
     </div>
   );
 };

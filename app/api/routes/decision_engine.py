@@ -96,11 +96,16 @@ def evaluate_portfolio(
             "request_portfolio_id": portfolio_id,
         })
 
-    # WP0-6 T7 决策门禁：auto_simulation 仅允许 hour≥20 且同日唯一
-    # （payload.decision_at 显式传入时用它，否则用 server 当前时间做审计）
-    from datetime import datetime as _dt
-    audit_decision_at = payload.decision_at or _dt.now()
+    # Automatic execution uses the server's Shanghai clock. Historical
+    # research/backtest clocks remain controlled by their immutable snapshot.
     if payload.run_type == "auto_simulation":  # Schema 层的对外枚举值
+        from app.services.decision_schedule_gate import shanghai_now, as_shanghai
+        audit_decision_at = as_shanghai(shanghai_now())
+        if payload.trade_date != audit_decision_at.date():
+            raise HTTPException(status_code=400, detail={
+                "error": "SCHEDULE_DATE_MISMATCH",
+                "message": "自动推演日期必须是服务器当前北京时间日期，历史遗漏请使用恢复执行。",
+            })
         gate = ensure_auto_simulation_schedule(
             audit_decision_at, portfolio_id, db=db,
         )

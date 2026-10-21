@@ -1532,6 +1532,34 @@ def _refresh_model_metadata() -> None:
         app.models._auto_discover_models()  # type: ignore[attr-defined]
 
 
+def _ensure_data_sync_policy_column(engine) -> None:
+    """Add the sync policy without losing historical plans or their progress.
+
+    The generic aligner intentionally omits defaults from ADD COLUMN. This
+    non-null column needs an explicit constant default when existing rows are
+    present, especially on SQLite, which otherwise rejects the alteration.
+    """
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+    if "data_sync_plans" not in inspector.get_table_names():
+        return
+    is_mysql = "mysql" in engine.dialect.name
+    table_name = "`data_sync_plans`" if is_mysql else '"data_sync_plans"'
+    column_name = "`sync_policy`" if is_mysql else '"sync_policy"'
+    columns = {column["name"] for column in inspector.get_columns("data_sync_plans")}
+    try:
+        with engine.begin() as connection:
+            if "sync_policy" not in columns:
+                connection.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} VARCHAR(16) NOT NULL DEFAULT 'normal'"
+                ))
+            connection.execute(text(
+                f"UPDATE {table_name} SET {column_name} = 'normal' WHERE {column_name} IS NULL"
+            ))
+    except Exception as exc:
+        logger.warning("同步策略列对齐失败，原同步记录保留：%s", exc)
+
+
 def _auto_align_all_schema(engine) -> None:
     """通用 Schema 自动对齐（一站式）：自动扫模型 → 缺表建 → 缺列加 → 缺索引补。
 
@@ -1552,6 +1580,7 @@ def _auto_align_all_schema(engine) -> None:
 
     # Step 1. 刷新注册
     _refresh_model_metadata()
+    _ensure_data_sync_policy_column(engine)
 
     inspector = sa_inspect(engine)
     is_mysql = "mysql" in engine.dialect.name

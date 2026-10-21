@@ -8,7 +8,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from app.services.akshare_utils import call_akshare_with_retry
+from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
+from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
 
 URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
@@ -44,7 +45,11 @@ def fetch_etf_quotes(db, codes: list[str], *, should_cancel: Callable[[], bool] 
             response.raise_for_status()
             return response.json()
 
-    payload = call_akshare_with_retry(request, api_key="fund_etf_spot_em", max_attempts=2, db=db)
+    api_key = "fund_etf_spot_em"
+    assert_akshare_api_enabled(api_key)
+    payload = coalesced_read(request_key(api_key, URL, params),
+        lambda: call_akshare_with_retry(request, api_key=api_key, max_attempts=2, db=db), should_cancel=should_cancel)
+    assert_akshare_api_enabled(api_key)
     if not isinstance(payload, dict) or payload.get("rc") != 0:
         raise ValueError("ETF 行情接口返回异常，未切换全市场或历史下载")
     data = payload.get("data")

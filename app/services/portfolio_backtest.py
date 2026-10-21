@@ -18,8 +18,7 @@ WP7.3 兼容与切换：
 - ``compare_new_old_engine`` 同时跑新旧两套来源并对比标的集/交易/指标
 - 切换功能开关后历史 BacktestRun 仍可读（快照已落盘）
 
-前提：组合 auto_trade_enabled=1（组内标的标签都是自动下单/程序）。
-否则回测的信号源（Score.action）与实际执行逻辑不一致，结果无意义。
+研究回测不要求开启自动交易；执行权限与开关仍由实际交易入口检查。
 
 设计要点：
 - 不重新实现回测引擎，直接调用 backtest.run_backtest
@@ -807,7 +806,7 @@ def run_portfolio_backtest(
     # WP0-5 TR-05.3 契约参数（8 字段，C-05 修复）
     initial_capital: float | None = None,
     commission_rate: float = 0.0003,
-    stamp_tax_rate: float = 0.001,
+    stamp_tax_rate: float | None = None,
     slippage_bps: int = 5,
     price_type: str = "NEXT_OPEN",
     volume_limit_pct: float = 0.10,
@@ -881,7 +880,7 @@ def run_portfolio_backtest(
         WP7.1 source_label 和 WP7.3 source_type 标签）
 
     Raises:
-        ValueError: 组合不存在/非模拟/未开启自动交易/无标的可回测/
+        ValueError: 组合不存在/非模拟/无标的可回测/
             total_capital<=0 / 价格类型非法
     """
     portfolio = db.get(Portfolio, portfolio_id)
@@ -889,12 +888,6 @@ def run_portfolio_backtest(
         raise ValueError(f"Portfolio {portfolio_id} not found")
     if portfolio.account_type != "simulated":
         raise ValueError(f"Portfolio {portfolio_id} is not simulated")
-    if not portfolio.auto_trade_enabled:
-        raise ValueError(
-            f"Portfolio {portfolio_id} auto_trade_enabled is 0. "
-            "Whole-portfolio backtest requires auto_trade_enabled=1 "
-            "(signals are based on Score.action which mirrors auto-trade logic)."
-        )
     # WP0-5 / C-05：initial_capital 显式优先（覆盖 portfolio 默认 total_capital），
     #   否则仍用组合默认，避免默认 0 阻断
     effective_capital: float = (
@@ -1177,7 +1170,8 @@ def run_portfolio_backtest(
         #  不再依赖 portfolio 字段（成本由调用方在请求体声明，保证 TR-05.3 8 参数逐字段可追溯）
         cost_snapshot = {
             "commission_rate": float(commission_rate),
-            "stamp_duty_rate": float(stamp_tax_rate),
+            "stamp_tax_rate": float(stamp_tax_rate) if stamp_tax_rate is not None else None,
+            "stamp_duty_rate": float(stamp_tax_rate) if stamp_tax_rate is not None else None,
             # 与 BacktestCostConfig / sme.CostModelConfig 对齐：slippage_buy_bps/sell_bps 共用单一显式值
             "slippage_buy_bps": int(slippage_bps),
             "slippage_sell_bps": int(slippage_bps),
@@ -1198,7 +1192,8 @@ def run_portfolio_backtest(
     else:
         cost_config_for_run = {
             "commission_rate": float(commission_rate),
-            "stamp_duty_rate": float(stamp_tax_rate),
+            "stamp_tax_rate": float(stamp_tax_rate) if stamp_tax_rate is not None else None,
+            "stamp_duty_rate": float(stamp_tax_rate) if stamp_tax_rate is not None else None,
             "slippage_buy_bps": int(slippage_bps),
             "slippage_sell_bps": int(slippage_bps),
             "slippage": int(slippage_bps),
@@ -1350,7 +1345,7 @@ def run_portfolio_backtest(
         "excluded_member_count": len(excluded_pairs),
         # C-05 参数回显：前端提交后可 diff 确认请求已真实落地
         "commission_rate": float(commission_rate),
-        "stamp_tax_rate": float(stamp_tax_rate),
+        "stamp_tax_rate": float(stamp_tax_rate) if stamp_tax_rate is not None else None,
         "slippage_bps": int(slippage_bps),
         "price_type": price_type,
         "volume_limit_pct": float(volume_limit_pct),

@@ -443,6 +443,39 @@ def _clone_manual_score(
     return Score(**payload)
 
 
+def validate_production_scoring_scope(warehouse: FactorWarehouse, *, protocol: dict,
+        trade_date: date, factor_calc_batch_id: str, target_symbols: frozenset[str] | None = None):
+    """Read-only cohort check after the caller verifies the release certificate.
+
+    A publication subset never becomes the normalization cohort. Inspect raw
+    batch rows, including ineligible rows, before any inference/output filter.
+    """
+    symbols, versions = protocol.get('symbols'), protocol.get('feature_versions')
+    if (not isinstance(symbols, list) or not symbols or any(not isinstance(code, str) or not code for code in symbols)
+            or not isinstance(versions, dict) or not versions):
+        raise ValueError('模型确认时的股票范围或因子版本不完整，不能发布评分。')
+    approved = frozenset(symbols)
+    if len(approved) != len(symbols):
+        raise ValueError('模型确认时的股票范围有重复，请先检查原方案。')
+    if target_symbols is not None and not target_symbols.issubset(approved):
+        raise ValueError('只能发布模型确认时股票池内的评分，请先检查所选股票。')
+    with warehouse.connection(read_only=True) as conn:
+        rows = conn.execute('SELECT factor_code,factor_version,symbol,eligible,normalized_value '
+            'FROM factor_values WHERE trade_date=? AND calc_batch_id=?',
+            [trade_date, factor_calc_batch_id]).fetchall()
+    batch_symbols = {str(row[2]) for row in rows}
+    complete = {code: set() for code in versions}
+    for code, version, symbol, _eligible, _value in rows:
+        # An explicitly unavailable original-pool observation still proves
+        # membership. Keep the existing missing-data/coverage policy; scope
+        # verification must not invent a stricter qualification threshold.
+        if code in complete and version == versions[code]:
+            complete[code].add(str(symbol))
+    if batch_symbols != approved or any(values != approved for values in complete.values()):
+        raise ValueError('本批因子的股票范围或版本记录与模型确认时不一致，请按原股票池重新计算。')
+    return approved, approved if target_symbols is None else target_symbols
+
+
 def materialize_factor_scores(
     db: Session,
     warehouse: FactorWarehouse | None,
@@ -532,6 +565,21 @@ def materialize_factor_scores(
     if not math.isfinite(intercept):
         raise ValueError('validated model has an invalid intercept')
     factor_set_id = hyperparams.get('factor_set_id')
+    approved_symbols: frozenset[str] | None = None
+    production = hyperparams.get('production_admission')
+    if production is not None:
+        from app.services.factor_model_contract import assess_factor_model_readiness
+        from app.services.factors.production_execution import load_execution
+        readiness = assess_factor_model_readiness(db, model_run_id=model.id,
+            expected_factor_set_id=factor_set_id, require_runtime_active=True)
+        if not readiness.ready:
+            raise ValueError(readiness.message)
+        contract, execution_sha = load_execution(production['plan_id'])
+        if production != {'plan_id': contract['plan_id'], 'execution_sha256': execution_sha}:
+            raise ValueError('模型对应的确认方案已经变化，不能发布评分。')
+        approved_symbols, target_set = validate_production_scoring_scope(warehouse,
+            protocol=contract['protocol'], trade_date=trade_date, factor_calc_batch_id=factor_calc_batch_id,
+            target_symbols=target_set)
     # 构造成员版本快照：{factor_code: {"version": int, "coefficient": float, "normalized_weight": float}}
     member_versions_snapshot = {
         member.factor_code: {

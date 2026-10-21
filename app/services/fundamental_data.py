@@ -105,7 +105,7 @@ def sync_market_valuation_snapshot(
     db: Session,
     symbols: list[Symbol],
     trade_date: date | None = None,
-    *, should_cancel: Callable[[], bool] | None = None,
+    *, should_cancel: Callable[[], bool] | None = None, fill_missing_only: bool = False,
 ) -> set[int]:
     """Fetch only the requested symbols and exact day, with no historical fallback."""
     target_date = trade_date or date.today()
@@ -181,9 +181,30 @@ def sync_market_valuation_snapshot(
         if pe_ttm is None and pb is None and total_market_cap is None:
             continue
         valuation = existing.get(symbol.id)
+        was_existing = valuation is not None
         if valuation is None:
             valuation = StockValuation(symbol_id=symbol.id, trade_date=target_date)
             db.add(valuation)
+        if fill_missing_only:
+            from app.services.sync_write_policy import fill_missing_values, record_missing_fill
+
+            filled = fill_missing_values(valuation, {
+                "pe_ttm": pe_ttm, "pb": pb, "total_market_cap": total_market_cap,
+                "circulating_market_cap": circulating_market_cap, "industry": symbol.industry,
+            })
+            filled += fill_missing_values(valuation, {
+                "pe_score": calc_pe_score(valuation.pe_ttm, valuation.pe_history_percentile,
+                                         valuation.industry_pe_percentile),
+            })
+            if not filled:
+                continue
+            if was_existing:
+                record_missing_fill(valuation, filled, row.to_dict(), "eastmoney:valuation_daily")
+            else:
+                valuation.source = "eastmoney:valuation_daily"
+                valuation.raw_json = json.dumps(row.to_dict(), ensure_ascii=False, default=str)
+            synced.add(symbol.id)
+            continue
         valuation.pe_ttm = pe_ttm
         valuation.pb = pb
         valuation.total_market_cap = total_market_cap
@@ -196,6 +217,7 @@ def sync_market_valuation_snapshot(
         valuation.raw_json = json.dumps(row.to_dict(), ensure_ascii=False, default=str)
         synced.add(symbol.id)
     db.flush()
+    synced.trade_dates = {target_date} if synced else set()
     return synced
 
 
@@ -269,6 +291,7 @@ def _upsert_valuation_history_row(
     valuation_data: dict[str, Any],
     *,
     industry: str | None,
+    fill_missing_only: bool = False,
 ) -> StockValuation | None:
     """Persist one provider observation without synthesizing missing dates."""
     actual_date = valuation_data.get("trade_date")
@@ -285,9 +308,27 @@ def _upsert_valuation_history_row(
             StockValuation.trade_date == actual_date,
         )
     ).scalars().first()
+    was_existing = existing is not None
     if existing is None:
         existing = StockValuation(symbol_id=symbol.id, trade_date=actual_date)
         db.add(existing)
+    if fill_missing_only:
+        from app.services.sync_write_policy import fill_missing_values, record_missing_fill
+
+        filled = fill_missing_values(existing, {field: _safe_float(valuation_data.get(field)) for field in
+            ("pe_ttm", "pb", "total_market_cap", "circulating_market_cap")})
+        filled += fill_missing_values(existing, {"industry": industry})
+        filled += fill_missing_values(existing, {"pe_score": calc_pe_score(existing.pe_ttm,
+            existing.pe_history_percentile, existing.industry_pe_percentile)})
+        if not filled:
+            return None
+        if was_existing:
+            record_missing_fill(existing, filled, valuation_data, "akshare:stock_value_em")
+        else:
+            existing.source = "akshare:stock_value_em"
+            existing.raw_json = json.dumps(valuation_data, ensure_ascii=False, default=str)
+        db.flush()
+        return existing
     existing.pe_ttm = valuation_data.get("pe_ttm")
     existing.pb = valuation_data.get("pb")
     existing.total_market_cap = valuation_data.get("total_market_cap")
@@ -309,12 +350,17 @@ def sync_symbol_valuation_range(
     start_date: date,
     end_date: date,
     quiet_output: bool = True,
+    fill_missing_only: bool = False,
+    allowed_dates: set[date] | None = None,
 ) -> int:
     """Upsert historical PE/PB rows for a bounded, provider-backed range."""
     if start_date > end_date:
         raise ValueError("start_date must be on or before end_date")
     if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
         return 0
+    from app.services.sync_write_policy import DateWriteCount
+    if allowed_dates is not None and not any(start_date <= day <= end_date for day in allowed_dates):
+        return DateWriteCount(0, [])
     # Historical valuation rows do not require a second per-symbol industry
     # request. The symbol master already carries the latest industry label;
     # avoiding this call halves provider traffic during a full backfill.
@@ -322,10 +368,16 @@ def sync_symbol_valuation_range(
     rows = _fetch_value_history_rows(
         db, symbol, start_date=start_date, end_date=end_date, quiet_output=quiet_output
     )
-    return sum(
-        _upsert_valuation_history_row(db, symbol, row, industry=industry) is not None
-        for row in rows
-    )
+    written_dates = []
+    for row in rows:
+        if not start_date <= row["trade_date"] <= end_date:
+            continue
+        if allowed_dates is not None and row["trade_date"] not in allowed_dates:
+            continue
+        if _upsert_valuation_history_row(db, symbol, row, industry=industry,
+                                        fill_missing_only=fill_missing_only) is not None:
+            written_dates.append(row["trade_date"])
+    return DateWriteCount(len(written_dates), written_dates)
 
 
 def calc_pe_score(
@@ -379,6 +431,7 @@ def sync_symbol_valuation(
     skip_market_snapshot: bool = False,
     refresh_industry: bool = True,
     history_start_date: date | None = None,
+    fill_missing_only: bool = False,
 ) -> StockValuation | None:
     """Use the same bounded provider as daily jobs, including on-demand scoring."""
     if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
@@ -387,7 +440,8 @@ def sync_symbol_valuation(
     if target_date > date.today():
         return None
     if target_date == date.today():
-        synced = sync_market_valuation_snapshot(db, [symbol], target_date)
+        synced = sync_market_valuation_snapshot(db, [symbol], target_date,
+                                               **({"fill_missing_only": True} if fill_missing_only else {}))
         if symbol.id not in synced:
             return None
         return db.execute(select(StockValuation).where(StockValuation.symbol_id == symbol.id,
@@ -395,7 +449,8 @@ def sync_symbol_valuation(
     rows = _fetch_value_history_rows(db, symbol, start_date=history_start_date or target_date, end_date=target_date)
     written = None
     for row in rows:
-        item = _upsert_valuation_history_row(db, symbol, row, industry=symbol.industry)
+        item = _upsert_valuation_history_row(db, symbol, row, industry=symbol.industry,
+                                           fill_missing_only=fill_missing_only)
         if item is not None:
             written = item
     return written

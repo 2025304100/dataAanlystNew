@@ -2,6 +2,8 @@ from fastapi import APIRouter
 
 from app.api.routes import alerts, app_settings, auto_trade, backtest, custom_indicators, dashboard, db_config, data_mirror, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_experience, factor_mining, factor_mining_wizard, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, g5_dual_run, investment_themes, journals, linkage, macro, market_data, market_events, mining_candidate_pool, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, scoring_facade, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
 from app.core.config import settings
+from app.api.routes import security_status
+from app.api.routes import etf_history
 
 
 api_router = APIRouter(prefix=settings.api_prefix)
@@ -26,6 +28,8 @@ api_router.include_router(scheduled_tasks.router, tags=["scheduled-tasks"])
 api_router.include_router(symbols.router, tags=["symbols"])
 api_router.include_router(watchlists.router, tags=["watchlists"])
 api_router.include_router(market_data.router, tags=["market-data"])
+api_router.include_router(security_status.router, tags=["security-status"])
+api_router.include_router(etf_history.router, tags=["etf-history"])
 api_router.include_router(news.router, tags=["news"])
 api_router.include_router(macro.router, tags=["macro"])
 api_router.include_router(market_events.router, tags=["market-events"])

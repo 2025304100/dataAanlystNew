@@ -6,7 +6,8 @@ from typing import Callable
 
 import requests
 
-from app.services.akshare_utils import call_akshare_with_retry
+from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
+from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
 
 URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
@@ -47,7 +48,11 @@ def fetch_valuation_rows(db, codes: list[str], start: date, end: date,
                 return response.json()
 
         # No provider-internal retries: the whole page has a two-attempt cap.
-        payload = call_akshare_with_retry(request_page, api_key="stock_value_em", max_attempts=2, db=db)
+        api_key = "stock_value_em"
+        assert_akshare_api_enabled(api_key)
+        payload = coalesced_read(request_key(api_key, URL, {**params, "pageNumber": str(page)}),
+            lambda: call_akshare_with_retry(request_page, api_key=api_key, max_attempts=2, db=db), should_cancel=should_cancel)
+        assert_akshare_api_enabled(api_key)
         if payload.get("success") is False:
             if payload.get("code") == 9201 and not payload.get("result") and page == 1:
                 return []

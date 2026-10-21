@@ -19,8 +19,7 @@ import { t } from "../../i18n";
  * 两者是上下游而非重复实现（告警负责识别越界、通知负责投递），所以合的是入口与阅读动线，
  * 后端 `/alerts/*` 与 `/notifications/*` 及各自数据模型不变。
  *
- * 注：「数据中心」一项原为硬编码中文（未走 t()），本次拆分**原样保留**——
- * 本卡 not_do「不改任何设置项的行为与默认值」，文案国际化属另一议题。
+ * 「数据管理」与页面标题保持一致；分区标识和设置行为保持不变。
  */
 
 export type SettingsSection =
@@ -50,7 +49,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "factor-center", icon: <AppstoreOutlined />, labelKey: "factorCenterTabTitle" },
   { key: "factor-mining", icon: <ExperimentOutlined />, labelKey: "factorMiningTabTitle" },
   { key: "factor-basic", icon: <SettingOutlined />, labelKey: "factorBasicTabTitle" },
-  { key: "data-center", icon: <DatabaseOutlined />, label: "数据中心" },
+  { key: "data-center", icon: <DatabaseOutlined />, label: "数据管理" },
   // 通用应用设置（app_settings 登记表驱动，后端加键前端零改动）
   { key: "app-settings", icon: <AppstoreOutlined />, labelKey: "appSettingsTabTitle" },
   { key: "api-mgmt", icon: <ApiOutlined />, labelKey: "apiMgmtTabTitle" },

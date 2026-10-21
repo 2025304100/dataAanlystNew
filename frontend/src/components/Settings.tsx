@@ -24,6 +24,7 @@ import AISettings from "./ai/AISettings";
 import FactorBasicSettings from "./settings/FactorBasicSettings";
 import AppSettingsSection from "./settings/AppSettingsSection";
 import MessageCenter from "./messageCenter/MessageCenter";
+import { backtestMissingLabels, clearBacktestRepair, readBacktestRepair } from "../utils/backtestDraft";
 
 export default function Settings() {
   const ctx = useApp();
@@ -63,6 +64,9 @@ export default function Settings() {
   const [historyFocusSignal, setHistoryFocusSignal] = useState(0);
   const [diagnosticSymbolId, setDiagnosticSymbolId] = useState<number | null>(null);
   const [historyInitContext, setHistoryInitContext] = useState<{ symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" } | null>(null);
+  const [backtestRepair, setBacktestRepair] = useState(readBacktestRepair);
+  const [backtestReturnError, setBacktestReturnError] = useState("");
+  const historyRepair = backtestRepair?.target === "history" ? backtestRepair : null;
 
   useEffect(() => {
     if (rule && activeSymbolId) {
@@ -88,8 +92,9 @@ export default function Settings() {
       // （铃铛「查看全部」传 notifications+deliveries）继续可用，只是落到新壳层。
       const legacyTab = section === "alerts" ? "alerts" : section === "notifications" ? "delivery" : null;
       const targetSection = legacyTab ? "message-center" : section;
-      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt", "tasks", "message-center"].includes(targetSection)) {
+      if (["factor-model", "factor-center", "factor-mining", "data-center", "history", "api-mgmt", "tasks", "message-center"].includes(targetSection)) {
         setActiveSection(targetSection as typeof activeSection);
+        setBacktestRepair(readBacktestRepair());
         if (legacyTab) {
           setMessageCenterTab(legacyTab);
         }
@@ -172,6 +177,7 @@ export default function Settings() {
   const summary = rule ? `${rule.rule_name}${DOT}${rule.mode}` : "-";
 
   const openHistoryInitialization = (context?: { symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" }) => {
+    clearBacktestRepair(); setBacktestRepair(null);
     setHistoryInitContext(context ?? null);
     setActiveSection("history");
     setHistoryFocusSignal((value) => value + 1);
@@ -232,6 +238,28 @@ export default function Settings() {
         <SettingsNav active={activeSection} onSelect={setActiveSection} />
         <div className="settings-content">
           <UnsupportedFeaturesToggle />
+          {backtestRepair && (activeSection === "history" || activeSection === "data-center") && <section
+            className="panel" role="region" aria-label="本次回测需要的资料" style={{ marginBottom: 16 }}
+          >
+            <h3>本次回测需要的资料</h3>
+            <p>组合：{backtestRepair.portfolioName}；标的：{backtestRepair.symbols.length
+              ? backtestRepair.symbols.map((symbol) => `${symbol.symbol}${symbol.name ? ` ${symbol.name}` : ""}`).join("、")
+              : backtestRepair.missingTypes.includes("symbols") ? "当前还没有可回测标的，请先检查组合范围和行情评分资料。" : "按本次组合范围核对，返回后会重新检查标的。"}</p>
+            <p>日期：{backtestRepair.startDate} 至 {backtestRepair.endDate}；缺少：{backtestRepair.missingTypes.map((key) => backtestMissingLabels[key]).join("、")}</p>
+            <p>参数草稿已保留。返回后会重新检查资料，开始回测仍需手动点击。</p>
+            {backtestReturnError && <p role="alert">{backtestReturnError}</p>}
+            <Button onClick={() => {
+              if (!ctx.portfolios.some((portfolio) => portfolio.id === backtestRepair.portfolioId)) {
+                setBacktestReturnError("找不到原来的组合，请先确认组合是否还在。参数草稿仍保留在本机。"); return;
+              }
+              const query = new URLSearchParams(window.location.search);
+              query.delete("bt_run"); query.set("tab", "portfolio"); query.set("subtab", "backtest");
+              window.history.replaceState(window.history.state, "", `${window.location.pathname}?${query}${window.location.hash}`);
+              if (ctx.portfolioId !== backtestRepair.portfolioId) void ctx.switchPortfolio(backtestRepair.portfolioId);
+              clearBacktestRepair();
+              ctx.setActiveSubTab("backtest"); ctx.setActiveTab("portfolio");
+            }}>返回回测并检查资料</Button>
+          </section>}
           {activeSection === "rules" && (
           <div className="settings-tab-container" data-settings-content="settings-rules">
             <section className="band rule-config-band">
@@ -402,7 +430,13 @@ export default function Settings() {
           {activeSection === "history" && (
             <div className="settings-tab-container" data-settings-content="settings-history">
               <section className="band">
-                <HistoryInitSection focusSignal={historyFocusSignal} context={historyInitContext} onClearContext={() => setHistoryInitContext(null)} onOpenDiagnostic={(symbolId) => { setDiagnosticSymbolId(symbolId); setActiveSection("diagnostic"); }} />
+                <HistoryInitSection focusSignal={historyFocusSignal} context={historyRepair ? {
+                  symbolIds: historyRepair.symbols.map((symbol) => symbol.id),
+                  symbolId: historyRepair.symbols.length === 1 ? historyRepair.symbols[0].id : null,
+                  symbolLabel: historyRepair.symbols.length === 1 ? historyRepair.symbols[0].symbol : null,
+                  repairMode: historyRepair.missingTypes.includes("scores") && !historyRepair.missingTypes.includes("bars") ? "scores" : historyRepair.missingTypes.includes("bars") && !historyRepair.missingTypes.includes("scores") ? "bars" : "both",
+                  startDate: historyRepair.startDate, endDate: historyRepair.endDate, portfolioId: historyRepair.portfolioId,
+                } : historyInitContext} onClearContext={historyRepair ? undefined : () => setHistoryInitContext(null)} onOpenDiagnostic={(symbolId) => { setDiagnosticSymbolId(symbolId); setActiveSection("diagnostic"); }} />
               </section>
             </div>
           )}
@@ -470,7 +504,7 @@ export default function Settings() {
           {activeSection === "data-center" && (
             <div className="settings-tab-container" data-settings-content="settings-data-center">
               <section className="band">
-                <DataCenter />
+                <DataCenter backtestRepair={backtestRepair} />
               </section>
             </div>
           )}

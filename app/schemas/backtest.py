@@ -106,7 +106,7 @@ class BacktestCostConfig(BaseModel):
     """回测成本配置，包括佣金、印花税、滑点等交易成本。"""
     commission_rate: float = Field(default=0.0003, ge=0, le=1)
     min_commission: float = Field(default=5.0, ge=0)
-    stamp_tax_rate: float = Field(default=0.001, ge=0, le=1)
+    stamp_tax_rate: float | None = Field(default=None, ge=0, le=1, description="不填则按成交日期及品种适用印花税；显式数值覆盖自动费率")
     slippage_rate: float = Field(default=0.001, ge=0, le=1)
 
 
@@ -395,7 +395,7 @@ class PortfolioBacktestRequest(BaseModel):
     # ↓ WP0-5 新增 8 契约参数（TR-05.3）
     initial_capital: float | None = Field(default=None, gt=0)
     commission_rate: float = Field(default=0.0003, ge=0, le=1)
-    stamp_tax_rate: float = Field(default=0.001, ge=0, le=1)
+    stamp_tax_rate: float | None = Field(default=None, ge=0, le=1, description="不填则按成交日期及品种适用印花税；显式数值覆盖自动费率")
     slippage_bps: int = Field(default=5, ge=0, le=10_000)
     price_type: Literal["NEXT_OPEN", "T_CLOSE"] = "NEXT_OPEN"
     volume_limit_pct: float = Field(default=0.10, ge=0, le=1)

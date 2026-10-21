@@ -21,6 +21,8 @@ TASK_TYPE_LABELS_ZH: dict[str, str] = {
     "universe_smart_sync": "股票池智能同步",
     "data_mirror": "数据镜像",
     "history_initialization": "历史初始化",
+    "security_status_download": "下载历史股票状态",
+    "etf_history_prepare": "补充ETF历史数据",
     "index_daily_sync": "指数日线同步",
     "index_prices_sync": "指数行情同步",
     # 因子与挖掘
@@ -45,6 +47,7 @@ TASK_TYPE_LABELS_ZH: dict[str, str] = {
     "external_data_sync": "外部数据同步",
     # 组合交易
     "portfolio_auto_trade": "组合自动交易",
+    "portfolio_auto_simulation": "组合模拟交易",
     "portfolio_equity_snapshot": "组合权益快照",
     # 告警
     "alert_evaluation": "告警规则评估",

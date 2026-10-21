@@ -4,7 +4,8 @@ import re
 
 import requests
 
-from app.services.akshare_utils import call_akshare_with_retry
+from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
+from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
 
 URL = "https://datacenter.eastmoney.com/securities/api/data/get"
@@ -33,7 +34,11 @@ def fetch_financial_rows(db, code: str | list[str], start: date, end: date, *, s
                 response = requests.get(URL, params={**params, "p": str(page)}, timeout=(5, 15))
                 response.raise_for_status()
                 return response.json()
-        payload = call_akshare_with_retry(request, api_key="stock_financial_analysis_indicator_em", db=db, max_attempts=2)
+        api_key = "stock_financial_analysis_indicator_em"
+        assert_akshare_api_enabled(api_key)
+        payload = coalesced_read(request_key(api_key, URL, {**params, "p": str(page)}),
+            lambda: call_akshare_with_retry(request, api_key=api_key, db=db, max_attempts=2), should_cancel=should_cancel)
+        assert_akshare_api_enabled(api_key)
         if not isinstance(payload, dict):
             raise ValueError("财报接口返回结构异常")
         if payload.get("success") is False:

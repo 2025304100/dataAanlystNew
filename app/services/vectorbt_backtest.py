@@ -56,7 +56,7 @@ class VectorBTConfig:
     max_positions: int = 10
     commission_rate: float = 0.0003
     min_commission: float = 5.0
-    stamp_tax_rate: float = 0.001
+    stamp_tax_rate: float | None = None
     slippage_rate: float = 0.001
     stop_loss_pct: float | None = None
     take_profit_pct: float | None = None
@@ -95,7 +95,10 @@ class VectorBTConfig:
             "stamp_tax_rate",
             "slippage_rate",
         ):
-            value = float(getattr(self, name))
+            raw = getattr(self, name)
+            if name == "stamp_tax_rate" and raw is None:
+                continue
+            value = float(raw)
             if not 0 <= value <= 1:
                 raise ValueError(f"{name} must be between 0 and 1")
         if self.min_commission < 0:
@@ -540,6 +543,11 @@ def run_vectorbt_backtest(
 ) -> dict[str, Any]:
     """Run a cash-sharing long-only VectorBT portfolio."""
     config.validate()
+    if config.stamp_tax_rate is None:
+        raise ValueError(
+            "VectorBT 近似研究回测需要显式配置印花税假设（--stamp-tax-rate）；"
+            "跨税制日期或多品种请使用事件驱动回测。"
+        )
     vbt = _load_vectorbt(disable_numba=config.disable_numba)
     counts = frames.close.notna().sum()
     active_columns = [
@@ -719,6 +727,9 @@ def run_project_vectorbt_backtest(
     score_weight_mode: str = "manual",
     factor_model_run_id: str | None = None,
 ) -> dict[str, Any]:
+    from app.services.security_status.backtest_guard import load_backtest_history
+    config.validate()
+    load_backtest_history(db, symbol_ids, start_date, end_date)
     frames = load_project_frames(
         db,
         symbol_ids=symbol_ids,

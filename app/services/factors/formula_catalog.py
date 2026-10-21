@@ -4,9 +4,11 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import date
 import logging
+from pathlib import Path
 from threading import Lock
 from time import monotonic
 from typing import Any, Mapping
+from app.services.request_coalescing import coalesced_read
 
 from app.services.factors.field_sources import physical_field_column
 
@@ -219,11 +221,14 @@ _FIELD_DATA_POLICIES: dict[str, dict[str, Any]] = {
 _CATALOG_CACHE_TTL_SECONDS = 30.0
 _catalog_cache_lock = Lock()
 _catalog_cache: dict[str, tuple[float, int, dict[str, Any]]] = {}
+_catalog_generation = 0
 
 
 def invalidate_formula_catalog_cache() -> None:
+    global _catalog_generation
     with _catalog_cache_lock:
         _catalog_cache.clear()
+        _catalog_generation += 1
 
 
 def _prepare_coverage_calendar(conn: Any) -> None:
@@ -254,10 +259,30 @@ def _warehouse_cache_key(warehouse: Any) -> tuple[str, int]:
         path = getattr(warehouse, "db_path", None)
     path_text = str(path or "")
     try:
-        mtime = int(path.stat().st_mtime_ns) if path is not None else 0
+        if path is None:
+            return path_text, 0
+        main = Path(path).stat()
+        wal_path = Path(str(path) + ".wal")
+        try:
+            wal = wal_path.stat()
+            wal_stamp = (wal.st_mtime_ns, wal.st_size)
+        except FileNotFoundError:
+            wal_stamp = (0, 0)
+        # DuckDB commits can change only the WAL before a checkpoint. Main
+        # file mtime alone would let a fresh sync reuse pre-sync statistics.
+        mtime = hash((main.st_mtime_ns, main.st_size, *wal_stamp))
     except (AttributeError, OSError):
         mtime = 0
     return path_text, mtime
+
+
+def _cached_stats(base_key, cache_key, stamp, now):
+    """A fresh full catalog also satisfies a dataset-only quality check."""
+    for key in dict.fromkeys((cache_key, base_key)):
+        cached = _catalog_cache.get(key)
+        if cached and cached[0] + _CATALOG_CACHE_TTL_SECONDS > now and cached[1] == stamp:
+            return deepcopy(cached[2])
+    return None
 
 
 def _trailing_trading_streak(
@@ -447,6 +472,7 @@ def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) ->
     try:
         with warehouse.connection(read_only=True) as conn:
             _prepare_coverage_calendar(conn)
+            stock_coverage_prepared = None
             for table, fields in table_fields.items():
                 is_daily_table = table == "raw_daily_bars"
                 try:
@@ -531,6 +557,23 @@ def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) ->
                     for offset, (field, alias) in enumerate(count_aliases.items(), start=5):
                         row_values[f"nonnull:{field}"] = int(row[offset] or 0)
 
+                coverage_counts = {}
+                measurable = list(dict.fromkeys(
+                    "close" if field == "prev_close" else physical_field_column(table, field)
+                    for field in fields
+                    if "symbol" in columns and date_col in columns
+                    and ("close" if field == "prev_close" else physical_field_column(table, field)) in columns
+                ))
+                if measurable and table != "raw_etf_indicators":
+                    try:
+                        if stock_coverage_prepared is None:
+                            _prepare_stock_coverage(conn)
+                            stock_coverage_prepared = True
+                        if stock_coverage_prepared:
+                            coverage_counts = _query_coverage_counts(conn, table=table, fields=measurable)
+                    except Exception:
+                        stock_coverage_prepared = False
+                        logger.warning("Batched coverage unavailable; using the existing field queries", exc_info=True)
                 for field in fields:
                     if field == "prev_close":
                         close_count = row_values.get("nonnull:close", row_values["table_rows"])
@@ -570,15 +613,14 @@ def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) ->
                         and coverage_field in columns
                     )
                     if can_measure_daily_coverage:
-                        coverage = _query_cross_section_coverage(
-                            conn,
-                            table=table,
-                            field=coverage_field,
-                            minimum_coverage=float(
-                                policy.get("minimum_daily_coverage", 0.0)
-                            ),
-                            _calendar_ready=True,
-                        )
+                        minimum = float(policy.get("minimum_daily_coverage", 0.0))
+                        if coverage_field in coverage_counts:
+                            daily, longest_gap = coverage_counts[coverage_field]
+                            coverage = _coverage_summary(daily, minimum_coverage=minimum)
+                            coverage["max_consecutive_gap_days"] = max(coverage["max_consecutive_gap_days"], longest_gap)
+                        else:
+                            coverage = _query_cross_section_coverage(conn, table=table, field=coverage_field,
+                                minimum_coverage=minimum, _calendar_ready=True)
                         stats[field].update(coverage)
                         stats[field]["continuity_days"] = coverage[
                             "trailing_coverage_days"
@@ -586,6 +628,55 @@ def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) ->
     except Exception:
         return {}
     return stats
+
+
+def _prepare_stock_coverage(conn: Any) -> None:
+    """Build the identical 260-session denominator once per catalog read."""
+    conn.execute(f"""CREATE OR REPLACE TEMP TABLE coverage_cn_stock_bars AS
+        WITH eligible AS (
+            SELECT symbol FROM raw_asset_universe
+            WHERE LOWER(asset_type)='stock' AND LOWER(region)='cn' AND is_active=TRUE
+        ), calendar AS (
+            SELECT DISTINCT bars.trade_date FROM raw_daily_bars bars
+            JOIN eligible ON eligible.symbol=bars.symbol
+            WHERE {_open_cn_day_sql('bars.trade_date')}
+            ORDER BY bars.trade_date DESC LIMIT 260
+        )
+        SELECT DISTINCT bars.symbol, bars.trade_date FROM raw_daily_bars bars
+        JOIN calendar ON calendar.trade_date=bars.trade_date
+        JOIN eligible ON eligible.symbol=bars.symbol
+    """)
+
+
+def _query_coverage_counts(conn: Any, *, table: str, fields: list[str]) -> dict:
+    """Join a source once and calculate all of its fields with one shared sort."""
+    if table == "raw_financial_reports":
+        selected = ",".join(fields)
+        # Collapse only same-announcement ties before the temporal join. The
+        # newest visible report (including a NULL metric) must still win.
+        join = f"""ASOF LEFT JOIN (
+            SELECT symbol,announcement_date,{selected} FROM raw_financial_reports
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY symbol,announcement_date ORDER BY report_period DESC
+            )=1
+        ) source ON bars.symbol=source.symbol AND bars.trade_date>=source.announcement_date"""
+    else:
+        join = f"LEFT JOIN {table} source ON source.symbol=bars.symbol AND source.trade_date=bars.trade_date"
+    flags = ",".join(f"BOOL_OR(source.{field} IS NOT NULL) AS covered_{i}" for i, field in enumerate(fields))
+    islands = ",".join(f"SUM(CASE WHEN covered_{i} THEN 1 ELSE 0 END) OVER streak AS island_{i}" for i in range(len(fields)))
+    gaps = ",".join(f"gap_{i} AS (SELECT COUNT(*) gap_days FROM gap_islands WHERE NOT covered_{i} GROUP BY symbol,island_{i})" for i in range(len(fields)))
+    counts = ",".join(f"COUNT(*) FILTER (WHERE covered_{i}), (SELECT COALESCE(MAX(gap_days),0) FROM gap_{i})" for i in range(len(fields)))
+    rows = conn.execute(f"""WITH observations AS (
+        SELECT bars.symbol,bars.trade_date,{flags} FROM coverage_cn_stock_bars bars
+        {join} GROUP BY bars.symbol,bars.trade_date
+    ), gap_islands AS (
+        SELECT *,{islands} FROM observations
+        WINDOW streak AS (PARTITION BY symbol ORDER BY trade_date)
+    ), {gaps}
+    SELECT trade_date,COUNT(*),{counts} FROM observations
+    GROUP BY trade_date ORDER BY trade_date DESC""").fetchall()
+    return {field: ([(row[0],int(row[1]),int(row[2+2*i])) for row in rows],
+                    int(rows[0][3+2*i]) if rows else 0) for i,field in enumerate(fields)}
 
 
 def _field_capability(field_name: str, stats: Mapping[str, Any]) -> dict[str, Any]:
@@ -671,21 +762,31 @@ def build_formula_catalog(warehouse: Any | None = None, *, field_keys: set[str] 
     """
     field_stats: dict[str, dict[str, Any]] = {}
     if warehouse is not None:
-        cache_key, cache_mtime = _warehouse_cache_key(warehouse)
+        base_key, cache_mtime = _warehouse_cache_key(warehouse)
+        cache_key = base_key
         if field_keys is not None:
             cache_key += "#fields=" + ",".join(sorted(field_keys))
         now = monotonic()
         with _catalog_cache_lock:
-            cached = _catalog_cache.get(cache_key)
-            if cached and cached[0] + _CATALOG_CACHE_TTL_SECONDS > now and cached[1] == cache_mtime:
-                field_stats = deepcopy(cached[2])
-        if not field_stats:
-            field_stats = (_query_field_stats(warehouse, field_keys=field_keys)
-                           if field_keys is not None else _query_field_stats(warehouse))
-            with _catalog_cache_lock:
-                # A large warehouse query may itself outlast the TTL. Start
-                # freshness after it finishes, so the next UI read can reuse it.
-                _catalog_cache[cache_key] = (monotonic(), cache_mtime, deepcopy(field_stats))
+            cached = _cached_stats(base_key, cache_key, cache_mtime, now)
+            generation = _catalog_generation
+        if cached is not None:
+            field_stats = cached
+        else:
+            def read_stats():
+                # Another caller may have completed a compatible full read
+                # between the cache miss and becoming the request leader.
+                with _catalog_cache_lock:
+                    ready = _cached_stats(base_key, cache_key, cache_mtime, monotonic())
+                if ready is not None:
+                    return ready
+                values = (_query_field_stats(warehouse, field_keys=field_keys)
+                          if field_keys is not None else _query_field_stats(warehouse))
+                with _catalog_cache_lock:
+                    if generation == _catalog_generation:
+                        _catalog_cache[cache_key] = (monotonic(), cache_mtime, deepcopy(values))
+                return values
+            field_stats = coalesced_read(f"catalog:{cache_key}:{cache_mtime}:{generation}", read_stats)
 
     fields = [
         {

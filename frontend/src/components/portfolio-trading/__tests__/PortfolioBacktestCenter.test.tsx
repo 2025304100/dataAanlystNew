@@ -1,11 +1,13 @@
 ﻿﻿﻿﻿﻿﻿import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-const { mockApi, mockToast } = vi.hoisted(() => ({
+const { mockApi, mockToast, mockSetActiveTab } = vi.hoisted(() => ({
   mockApi: {
     getPortfolioBacktestSourceStatus: vi.fn(),
     getBacktestRuns: vi.fn(),
     runPortfolioBacktest: vi.fn(),
+    runBacktest: vi.fn(),
+    getSymbols: vi.fn(),
     getBacktestRun: vi.fn(),
     getBacktestTrades: vi.fn(),
     getBacktestEvidence: vi.fn(),
@@ -15,6 +17,7 @@ const { mockApi, mockToast } = vi.hoisted(() => ({
     postBacktestPrecheck: vi.fn(),
   },
   mockToast: vi.fn(),
+  mockSetActiveTab: vi.fn(),
 }));
 
 vi.mock("../../../api/client", () => ({
@@ -22,7 +25,7 @@ vi.mock("../../../api/client", () => ({
 }));
 
 vi.mock("../../../context/AppContext", () => ({
-  useApp: () => ({ showToast: mockToast, setActiveTab: vi.fn() }),
+  useApp: () => ({ showToast: mockToast, setActiveTab: mockSetActiveTab }),
 }));
 
 vi.mock("../../../i18n", () => ({
@@ -209,7 +212,8 @@ const passingPrecheck = {
 
 describe("PortfolioBacktestCenter paged ledger contract", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    window.localStorage.clear();
     window.history.replaceState({}, "", "/");
     mockApi.getPortfolioBacktestSourceStatus.mockResolvedValue({
       enabled: true,
@@ -217,6 +221,8 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
       source_label: "members",
     });
     mockApi.getBacktestRuns.mockResolvedValue([historicalRun]);
+    mockApi.getSymbols.mockResolvedValue([{ id: 11, symbol: "600000" }]);
+    mockApi.runBacktest.mockResolvedValue(historicalRun);
     mockApi.runPortfolioBacktest.mockResolvedValue(currentSummary);
     mockApi.getBacktestRun.mockResolvedValue(historicalRun);
     mockApi.getBacktestTrades.mockImplementation((runId: number) => Promise.resolve({
@@ -248,6 +254,611 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
       items: [],
     });
     mockApi.postBacktestPrecheck.mockResolvedValue(passingPrecheck);
+  });
+
+  it("submits single-stock commissions without overriding execution-date stamp duty", async () => {
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.modeSingle" }));
+    fireEvent.change(screen.getByPlaceholderText("portfolioTrading.backtest.symbolPlaceholder"), {
+      target: { value: "600000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
+
+    await waitFor(() => expect(mockApi.runBacktest).toHaveBeenCalledOnce());
+    const payload = mockApi.runBacktest.mock.calls[0][0];
+    expect(payload.cost_config.commission_rate).toBe(0.0003);
+    expect(payload.cost_config).not.toHaveProperty("stamp_tax_rate");
+  });
+
+  it("keeps optional settings out of the way and preserves their current values when reopened", async () => {
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+
+    const summary = screen.getByText("portfolioTrading.backtest.flow.moreSettings");
+    const settings = summary.closest("details");
+    expect(settings).not.toHaveAttribute("open");
+    expect(summary.parentElement).toHaveTextContent("沪深300");
+    expect(summary.parentElement).toHaveTextContent("0.03%");
+    fireEvent.click(summary);
+    const commission = screen.getByRole("textbox", { name: "portfolioTrading.backtest.commission" });
+    fireEvent.change(commission, { target: { value: "0.05" } });
+    fireEvent.click(summary);
+    expect(settings).not.toHaveAttribute("open");
+    expect(summary.parentElement).toHaveTextContent("0.05%");
+    fireEvent.click(summary);
+    expect(screen.getByRole("textbox", { name: "portfolioTrading.backtest.commission" })).toHaveValue("0.05");
+    await waitFor(() => expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" }));
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce());
+    expect(mockApi.runPortfolioBacktest.mock.calls[0][1]).toMatchObject({ commission_rate: 0.0005, benchmark: "沪深300", pit_mode: "production_pit" });
+  });
+
+  it("explains a failed data check in place and lets the user retry without changing dates", async () => {
+    mockApi.postBacktestPrecheck.mockRejectedValueOnce(new Error("网络连接失败"));
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+
+    const retry = await screen.findByRole("button", { name: "portfolioTrading.backtest.flow.checkAgain" });
+    expect(screen.getByTestId("precheck-blockers-inline")).toHaveTextContent("网络连接失败");
+    expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.needsAttention" })).toBeDisabled();
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(mockApi.postBacktestPrecheck.mock.calls[1][0]).toEqual(mockApi.postBacktestPrecheck.mock.calls[0][0]);
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+  });
+
+  it("keeps manual calculation tools collapsed and explains that they save records without placing orders", async () => {
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const summary = screen.getByText("portfolioTrading.backtest.flow.calculationRecords");
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.createRecords" })).not.toBeVisible();
+    fireEvent.click(summary);
+    expect(screen.getByPlaceholderText("portfolioTrading.backtest.flow.snapshotNumber")).toBeVisible();
+    expect(screen.getByText("portfolioTrading.backtest.flow.calculationRecordsHint")).toBeVisible();
+    expect(mockApi.evaluatePortfolioDecision).not.toHaveBeenCalled();
+    await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+  });
+
+  it.each([
+    { missing: "bars_date", combined: "2026-09-01", expected: null },
+    { missing: "status_date", combined: "2026-09-01", expected: null },
+    { missing: "factors_date", combined: "2026-09-01", expected: null },
+    { missing: "none", combined: null, expected: null },
+    { missing: "none", combined: "2026-08-30", expected: "2026-08-30" },
+  ])("does not infer usable data from incomplete or rejected cutoffs: $missing / $combined", async ({ missing, combined, expected }) => {
+    const dates = { bars_date: "2026-09-02", status_date: "2026-09-01", factors_date: "2026-09-03", unified_earliest: combined };
+    mockApi.postBacktestPrecheck.mockResolvedValue({ ...passingPrecheck, data_cutoff: { ...dates, ...(missing === "none" ? {} : { [missing]: null }) } });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const capsule = await screen.findByTestId("data-cutoff-capsule");
+    await waitFor(() => expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled());
+    await waitFor(() => expect(capsule).toHaveTextContent(missing === "bars_date" ? "行情日期: 未提供" : "行情截至: 2026-09-02"));
+    if (expected) expect(capsule).toHaveTextContent(`可用数据截至: ${expected}`);
+    else {
+      expect(capsule).toHaveTextContent("可用数据日期: 未提供");
+      expect(capsule).not.toHaveTextContent("可用数据截至:");
+    }
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+  });
+
+  it("opens data management for a missing portfolio trading range that can be managed there", async () => {
+    mockApi.postBacktestPrecheck.mockResolvedValue({
+      ...passingPrecheck,
+      blocking_reasons: [{
+        code: "NO_BACKTEST_SYMBOLS",
+        title_zh: "无可回测标的",
+        detail_zh: "当前组合没有可以回测的股票",
+        fix_link: { tab: "settings-data-center", label_zh: "检查基础行情" },
+      }],
+    });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const notice = await screen.findByTestId("precheck-blockers-inline");
+    expect(notice).toHaveTextContent("portfolioTrading.backtest.flow.noSymbols");
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.openData" }));
+    expect(mockSetActiveTab).toHaveBeenCalledWith("settings");
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: "STATUS_DATA_UNAVAILABLE", key: "statusMissing", tab: "portfolio-backtest", detail: "security_status_daily coverage < 70%" },
+    { code: "TRADE_CALENDAR_UNAVAILABLE", key: "calendarMissing", tab: "portfolio-backtest", detail: "trade_calendar is_trading_day unavailable" },
+    { code: "STATUS_DATA_UNAVAILABLE", key: "statusMissing", tab: "settings-data-center", detail: "security_status_daily coverage < 70%" },
+    { code: "PRICE_LIMIT_DATA_UNAVAILABLE", key: "priceLimitsMissing", tab: "settings-data-center", detail: "daily exchange bounds unavailable" },
+    { code: "TRADE_CALENDAR_UNAVAILABLE", key: "calendarMissing", tab: "settings", detail: "trade_calendar is_trading_day unavailable" },
+  ])("offers an existing historical inputs repair only for $code with $tab", async ({ code, key, tab, detail }) => {
+    mockApi.postBacktestPrecheck.mockResolvedValue({
+      ...passingPrecheck,
+      blocking_reasons: [{ code, title_zh: `${code} fail-closed`, detail_zh: detail,
+        evidence: { start_date: "2023-01-01", coverage: 0.4 },
+        fix_link: { tab, label_zh: `补齐 ${detail}` },
+      }],
+    });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByTestId("portfolio-backtest-range-3y"));
+    fireEvent.change(screen.getByPlaceholderText("1,000,000"), { target: { value: "123456" } });
+    const dates = screen.getByTestId("portfolio-backtest-range-picker").getAttribute("data-value");
+    const notice = await screen.findByTestId("precheck-blockers-inline");
+    expect(notice).toHaveTextContent(`portfolioTrading.backtest.flow.${key}`);
+    expect(screen.queryByRole("button", { name: "portfolioTrading.backtest.flow.openData" })).not.toBeInTheDocument();
+    if (code === "STATUS_DATA_UNAVAILABLE" || code === "PRICE_LIMIT_DATA_UNAVAILABLE") {
+      expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.importStatus" })).toBeVisible();
+    } else {
+      expect(screen.queryByRole("button", { name: "portfolioTrading.backtest.flow.importStatus" })).not.toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByTestId("precheck-blockers-open"));
+    const dialog = screen.getByTestId("antd-modal");
+    expect(within(dialog).getByText(`portfolioTrading.backtest.flow.${key}`)).toBeVisible();
+    const technical = within(dialog).getByText("查看错误详情").closest("details");
+    expect(technical).not.toHaveAttribute("open");
+    expect(technical).toHaveTextContent(code);
+    expect(technical).toHaveTextContent(detail);
+    expect(technical).toHaveTextContent('"coverage":0.4');
+    const original = technical?.querySelector("pre");
+    expect(original).not.toBeVisible();
+    fireEvent.click(within(dialog).getByText("查看错误详情"));
+    expect(original).toBeVisible();
+    expect(screen.getByTestId("portfolio-backtest-range-picker")).toHaveAttribute("data-value", dates);
+    expect(screen.getByPlaceholderText("1,000,000")).toHaveValue("123456");
+    expect(mockSetActiveTab).not.toHaveBeenCalled();
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+    expect(mockApi.evaluatePortfolioDecision).not.toHaveBeenCalled();
+    if (code === "STATUS_DATA_UNAVAILABLE" || code === "PRICE_LIMIT_DATA_UNAVAILABLE") {
+      fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.importStatus" }));
+      expect(mockSetActiveTab).toHaveBeenCalledWith("settings");
+      expect(window.localStorage.getItem("settings_active_section")).toBe("data-center");
+      expect(window.localStorage.getItem("settings_data_center_tab")).toBe("coverage");
+    }
+  });
+
+  it.each(["UNRECOGNIZED_DATA_ERROR", "PRECHECK_FAILED"])("does not guess a data repair route for %s even when a generic settings link is present", async (code) => {
+    mockApi.postBacktestPrecheck.mockResolvedValue({ ...passingPrecheck, blocking_reasons: [{
+      code, title_zh: "暂时无法完成检查", detail_zh: "请重试。", fix_link: { tab: "settings", label_zh: "检查设置" },
+    }] });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    await screen.findByTestId("precheck-blockers-inline");
+    expect(screen.queryByRole("button", { name: "portfolioTrading.backtest.flow.openData" })).not.toBeInTheDocument();
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+    expect(mockApi.evaluatePortfolioDecision).not.toHaveBeenCalled();
+  });
+
+  it("lets a failed submission retry from the result area with the same settings and a fresh data check", async () => {
+    mockApi.runPortfolioBacktest.mockRejectedValueOnce(new Error("网络连接中断"));
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    const retry = await screen.findByRole("button", { name: "portfolioTrading.backtest.flow.runAgain" });
+    expect(screen.getByTestId("backtest-gate-state")).toHaveTextContent("网络连接中断");
+    const firstPayload = mockApi.runPortfolioBacktest.mock.calls[0][1];
+    const checksBeforeRetry = mockApi.postBacktestPrecheck.mock.calls.length;
+    fireEvent.click(retry);
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledTimes(2));
+    expect(mockApi.postBacktestPrecheck.mock.calls.length).toBeGreaterThan(checksBeforeRetry);
+    expect(mockApi.runPortfolioBacktest.mock.calls[1][1]).toEqual(firstPayload);
+    await waitFor(() => expect(screen.queryByTestId("backtest-gate-state")).not.toBeInTheDocument());
+  });
+
+  it("can research the saved portfolio strategy while automatic trading stays off", async () => {
+    const onNavigate = vi.fn();
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled={false} onNavigate={onNavigate} />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(screen.queryByText("portfolioTrading.backtest.autoTradeRequiredHint")).not.toBeInTheDocument();
+    fireEvent.click(start);
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce());
+    expect(mockApi.runPortfolioBacktest.mock.calls[0][1]).toMatchObject({ pit_mode: "production_pit" });
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(mockApi.evaluatePortfolioDecision).not.toHaveBeenCalled();
+  });
+
+  it("recovers a temporary progress read failure by querying the same run without submitting another backtest", async () => {
+    mockApi.runPortfolioBacktest.mockResolvedValue({ ...currentSummary, status: "running" });
+    mockApi.getBacktestRun.mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue({ ...historicalRun, id: 101, status: "running", stage: "running", progress_pct: 65 });
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled={false} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled());
+    vi.useFakeTimers();
+    try {
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+      expect(screen.getByText("暂时读不到回测进度，正在重试。")).toBeVisible();
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(screen.getByTestId("antd-progress-label")).toHaveTextContent("65%");
+      expect(screen.queryByText("暂时读不到回测进度，正在重试。")).not.toBeInTheDocument();
+      expect(mockApi.getBacktestRun.mock.calls.every(([id]) => id === 101)).toBe(true);
+      expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce();
+      expect(mockApi.evaluatePortfolioDecision).not.toHaveBeenCalled();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it("keeps the original task after repeated progress failures and can resume reading it in place", async () => {
+    mockApi.runPortfolioBacktest.mockResolvedValue({ ...currentSummary, status: "running" });
+    mockApi.getBacktestRun.mockRejectedValue(new Error("network down"));
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled={false} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled());
+    vi.useFakeTimers();
+    try {
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(4500); });
+      expect(screen.getByText("暂时读不到回测进度，任务可能仍在运行。")).toBeVisible();
+      expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.running" })).toBeDisabled();
+      const attempts = mockApi.getBacktestRun.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+      expect(mockApi.getBacktestRun.mock.calls.length).toBe(attempts);
+      expect(screen.queryByText("任务疑似卡住")).not.toBeInTheDocument();
+      mockApi.getBacktestRun.mockResolvedValue({ ...historicalRun, id: 101, status: "running", stage: "running", progress_pct: 85 });
+      fireEvent.click(screen.getByRole("button", { name: "重新查看进度" }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+      expect(screen.getByTestId("antd-progress-label")).toHaveTextContent("85%");
+      expect(screen.queryByRole("button", { name: "重新查看进度" })).not.toBeInTheDocument();
+      expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it("shows the finished result of the original task when its progress reaches completion", async () => {
+    mockApi.runPortfolioBacktest.mockResolvedValue({ ...currentSummary, status: "running" });
+    mockApi.getBacktestRun.mockResolvedValue({ ...historicalRun, id: 101, status: "completed", stage: "success", total_return_pct: 0.1234 });
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled={false} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled());
+    vi.useFakeTimers();
+    try {
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+      expect(screen.getAllByText("+12.3%").length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled();
+      expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it("aborts a progress request and stops polling when the backtest page is left", async () => {
+    let resolveProgress!: (value: unknown) => void;
+    mockApi.runPortfolioBacktest.mockResolvedValue({ ...currentSummary, status: "running" });
+    mockApi.getBacktestRun.mockImplementation(() => new Promise((resolve) => { resolveProgress = resolve; }));
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled={false} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })).toBeEnabled());
+    vi.useFakeTimers();
+    try {
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+      const signal = mockApi.getBacktestRun.mock.calls[0][1] as AbortSignal;
+      expect(signal.aborted).toBe(false);
+      view.unmount();
+      expect(signal.aborted).toBe(true);
+      await act(async () => { resolveProgress({ ...historicalRun, id: 101 }); await vi.advanceTimersByTimeAsync(10000); });
+      expect(mockApi.getBacktestRun).toHaveBeenCalledOnce();
+      expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it.each([
+    { name: "网络中断", error: new Error("网络连接中断") },
+    { name: "502", error: { status_code: 502, message: "Bad Gateway" } },
+    { name: "404", error: { status_code: 404, message: "Not Found" } },
+    { name: "501", error: { status_code: 501, message: "NOT_IMPLEMENTED" } },
+  ])("does not submit when the final data check fails with $name and requires another explicit start after recovery", async ({ error }) => {
+    mockApi.postBacktestPrecheck
+      .mockResolvedValueOnce(passingPrecheck)
+      .mockRejectedValueOnce(error)
+      .mockResolvedValue(passingPrecheck);
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+
+    const retry = await screen.findByRole("button", { name: "portfolioTrading.backtest.flow.checkAgain" });
+    expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.needsAttention" })).toBeDisabled();
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+    expect(mockApi.evaluatePortfolioDecision).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    const recoveredStart = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(recoveredStart).toBeEnabled());
+    expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
+    fireEvent.click(recoveredStart);
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledOnce());
+    expect(mockApi.postBacktestPrecheck.mock.calls[1][0]).toEqual(mockApi.postBacktestPrecheck.mock.calls[0][0]);
+  });
+
+  it.each(["response", "error"])("keeps a new portfolio submission running when the old portfolio %s arrives", async (lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    let resolveCurrent!: (value: unknown) => void;
+    mockApi.runPortfolioBacktest
+      .mockImplementationOnce(() => new Promise((resolve, reject) => { resolveOld = resolve; rejectOld = reject; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveCurrent = resolve; }));
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const firstRun = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(firstRun).toBeEnabled());
+    fireEvent.click(firstRun);
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledTimes(1));
+
+    view.rerender(<PortfolioBacktestCenter portfolioId={2} autoTradeEnabled />);
+    const nextRun = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(nextRun).toBeEnabled());
+    fireEvent.click(nextRun);
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledTimes(2));
+    mockToast.mockClear();
+    await act(async () => {
+      if (lateKind === "response") resolveOld({ ...currentSummary, run_id: 701 });
+      else rejectOld(new Error("old portfolio submission failed"));
+    });
+    expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.submitting" })).toBeDisabled();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(new URLSearchParams(window.location.search).get("bt_run")).toBeNull();
+
+    await act(async () => { resolveCurrent({ ...currentSummary, portfolio_id: 2, run_id: 702 }); });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("bt_run")).toBe("702"));
+  });
+
+  it("does not let an old run's delayed completion unlock a new portfolio submission", async () => {
+    let resolveCurrent!: (value: unknown) => void;
+    let resolveOldProgress!: (value: unknown) => void;
+    mockApi.getBacktestRun.mockImplementationOnce(() => new Promise((resolve) => { resolveOldProgress = resolve; }));
+    mockApi.runPortfolioBacktest.mockResolvedValueOnce({ ...currentSummary, status: "running" })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveCurrent = resolve; }));
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const firstRun = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(firstRun).toBeEnabled());
+    fireEvent.click(firstRun);
+    await waitFor(() => expect(mockApi.getBacktestRun).toHaveBeenCalledWith(101, expect.any(AbortSignal)));
+    view.rerender(<PortfolioBacktestCenter portfolioId={2} autoTradeEnabled />);
+    const nextRun = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(nextRun).toBeEnabled());
+    fireEvent.click(nextRun);
+    await waitFor(() => expect(mockApi.runPortfolioBacktest).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveOldProgress({ ...historicalRun, id: 101 }); });
+    expect(screen.getByRole("button", { name: "portfolioTrading.backtest.flow.submitting" })).toBeDisabled();
+    await act(async () => { resolveCurrent({ ...currentSummary, portfolio_id: 2, run_id: 702 }); });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("bt_run")).toBe("702"));
+  });
+
+  it.each([
+    ["symbol", "response"], ["symbol", "error"],
+    ["submission", "response"], ["submission", "error"],
+    ["detail", "response"], ["detail", "error"],
+  ])("ignores an old portfolio single-stock %s %s while the new submission is running", async (stage, lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    let resolveCurrent!: (value: unknown) => void;
+    const oldRead = new Promise((resolve, reject) => { resolveOld = resolve; rejectOld = reject; });
+    const currentRun = new Promise((resolve) => { resolveCurrent = resolve; });
+    mockApi.getSymbols.mockImplementation((code: string) => stage === "symbol" && code === "600000"
+      ? oldRead : Promise.resolve([{ id: 11, symbol: code }]));
+    mockApi.runBacktest.mockImplementation((payload: { portfolio_id: number }) => payload.portfolio_id === 2
+      ? currentRun : stage === "submission" ? oldRead : Promise.resolve(historicalRun));
+    mockApi.getBacktestRun.mockImplementation((runId: number) => runId === 77
+      ? stage === "detail" ? oldRead : Promise.resolve(historicalRun)
+      : Promise.resolve({ ...historicalRun, id: 88, portfolio_id: 2, total_return_pct: 0.1234 }));
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.modeSingle" }));
+    fireEvent.change(screen.getByPlaceholderText("portfolioTrading.backtest.symbolPlaceholder"), { target: { value: "600000" } });
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
+    await waitFor(() => {
+      if (stage === "symbol") expect(mockApi.getSymbols).toHaveBeenCalledWith("600000", { pageSize: 50 });
+      else if (stage === "submission") expect(mockApi.runBacktest).toHaveBeenCalledTimes(1);
+      else expect(mockApi.getBacktestRun).toHaveBeenCalledWith(77);
+    });
+    view.rerender(<PortfolioBacktestCenter portfolioId={2} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.modeSingle" }));
+    fireEvent.change(screen.getByPlaceholderText("portfolioTrading.backtest.symbolPlaceholder"), { target: { value: "000001" } });
+    fireEvent.click(await screen.findByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
+    await waitFor(() => expect(mockApi.runBacktest).toHaveBeenCalledWith(expect.objectContaining({ portfolio_id: 2 })));
+    mockToast.mockClear();
+    await act(async () => {
+      if (lateKind === "error") rejectOld(new Error("old single-stock request failed"));
+      else resolveOld(stage === "symbol" ? [{ id: 11, symbol: "600000" }] : historicalRun);
+    });
+    expect(screen.getByRole("button", { name: "portfolioTrading.backtest.running" })).toBeDisabled();
+    expect(mockToast).not.toHaveBeenCalled();
+    await act(async () => { resolveCurrent({ ...historicalRun, id: 88, portfolio_id: 2 }); });
+    expect(await screen.findByText("+12.3%")).toBeInTheDocument();
+  });
+
+  it("shows a retryable history read failure and only calls a successful empty list empty", async () => {
+    mockApi.getBacktestRuns.mockRejectedValueOnce(new Error("history offline"));
+    mockApi.getBacktestRuns.mockResolvedValue([]);
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("portfolioTrading.backtest.readRecovery.historyFailed");
+    expect(failure).toHaveTextContent("history offline");
+    expect(screen.queryByText("portfolioTrading.backtest.historyEmpty")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.readRecovery.retry" }));
+    expect(await screen.findByText("portfolioTrading.backtest.historyEmpty")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["response", "error"])("ignores a late history %s after switching portfolios", async (lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    mockApi.getBacktestRuns.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      resolveOld = resolve; rejectOld = reject;
+    }));
+    mockApi.getBacktestRuns.mockResolvedValueOnce([{ ...historicalRun, id: 88, portfolio_id: 2, run_name: "second portfolio history" }]);
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    await waitFor(() => expect(mockApi.getBacktestRuns).toHaveBeenCalledWith(1, 10));
+    view.rerender(<PortfolioBacktestCenter portfolioId={2} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    expect(await screen.findByText("second portfolio history")).toBeInTheDocument();
+    await act(async () => {
+      if (lateKind === "response") resolveOld([historicalRun]);
+      else rejectOld(new Error("old portfolio offline"));
+    });
+    expect(screen.getByText("second portfolio history")).toBeInTheDocument();
+    expect(screen.queryByText("historic-run")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps a ledger read failure distinct from loading and a successful empty ledger", async () => {
+    let resolveRetry!: (value: unknown) => void;
+    mockApi.getBacktestTrades.mockRejectedValueOnce(new Error("ledger offline"));
+    mockApi.getBacktestTrades.mockImplementationOnce(() => new Promise((resolve) => { resolveRetry = resolve; }));
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    fireEvent.click(await screen.findByRole("tab", { name: /交易流水 2/ }));
+
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("portfolioTrading.backtest.readRecovery.tradesFailed");
+    expect(failure).toHaveTextContent("ledger offline");
+    expect(screen.queryByText("本次回测没有形成交易计划")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.readRecovery.retry" }));
+    expect(await screen.findByText("正在加载交易流水…")).toBeInTheDocument();
+    expect(screen.queryByText("本次回测没有形成交易计划")).not.toBeInTheDocument();
+    await act(async () => resolveRetry({ items: [], total: 0 }));
+    expect(await screen.findByText("本次回测没有形成交易计划")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not claim there are no rejected decisions when evidence reading fails", async () => {
+    mockApi.getBacktestEvidence.mockRejectedValueOnce(new Error("evidence offline"));
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    fireEvent.click(await screen.findByRole("tab", { name: "拒绝记录" }));
+
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("portfolioTrading.backtest.readRecovery.evidenceFailed");
+    expect(failure).toHaveTextContent("evidence offline");
+    expect(screen.queryByText("本次回测没有 REJECTED / DATA_BLOCKED 记录。")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.readRecovery.retry" }));
+    expect(await screen.findByText("本次回测没有 REJECTED / DATA_BLOCKED 记录。")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows history result loading and a persistent retryable read error instead of old empty conclusions", async () => {
+    let rejectRead!: (error: Error) => void;
+    mockApi.getBacktestRun.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRead = reject; }));
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    fireEvent.click(await screen.findByText("historic-run"));
+    expect(screen.getByRole("status")).toHaveTextContent("portfolioTrading.backtest.readRecovery.runLoading");
+    expect(screen.queryByText("portfolioTrading.backtest.noResultTip")).not.toBeInTheDocument();
+    await act(async () => rejectRead(new Error("history result offline")));
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("portfolioTrading.backtest.readRecovery.runFailed");
+    expect(failure).toHaveTextContent("history result offline");
+    expect(screen.queryByText("portfolioTrading.backtest.noResultTip")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.readRecovery.retry" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /交易流水 1/ }));
+    expect(await screen.findByText("#22")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["response", "error"])("does not let a late historical result %s replace a newly submitted run", async (lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    mockApi.getBacktestRun.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      resolveOld = resolve; rejectOld = reject;
+    }));
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    fireEvent.click(await screen.findByText("historic-run"));
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    fireEvent.click(await screen.findByRole("tab", { name: /交易流水 2/ }));
+    expect(await screen.findByText("#11")).toBeInTheDocument();
+    await act(async () => {
+      if (lateKind === "response") resolveOld(historicalRun);
+      else rejectOld(new Error("old history failure"));
+    });
+    expect(screen.getByText("#11")).toBeInTheDocument();
+    expect(screen.queryByText("#22")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["response", "error"])("keeps the latest selected history run after an older %s arrives", async (lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    const newer = { ...historicalRun, id: 88, run_name: "newer history run" };
+    mockApi.getBacktestRuns.mockResolvedValue([historicalRun, newer]);
+    mockApi.getBacktestRun.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      resolveOld = resolve; rejectOld = reject;
+    }));
+    mockApi.getBacktestRun.mockResolvedValue(newer);
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    fireEvent.click(await screen.findByText("historic-run"));
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    fireEvent.click(screen.getByText("newer history run"));
+    await screen.findByRole("tab", { name: /交易流水 1/ });
+    await act(async () => {
+      if (lateKind === "response") resolveOld(historicalRun);
+      else rejectOld(new Error("stale history detail error"));
+    });
+    expect(new URLSearchParams(window.location.search).get("bt_run")).toBe("88");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("clears an obsolete history loading state when the active portfolio changes", async () => {
+    let rejectOld!: (error: Error) => void;
+    mockApi.getBacktestRun.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    fireEvent.click(await screen.findByText("historic-run"));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    view.rerender(<PortfolioBacktestCenter portfolioId={2} autoTradeEnabled />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await act(async () => rejectOld(new Error("prior portfolio run failed")));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("portfolioTrading.backtest.noResultTip")).toBeInTheDocument();
+  });
+
+  it.each(["response", "error"])("ignores an older ledger filter %s while keeping the current query", async (lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    mockApi.getBacktestTrades.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      resolveOld = resolve; rejectOld = reject;
+    }));
+    mockApi.getBacktestTrades.mockResolvedValueOnce({ total: 1, items: [
+      { id: 22, run_id: 101, symbol_id: 22, entry_date: "2025-01-02", entry_price: 10, quantity: 100 },
+    ] });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    fireEvent.click(await screen.findByRole("tab", { name: /交易流水 2/ }));
+    await waitFor(() => expect(mockApi.getBacktestTrades).toHaveBeenCalled());
+    fireEvent.change(screen.getByRole("textbox", { name: "证券 ID 筛选" }), { target: { value: "22" } });
+    expect(await screen.findByText("#22")).toBeInTheDocument();
+    await act(async () => {
+      if (lateKind === "response") resolveOld({ total: 0, items: [] });
+      else rejectOld(new Error("stale filtered ledger error"));
+    });
+    expect(screen.getByText("#22")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("本次回测没有形成交易计划")).not.toBeInTheDocument();
+  });
+
+  it.each(["response", "error"])("ignores prior-run rejected evidence %s after choosing another run", async (lateKind) => {
+    let resolveOld!: (value: unknown) => void;
+    let rejectOld!: (error: Error) => void;
+    mockApi.getBacktestEvidence.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      resolveOld = resolve; rejectOld = reject;
+    }));
+    mockApi.getBacktestEvidence.mockResolvedValueOnce({ total: 1, items: [
+      { id: "new-evidence", decision_run_id: "new-decision", symbol_id: 22,
+        trade_date: "2024-01-02", action: "REJECTED", rejection_reason: "new run risk constraint" },
+    ] });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    const start = await screen.findByRole("button", { name: "portfolioTrading.backtest.startRun" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    fireEvent.click(await screen.findByRole("tab", { name: "拒绝记录" }));
+    await waitFor(() => expect(mockApi.getBacktestEvidence).toHaveBeenCalledWith(101, expect.anything()));
+    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.historyBtn" }));
+    fireEvent.click(await screen.findByText("historic-run"));
+    expect(await screen.findByText("new run risk constraint")).toBeInTheDocument();
+    await act(async () => {
+      if (lateKind === "response") resolveOld({ total: 0, items: [] });
+      else rejectOld(new Error("stale rejected evidence error"));
+    });
+    expect(screen.getByText("new run risk constraint")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("本次回测没有 REJECTED / DATA_BLOCKED 记录。")).not.toBeInTheDocument();
   });
 
   it("loads the ledger only after the transaction tab opens and replaces it for a selected historical run", async () => {
@@ -439,7 +1050,7 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startRun" }));
 
     const gate = await screen.findByTestId("backtest-gate-state");
-    expect(gate).toHaveTextContent("回测被数据门禁阻断");
+    expect(gate).toHaveTextContent("portfolioTrading.backtest.flow.dataNotReady");
     expect(gate).toHaveTextContent("BACKTEST_MARKET_DATA_MISSING");
     expect(gate).toHaveTextContent("gate-20260821");
     fireEvent.click(screen.getByTestId("backtest-gate-data-link"));
@@ -462,7 +1073,7 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
 
     const gate = await screen.findByTestId("backtest-gate-state");
-    expect(gate).toHaveTextContent("回测被数据门禁阻断");
+    expect(gate).toHaveTextContent("portfolioTrading.backtest.flow.dataNotReady");
     expect(gate).toHaveTextContent("DATA_INCOMPLETE_PAUSED");
     expect(screen.queryByText("暂无回测结果，请配置参数后开始回测")).not.toBeInTheDocument();
   });
@@ -680,7 +1291,7 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     mockApi.postBacktestPrecheck.mockReturnValueOnce(pendingPrecheck);
     render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
     // T5.1: 首进自动预检 300ms debounce 后发起；pending 下按钮文案 = "预检中..." 且 disabled
-    const startBtn = await screen.findByRole("button", { name: /预检中/ });
+    const startBtn = await screen.findByRole("button", { name: "portfolioTrading.backtest.flow.checking" });
     expect(startBtn).toBeInTheDocument();
     expect(startBtn).toBeDisabled();
     // loading 中不允许调用 run
@@ -718,7 +1329,7 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     fireEvent.click(screen.getByTestId("precheck-blockers-open"));
     const gapText = await screen.findByText(/39 天/);
     expect(gapText).toBeInTheDocument();
-    const submitBtn = await screen.findByRole("button", { name: /已阻断.*缺口/ });
+    const submitBtn = await screen.findByRole("button", { name: "portfolioTrading.backtest.flow.needsAttention" });
     expect(submitBtn).toBeInTheDocument();
     expect(submitBtn).toBeDisabled();
     expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
@@ -842,7 +1453,7 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
       const errorCalls = mockToast.mock.calls.filter((cc) => cc[0] === "error");
       expect(errorCalls.length).toBeGreaterThanOrEqual(1);
     });
-    const submitBtn = await screen.findByRole("button", { name: /已阻断.*缺口/ });
+    const submitBtn = await screen.findByRole("button", { name: "portfolioTrading.backtest.flow.needsAttention" });
     expect(submitBtn).toBeDisabled();
     expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
   });

@@ -7,7 +7,7 @@
 - 时间戳使用 entry_date/exit_date（A股收盘 15:00），避免污染最近交易统计
 - 复用 sim_accounts._upsert_position 更新持仓，保证 avg_cost/realized_pnl 算法一致
 - 复用回测中已计算好的 entry_cost/exit_cost 作为 fee，不重新计算滑点
-- 单笔失败隔离：try/except 包住每笔，错误记录到 errors，不影响其他笔
+- 任一笔失败时整次回滚，保留覆盖前的订单、成交、持仓和现金流水
 - clear_existing 控制是否清空目标组合现有数据；默认 False，已有数据时拒绝应用
 
 应用后的组合状态：
@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, time
 from typing import Any
 
@@ -69,6 +70,25 @@ def apply_backtest_run_to_portfolio(
     *,
     clear_existing: bool = False,
 ) -> dict[str, Any]:
+    """Apply a complete replay atomically, including replacement of existing records."""
+    try:
+        return _apply_backtest_run_to_portfolio(
+            db, run_id, portfolio_id, clear_existing=clear_existing,
+        )
+    except Exception:
+        # This service owns the commit.  A Python/application exception does
+        # not invalidate SQLAlchemy's transaction, so explicitly roll it back.
+        db.rollback()
+        raise
+
+
+def _apply_backtest_run_to_portfolio(
+    db: Session,
+    run_id: int,
+    portfolio_id: int,
+    *,
+    clear_existing: bool = False,
+) -> dict[str, Any]:
     """将回测结果应用到模拟组合。
 
     将 BacktestRun 的每笔 BacktestTrade 转换为 SimOrder + SimTrade，
@@ -79,7 +99,7 @@ def apply_backtest_run_to_portfolio(
         run_id: BacktestRun.id（必须 status="success"）
         portfolio_id: 目标组合 ID（必须 account_type="simulated"）
         clear_existing: 是否清空目标组合现有的 SimOrder/SimTrade/Position/CashLedger。
-                       默认 False。若 False 且目标组合已有 SimOrder，将抛出 ValueError。
+                       默认 False。已有订单、成交、持仓或非初始资金流水时拒绝重放。
 
     Returns:
         {
@@ -88,9 +108,9 @@ def apply_backtest_run_to_portfolio(
             "initial_capital": float,
             "final_cash": float,
             "applied_trades": int,  # 成功应用的 trade 事件数（买入+卖出分别计数）
-            "skipped_trades": int,  # 跳过的 trade 事件数
+            "skipped_trades": int,  # 保留响应兼容，成功时为 0
             "open_positions": int,  # 应用后剩余持仓数（未平仓）
-            "errors": list[str],  # 单笔失败的原因
+            "errors": list[str],  # 保留响应兼容，成功时为空；失败会整次回滚并抛出
         }
 
     Raises:
@@ -118,6 +138,39 @@ def apply_backtest_run_to_portfolio(
             "Set clear_existing=True to overwrite."
         )
 
+    seed_to_replace: CashLedger | None = None
+    if not clear_existing:
+        for model in (Position, SimTrade):
+            existing_id = db.execute(
+                select(model.id).where(model.portfolio_id == portfolio_id).limit(1)
+            ).scalar_one_or_none()
+            if existing_id is not None:
+                raise ValueError(
+                    f"Portfolio {portfolio_id} already has sim orders or other simulated ledger data ({model.__tablename__}). "
+                    "Set clear_existing=True to overwrite."
+                )
+        # 仅容许新账户自动生成的唯一一笔初始本金。手工调资、历史重放本金等
+        # 即使没有 SimOrder，也属于必须显式确认才能重建的账本。
+        cash_entries = db.execute(
+            select(CashLedger).where(CashLedger.portfolio_id == portfolio_id).limit(2)
+        ).scalars().all()
+        seed = cash_entries[0] if cash_entries else None
+        initial_seed_only = len(cash_entries) == 1 and (
+            seed.entry_type == "deposit"
+            and seed.ref_type == "portfolio"
+            and seed.ref_id == portfolio_id
+            and seed.note == "Initial simulated funding"
+            and _round_money(seed.amount) == _round_money(portfolio.total_capital)
+            and _round_money(seed.balance_after) == _round_money(portfolio.total_capital)
+        )
+        if cash_entries and not initial_seed_only:
+            raise ValueError(
+                f"Portfolio {portfolio_id} already has sim orders or other simulated ledger data (cash entries). "
+                "Set clear_existing=True to overwrite."
+            )
+        if initial_seed_only:
+            seed_to_replace = seed
+
     # 加载所有 trades，按 entry_date 升序
     trades = db.execute(
         select(BacktestTrade)
@@ -127,6 +180,32 @@ def apply_backtest_run_to_portfolio(
     # Validate the complete replay set before clearing existing simulated data.
     # Applying a stock backtest to an ETF-only portfolio must fail atomically.
     ensure_symbol_ids_in_scope(db, portfolio, [trade.symbol_id for trade in trades])
+
+    # Validate every recorded fill before replacing any existing account data.
+    # A partially applied historical account is not a valid replay result.
+    if not math.isfinite(float(run.initial_capital)) or float(run.initial_capital) <= 0:
+        raise ValueError("回测初始资金无效，无法应用到组合。")
+    for trade in trades:
+        prices = [trade.entry_price] + ([trade.exit_price] if trade.exit_date is not None else [])
+        try:
+            valid = (
+                trade.entry_date is not None
+                and math.isfinite(float(trade.quantity)) and float(trade.quantity) > 0
+                and all(math.isfinite(float(price)) and float(price) > 0 for price in prices)
+                and all(math.isfinite(float(fee or 0)) and float(fee or 0) >= 0
+                        for fee in (trade.entry_cost, trade.exit_cost))
+                and (trade.exit_date is None or trade.exit_date >= trade.entry_date)
+            )
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise ValueError("回测记录中的成交日期、价格、数量或费用无效，未修改组合。")
+
+    # 纯初始账户用回测本金替换自动开户入金，避免两笔 deposit 导致账本不一致。
+    # 此时尚无订单/成交/持仓，且唯一流水已通过上方初始账户校验。
+    if seed_to_replace is not None:
+        db.delete(seed_to_replace)
+        db.flush()
 
     initial_capital = _round_money(float(run.initial_capital))
 
@@ -143,8 +222,7 @@ def apply_backtest_run_to_portfolio(
             ref_id=run_id,
             note=f"Apply backtest run #{run_id} initial capital (no trades)",
         ))
-        db.commit()
-        return {
+        result = {
             "run_id": run_id,
             "portfolio_id": portfolio_id,
             "initial_capital": initial_capital,
@@ -154,6 +232,8 @@ def apply_backtest_run_to_portfolio(
             "open_positions": 0,
             "errors": [],
         }
+        db.commit()
+        return result
 
     # 清空目标组合现有数据
     if clear_existing:
@@ -194,10 +274,7 @@ def apply_backtest_run_to_portfolio(
     for event_date, _, side, trade in events:
         symbol = symbol_map.get(trade.symbol_id)
         if symbol is None:
-            msg = f"Symbol {trade.symbol_id} not found, skipped {side} on {event_date}"
-            errors.append(msg)
-            skipped += 1
-            continue
+            raise ValueError(f"回测标的 {trade.symbol_id} 不存在，未完成应用。")
 
         try:
             if side == "buy":
@@ -215,10 +292,7 @@ def apply_backtest_run_to_portfolio(
                 event_dt = _date_to_datetime(trade.exit_date)
 
             if fill_price <= 0 or quantity <= 0:
-                msg = f"Invalid price/quantity for {side} {symbol.symbol} on {event_date}"
-                errors.append(msg)
-                skipped += 1
-                continue
+                raise ValueError("回测成交价格或数量无效，未完成应用。")
 
             filled_amount = _round_money(quantity * fill_price)
 
@@ -286,19 +360,16 @@ def apply_backtest_run_to_portfolio(
 
             applied += 1
         except Exception as exc:
-            errors.append(f"{side} {symbol.symbol} on {event_date}: {exc}")
-            skipped += 1
             logger.warning("apply_backtest_run_to_portfolio event failed: %s", exc, exc_info=True)
+            raise
 
-    db.commit()
-
-    # 统计剩余持仓数
+    # 返回结果也必须在提交前读完，读取失败时仍可保留覆盖前的完整账本。
     open_positions = db.execute(
         select(Position).where(Position.portfolio_id == portfolio_id)
     ).scalars().all()
     final_cash = cash_balance(db, portfolio_id)
 
-    return {
+    result = {
         "run_id": run_id,
         "portfolio_id": portfolio_id,
         "initial_capital": initial_capital,
@@ -308,3 +379,5 @@ def apply_backtest_run_to_portfolio(
         "open_positions": len(open_positions),
         "errors": errors,
     }
+    db.commit()
+    return result

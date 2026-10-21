@@ -229,7 +229,7 @@ def _scan_run_to_dict(
         "degraded_reason": run.degraded_reason,
         # DiscoveryTaskRecord 字段（若关联存在）
         "task_id": task.id if task else None,
-        "scope": task.scope if task else None,
+        "scope": task.scope if task else (snapshot.scope.replace("_", "-") if snapshot else None),
         "min_score": task.min_score if task else None,
         "stage_durations": _safe_json(task.stage_durations_json) if task else None,
         "dirty_symbol_count": task.dirty_symbol_count if task else None,
@@ -322,7 +322,11 @@ def list_scan_runs(
     )
 
     if scope:
-        stmt = stmt.where(DiscoveryTaskRecord.scope == scope)
+        # Fast scans also create ScanRun records, without a DiscoveryTaskRecord.
+        stmt = stmt.where(
+            (DiscoveryTaskRecord.scope == scope)
+            | (DiscoveryScoreSnapshot.scope == scope.replace("-", "_"))
+        )
     if status:
         stmt = stmt.where(ScanRun.status == status)
     if trade_date:

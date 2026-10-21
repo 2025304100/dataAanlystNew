@@ -18,7 +18,34 @@ from app.services.factors.input_replay import _json, _sha
 REPORT_ROOT = admission.PROJECT / 'tmp/factor_independent_evaluations'
 
 
-def review_independent_evidence(db, plan_id, *, bundle_id):
+def _execution_constraints(db, contract, calendar, signals):
+    """Exact dated imports; never infer an exchange limit from the stock code."""
+    from sqlalchemy import select
+    from app.models.symbol import Symbol
+    from app.services.security_status.local_import import get_imported_execution_constraints_for_range
+    if db is None:
+        raise ValueError('缺少本机历史股票状态和涨跌停资料。')
+    symbols = list(db.scalars(select(Symbol).where(Symbol.symbol.in_(contract['protocol']['symbols']))))
+    by_code = {s.symbol:s.id for s in symbols}
+    if set(by_code) != set(contract['protocol']['symbols']):
+        raise ValueError('缺少验证股票的本机记录，请先补齐股票资料。')
+    if len(signals) != 50 or calendar.index(signals[-1])+5 >= len(calendar):
+        raise ValueError('后续 50 个信号日及其后 5 个交易日还不完整。')
+    needed = calendar[calendar.index(signals[0]):calendar.index(signals[-1])+6]
+    imported = get_imported_execution_constraints_for_range(db, list(by_code.values()), needed[0], needed[-1])
+    records = []
+    for symbol in contract['protocol']['symbols']:
+        for day in needed:
+            value = imported.get((by_code[symbol], day))
+            if value is None:
+                raise ValueError(f'缺少 {symbol} 在 {day} 的历史状态和当日涨跌停资料，请先导入原始资料。')
+            if value.get('price_limit_mode') not in {'LIMITED','NO_LIMIT'}:
+                raise ValueError(f'{symbol} 在 {day} 的涨跌停资料不完整。')
+            records.append({'symbol':symbol,'trade_date':str(day),**value})
+    return records
+
+
+def review_independent_evidence(db, plan_id, *, bundle_id, require_execution_constraints=False):
     contract, candidate = journal._candidate(db, plan_id)
     locked = cost.load_cost_policy(contract)
     if locked['record']['candidate'] != candidate:
@@ -46,6 +73,13 @@ def review_independent_evidence(db, plan_id, *, bundle_id):
     identity = {'schema_version': 1, 'plan_id': plan_id, 'candidate': candidate,
         'cost_policy_sha256': locked['sha256'], 'source': bundle,
         'signal_dates': [str(d) for d in signals], 'journals': records}
+    if require_execution_constraints:
+        try:
+            constraints = _execution_constraints(db, contract, calendar, signals)
+            identity['execution_constraints_sha256'] = admission.fingerprint(constraints)
+        except ValueError as exc:
+            blockers.append(str(exc))
+            identity['execution_constraints_sha256'] = None
     return {'identity': identity, 'sha256': admission.fingerprint(identity),
         'ready': not blockers, 'blockers': blockers, 'mature_signal_count': len(mature),
         'missing_journal_dates': missing, 'qualification_certificate': False, 'read_only': True}
@@ -167,12 +201,50 @@ def daily_rank_ic(signals, target_panel, symbols):
         'mean_daily_ic': sum(values) / len(values), 'coverage': coverage}
 
 
-def run_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256, progress=lambda *args: None):
+def dated_tradable_targets(signals, calendar, symbols, raw, qfq_bars, constraints):
+    """Keep the frozen gross-return target, verify tradeability from dated facts.
+
+    Statistical outcomes use qfq T+1 open to T+5 close. Their eligibility uses
+    the same raw-price/status/limit matcher as the cash replay, never 9.5% or
+    today's Symbol flags. Actual fees and fills remain in cash_evaluation.
+    """
+    from app.services.simulation_matching_engine import CostModelConfig, OrderPlan, OrderSide, match_order_plan
+    cfg = CostModelConfig(commission_rate=0.,min_commission=0.,stamp_tax_rate=0.,
+        transfer_fee_rate=0.,slippage_buy_bps=0.,slippage_sell_bps=0.)
+    adjusted = {(r.symbol,r.trade_date.date()):r for r in qfq_bars.itertuples()}
+    rows = []
+    for signal in signals:
+        index = calendar.index(signal['date']); entry, exit_day = calendar[index+1], calendar[index+5]
+        for symbol in symbols:
+            tradable = True
+            for side, day, prior, price_type in (
+                (OrderSide.BUY,entry,signal['date'],'NEXT_OPEN'),
+                (OrderSide.SELL,exit_day,calendar[index+4],'T_CLOSE')):
+                previous = raw.get((symbol,prior))
+                if previous is None:
+                    raise ValueError('production_evidence_missing_previous_raw_close')
+                bar = cost._bar(raw.get((symbol,day)),day,side=side,previous_close=previous['close'],
+                    constraints=constraints[(symbol,day)])
+                matched = match_order_plan(OrderPlan('independent-target',0,0,day,price_type,side,100),bar,cfg=cfg)
+                tradable = tradable and matched.final_status == 'FILLED'
+            opening, closing = adjusted.get((symbol,entry)), adjusted.get((symbol,exit_day))
+            value = None
+            if opening is not None and closing is not None and math.isfinite(opening.open) and opening.open > 0 and math.isfinite(closing.close) and closing.close > 0:
+                value = closing.close / opening.open - 1.
+            rows.append({'symbol':symbol,'signal_date':signal['date'],
+                'is_tradable':bool(tradable and value is not None and math.isfinite(value)),
+                'target_value':value})
+    return pd.DataFrame(rows)
+
+
+def run_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256, progress=lambda *args: None,
+        require_execution_constraints=False):
     from app.services.market_history_evidence import load_trusted_history_dataset
     from app.services.factors.trusted_history_training import build_training_warehouse
     from app.services.factors.target_engine import preview_targets
     from app.services.factors.store import close_owned_warehouse_path
-    review = review_independent_evidence(db, plan_id, bundle_id=bundle_id)
+    review = review_independent_evidence(db, plan_id, bundle_id=bundle_id,
+        require_execution_constraints=require_execution_constraints)
     if not review['ready']:
         raise ValueError('production_evidence_not_ready:' + ','.join(review['blockers']))
     if review['sha256'] != expected_sha256:
@@ -198,21 +270,31 @@ def run_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256, progr
     calendar = dataset.calendar
     first = calendar.index(signals[0]['date']); last = calendar.index(signals[-1]['date']) + 5
     raw, refs = verified_raw_prices(dataset, set(calendar[first:last + 1]), as_of=journal._now())
+    constraints = None
+    if require_execution_constraints:
+        rows = _execution_constraints(db, contract, calendar, [s['date'] for s in signals])
+        if admission.fingerprint(rows) != identity['execution_constraints_sha256']:
+            raise ValueError('历史状态或涨跌停资料已经变化，请重新检查。')
+        constraints = {(r['symbol'],date.fromisoformat(r['trade_date'])):r for r in rows}
     qfq = {(r.symbol, r.trade_date.date()): float(r.close) for r in dataset.bars.itertuples()}
     warehouse = None
     try:
         progress('building_independent_tradable_targets', 75)
-        warehouse = build_training_warehouse(dataset, 'independent-targets-' + uuid4().hex)
-        targets = preview_targets(warehouse, start_date=signals[0]['date'], end_date=signals[-1]['date'],
-            target_horizon=5, symbols=dataset.symbols, as_of_exit_date=calendar[last])
+        if require_execution_constraints:
+            targets = dated_tradable_targets(signals,calendar,dataset.symbols,raw,dataset.bars,constraints)
+        else:
+            warehouse = build_training_warehouse(dataset, 'independent-targets-' + uuid4().hex)
+            targets = preview_targets(warehouse, start_date=signals[0]['date'], end_date=signals[-1]['date'],
+                target_horizon=5, symbols=dataset.symbols, as_of_exit_date=calendar[last])
         rank_ic = daily_rank_ic(signals, targets, dataset.symbols)
     finally:
         if warehouse is not None: close_owned_warehouse_path(warehouse.path)
     progress('replaying_frozen_cash_costs', 85)
     cash = cost.replay_cash_sleeves(signals=signals, calendar=calendar, symbols=dataset.symbols,
-        raw_bars=raw, qfq_closes=qfq, cost=contract['cost'])
+        raw_bars=raw, qfq_closes=qfq, cost=contract['cost'], execution_constraints=constraints)
     db.expire_all()
-    if review_independent_evidence(db, plan_id, bundle_id=bundle_id)['sha256'] != expected_sha256:
+    if review_independent_evidence(db, plan_id, bundle_id=bundle_id,
+            require_execution_constraints=require_execution_constraints)['sha256'] != expected_sha256:
         raise ValueError('production_evidence_changed_during_evaluation')
     statistical_pass = rank_ic['mean_daily_ic'] > 0
     net_pass = cash['net_return'] > 0
@@ -220,6 +302,7 @@ def run_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256, progr
         'cash_evaluation': cash, 'raw_receipts': refs, 'independent_signal_dates': identity['signal_dates'],
         'statistical_pass': statistical_pass, 'net_cost_pass': net_pass,
         'evidence_pass': statistical_pass and net_pass, 'qualification_certificate': False,
+        **({'tradability_policy':'dated_status_explicit_limits_shared_matcher_v1'} if require_execution_constraints else {}),
         'model_activated': False, 'production_scores_published': 0,
         'finished_at': journal._now().isoformat()}
     envelope = {'evaluation': report, 'sha256': admission.fingerprint(report)}

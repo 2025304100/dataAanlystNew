@@ -640,7 +640,7 @@ def _assemble_preflight_or_save_payload(
         "sell_slippage_bps": 5,
         "buy_commission_pct": getattr(portfolio, "buy_fee_pct", 0.00025),
         "sell_commission_pct": getattr(portfolio, "sell_fee_pct", 0.00025),
-        "stamp_duty_pct": 0.001,
+        "stamp_duty_pct": None,  # Resolve by the actual execution date and instrument.
     }
     cst = clock.as_shanghai_dict()
     decision_clock_payload = {

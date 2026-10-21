@@ -22,7 +22,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from app.services.market_history_contract import history_source_tag, tencent_quantity_input_contract
+from app.services.market_history_contract import cn_history_instrument, history_source_tag, tencent_quantity_input_contract
 from app.services.market_data_sources.sources._normalize import (
     normalize_cn_stock_em_history,
     normalize_cn_stock_sina_history,
@@ -655,7 +655,8 @@ class TrustedHistoryDataset:
 
 
 def write_trusted_history_dataset(*, dataset_id: str, receipts: Iterable[Mapping[str, Any]],
-    cohort_symbols: Iterable[str], calendar: Iterable[date], plan_sha256: str) -> dict:
+    cohort_symbols: Iterable[str], calendar: Iterable[date], plan_sha256: str,
+    etf_cash_dividends: Mapping[str, list[dict]] | None = None) -> dict:
     """Join TX qfq prices and EM/Sina liquidity without modifying live data.
 
     Missing symbols and rejected date pairs stay in the quality report. They
@@ -684,29 +685,40 @@ def write_trusted_history_dataset(*, dataset_id: str, receipts: Iterable[Mapping
         frame, manifest = load_history_evidence({**reference, "path": str(receipt_path)})
         symbol, provider = manifest["request"]["symbol"][-6:], manifest["provider"]
         receipt_adjust = manifest["request"]["adjust"]
-        if symbol not in symbols or not (receipt_adjust == "qfq" or receipt_adjust == "" and provider in {"tencent", "sina_http"}):
+        if symbol not in symbols or not (receipt_adjust == "qfq" or receipt_adjust == "" and provider in {"tencent", "sina_http", "baostock"}):
             raise ValueError("trusted_history_invalid_receipt_scope")
         if provider not in {"eastmoney", "sina_http", "tencent", "baostock"}:
             raise ValueError("trusted_history_unsupported_provider")
-        provider_key = "tencent_raw" if provider == "tencent" and receipt_adjust == "" else provider
+        provider_key = provider + "_raw" if provider in {"tencent", "baostock"} and receipt_adjust == "" else provider
         if provider_key in by_symbol.setdefault(symbol, {}):
             raise ValueError("trusted_history_duplicate_provider_receipt")
         local = {**reference, "path": receipt_path.relative_to(directory).as_posix()}
         by_symbol[symbol][provider_key] = frame.set_index("trade_date"), manifest, local
         references.append(local)
-    rows, lineage, quality = [], [], {}
-    provider_families = {provider for providers in by_symbol.values() for provider in providers}
+    rows, lineage, quality, etf_adjustments = [], [], {}, {}
+    provider_families = {"baostock" if provider == "baostock_raw" else provider
+        for providers in by_symbol.values() for provider in providers}
     if "baostock" in provider_families and provider_families != {"baostock"}:
         raise ValueError("trusted_history_mixed_price_provider_family")
     canonical_price_source = "baostock_adjustflag2" if provider_families == {"baostock"} else "tencent_qfqday"
     date_index = pd.DatetimeIndex(days)
     for symbol in symbols:
         providers = by_symbol.get(symbol, {})
+        if cn_history_instrument(symbol)['asset_type'] == 'etf' and 'baostock_raw' not in providers:
+            raise ValueError('trusted_history_etf_raw_prices_required')
         if "baostock" in providers:
             frame, receipt, ref = providers["baostock"]
             if (receipt["actual_adjustment"] != "qfq" or receipt["returned_mode"] != "adjustflag:2"
                     or receipt["adjustment_evidence"] != "returned_adjustflag"):
                 raise ValueError("trusted_history_adjustment_unverified")
+            if cn_history_instrument(symbol)['asset_type'] == 'etf':
+                from app.services.etf_history import verify_etf_price_adjustment
+                raw_frame, _raw_receipt, raw_ref = providers['baostock_raw']
+                events = list((etf_cash_dividends or {}).get(symbol, []))
+                review = verify_etf_price_adjustment(raw_frame.reset_index(), frame.reset_index(),
+                    events, directory=directory)
+                etf_adjustments[symbol] = {'raw_receipt_sha256': raw_ref['sha256'],
+                    'qfq_receipt_sha256': ref['sha256'], 'cash_dividends': events, 'review': review}
             used = frame.index.intersection(date_index).sort_values()
             values = frame.loc[used].rename_axis("trade_date").reset_index().assign(symbol=symbol)
             rows.append(values)
@@ -824,6 +836,8 @@ def write_trusted_history_dataset(*, dataset_id: str, receipts: Iterable[Mapping
             "cross_provider_volume_atol_shares": _CROSS_PROVIDER_VOLUME_ATOL_SHARES,
             "sina_price_verification_mode": "unadjusted_ohlc_only", "canonical_price_source": canonical_price_source},
         "created_at": datetime.now(timezone.utc).isoformat()}
+    if etf_adjustments:
+        manifest['evidence']['etf_adjustments'] = etf_adjustments
     payload = _json_bytes(manifest)
     _write_exclusive(directory / "manifest.json", payload)
     verified = load_trusted_history_dataset(dataset_id)
@@ -1048,6 +1062,43 @@ def load_trusted_history_dataset(dataset_id: str) -> TrustedHistoryDataset:
             "retrospective": True, "point_in_time_certified": False,
             "adjustment_asof_certified": False, "adjust": "qfq", "units": manifest["units"],
             "date_range": manifest["date_range"], "receipt_count": len(sources)}
+        instruments = {symbol: cn_history_instrument(symbol) for symbol in symbols}
+        asset_types = {item['asset_type'] for item in instruments.values()}
+        if 'etf' in asset_types:
+            raw_symbols = {receipt['request']['symbol'][-6:] for _frame, receipt in sources.values()
+                if receipt['provider'] == 'baostock' and receipt['actual_adjustment'] == ''
+                and receipt['returned_mode'] == 'adjustflag:3'}
+            if any(item['asset_type'] == 'etf' and symbol not in raw_symbols
+                   for symbol, item in instruments.items()):
+                raise ValueError('trusted_history_etf_raw_prices_required')
+            for _frame, receipt in sources.values():
+                requested = receipt['request']['symbol']
+                instrument = instruments[requested[-6:]]
+                if requested != instrument['market'] + requested[-6:]:
+                    raise ValueError('trusted_history_instrument_exchange_conflict')
+            from app.services.etf_history import verify_etf_price_adjustment
+            adjustments = evidence.get('etf_adjustments', {})
+            etf_symbols = {symbol for symbol, item in instruments.items() if item['asset_type'] == 'etf'}
+            if set(adjustments) != etf_symbols:
+                raise ValueError('trusted_history_etf_dividend_review_required')
+            reviews = {}
+            for symbol in sorted(etf_symbols):
+                item = adjustments[symbol]
+                raw_frame, raw_receipt = sources[item['raw_receipt_sha256']]
+                qfq_frame, qfq_receipt = sources[item['qfq_receipt_sha256']]
+                if (raw_receipt['provider'] != 'baostock' or raw_receipt['actual_adjustment'] != ''
+                        or qfq_receipt['provider'] != 'baostock' or qfq_receipt['actual_adjustment'] != 'qfq'
+                        or any(receipt['request']['symbol'] != instruments[symbol]['market'] + symbol
+                               for receipt in (raw_receipt, qfq_receipt))):
+                    raise ValueError('trusted_history_etf_price_receipt_binding_invalid')
+                review = verify_etf_price_adjustment(raw_frame.reset_index(), qfq_frame.reset_index(),
+                    item['cash_dividends'], directory=directory)
+                if review != item['review']:
+                    raise ValueError('trusted_history_etf_dividend_review_changed')
+                reviews[symbol] = review
+            # Preserve the identity of existing stock-only research inputs.
+            identity.update(asset_type=next(iter(asset_types)) if len(asset_types) == 1 else 'mixed',
+                            instruments=instruments, etf_price_review=reviews)
         return TrustedHistoryDataset(dataset_id, directory, digest,
             bars.sort_values(["trade_date", "symbol"]).reset_index(drop=True), symbols, calendar, identity)
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:

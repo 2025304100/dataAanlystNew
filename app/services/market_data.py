@@ -36,13 +36,14 @@ from app.services.async_tasks import _set_task, _start_worker, create_async_task
 from app.services.market_data_sources.sources._normalize import (
     attach_cn_stock_history_contract,
     normalize_cn_stock_em_history,
+    normalize_cn_etf_em_history,
     cn_prefixed_symbol as canonical_cn_prefixed_symbol,
 )
 from app.services.market_history_contract import tencent_quantity_to_shares_multiplier
 from app.services.market_data_sources.sources.tencent_history import fetch_tencent_history_raw
 from app.services.market_data_sources.sources.sina_history_http import fetch_sina_history_raw
 from app.services.market_history_contract import (
-    is_cn_stock_history, mark_cn_stock_production_mode, production_history_source_tag, require_cn_stock_qfq,
+    is_cn_stock_history, is_cn_etf_history, mark_cn_stock_production_mode, production_history_source_tag, require_cn_stock_qfq,
 )
 
 
@@ -313,7 +314,7 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                 )
                     if region == "cn" and symbol.asset_type == "etf":
                         try:
-                            return _normalize_cn_em_history(
+                            return normalize_cn_etf_em_history(
                                 call_akshare_with_retry(
                                     ak.fund_etf_hist_em,
                                     symbol=symbol.symbol,
@@ -325,7 +326,12 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                     max_attempts=2,
                                 )
                             )
-                        except Exception:
+                        except Exception as exc:
+                            if adjust != '':
+                                # Sina's ETF endpoint has no adjustment argument.
+                                # Persisting its raw prices as qfq creates a false
+                                # loss at a dividend and corrupts the single basis.
+                                raise ValueError('ETF前复权行情获取失败，未使用不复权数据替代，请稍后重试。') from exc
                             logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             return _normalize_cn_etf_sina_history(
                                 call_akshare_with_retry(
@@ -374,7 +380,8 @@ def _dedupe_history_rows(frame: pd.DataFrame) -> list[dict]:
     return list(deduped.values())
 
 def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int, int]:
-    source = production_history_source_tag(frame, cn_stock=is_cn_stock_history(symbol))
+    source = production_history_source_tag(frame,
+        cn_stock=is_cn_stock_history(symbol) or is_cn_etf_history(symbol))
     inserted = 0
     updated = 0
 
@@ -452,6 +459,55 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
         existing.source = source
 
     return inserted, updated
+
+
+def import_verified_etf_history(db: Session, symbol: Symbol, dataset_id: str) -> dict:
+    """Import one reviewed ETF's qfq bars, without training or account writes.
+
+    The caller owns backup, transaction commit and any downstream recalculation.
+    Raw prices and dividend documents remain in the immutable research input.
+    """
+    from app.services.market_history_contract import resolve_cn_prefixed_symbol
+    from app.services.market_history_evidence import load_trusted_history_dataset
+    dataset = load_trusted_history_dataset(dataset_id)
+    instrument = dataset.identity.get('instruments', {}).get(symbol.symbol)
+    if (not is_cn_etf_history(symbol) or dataset.identity.get('asset_type') != 'etf'
+            or instrument is None or instrument['asset_type'] != 'etf'
+            or resolve_cn_prefixed_symbol(symbol.symbol, symbol.market, 'etf') != instrument['market'] + symbol.symbol
+            or symbol.symbol not in dataset.identity.get('etf_price_review', {})):
+        raise ValueError('所选ETF与已核实的历史资料不一致，未写入行情。')
+    universe = db.scalar(select(UniverseSymbol).where(UniverseSymbol.symbol == symbol.symbol))
+    if universe is not None and (
+        universe.asset_type != 'etf' or universe.region != 'cn'
+        or resolve_cn_prefixed_symbol(universe.symbol, universe.market, 'etf') != instrument['market'] + symbol.symbol
+    ):
+        raise ValueError('基础行情中的ETF品种或交易所不一致，未写入行情。')
+    frame = dataset.bars.loc[dataset.bars.symbol.eq(symbol.symbol)].drop(columns='symbol').copy()
+    frame.attrs['history_contract'] = {
+        'provider': 'baostock_etf', 'endpoint': 'query_history_k_data_plus',
+        'version': 'cn-etf-shares-v1', 'volume_unit': 'share',
+        'amount_unit': 'CNY', 'turnover_unit': 'percentage_point',
+    }
+    frame.attrs['history_response'] = {'requested_adjustment': 'qfq', 'actual_adjustment': 'qfq',
+        'adjustment_evidence': 'returned_adjustflag_and_reviewed_cash_dividends'}
+    frame = mark_cn_stock_production_mode(frame, symbol, 'qfq')
+    inserted, updated = _upsert_bars(db, symbol, frame)
+    universe_result = None
+    if universe is not None:
+        from app.services.universe_sync import _upsert_universe_bars
+        universe_inserted, universe_updated = _upsert_universe_bars(db, universe.id, frame)
+        db.flush()
+        count, latest = db.execute(select(func.count(UniverseDailyBar.id), func.max(UniverseDailyBar.trade_date))
+            .where(UniverseDailyBar.universe_symbol_id == universe.id)).one()
+        universe.bar_count, universe.last_bar_date = count, latest
+        universe.is_synced, universe.sync_failed = 1, 0
+        universe.last_synced_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        universe_result = {'universe_symbol_id': universe.id,
+            'inserted': universe_inserted, 'updated': universe_updated}
+    db.flush()
+    return {'symbol_id': symbol.id, 'symbol': symbol.symbol, 'asset_type': 'etf',
+            'inserted': inserted, 'updated': updated, 'rows': len(frame),
+            'trusted_history_dataset': dataset.identity, 'universe': universe_result}
 
 
 def sync_symbol_daily_bars(

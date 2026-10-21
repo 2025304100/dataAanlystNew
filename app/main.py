@@ -304,6 +304,8 @@ def _run_startup_cleanup() -> None:
         db = SessionLocal()
         try:
             interrupted_ids = interrupt_orphaned_async_tasks(db)
+            from app.services.security_status.history_download import recover_interrupted_downloads
+            recover_interrupted_downloads(db)
             if interrupted_ids:
                 logger.warning(
                     "Startup cleanup: marked %d orphaned async tasks as interrupted: %s",

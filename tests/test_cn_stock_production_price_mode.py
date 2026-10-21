@@ -44,8 +44,8 @@ def test_cn_write_and_legacy_fetch_reject_before_any_io(monkeypatch, mode):
         universe_sync._fetch_universe_history(cn_symbol(), DAY, DAY, mode)
 
 
-@pytest.mark.parametrize("market,asset_type", [("us", "stock"), ("sh", "etf")])
-def test_us_and_etf_independent_price_modes_preserved(market, asset_type):
+@pytest.mark.parametrize("market,asset_type", [("us", "stock"), ("us", "etf")])
+def test_us_independent_price_modes_preserved(market, asset_type):
     symbol = SimpleNamespace(market=market, asset_type=asset_type)
     require_cn_stock_qfq(symbol, "")
     frame = pd.DataFrame()

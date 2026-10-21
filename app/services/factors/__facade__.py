@@ -219,8 +219,9 @@ class ScoreFactorSetDTO:
     is_active_for_model_run_ids: list[str]  # Which (validated) models actively reference this set
     description: str | None
     members: list[dict[str, Any]] = field(default_factory=list)
+    asset_type: str = 'stock'
     # P2-3 DTO schema 版本号（首次引入 = 2）。新增契约字段必须升级并同步前端 ScoringFactorSetBrief。
-    schema_version: int = 2
+    schema_version: int = 3
 
 
 @dataclass(frozen=True)
@@ -1197,7 +1198,7 @@ def list_factorsets(
     from app.models.factor_model import FactorModelRun
     from app.services.factor_model_contract import model_factor_set_id as _fsid
     from app.models.factor_model import FactorVersion
-    from app.services.factor_set_service import _factor_version_trainable
+    from app.services.factor_set_service import _factor_version_trainable, factor_set_asset_type
 
     db, owned = _open_session()
     try:
@@ -1280,6 +1281,7 @@ def list_factorsets(
                 frozen_at=fs.frozen_at.isoformat() if fs.frozen_at else None,
                 is_active_for_model_run_ids=list(set_to_validated_runs.get(fs.id, [])),
                 description=fs.description,
+                asset_type=factor_set_asset_type(db, [member for member in member_rows if member.factor_set_id == fs.id]),
                 members=members_by_set.get(fs.id, []),
             ))
         return out
@@ -1289,6 +1291,51 @@ def list_factorsets(
                 db.close()
             except Exception:
                 pass
+
+
+def prepare_etf_training_factor_set() -> dict[str, Any]:
+    from app.services.factors.etf_training_set import PREPARE_LOCK, prepare_default_set
+    from app.services.factors.factor_set_service import to_read_dict
+    with PREPARE_LOCK:
+        db, owned = _open_session()
+        try:
+            factor_set = prepare_default_set(db)
+            db.commit()
+            db.refresh(factor_set)
+            return {**to_read_dict(factor_set), 'asset_type': 'etf'}
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            if owned:
+                db.close()
+
+
+def get_etf_training_requirements() -> dict[str, int]:
+    """Read the existing research limits without changing model policy."""
+    from app.services.factors.ridge_model import ModelGate
+    return {'minimum_symbols': ModelGate().minimum_symbols, 'minimum_trade_dates': 274}
+
+
+def get_etf_feature_readiness(db: Any, factor_set_id: str, dataset_id: str) -> dict[str, Any]:
+    """Check the same frozen features as dispatch, without creating a task."""
+    from app.services.factor_set_service import factor_set_readiness
+    from app.services.factors.factor_engine import resolve_frozen_factor_specs
+    from app.services.factors.trusted_history_training import validate_training_features
+    from app.services.market_history_evidence import load_trusted_history_dataset
+    from app.schemas.errors import FactorSevenError
+    ready = factor_set_readiness(db, factor_set_id, require_frozen=True)
+    if not ready['ready']:
+        return {'factor_ready': False, 'feature_ready': False,
+                'feature_message': '所选特征集合还不能训练，请先添加有效版本的特征并冻结集合。'}
+    try:
+        validate_training_features(load_trusted_history_dataset(dataset_id), resolve_frozen_factor_specs(db, (factor_set_id,)))
+    except FactorSevenError as error:
+        return {'factor_ready': True, 'feature_ready': False, 'feature_message': error.detail_zh}
+    except ValueError:
+        return {'factor_ready': True, 'feature_ready': False,
+                'feature_message': '所选特征或历史资料未通过核对，请检查后重新读取。'}
+    return {'factor_ready': True, 'feature_ready': True, 'feature_message': '已检查所选历史价格和成交量特征。'}
 
 
 def get_scoring_factor_set_readiness(factor_set_id: str) -> dict[str, Any]:
@@ -1302,6 +1349,24 @@ def get_scoring_factor_set_readiness(factor_set_id: str) -> dict[str, Any]:
     db, owned = _open_session()
     try:
         return factor_set_readiness(db, factor_set_id, require_frozen=True)
+    finally:
+        if owned:
+            db.close()
+
+
+def find_etf_training_request(request_id: str, *, expected_request: dict | None = None) -> dict | None:
+    from app.models.async_task import AsyncTaskRecord
+    from app.services.async_tasks import _task_to_read
+    from app.services.factors.research_requests import etf_request_identity, etf_request_task_id, validate_etf_training_task
+    db, owned = _open_session()
+    try:
+        task = db.get(AsyncTaskRecord, etf_request_task_id(request_id))
+        if task is None:
+            return None
+        request = validate_etf_training_task(task, request_id)
+        if expected_request is not None and task.idempotency_key != 'request:' + etf_request_identity(expected_request)[1]:
+            raise ValueError('训练参数与这次提交的记录不一致，本次未启动训练。')
+        return {'request': request, 'task': _task_to_read(task).model_dump()}
     finally:
         if owned:
             db.close()
@@ -3846,9 +3911,19 @@ def get_production_independent_evaluation_status(db, plan_id):
     return independent_evaluation_status(db, plan_id)
 
 
+def review_production_release(db, plan_id, *, bundle_id):
+    from app.services.factors.production_release import review_release
+    return review_release(db, plan_id, bundle_id=bundle_id)
+
+
+def confirm_production_release(db, plan_id, **kwargs):
+    from app.services.factors.production_release import confirm_release
+    return confirm_release(db, plan_id, **kwargs)
+
+
 def review_production_independent_evaluation(db, plan_id, *, bundle_id):
     from app.services.factors.production_independent_evidence import review_independent_evidence
-    return review_independent_evidence(db, plan_id, bundle_id=bundle_id)
+    return review_independent_evidence(db, plan_id, bundle_id=bundle_id, require_execution_constraints=True)
 
 
 def submit_production_independent_evaluation(db, plan_id, *, bundle_id, expected_sha256):

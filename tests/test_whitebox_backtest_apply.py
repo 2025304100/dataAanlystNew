@@ -20,6 +20,7 @@ from datetime import date, datetime, time, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
 from app.db.session import get_db
 from app.models.backtest import BacktestRun, BacktestTrade
@@ -27,7 +28,7 @@ from app.models.portfolio import Portfolio, Position
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
 from app.models.symbol import Symbol
 from app.services.backtest_apply import apply_backtest_run_to_portfolio
-from app.services.sim_accounts import cash_balance, place_sim_order
+from app.services.sim_accounts import append_cash_ledger, cash_balance, ensure_sim_account_seed, place_sim_order
 
 pytestmark = pytest.mark.whitebox
 
@@ -540,6 +541,114 @@ class TestApplyEndpoint:
         assert data["portfolio_id"] == p.id
         assert data["applied_trades"] == 1
 
+    def test_failed_overwrite_preserves_original_account_without_orphan_filled_order(self, db_session):
+        """An application failure after order creation must preserve the entire original account."""
+        p = _make_portfolio(db_session, name="QA-Replay-Atomic")
+        sym = _make_symbol(db_session, symbol="600731")
+        place_sim_order(db_session, p, sym, "buy", quantity=200, price=10.0,
+                        enforce_rules=False, apply_fees=False)
+        db_session.commit()
+        run = _make_backtest_run(db_session, portfolio_id=p.id, initial_capital=50000.0)
+        _add_trade(db_session, run.id, sym.id, entry_date=date(2026, 1, 5),
+                   entry_price=10.0, quantity=100)
+        client = self._client_with_db(db_session)
+        before_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        before_positions = client.get(f"/api/v1/portfolios/{p.id}/positions").json()
+
+        def recorded_orders():
+            return db_session.query(
+                SimOrder.id, SimOrder.status, SimOrder.quantity, SimOrder.filled_quantity,
+            ).filter(SimOrder.portfolio_id == p.id).order_by(SimOrder.id).all()
+
+        before_orders = recorded_orders()
+
+        def fail_new_position(session, instance):
+            if isinstance(instance, Position):
+                raise RuntimeError("isolated account write failure")
+
+        event.listen(db_session, "before_attach", fail_new_position)
+        try:
+            response = client.post(
+                f"/api/v1/backtest/runs/{run.id}/apply-to-portfolio",
+                json={"portfolio_id": p.id, "clear_existing": True},
+            )
+        finally:
+            event.remove(db_session, "before_attach", fail_new_position)
+
+        assert response.status_code == 500
+        after_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        assert after_account["summary"]["cash_balance"] == before_account["summary"]["cash_balance"]
+        for key in ("recent_trades", "recent_ledger"):
+            assert after_account[key] == before_account[key]
+        assert client.get(f"/api/v1/portfolios/{p.id}/positions").json() == before_positions
+        assert recorded_orders() == before_orders
+
+    def test_result_read_failure_preserves_the_original_account(self, db_session):
+        """Final result preparation must succeed before replacement becomes committed."""
+        p = _make_portfolio(db_session, name="QA-Replay-ResultFailure")
+        sym = _make_symbol(db_session, symbol="600733")
+        place_sim_order(db_session, p, sym, "buy", quantity=200, price=10.0,
+                        enforce_rules=False, apply_fees=False)
+        db_session.commit()
+        run = _make_backtest_run(db_session, portfolio_id=p.id, initial_capital=50000.0)
+        _add_trade(db_session, run.id, sym.id, entry_date=date(2026, 1, 5),
+                   entry_price=10.0, quantity=100)
+        client = self._client_with_db(db_session)
+        before_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        before_positions = client.get(f"/api/v1/portfolios/{p.id}/positions").json()
+        new_position_attached = False
+
+        def mark_new_position(session, instance):
+            nonlocal new_position_attached
+            if isinstance(instance, Position):
+                new_position_attached = True
+
+        def fail_position_result_read(state):
+            if (new_position_attached and state.is_select and state.bind_mapper is not None
+                    and state.bind_mapper.class_ is Position):
+                raise RuntimeError("isolated final account read failure")
+
+        event.listen(db_session, "before_attach", mark_new_position)
+        event.listen(db_session, "do_orm_execute", fail_position_result_read)
+        try:
+            response = client.post(
+                f"/api/v1/backtest/runs/{run.id}/apply-to-portfolio",
+                json={"portfolio_id": p.id, "clear_existing": True},
+            )
+        finally:
+            event.remove(db_session, "before_attach", mark_new_position)
+            event.remove(db_session, "do_orm_execute", fail_position_result_read)
+
+        assert response.status_code == 500
+        assert client.get(f"/api/v1/portfolios/{p.id}/sim-account").json() == before_account
+        assert client.get(f"/api/v1/portfolios/{p.id}/positions").json() == before_positions
+
+    def test_invalid_later_trade_cannot_replace_account_with_a_partial_replay(self, db_session):
+        """One invalid persisted trade rejects the entire replay instead of reporting partial success."""
+        p = _make_portfolio(db_session, name="QA-Replay-InvalidLaterTrade")
+        sym = _make_symbol(db_session, symbol="600732")
+        place_sim_order(db_session, p, sym, "buy", quantity=200, price=10.0,
+                        enforce_rules=False, apply_fees=False)
+        db_session.commit()
+        run = _make_backtest_run(db_session, portfolio_id=p.id, initial_capital=50000.0)
+        _add_trade(db_session, run.id, sym.id, entry_date=date(2026, 1, 5),
+                   entry_price=10.0, quantity=100)
+        _add_trade(db_session, run.id, sym.id, entry_date=date(2026, 1, 6),
+                   entry_price=0.0, quantity=100)
+        client = self._client_with_db(db_session)
+        before_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        before_positions = client.get(f"/api/v1/portfolios/{p.id}/positions").json()
+
+        response = client.post(
+            f"/api/v1/backtest/runs/{run.id}/apply-to-portfolio",
+            json={"portfolio_id": p.id, "clear_existing": True},
+        )
+
+        assert response.status_code == 400
+        after_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        assert after_account == before_account
+        assert client.get(f"/api/v1/portfolios/{p.id}/positions").json() == before_positions
+
     def test_api_run_not_found_returns_404(self, db_session):
         """回测不存在 → 404。"""
         p = _make_portfolio(db_session, name="QA-API-404")
@@ -564,6 +673,74 @@ class TestApplyEndpoint:
             json={"portfolio_id": p.id, "clear_existing": False},
         )
         assert resp.status_code == 409
+
+    def test_api_preserves_adjusted_cash_when_empty_replay_omits_clear_existing(self, db_session):
+        """无订单也不能用零交易回测覆盖手工资金调整；省略 clear_existing 默认保护账本。"""
+        p = _make_portfolio(db_session, name="QA-Replay-AdjustedCash", total_capital=100000.0)
+        ensure_sim_account_seed(db_session, p)
+        append_cash_ledger(db_session, p.id, "deposit", 5000.0, ref_type="manual", note="追加模拟资金")
+        db_session.commit()
+        run = _make_backtest_run(db_session, portfolio_id=p.id, initial_capital=50000.0)
+        client = self._client_with_db(db_session)
+        before = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+
+        response = client.post(
+            f"/api/v1/backtest/runs/{run.id}/apply-to-portfolio",
+            json={"portfolio_id": p.id},
+        )
+
+        assert response.status_code == 409
+        after = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        assert after["summary"]["cash_balance"] == 105000.0
+        assert after["recent_ledger"] == before["recent_ledger"]
+
+    def test_api_preserves_manual_position_without_sim_orders(self, db_session):
+        """手工录入的持仓没有模拟订单，也不能被普通重放混入另一套本金和交易。"""
+        p = _make_portfolio(db_session, name="QA-Replay-ManualPosition", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="600029")
+        run = _make_backtest_run(db_session, portfolio_id=p.id, initial_capital=50000.0)
+        client = self._client_with_db(db_session)
+        response = client.post(
+            f"/api/v1/portfolios/{p.id}/positions",
+            json={"symbol_id": sym.id, "quantity": 300, "avg_cost": 10.0, "latest_price": 10.0},
+        )
+        assert response.status_code == 200
+        before_positions = client.get(f"/api/v1/portfolios/{p.id}/positions").json()
+        before_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+
+        response = client.post(
+            f"/api/v1/backtest/runs/{run.id}/apply-to-portfolio",
+            json={"portfolio_id": p.id, "clear_existing": False},
+        )
+
+        assert response.status_code == 409
+        assert client.get(f"/api/v1/portfolios/{p.id}/positions").json() == before_positions
+        after_account = client.get(f"/api/v1/portfolios/{p.id}/sim-account").json()
+        assert after_account["recent_ledger"] == before_account["recent_ledger"]
+
+    def test_api_allows_initial_account_without_duplicating_opening_funding(self, db_session):
+        """新建的纯初始模拟账户可重放，但不能留下两笔重复开户入金。"""
+        source = _make_portfolio(db_session, name="QA-Replay-SeedSource")
+        run = _make_backtest_run(db_session, portfolio_id=source.id, initial_capital=100000.0)
+        client = self._client_with_db(db_session)
+        created = client.post("/api/v1/portfolios", json={
+            "name": "QA-Replay-NewTarget", "account_type": "simulated", "total_capital": 50000.0,
+            "investable_ratio": 0.9, "cash_reserve_ratio": 0.1,
+        })
+        assert created.status_code == 200
+        target_id = created.json()["id"]
+
+        response = client.post(
+            f"/api/v1/backtest/runs/{run.id}/apply-to-portfolio",
+            json={"portfolio_id": target_id},
+        )
+
+        assert response.status_code == 200
+        account = client.get(f"/api/v1/portfolios/{target_id}/sim-account").json()
+        assert account["summary"]["cash_balance"] == 100000.0
+        assert len(account["recent_ledger"]) == 1
+        assert account["recent_ledger"][0]["ref_type"] == "backtest_run"
+        assert account["recent_ledger"][0]["ref_id"] == run.id
 
     def test_api_run_not_success_returns_409(self, db_session):
         """回测未成功 → 409。"""

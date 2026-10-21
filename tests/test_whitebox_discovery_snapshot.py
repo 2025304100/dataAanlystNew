@@ -226,7 +226,6 @@ def test_snapshot_full_lifecycle_building_to_ready_to_superseded(db_session):
     assert snap_a.source_task_id == "task-a"
 
     # 第二次构建：B building → ready，A → superseded
-    # 注意：由于 (scope, status, trade_date) 唯一约束，B 必须用不同 trade_date
     snap_b_id = discovery_data_prep._build_ready_snapshot(
         db_session,
         scope="cn_stock",
@@ -343,15 +342,7 @@ def test_snapshot_items_synced_from_score_table(db_session):
 
 
 def test_snapshot_items_count_matches_score_count(db_session):
-    """快照 items 数量与 Score 表最新评分数量一致（端到端同步验证）。
-
-    注：`_build_ready_snapshot` 在 `autoflush=False` 的 session 下，
-    内部 count 查询在 items flush 前执行（`app/db/manager.py` session_factory
-    配置为 `autoflush=False`），导致 `snap.symbol_count` 与 `coverage_pct`
-    字段在写入时为 0。这是服务端已知行为，不在 WP-P.9 测试任务范围内修复
-    （参照 project_memory 硬约束 #6：不修改业务逻辑）。
-    本测试聚焦于验证 items 与 Score 表的实际同步，而非 symbol_count 字段。
-    """
+    """快照统计与已持久化的最新评分条目一致。"""
     symbols, _, scores = _setup_scope_with_scores(
         db_session,
         scope="cn_stock",
@@ -381,37 +372,30 @@ def test_snapshot_items_count_matches_score_count(db_session):
     # items 数量应等于 Score 表中最新评分数量（端到端同步验证）
     assert item_count == expected_score_count
     assert item_count == 4
+    assert snap.symbol_count == 4
+    assert snap.coverage_pct == 100.0
 
 
-def test_snapshot_items_empty_when_no_score_data(db_session):
-    """universe 有标的但无 Score 数据 → items 为空，coverage_pct=0。"""
+def test_snapshot_without_score_data_is_not_published(db_session):
+    """没有评分时拒绝发布空快照，不能覆盖用户可用版本。"""
     # 只创建 universe + symbol，不创建 Score
     for code in ["000030", "000031"]:
         _make_symbol(db_session, symbol=code)
         _make_universe_symbol(db_session, symbol=code)
     db_session.commit()
 
-    snap_id = discovery_data_prep._build_ready_snapshot(
-        db_session,
-        scope="cn_stock",
-        trade_date=date(2026, 7, 19),
-        trigger_full_rebuild=False,
-        full_rebuild_reason=None,
-        dirty_symbols=[],
-        source_task_id="task-empty",
-    )
-    db_session.expire_all()
-    snap = db_session.get(DiscoveryScoreSnapshot, snap_id)
-    assert snap.status == "ready"
-    assert snap.symbol_count == 0
-    assert snap.coverage_pct == 0.0
-
-    item_count = (
-        db_session.query(DiscoveryScoreSnapshotItem)
-        .filter_by(snapshot_id=snap_id)
-        .count()
-    )
-    assert item_count == 0
+    with pytest.raises(RuntimeError, match="没有可用评分"):
+        discovery_data_prep._build_ready_snapshot(
+            db_session,
+            scope="cn_stock",
+            trade_date=date(2026, 7, 19),
+            trigger_full_rebuild=False,
+            full_rebuild_reason=None,
+            dirty_symbols=[],
+            source_task_id="task-empty",
+        )
+    db_session.rollback()
+    assert discovery_fast_scan.get_ready_snapshot(db_session, "cn_stock") is None
 
 
 # ============================================================================
@@ -708,7 +692,7 @@ def test_get_ready_snapshot_picks_latest_after_multiple_builds(db_session):
 
     # 三次连续构建（trade_date 递增）
     ids = []
-    for d in [date(2026, 7, 17), date(2026, 7, 18), date(2026, 7, 19)]:
+    for d in [date(2026, 7, 19), date(2026, 7, 20), date(2026, 7, 21)]:
         sid = discovery_data_prep._build_ready_snapshot(
             db_session,
             scope="cn_stock",

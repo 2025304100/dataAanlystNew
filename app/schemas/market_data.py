@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DailyBarItem(BaseModel):
@@ -82,6 +82,8 @@ HistoryInitializationSymbolSource = Literal[
 
 class HistoryInitializationRequest(BaseModel):
     preset: HistoryInitializationPreset = "1y"
+    start_date: date | None = None
+    end_date: date | None = None
     adjust: str = "qfq"
     asset_types: list[str] | None = None
     symbol_ids: list[int] | None = None
@@ -90,6 +92,14 @@ class HistoryInitializationRequest(BaseModel):
     auto_scan: bool = False
     portfolio_id: int | None = None
     watchlist_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_requested_range(self):
+        if (self.start_date is None) != (self.end_date is None):
+            raise ValueError("请同时填写开始日期和结束日期。")
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("开始日期不能晚于结束日期。")
+        return self
 
 
 class HistoryInitializationRetryRequest(BaseModel):

@@ -1,8 +1,8 @@
 import ReactECharts from "echarts-for-react";
-import { Alert, Button, Card, Col, Modal, Row, Space, Switch, Table, Tag } from "antd";
+import { Alert, Button, Card, Checkbox, Col, Modal, Row, Space, Switch, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useState } from "react";
-import { t } from "../i18n";
+import { useEffect, useState } from "react";
+import { t, template } from "../i18n";
 import { CONDITION_FIELDS } from "../constants/conditionFields";
 import type { BacktestConditionTrace, BacktestPricePoint, BacktestRun, BacktestTrade } from "../types";
 import { money, percent, score, pnlClass } from "../utils/format";
@@ -185,11 +185,19 @@ export default function BacktestResult({ result, portfolioId, onAppliedToPortfol
 
   // P2-1：应用回测到组合
   const [applyModalOpen, setApplyModalOpen] = useState(false);
-  const [applyClearExisting, setApplyClearExisting] = useState(true);
+  const [applyClearExisting, setApplyClearExisting] = useState(false);
+  const [applyOverwriteConfirmed, setApplyOverwriteConfirmed] = useState(false);
   const [applying, setApplying] = useState(false);
 
+  useEffect(() => {
+    // 覆盖授权仅适用于当时确认的组合和回测，切换上下文后必须重新确认。
+    setApplyModalOpen(false);
+    setApplyClearExisting(false);
+    setApplyOverwriteConfirmed(false);
+  }, [portfolioId, result?.id]);
+
   const handleApplyToPortfolio = async () => {
-    if (!result || !portfolioId) return;
+    if (!result || !portfolioId || applying || (applyClearExisting && !applyOverwriteConfirmed)) return;
     setApplying(true);
     try {
       const res = await api.applyBacktestToPortfolio(result.id, portfolioId, applyClearExisting);
@@ -462,15 +470,15 @@ export default function BacktestResult({ result, portfolioId, onAppliedToPortfol
         <Alert
           type="warning"
           showIcon
-          message="非保真实验"
+          message="仅供研究参考"
           description={
-            <Space>
-              <span>
-                本次运行关闭了核心过滤规则（
-                {nonFidelityReason || "原因未记录"}
-                ），结果不得与正式回测并列。
-              </span>
-            </Space>
+            <div>
+              <p style={{ margin: "0 0 8px" }}>这次回测未确认已采用全部交易限制，不能与完整规则下的回测直接比较。</p>
+              <details>
+                <summary style={{ cursor: "pointer" }}>查看具体原因</summary>
+                <div style={{ marginTop: 8, overflowWrap: "anywhere" }}>{nonFidelityReason || "原因未记录"}</div>
+              </details>
+            </div>
           }
           style={{ marginBottom: 16 }}
         />
@@ -480,7 +488,11 @@ export default function BacktestResult({ result, portfolioId, onAppliedToPortfol
           {config.version === 2 ? t("btModeAdvanced") : t("btModeStandard")}
         </Tag>
         {portfolioId && result && (
-          <Button size="small" type="primary" ghost onClick={() => setApplyModalOpen(true)}>
+          <Button size="small" type="primary" ghost onClick={() => {
+            setApplyClearExisting(false);
+            setApplyOverwriteConfirmed(false);
+            setApplyModalOpen(true);
+          }}>
             {t("btApplyToPortfolio")}
           </Button>
         )}
@@ -490,6 +502,7 @@ export default function BacktestResult({ result, portfolioId, onAppliedToPortfol
         open={applyModalOpen}
         title={t("btApplyToPortfolio")}
         confirmLoading={applying}
+        okButtonProps={{ disabled: applyClearExisting && !applyOverwriteConfirmed, danger: applyClearExisting }}
         okText={t("btApplyConfirm")}
         cancelText={t("cancel")}
         onOk={handleApplyToPortfolio}
@@ -497,7 +510,10 @@ export default function BacktestResult({ result, portfolioId, onAppliedToPortfol
       >
         <div style={{ marginBottom: 12 }}>{t("btApplyHint")}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Switch checked={applyClearExisting} onChange={setApplyClearExisting} />
+          <Switch aria-label={t("btApplyClearExisting")} checked={applyClearExisting} onChange={(checked) => {
+            setApplyClearExisting(checked);
+            setApplyOverwriteConfirmed(false);
+          }} />
           <span>{t("btApplyClearExisting")}</span>
         </div>
         {!applyClearExisting && (
@@ -506,6 +522,19 @@ export default function BacktestResult({ result, portfolioId, onAppliedToPortfol
             type="info"
             showIcon
             message={t("btApplyKeepExistingHint")}
+          />
+        )}
+        {applyClearExisting && (
+          <Alert
+            style={{ marginTop: 12 }}
+            type="warning"
+            showIcon
+            message={t("btApplyOverwriteWarning")}
+            description={
+              <Checkbox checked={applyOverwriteConfirmed} onChange={(event) => setApplyOverwriteConfirmed(event.target.checked)}>
+                {template("btApplyOverwriteAcknowledge", { id: portfolioId ?? "" })}
+              </Checkbox>
+            }
           />
         )}
       </Modal>

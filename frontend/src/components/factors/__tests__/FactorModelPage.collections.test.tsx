@@ -623,11 +623,11 @@ describe("TR-2.4 训练门禁 错误 Banner 显示 detail_zh 原文", () => {
     await waitFor(() => expect(mockApi.addFactorSetMember).toHaveBeenCalledWith("version-proof", expect.objectContaining({ factor_code: "REAL_VALID", factor_version: 3 })));
     expect(mockApi.scoringGetFactorDefinition).toHaveBeenCalledWith("REAL_VALID");
   });
-  it("尚不支持的资产集合不会静默提交成股票训练", async () => {
+  it("ETF集合可以打开专用入口，不会静默提交成股票训练", async () => {
     seedSuccess({ factorSets: [makeFactorSet({ id: "etf-set", status: "frozen", asset_type: "etf", members: [makeMember()] })] });
     render(<FactorModelPage />);
     const trainButton = await screen.findByTestId("btn-train-etf-set");
-    expect(trainButton).toBeDisabled();
+    expect(trainButton).toBeEnabled();
     fireEvent.click(trainButton);
     expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
   });

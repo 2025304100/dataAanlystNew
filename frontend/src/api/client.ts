@@ -536,9 +536,12 @@ export interface TailProxyImportResult {
   warnings?: string[];
 }
 
+export type ExternalSyncPolicy = "normal" | "missing" | "force";
+
 export interface ExternalDataSyncPlan {
   dataset: ExternalSyncDataset;
   mode: "incremental" | "backfill";
+  sync_policy?: ExternalSyncPolicy;
   requested_start_date: string;
   requested_end_date: string;
   requested_span_days: number;
@@ -630,6 +633,20 @@ export interface ExternalDataCoverage {
   generated_at: string;
 }
 
+export interface ExternalDatasetSyncCoverage {
+  dataset: ExternalSyncDataset;
+  earliest_date: string | null;
+  latest_date: string | null;
+  first_synced_at: string | null;
+  last_synced_at: string | null;
+  covered_points: number;
+  completed_points?: number;
+}
+
+export interface ExternalDataSyncCoverage {
+  datasets: ExternalDatasetSyncCoverage[];
+}
+
 export interface DataQualitySnapshot {
   id: string;
   dataset: string;
@@ -684,6 +701,7 @@ export interface ExternalSyncPlanDetails {
     parent_plan_id: string | null;
     dataset: ExternalSyncDataset;
     mode: "incremental" | "backfill";
+    sync_policy?: ExternalSyncPolicy;
     source: string;
     status: "queued" | "running" | "done" | "partial" | "failed" | "cancelled";
     requested_start_date: string;
@@ -693,6 +711,9 @@ export interface ExternalSyncPlanDetails {
     completed_partitions: number;
     skipped_partitions: number;
     failed_partitions: number;
+    created_at?: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
   } | null;
   partitions: ExternalSyncPartition[];
 }
@@ -1126,6 +1147,11 @@ export const api = {
   getProductionCandidateTask: (planId:string) => requestJson<AsyncTaskRead>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}`),
   getProductionPredictionStatus: (planId:string,bundleId:string) => requestJson<import('../types/productionAdmission').ProductionPredictionStatus>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/predictions?bundle_id=${encodeURIComponent(bundleId)}`),
   recordProductionPrediction: (planId:string,bundleId:string) => requestJson<unknown>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/predictions`,{method:'POST',body:JSON.stringify({bundle_id:bundleId}),timeoutMs:180000}),
+  getProductionIndependentReview: (planId:string,bundleId:string) => requestJson<import('../types/productionAdmission').ProductionIndependentReview>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/independent-review?bundle_id=${encodeURIComponent(bundleId)}`),
+  submitProductionIndependentEvaluation: (planId:string,bundleId:string,sha:string) => requestJson<AsyncTaskRead>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/independent-evaluation`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,expected_sha256:sha})}),
+  getProductionIndependentTask: (taskId:string) => requestJson<AsyncTaskRead>(`${API}/scoring/independent-evaluations/${encodeURIComponent(taskId)}`),
+  getProductionReleaseReview: (planId:string,bundleId:string) => requestJson<import('../types/productionAdmission').ProductionReleaseReview>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/release-review?bundle_id=${encodeURIComponent(bundleId)}`),
+  confirmProductionRelease: (planId:string,bundleId:string,sha:string) => requestJson<import('../types/productionAdmission').ProductionReleaseReview>(`${API}/scoring/production-candidates/${encodeURIComponent(planId)}/confirm-release`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,expected_sha256:sha,confirmed:true}),timeoutMs:300000}),
   freezeProductionAdmission: (modelId:string,bundleId:string,identity:string) => requestJson<import('../types/productionAdmission').ProductionAdmissionReport>(`${API}/scoring/models/${encodeURIComponent(modelId)}/production-admission/freeze`,{method:'POST',body:JSON.stringify({bundle_id:bundleId,expected_identity_sha256:identity})}),
   getInputBusinessStatus: (bundleId: string) => requestJson<import("../types/inputReplay").InputBusinessStatus>(`${API}/scoring/input-bundles/${encodeURIComponent(bundleId)}/business-status`),
   createInputReplay: (payload: InputReplayRequest) => requestJson<InputReplayTask>(`${API}/scoring/input-replays`, {
@@ -1156,6 +1182,7 @@ export const api = {
       actor: string;
       source_hint: string;
       factor_set_id: string | null;
+      trusted_history_dataset_id: string;
       window_days: number;
       validation_days: number;
       batch_size: number;
@@ -1171,6 +1198,14 @@ export const api = {
     }),
   scoringGetTask: (taskId: string) =>
     requestJson<FactorPipelineTask>(`${API}/scoring/tasks/${encodeURIComponent(taskId)}`),
+  scoringPrepareETFTrainingSet: () =>
+    requestJson<FactorSet>(`${API}/scoring/etf-training/factor-set`, { method: 'POST', jsonBody: {} }),
+  scoringSubmitETFTraining: (request: ETFTrainingRequest) =>
+    requestJson<FactorPipelineTask>(`${API}/scoring/etf-training`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, jsonBody: request,
+    }),
+  scoringRecoverETFTraining: (requestId: string) =>
+    requestJson<ETFTrainingRecovery>(`${API}/scoring/etf-training/requests/${encodeURIComponent(requestId)}`, { dedupe: false }),
   scoringGetResearchRetrainPlan: (modelId: string) =>
     requestJson<ResearchRetrainPlan>(`${API}/scoring/models/${encodeURIComponent(modelId)}/research-retrain`, { timeoutMs: 90000 }),
   scoringRetrainResearchModel: (modelId: string, manifestSha256: string, note: string, requestId: string) =>
@@ -1693,6 +1728,8 @@ export const api = {
 
   startHistoryInitialization: (payload: {
     preset: string;
+    start_date?: string;
+    end_date?: string;
     adjust?: string;
     asset_types?: string[];
     symbol_ids?: number[];
@@ -2410,6 +2447,13 @@ export const api = {
       },
     ),
 
+  // Start a real task after the user has reviewed the read-only checks.
+  startAutoSimulation: (portfolioId: number, payload: { trade_date: string }) =>
+    requestJson<{ portfolio_id: number; trade_date: string; task_id: string; status: string; created: boolean }>(
+      `${API}/portfolios/${portfolioId}/auto-simulation/start`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+    ),
+
   // FR-P1-2 组合恢复：断点续跑 plan & execute
   planPortfolioResume: (portfolioId: number, payload?: PortfolioResumePlanRequest) =>
     requestJson<PortfolioResumePlanResponse>(
@@ -2476,6 +2520,8 @@ export const api = {
     requestJson<ExternalDataOverview>(`${API}/external-data/overview`),
   getExternalDataCoverage: () =>
     requestJson<ExternalDataCoverage>(`${API}/external-data/coverage`),
+  getExternalDataSyncCoverage: () =>
+    requestJson<ExternalDataSyncCoverage>(`${API}/external-data/sync-coverage`),
   getExternalDataQualitySnapshots: () =>
     requestJson<{ captured_at: string | null; fields: DataQualitySnapshot[] }>(`${API}/external-data/quality-snapshots`),
   getExternalDataQualityHistory: (field: string, limit: number = 30) =>
@@ -2497,6 +2543,7 @@ export const api = {
     start_date: string;
     end_date: string;
     gaps: ExternalDataGapItem[];
+    sync_policy?: "missing";
   }) => requestJson<ExternalSyncTask>(`${API}/external-data/gaps/repair`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2515,6 +2562,7 @@ export const api = {
     portfolio_id?: number | null;
     include_northbound?: boolean;
     mode?: "incremental" | "backfill";
+    sync_policy?: ExternalSyncPolicy;
     start_date?: string;
     end_date?: string;
     lookback_days?: number;
@@ -2535,6 +2583,7 @@ export const api = {
     portfolio_id?: number | null;
     include_northbound?: boolean;
     mode?: "incremental" | "backfill";
+    sync_policy?: ExternalSyncPolicy;
     start_date?: string;
     end_date?: string;
     lookback_days?: number;
@@ -3114,6 +3163,48 @@ export const api = {
     requestJson<FactorSet>(
       `${API}/factor-sets/${encodeURIComponent(factorSetId)}?with_members=${withMembers ? "true" : "false"}`
     ),
+
+  getETFHistoryScope: (portfolioId: number, dates?: { start: string; end: string }) =>
+    requestJson<ETFHistoryScope>(`${API}/etf-history/scope?portfolio_id=${portfolioId}${dates ? `&start_date=${dates.start}&end_date=${dates.end}` : ""}`, { dedupe: false }),
+  getETFTrainingListScope: (dates?: { start: string; end: string }) =>
+    requestJson<ETFTrainingListScope>(`${API}/etf-history/training-list/scope${dates ? `?start_date=${dates.start}&end_date=${dates.end}` : ''}`, { dedupe: false }),
+  saveETFTrainingList: (codesText: string, listSha256: string) =>
+    requestJson<ETFTrainingList>(`${API}/etf-history/training-list`, { method: 'PUT', jsonBody: { codes_text: codesText, expected_list_sha256: listSha256 } }),
+  startETFTrainingPreparation: (payload: ETFTrainingPreparationInput) =>
+    requestJson<ETFTrainingPreparationRead>(`${API}/etf-history/training-list/preparations`, { method: 'POST', jsonBody: payload }),
+  getETFTrainingPreparation: (id: string) =>
+    requestJson<ETFTrainingPreparationRead>(`${API}/etf-history/training-list/preparations/${encodeURIComponent(id)}`, { dedupe: false }),
+  findETFTrainingPreparation: (requestId: string) =>
+    requestJson<ETFTrainingPreparationRead>(`${API}/etf-history/training-list/preparations/requests/${encodeURIComponent(requestId)}`, { dedupe: false }),
+  listETFHistoryDatasets: () => requestJson<{ items: ETFHistoryDataset[]; errors: string[] }>(`${API}/etf-history/datasets`, { dedupe: false }),
+  getETFTrainingOptions: (factorSetId: string, useTrainingList = false, selection?: ETFTrainingSelection) =>
+    requestJson<ETFTrainingOptions>(`${API}/etf-history/training-options?factor_set_id=${encodeURIComponent(factorSetId)}${useTrainingList ? '&use_training_list=true' : ''}${selection
+      ? `&dataset_id=${encodeURIComponent(selection.dataset_id)}&manifest_sha256=${selection.manifest_sha256}&expected_list_sha256=${selection.list_sha256}` : ''}`, { dedupe: false }),
+  startETFHistoryPreparation: (payload: ETFHistoryInput) =>
+    requestJson<ETFHistoryRead>(`${API}/etf-history/preparations`, { method: "POST", jsonBody: payload }),
+  getETFHistoryPreparation: (id: string) => requestJson<ETFHistoryRead>(`${API}/etf-history/preparations/${encodeURIComponent(id)}`, { dedupe: false }),
+  findETFHistoryRequest: (portfolioId: number, requestId: string) =>
+    requestJson<ETFHistoryRead>(`${API}/etf-history/preparations/requests/${encodeURIComponent(requestId)}?portfolio_id=${portfolioId}`, { dedupe: false }),
+  getSecurityStatusTemplate: () => requestJson<SecurityStatusTemplate>(`${API}/security-status/template`),
+  getSecurityStatusCoverage: () => requestJson<SecurityStatusCoverage>(`${API}/security-status/coverage`),
+  getSecurityStatusDownloadScope: (portfolioId: number) =>
+    requestJson<SecurityStatusDownloadScope>(`${API}/security-status/download-scope?portfolio_id=${portfolioId}`),
+  startSecurityStatusDownload: (payload: SecurityStatusDownloadInput) =>
+    requestJson<SecurityStatusDownloadRead>(`${API}/security-status/downloads`, { method: "POST", jsonBody: payload }),
+  getSecurityStatusDownload: (taskId: string) =>
+    requestJson<SecurityStatusDownloadRead>(`${API}/security-status/downloads/${encodeURIComponent(taskId)}`),
+  findSecurityStatusDownloadRequest: (portfolioId: number, requestId: string) =>
+    requestJson<SecurityStatusDownloadRead>(`${API}/security-status/downloads/requests/${encodeURIComponent(requestId)}?portfolio_id=${portfolioId}`),
+  getSecurityStatusDownloadFiles: (taskId: string) =>
+    requestJson<{ filename: string; content_base64: string }>(`${API}/security-status/downloads/${encodeURIComponent(taskId)}/files?encoding=base64`),
+  previewSecurityStatusImport: (payload: SecurityStatusImportInput) =>
+    requestJson<SecurityStatusImportPreview>(`${API}/security-status/import/preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }),
+  importSecurityStatus: (payload: SecurityStatusImportInput & { preview_sha256: string; confirmed: true }) =>
+    requestJson<SecurityStatusImportResult>(`${API}/security-status/import`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }),
 
 };
 
@@ -3802,6 +3893,8 @@ export interface ScoringFactorSetBrief {
   frozen_at: string | null;
   is_active_for_model_run_ids: string[];
   description: string | null;
+  asset_type?: 'stock' | 'etf' | 'mixed' | string;
+  schema_version?: number;
 }
 
 export interface ScoringModelFactorMember {
@@ -4817,6 +4910,7 @@ export interface BacktestPrecheckRequest {
 }
 
 export interface BacktestPrecheckResponse {
+  symbols?: Array<{ id: number; symbol: string; name?: string | null }>;
   requested_trade_days: number;
   usable_trade_days: number;
   minimum_trade_days: number;
@@ -4844,3 +4938,135 @@ export interface BacktestPrecheckResponse {
 
 
 import type { VerifiedInputBundle, InputReplayRequest, InputReplayTask, InputReplayReport } from "../types/inputReplay";
+
+export interface SecurityStatusTemplate {
+  csv_text: string;
+  required_columns: string[];
+  optional_columns?: string[];
+  instructions: string[];
+  max_bytes: number;
+  max_rows: number;
+}
+export interface SecurityStatusImportInput {
+  csv_text: string;
+  filename?: string;
+  source_name: string;
+  source_reference: string;
+  source_version: string;
+  source_updated_at: string;
+}
+export interface SecurityStatusImportPreview {
+  can_import: boolean;
+  content_sha256: string;
+  batch_id: string;
+  total_rows: number;
+  insert_count: number;
+  replace_unknown_count: number;
+  unchanged_count: number;
+  execution_constraint_count?: number;
+  attach_constraints_count?: number;
+  start_date: string | null;
+  end_date: string | null;
+  symbols: number;
+  errors: Array<{ line: number; message: string }>;
+  sample: Array<{ symbol: string; trade_date: string; status: string }>;
+  warnings: string[];
+}
+export interface SecurityStatusImportResult {
+  batch_id: string;
+  content_sha256: string;
+  inserted: number;
+  replaced_unknown: number;
+  unchanged: number;
+  attached_constraints?: number;
+  audit_id: number;
+  message: string;
+}
+export interface SecurityStatusDownloadInput {
+  portfolio_id: number; request_id: string; start_date: string; end_date: string; expected_scope_sha256: string;
+}
+export interface SecurityStatusDownloadScope {
+  portfolio_id: number; portfolio_name: string; scope_sha256: string;
+  symbols: Array<{ symbol_id: number; symbol: string; name: string; asset_type: string; supported: boolean }>;
+  start_date: string; end_date: string; max_symbols: number; max_days: number;
+  can_download: boolean; reasons: string[]; latest_task: AsyncTaskRead | null;
+}
+export interface SecurityStatusDownloadReport {
+  portfolio_id: number; portfolio_name: string; start_date: string; end_date: string;
+  valid_daily_rows: number; can_import: false; backtest_ready: false; calendar_complete: boolean;
+  missing_fields: string[]; errors: string[]; source_error: string | null;
+  raw_files: Array<{ file: string; sha256: string; bytes: number }>;
+  symbols: Array<{ symbol: string; display_name: string; raw_daily_rows: number; valid_daily_rows: number; st_days: number | null;
+    suspended_days: number | null; missing_trade_dates: string[] | null; errors: string[] }>;
+}
+export interface SecurityStatusDownloadRead { task: AsyncTaskRead | null; report: SecurityStatusDownloadReport | null }
+
+export interface ETFHistoryInput {
+  portfolio_id: number; request_id: string; start_date: string; end_date: string; expected_scope_sha256: string;
+}
+export interface ETFTrainingList {
+  name: string; list_sha256: string; symbol_count: number; minimum_symbols: number; max_symbols: number;
+  symbols: Array<{ symbol: string; name: string; provider_code: string }>;
+}
+export interface ETFTrainingListScope extends ETFTrainingList {
+  scope_sha256: string; start_date: string; end_date: string; max_days: number;
+  can_prepare: boolean; reasons: string[]; errors: string[]; latest_task: AsyncTaskRead | null;
+  expected_trade_date_count: number | null; common_trade_date_count: number | null;
+  common_start_date: string | null; common_end_date: string | null;
+  dataset_id: string | null; training_ready: boolean; training_message: string; backtest_ready: false;
+  training_dataset?: ETFHistoryDataset | null;
+  symbols: Array<ETFTrainingList['symbols'][number] & { dataset_id: string | null; row_count: number;
+    first_date: string | null; last_date: string | null; missing_trade_dates: string[] | null; reason: string | null }>;
+}
+export interface ETFTrainingPreparationInput {
+  request_id: string; start_date: string; end_date: string; expected_scope_sha256: string;
+}
+export interface ETFTrainingPreparationRead {
+  task: AsyncTaskRead | null;
+  report: { scope_kind: 'training_list'; list_sha256: string; start_date: string; end_date: string;
+    training?: ETFHistoryDataset;
+    prepared: boolean; imported: false; errors: string[]; backtest_ready: false;
+    expected_trade_date_count: number | null; common_trade_date_count: number | null;
+    common_start_date: string | null; common_end_date: string | null;
+    symbols: Array<{ symbol: string; name: string; row_count: number; missing_trade_dates: string[] | null; error: string | null }> } | null;
+}
+export interface ETFHistoryDataset {
+  dataset_id: string; manifest_sha256: string; symbols: string[]; symbol_count: number;
+  start_date: string; end_date: string; trade_date_count: number; bar_count: number;
+  minimum_symbols: number; training_ready: boolean; training_message: string; backtest_ready: false;
+  feature_ready?: boolean; feature_message?: string;
+}
+export interface ETFTrainingOptions { factor_set_id: string; factor_ready: boolean; minimum_symbols: number; items: ETFHistoryDataset[]; errors: string[];
+  list_message?: string; list_sha256?: string; list_symbol_count?: number }
+export type ETFTrainingSelection = Pick<ETFHistoryDataset, 'dataset_id' | 'manifest_sha256' | 'start_date' | 'end_date' | 'trade_date_count' | 'symbol_count'> & { list_sha256: string };
+export interface ETFTrainingRequest { request_id: string; factor_set_id: string; dataset_id: string; manifest_sha256: string; note: string }
+export interface ETFTrainingRecovery { request_id: string; state: 'found' | 'not_found'; request: ETFTrainingRequest | null; task: FactorPipelineTask | null }
+export interface ETFHistoryScope {
+  portfolio_id: number; portfolio_name: string; scope_sha256: string; start_date: string; end_date: string;
+  max_days: number; max_symbols: number; can_prepare: boolean; reasons: string[]; errors: string[];
+  minimum_symbols: number; training_message: string; latest_task: AsyncTaskRead | null;
+  symbols: Array<{ symbol_id: number; symbol: string; name: string; dataset_id: string | null;
+    first_date: string | null; last_date: string | null; row_count: number;
+    missing_trade_dates: string[] | null; unreviewed_dates: string[] | null }>;
+}
+export interface ETFHistoryRead {
+  task: AsyncTaskRead | null;
+  report: { portfolio_id: number; start_date: string; end_date: string; imported: boolean; dataset_id?: string;
+    errors: string[]; backtest_ready: false; symbols: Array<{ symbol: string; name: string; row_count: number;
+      missing_trade_dates: string[] | null; error: string | null }> } | null;
+}
+
+export interface SecurityStatusCoverage {
+  total_records: number;
+  verified_records: number;
+  first_date: string | null;
+  latest_date: string | null;
+  coverage_ratio: number | null;
+  calendar_available: boolean | null;
+  total_expected: number | null;
+  verified: number | null;
+  missing_or_unverified: number | null;
+  missing_sample: Array<{ symbol_id: number; symbol: string; trade_date: string; reason: string }>;
+  sources: Array<{ source: string; rows: number; verified_rows: number }>;
+  message: string;
+}

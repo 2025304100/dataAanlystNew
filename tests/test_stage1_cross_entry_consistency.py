@@ -258,6 +258,9 @@ def _seed_real_tri_entry_case(db_session):
             factor_set_id="fs-stage1-real-tri-entry-model",
         ))
 
+    from tests.historical_backtest_helpers import seed_daily_history
+    for symbol in (buy_symbol, hold_symbol):
+        seed_daily_history(db_session, symbol.id, [_TRADE_DATE, _EXECUTION_DATE])
     snapshot = StrategyExecutionSnapshot(
         id="stage1-real-tri-entry-snapshot",
         snapshot_no=1,

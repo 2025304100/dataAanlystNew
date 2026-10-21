@@ -784,7 +784,10 @@ def _ev_to_read(ev: DataGovernanceAuditEvent) -> AuditEventRead:
                     if isinstance(exp, (int, float)) and isinstance(act, (int, float)) and (act - exp) != 0:
                         non_zero += 1
         non_ack = attrs_dict.get("diffs_count_non_checked") if isinstance(attrs_dict, dict) else None
-        if (isinstance(non_ack, int) and non_ack > 0) or non_zero > 0:
+        incomplete = attrs_dict.get("incomplete_checks_count")
+        if (attrs_dict.get("status") == "BLOCKED"
+            or (isinstance(incomplete, int) and incomplete > 0)
+            or (isinstance(non_ack, int) and non_ack > 0) or non_zero > 0):
             severity = "L2"
     elif event_type == "AUTO_SIMULATION_RESULT":
         if isinstance(attrs_dict, dict) and (attrs_dict.get("status") in {"FAILED", "BLOCKED"}):
@@ -1093,7 +1096,7 @@ class AutoSimulationPreflightRequest(BaseModel):
     trade_date: date = Field(..., description="T 日决策日（一般是 today；cron 在 T 日 20:30 调用）")
     decision_at: datetime | None = Field(
         default=None,
-        description="模拟决策时间；不传则用 now()；用于门禁 time<20:00 的判定",
+        description="兼容旧客户端；检查和执行均以服务器当前北京时间为准",
     )
 
 
@@ -1104,6 +1107,7 @@ class AutoSimulationPreflightResponse(BaseModel):
     skip_reason: Literal[
         "PORTFOLIO_NOT_READY",
         "SCHEDULE_TOO_EARLY",
+        "SCHEDULE_DATE_MISMATCH",
         "DUAL_EXECUTION_RISK_PROHIBITED",
         "RECONCILIATION_GAP_WARNING",
         None,
@@ -1120,10 +1124,7 @@ class AutoSimulationPreflightResponse(BaseModel):
     "/portfolios/{portfolio_id}/auto-simulation/preflight",
     response_model=AutoSimulationPreflightResponse,
     status_code=200,
-    summary=(
-        "G4：T 日 auto_simulation 启动前门禁（3 层检查：READY / 20:00 时间窗 / 对账连续性）。"
-        "通过时 READY→RUNNING_AUTO_SIMULATION；失败返回 skip_reason 并写入 AUTO_SIMULATION_RESULT=FAILED 审计。"
-    ),
+    summary="自动推演开始前检查；只查询，不修改组合或创建任务。",
 )
 def preflight_auto_simulation(
     portfolio_id: int,
@@ -1131,143 +1132,75 @@ def preflight_auto_simulation(
     db: Session = Depends(get_db),
     actor: str = Depends(_require_actor),
 ) -> AutoSimulationPreflightResponse:
-    """cron worker 在调用 evaluate(persist=True, run_type=auto_simulation) 前，**必须**先调用本接口。
-
-    3 层门禁（任一 fail 则 proceed=False，不阻断其它组合调度）：
-      1. 状态机 READY 检查 → 否则 PORTFOLIO_NOT_READY
-      2. schedule gate ensure_auto_simulation_schedule → SCHEDULE_TOO_EARLY / DUAL_EXECUTION_RISK_PROHIBITED
-      3. 对账连续性检查：last_reconciled_trade_date >= last_decision_trade_date - 1 day（或两者其一为空视为初日通过）
-         —— 不 fail，仅 warnings+skip_reason=RECONCILIATION_GAP_WARNING（proceed 仍 True，
-           但审计 AUTO_SIMULATION_RESULT=FAILED 写 warning，下游对账系统要追踪）
-    """
-    from app.services.portfolio_state_machine import (
-        StateTransitionError,
-        transition_portfolio_state,
-    )
-    from app.services.decision_schedule_gate import ensure_auto_simulation_schedule
-    from app.services.data_governance_audit import audit_auto_simulation_result
+    """Read-only checks. Execution workers own their actual running state."""
+    from app.services.decision_schedule_gate import ensure_auto_simulation_schedule, shanghai_now, as_shanghai
 
     p = _load_portfolio(db, portfolio_id)
     current_state = _psm_get_status(db, p)
-    corr = _corr_id()
-    warnings: list[str] = []
-    decision_at = payload.decision_at or datetime.now()
-
-    # ── Check 1: 状态机 READY ───────────────────────────────────────────────
     composite_state = resolve_composite_status(p).composite_status.value
     if current_state != "READY" or composite_state != "READY":
-        audit_auto_simulation_result(
-            db, portfolio_id, payload.trade_date, result_status="FAILED",
-            decision_run_id=f"preflight_skip_{portfolio_id}_{payload.trade_date.isoformat()}",
-            operator_id=actor,
-            correlation_id=corr,
-            error_code="PORTFOLIO_NOT_READY",
-        )
-        db.commit()
         return AutoSimulationPreflightResponse(
-            portfolio_id=portfolio_id, trade_date=payload.trade_date,
-            proceed=False,
+            portfolio_id=portfolio_id, trade_date=payload.trade_date, proceed=False,
             skip_reason="PORTFOLIO_NOT_READY",
-            skip_detail=(
-                f"当前运行状态为 {current_state}，维度状态为 {composite_state}，"
-                "自动执行必须在运行状态和各项条件均已就绪时启动。"
-            ),
-            from_state=current_state, to_state=None,
+            skip_detail="组合还有未完成的检查或对账，请到“检查与对账”处理后再试。",
+            from_state=current_state, to_state=current_state,
         )
-
-    # ── Check 2: 调度时间 + 同日重复 ────────────────────────────────────────
-    gate = ensure_auto_simulation_schedule(
-        decision_at=decision_at,
-        portfolio_id=portfolio_id,
-        db=db,
-    )
-    if gate.allowed is False:
-        ec = gate.error_code
-        mapping = {
-            "SCHEDULE_TOO_EARLY": "SCHEDULE_TOO_EARLY",
-            "DUAL_EXECUTION_RISK_PROHIBITED": "DUAL_EXECUTION_RISK_PROHIBITED",
-        }
-        mapped = mapping.get(ec, None) or "SCHEDULE_TOO_EARLY"
-        error_code_map = {
-            "SCHEDULE_TOO_EARLY": "SCHEDULE_TOO_EARLY",
-            "DUAL_EXECUTION_RISK_PROHIBITED": "DUAL_EXECUTION_DETECTED",
-        }
-        audit_auto_simulation_result(
-            db, portfolio_id, payload.trade_date, result_status="FAILED",
-            decision_run_id=f"preflight_skip_{portfolio_id}_{payload.trade_date.isoformat()}",
-            operator_id=actor, correlation_id=corr,
-            error_code=error_code_map.get(mapped, "PREFLIGHT_GATE_FAILED"),
-        )
-        db.commit()
+    # decision_at remains accepted for old clients but cannot advance the clock.
+    decision_at = as_shanghai(shanghai_now())
+    if payload.trade_date != decision_at.date():
         return AutoSimulationPreflightResponse(
-            portfolio_id=portfolio_id, trade_date=payload.trade_date,
-            proceed=False, skip_reason=mapped,  # type: ignore[arg-type]
-            skip_detail=gate.message,
-            from_state=current_state, to_state=None,
+            portfolio_id=portfolio_id, trade_date=payload.trade_date, proceed=False,
+            skip_reason="SCHEDULE_DATE_MISMATCH",
+            skip_detail="执行日期必须是服务器当前的北京时间日期；历史遗漏请使用恢复执行。",
+            from_state=current_state, to_state=current_state,
         )
-
-    # ── Check 3: 对账连续性 ─────────────────────────────────────────────────
-    last_dec = p.last_decision_trade_date
-    last_rec = p.last_reconciled_trade_date
-    skip_reason: Any = None
-    if last_dec is not None and last_rec is not None:
-        delta_days = (last_dec - last_rec).days
-        if delta_days > 1:
-            msg = (
-                f"决策/对账游标间隔 {delta_days} 天 > 1（last_decision={last_dec}, "
-                f"last_rec={last_rec}）；可能漏做对账，需人工复核。"
-            )
-            warnings.append(msg)
-            # FR-P1-3 HG3：即使 proceed=True，也必须写 AUTO_SIMULATION_RESULT=FAILED 审计（告警追踪）
-            audit_auto_simulation_result(
-                db, portfolio_id, payload.trade_date, result_status="FAILED",
-                decision_run_id=f"preflight_warn_{portfolio_id}_{payload.trade_date.isoformat()}",
-                operator_id=actor,
-                correlation_id=corr,
-                error_code="RECONCILIATION_GAP_WARNING",
-                error_message=msg,
-            )
-            skip_reason = "RECONCILIATION_GAP_WARNING"
-
-    # ── 通过：READY → RUNNING_AUTO_SIMULATION ──────────────────────────────
-    try:
-        tr = transition_portfolio_state(
-            db, portfolio_id, "RUNNING_AUTO_SIMULATION",
-            operator_id=actor,
-            correlation_id=corr,
-            reason="auto_simulation preflight passed",
-        )
-    except StateTransitionError as e:
-        # 理论上 Check1 已验证 READY，但并发下可能有问题；写审计失败
-        audit_auto_simulation_result(
-            db, portfolio_id, payload.trade_date, result_status="FAILED",
-            decision_run_id=f"preflight_skip_{portfolio_id}_{payload.trade_date.isoformat()}",
-            operator_id=actor, correlation_id=corr,
-            error_code="STATE_TRANSITION_FAILED_RACE",
-        )
-        db.commit()
+    gate = ensure_auto_simulation_schedule(decision_at, portfolio_id, db=db)
+    from app.services.portfolio_execution_task import latest_original_plan_retry, portfolio_execution_in_progress
+    original_retry = gate.error_code == "DUAL_EXECUTION_RISK_PROHIBITED" and latest_original_plan_retry(db, portfolio_id, payload.trade_date)
+    if portfolio_execution_in_progress(db, portfolio_id):
         return AutoSimulationPreflightResponse(
-            portfolio_id=portfolio_id, trade_date=payload.trade_date,
-            proceed=False, skip_reason="PORTFOLIO_NOT_READY",
-            skip_detail=str(e),
-            from_state=current_state, to_state=None,
+            portfolio_id=portfolio_id, trade_date=payload.trade_date, proceed=False,
+            skip_reason="PORTFOLIO_NOT_READY", skip_detail="组合已有任务正在处理，请稍后再试。",
+            from_state=current_state, to_state=current_state,
         )
-    db.commit()
+    if not gate.allowed and not original_retry:
+        return AutoSimulationPreflightResponse(
+            portfolio_id=portfolio_id, trade_date=payload.trade_date, proceed=False,
+            skip_reason=gate.error_code, skip_detail=gate.message,
+            from_state=current_state, to_state=current_state,
+        )
+    warnings = ["将继续处理原任务，已完成的成交不会重复执行。"] if original_retry else []
+    if p.last_decision_trade_date and p.last_reconciled_trade_date:
+        gap = (p.last_decision_trade_date - p.last_reconciled_trade_date).days
+        if gap > 1:
+            warnings.append(f"决策与对账进度相差 {gap} 天，请复核是否有遗漏。")
     return AutoSimulationPreflightResponse(
-        portfolio_id=portfolio_id, trade_date=payload.trade_date,
-        proceed=True, skip_reason=skip_reason,  # type: ignore[arg-type]
-        skip_detail=(warnings[0] if warnings else None),
-        from_state=tr.from_state, to_state=tr.to_state,
+        portfolio_id=portfolio_id, trade_date=payload.trade_date, proceed=True,
+        skip_reason="RECONCILIATION_GAP_WARNING" if len(warnings) > int(bool(original_retry)) else None,
+        skip_detail=warnings[0] if warnings else None,
+        from_state=current_state, to_state=current_state,
         transition_trace={
-            "correlation_id": corr,
-            "gate_schedule_data_cutoff_at": (
-                gate.effective_data_cutoff_at.isoformat() if gate.effective_data_cutoff_at else None
-            ),
-            "gate_schedule_trade_date": (
-                gate.effective_data_as_of_trade_date.isoformat() if gate.effective_data_as_of_trade_date else None
-            ),
-            "gate_allowed": True,
-            "gate_error_code": gate.error_code,
-        },
-        warnings=warnings,
+            "gate_schedule_data_cutoff_at": gate.effective_data_cutoff_at.isoformat() if gate.effective_data_cutoff_at else None,
+            "gate_schedule_trade_date": payload.trade_date.isoformat(),
+            "gate_allowed": True, "gate_error_code": None,
+            "original_plan_retry": bool(original_retry),
+        }, warnings=warnings,
     )
+
+
+@router.post("/portfolios/{portfolio_id}/auto-simulation/start", status_code=200)
+def start_auto_simulation(
+    portfolio_id: int,
+    payload: AutoSimulationPreflightRequest,
+    db: Session = Depends(get_db),
+    actor: str = Depends(_require_actor),
+) -> dict[str, Any]:
+    """Start one real, observable single-machine task for this portfolio."""
+    checked = preflight_auto_simulation(portfolio_id, payload, db, actor)
+    from app.services.portfolio_execution_task import create_auto_simulation_task
+    if not checked.proceed:
+        raise HTTPException(status_code=409, detail={
+            "code": checked.skip_reason, "title_zh": "暂时不能开始自动推演",
+            "detail_zh": checked.skip_detail,
+        })
+    return create_auto_simulation_task(db, portfolio_id, payload.trade_date, actor=actor)

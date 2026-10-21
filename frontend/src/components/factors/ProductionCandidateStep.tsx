@@ -4,6 +4,7 @@ import {api} from '../../api/client';
 import {t} from '../../i18n';
 import type {AsyncTaskRead,Portfolio} from '../../types';
 import type {ProductionExecutionReview,ProductionPredictionStatus} from '../../types/productionAdmission';
+import ProductionReleaseStep from './ProductionReleaseStep';
 
 export default function ProductionCandidateStep({modelId,bundleId,planId}:{modelId:string;bundleId:string;planId:string}) {
   const [portfolios,setPortfolios]=useState<Portfolio[]>([]);
@@ -91,7 +92,7 @@ export default function ProductionCandidateStep({modelId,bundleId,planId}:{model
         <Descriptions bordered column={1} size="small" items={[
           {key:'capital',label:t('productionCandidate.capital'),children:`${cost.evaluation_capital.toLocaleString()} ${cost.currency}`},
           {key:'cutoff',label:t('productionCandidate.cutoff'),children:review.contract.training_cutoff},
-          ...Object.entries(cost.fees).map(([key,value])=>({key,label:t(`productionCandidate.fee.${key}`),children:<span title={cost.provenance[key]}>{value}</span>})),
+          ...Object.entries(cost.fees).map(([key,value])=>({key,label:t(`productionCandidate.fee.${key}`),children:<span>{key.endsWith('_rate')?`${Number((value*100).toFixed(6))}%`:value}</span>})),
           {key:'source',label:t('productionCandidate.source'),children:cost.source_snapshot_id??t('productionCandidate.portfolioFallback')},
         ]}/>
         <Alert type="warning" showIcon message={t('productionCandidate.lockHelp')}/>
@@ -107,6 +108,7 @@ export default function ProductionCandidateStep({modelId,bundleId,planId}:{model
         description={t('productionCandidate.journalHelp').replace('{boundary}',prediction.independent_after)}/>}
       {prediction?.can_record_today&&<Button loading={busy} onClick={()=>void recordPrediction()}>{t('productionCandidate.recordToday')}</Button>}
       {predictionError&&<Alert type="warning" showIcon message={t('productionCandidate.journalReadError')} description={predictionError}/>}
+      {task.status==='done'&&<ProductionReleaseStep planId={planId} bundleId={bundleId}/>}
       <Button onClick={()=>{void api.getProductionCandidateTask(planId).then(setTask).catch(reason=>setError(String(reason)));}}>{t('productionAdmission.refresh')}</Button>
     </>}
   </Space>;

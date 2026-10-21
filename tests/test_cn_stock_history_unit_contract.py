@@ -158,16 +158,20 @@ def test_sina_stock_already_uses_shares(normalize, quantity, expected):
 
 
 @pytest.mark.parametrize("path", ["legacy", "modern"])
-def test_em_etf_does_not_inherit_stock_conversion_or_contract(monkeypatch, configured_providers, path):
+def test_em_etf_uses_fund_units_and_its_own_contract(monkeypatch, configured_providers, path):
     frame = _em_frame()
     original = frame.copy(deep=True)
     monkeypatch.setattr(market_data.ak, "fund_etf_hist_em", lambda **_kwargs: frame)
     symbol = SimpleNamespace(symbol="510300", market="sh", asset_type="etf")
     result = (market_data._fetch_history(symbol, DAY, DAY, "qfq") if path == "legacy"
               else EMETFSource().fetch(symbol, DAY, DAY, "qfq"))
-    assert result.iloc[0].volume == pytest.approx(1110388.0)
+    assert result.iloc[0].volume == pytest.approx(111038800.0)
     assert result.iloc[0].amount == pytest.approx(4656185449.0)
-    assert "history_contract" not in result.attrs
+    assert result.attrs['history_contract'] == {
+        'provider': 'eastmoney_etf', 'endpoint': 'fund_etf_hist_em',
+        'version': 'cn-etf-shares-v1', 'volume_unit': 'share',
+        'amount_unit': 'CNY', 'turnover_unit': 'percentage_point',
+    }
     pd.testing.assert_frame_equal(frame, original)
 
 

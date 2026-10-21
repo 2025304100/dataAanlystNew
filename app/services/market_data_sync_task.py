@@ -80,7 +80,7 @@ def create_market_data_sync_task(payload: MarketDataSyncCreate) -> dict:
     if existing and existing[0].status in ("queued", "running"):
         return existing[0].model_dump()
 
-    task_read = create_async_task(TASK_TYPE, payload.model_dump())
+    task_read = create_async_task(TASK_TYPE, payload.model_dump(), force_new=True)
     _start_worker(task_read.id, _run_market_data_sync)
     return task_read.model_dump()
 
@@ -183,7 +183,6 @@ def _run_market_data_sync(task_id: str) -> None:
                                 db=db, symbol=symbol,
                                 trade_date=latest_bar.trade_date,
                             )
-                            scored_count += 1
                             if resolved_portfolio_id is not None:
                                 upsert_trade_setup(
                                     db=db,
@@ -192,6 +191,7 @@ def _run_market_data_sync(task_id: str) -> None:
                                     score=score,
                                 )
                             db.commit()
+                            scored_count += 1
                     except Exception as score_exc:
                         db.rollback()
                         logger.warning("Score/trade-plan failed for %s: %s", symbol_code, score_exc)

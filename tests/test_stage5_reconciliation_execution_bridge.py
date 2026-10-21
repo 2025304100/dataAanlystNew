@@ -122,6 +122,7 @@ def _seed_partial_auto_execution(db_session):
             price=10.0,
             amount=1000.0,
             fee=0.3,
+            created_at=datetime(2026, 8, 21, 1, 30),
         ),
         Position(
             portfolio_id=portfolio.id,
@@ -138,12 +139,19 @@ def _seed_partial_auto_execution(db_session):
             entry_type="deposit",
             amount=100_000.0,
             balance_after=100_000.0,
+            ref_type="portfolio",
+            ref_id=portfolio.id,
+            note="Initial simulated funding",
+            created_at=datetime(2026, 8, 20, 0),
         ),
         CashLedger(
             portfolio_id=portfolio.id,
             entry_type="buy",
             amount=-1_000.3,
             balance_after=98_999.7,
+            ref_type="sim_order",
+            ref_id=order.id,
+            created_at=datetime(2026, 8, 21, 1, 30),
         ),
     ])
     db_session.commit()

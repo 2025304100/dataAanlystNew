@@ -136,13 +136,13 @@ describe("govStatusLabel", () => {
   });
 
   it("具体状态说得清发生了什么", () => {
-    expect(govStatusLabel("RECONCILIATION_BLOCKED")).toBe("昨日对账存在差异，已被治理保护");
-    expect(govStatusLabel("READY")).toBe("就绪（可下单）");
+    expect(govStatusLabel("RECONCILIATION_BLOCKED")).toBe("对账存在差异，交易已暂停");
+    expect(govStatusLabel("READY")).toBe("检查已通过");
   });
 
   it("未收录状态不返回枚举原值，只给通用文案；原值单独取用做 tooltip", () => {
-    expect(govStatusLabel("SOMETHING_NEW")).toBe("治理状态未识别");
-    expect(govStatusLabel(null)).toBe("治理状态未识别");
+    expect(govStatusLabel("SOMETHING_NEW")).toBe("暂时无法确认运行状态");
+    expect(govStatusLabel(null)).toBe("暂时无法确认运行状态");
   });
 
   it("已收录清单非空且都能拿到文案", () => {

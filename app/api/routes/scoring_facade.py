@@ -10,7 +10,7 @@ which expose richer internal details (weights, audit logs, versions, …).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path as PathParam
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from typing import Literal
 from uuid import uuid4
@@ -43,6 +43,8 @@ from app.services.factors.__facade__ import (
     get_model_detail,
     get_research_retrain_plan,
     find_research_retrain_request,
+    find_etf_training_request,
+    prepare_etf_training_factor_set,
     get_score_runtime_overview,
     get_scoring_task,
     get_scoring_factor_set_readiness,
@@ -98,6 +100,43 @@ class IndependentEvaluationRequest(BaseModel):
     model_config = {'extra':'forbid'}
     bundle_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
     expected_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class ProductionReleaseConfirmation(IndependentEvaluationRequest):
+    confirmed: Literal[True]
+
+    @field_validator('confirmed', mode='before')
+    @classmethod
+    def explicit_boolean_confirmation(cls, value):
+        if value is not True:
+            raise ValueError('请先由本人确认。')
+        return value
+
+
+@router.get('/scoring/production-candidates/{plan_id}/release-review')
+def api_production_release_review(plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'),
+        bundle_id: str = Query(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import review_production_release
+    try:
+        return review_production_release(db, plan_id, bundle_id=bundle_id)
+    except FileNotFoundError:
+        raise HTTPException(404, detail='确认所需的记录还不完整，请先完成候选训练和独立验证。')
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+
+
+@router.post('/scoring/production-candidates/{plan_id}/confirm-release')
+def api_confirm_production_release(payload: ProductionReleaseConfirmation,
+        plan_id: str = PathParam(pattern=r'^[a-f0-9]{64}$'), db: Session = Depends(get_db)):
+    from app.services.factors.__facade__ import confirm_production_release
+    try:
+        return confirm_production_release(db, plan_id, **payload.model_dump())
+    except FileNotFoundError:
+        db.rollback()
+        raise HTTPException(404, detail='确认所需的记录还不完整，请先完成候选训练和独立验证。')
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(409, detail=str(exc))
 
 
 @router.get('/scoring/production-candidates/{plan_id}/independent-review')
@@ -595,6 +634,56 @@ def api_get_model_detail(model_id: str) -> dict:
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Model run {model_id} not found")
     return _dc2dict(detail)
+
+
+class ETFTrainingSetRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+
+
+@router.post('/scoring/etf-training/factor-set', response_model=dict)
+def api_prepare_etf_training_factor_set(req: ETFTrainingSetRequest) -> dict:
+    try:
+        return prepare_etf_training_factor_set()
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+
+
+class ETFTrainingRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    factor_set_id: str = Field(min_length=1, max_length=64)
+    dataset_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,79}$')
+    manifest_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    note: str = Field(default='', max_length=300)
+
+
+@router.post('/scoring/etf-training', response_model=dict)
+def api_submit_etf_training(req: ETFTrainingRequest) -> dict:
+    try:
+        existing = find_etf_training_request(req.request_id, expected_request=req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+    if existing is not None:
+        return existing['task']
+    return api_create_scoring_task(CreateScoringTaskRequest(
+        factor_set_id=req.factor_set_id, trusted_history_dataset_id=req.dataset_id,
+        train_model=True, materialize_scores=False, mirror_only=False, window_days=250, validation_days=50,
+        actor='factor_center:etf_train', source_hint='factor_center:etf_train',
+        hyperparameters={'factor_set_id': req.factor_set_id, 'note': req.note.strip(),
+            'etf_training_request_id': req.request_id,
+            'expected_trusted_history_manifest_sha256': req.manifest_sha256},
+        factor_scope={'factor_set_id': req.factor_set_id, 'asset_type': 'etf'},
+    ))
+
+
+@router.get('/scoring/etf-training/requests/{request_id}', response_model=dict)
+def api_recover_etf_training(request_id: str = PathParam(pattern=r'^[a-f0-9]{32}$')) -> dict:
+    try:
+        existing = find_etf_training_request(request_id)
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+    return {'request_id': request_id, 'state': 'found' if existing is not None else 'not_found',
+            'request': existing['request'] if existing else None, 'task': existing['task'] if existing else None}
 
 
 class ResearchRetrainRequest(BaseModel):

@@ -727,8 +727,8 @@ class TestExecuteAutoMode:
     # 12. confirm 模式只生成计划
     # ========================================================================
 
-    def test_confirm_mode_no_order_only_pending(self, db_session):
-        """【WP6.2/Q1】confirm 模式 → 落一张待确认占位单（pending_confirmation，不成交）。"""
+    def test_unavailable_confirmation_keeps_signal_without_creating_dead_end_order(self, db_session):
+        """Unsupported confirmation stays explicit and never creates an unfinishable order."""
         p = _make_portfolio(db_session, name="QA-Exec-Confirm")
         sym = _make_symbol(db_session, symbol="600070")
         _make_daily_bar(db_session, sym.id)
@@ -749,16 +749,14 @@ class TestExecuteAutoMode:
         )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 
-        # Q1 决策：confirm 落一张 pending_confirmation 占位单（quantity=0，不成交）
-        assert after == before + 1
+        assert after == before
         assert len(result["signal_decisions"]) == 1
         assert result["signal_decisions"][0]["execution_mode"] == EXECUTION_CONFIRM
-        assert len(result["executed_orders"]) == 1
-        assert result["executed_orders"][0]["status"] == "pending_confirmation"
-        assert result["executed_orders"][0]["order_id"] is not None
+        assert result["executed_orders"] == []
+        assert result["pending_orders"][0]["reason"] == "CONFIRMATION_NOT_SUPPORTED"
         pending = db_session.query(SimOrder).filter_by(
             portfolio_id=p.id, status="pending_confirmation").all()
-        assert len(pending) == 1 and pending[0].symbol_id == sym.id
+        assert pending == []
         # 待确认单不产生成交（filled 仍 0）
         assert db_session.query(SimOrder).filter_by(
             portfolio_id=p.id, status="filled").count() == 0
@@ -896,14 +894,14 @@ class TestThreeModesDontInterfere:
         assert auto_orders[0]["status"] == "filled"
         assert "order_id" in auto_orders[0]
 
-        # confirm 待确认 → Q1：落一张 pending 单，有 order_id
+        # Unsupported confirmation cannot be reported as an executed order.
         confirm_orders = [
             o for o in result["executed_orders"]
             if o["symbol_id"] == sym_confirm.id
         ]
-        assert len(confirm_orders) == 1
-        assert confirm_orders[0]["status"] == "pending_confirmation"
-        assert "order_id" in confirm_orders[0]
+        assert confirm_orders == []
+        assert any(o["symbol_id"] == sym_confirm.id and o["reason"] == "CONFIRMATION_NOT_SUPPORTED"
+                   for o in result["pending_orders"])
 
         # manual 只提示（Q1 决策：manual 不建单）→ 无 order_id
         manual_orders = [
@@ -914,12 +912,12 @@ class TestThreeModesDontInterfere:
         assert manual_orders[0]["status"] == "signal_only"
         assert "order_id" not in manual_orders[0]
 
-        # Q1：SimOrder = auto 成交单 + confirm 待确认单（manual 不建单）
+        # Only automatic execution creates an order.
         by_status: dict = {}
         for o in db_session.query(SimOrder).filter_by(portfolio_id=p.id).all():
             by_status.setdefault(o.status, []).append(o)
         assert [o.symbol_id for o in by_status.get("filled", [])] == [sym_auto.id]
-        assert [o.symbol_id for o in by_status.get("pending_confirmation", [])] == [sym_confirm.id]
+        assert by_status.get("pending_confirmation", []) == []
         assert sym_manual.id not in {o.symbol_id for o in db_session.query(SimOrder).filter_by(portfolio_id=p.id).all()}
         # C 簇：auto 成交单通过 source_type=decision_engine + decision_evidence_id 追溯
         auto_sim = by_status["filled"][0]

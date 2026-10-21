@@ -20,7 +20,7 @@ from typing import Any
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select, union_all
 from sqlalchemy.orm import Session
 
 from app.models.capital_flow import CapitalFlow, NorthboundFlow
@@ -113,6 +113,7 @@ def _fetch_individual_fund_flow_history(
         return [
             {
                 "trade_date": row["日期"],
+                "_history_complete": row["日期"] < date.today(),
                 "main_net_inflow": _safe_float(row.get("主力净流入-净额")),
                 "main_net_inflow_pct": _safe_float(row.get("主力净流入-净占比")),
                 "super_large_net_inflow": _safe_float(row.get("超大单净流入-净额")),
@@ -174,16 +175,17 @@ def _upsert_capital_flow(
     db: Session,
     symbol: Symbol,
     flow_data: dict[str, Any],
+    *, prefetched=None, flush: bool = True, fill_missing_only: bool = False,
 ) -> CapitalFlow | None:
     """Persist one provider row and compute its score from real prior rows."""
     actual_date = flow_data.get("trade_date")
     if not isinstance(actual_date, date):
         return None
     main_net_inflow = _safe_float(flow_data.get("main_net_inflow"))
-    if main_net_inflow is None:
+    if main_net_inflow is None and not fill_missing_only:
         return None
 
-    history_rows = db.execute(
+    history_rows = prefetched[1] if prefetched is not None else db.execute(
         select(CapitalFlow.main_net_inflow)
         .where(
             CapitalFlow.symbol_id == symbol.id,
@@ -197,7 +199,7 @@ def _upsert_capital_flow(
     ]
     score = calc_main_net_inflow_score(main_net_inflow, history_inflows)
 
-    existing = db.execute(
+    existing = prefetched[0] if prefetched is not None else db.execute(
         select(CapitalFlow).where(
             CapitalFlow.symbol_id == symbol.id,
             CapitalFlow.trade_date == actual_date,
@@ -206,6 +208,32 @@ def _upsert_capital_flow(
     if existing is None:
         existing = CapitalFlow(symbol_id=symbol.id, trade_date=actual_date)
         db.add(existing)
+        was_existing = False
+    else:
+        was_existing = True
+    if fill_missing_only:
+        from app.services.sync_write_policy import fill_missing_values, record_missing_fill
+
+        if main_net_inflow is None and existing.main_net_inflow is None:
+            if not was_existing:
+                db.expunge(existing)
+            return None
+        filled = fill_missing_values(existing, {field: _safe_float(flow_data.get(field)) for field in
+            ("main_net_inflow", "super_large_net_inflow", "large_net_inflow",
+             "medium_net_inflow", "small_net_inflow", "main_net_inflow_pct")})
+        retained_history = [existing.main_net_inflow] + [value for value in history_rows if value is not None]
+        filled += fill_missing_values(existing, {"main_net_inflow_score":
+            calc_main_net_inflow_score(existing.main_net_inflow, retained_history)})
+        if not filled:
+            return None
+        if was_existing:
+            record_missing_fill(existing, filled, flow_data, "akshare")
+        else:
+            existing.source = "akshare"
+            existing.raw_json = json.dumps(flow_data, ensure_ascii=False, default=str)
+        if flush:
+            db.flush()
+        return existing
     existing.main_net_inflow = main_net_inflow
     for field in ("super_large_net_inflow", "large_net_inflow", "medium_net_inflow", "small_net_inflow", "main_net_inflow_pct"):
         value = _safe_float(flow_data.get(field))
@@ -214,7 +242,8 @@ def _upsert_capital_flow(
     existing.main_net_inflow_score = score
     existing.source = "akshare"
     existing.raw_json = json.dumps(flow_data, ensure_ascii=False, default=str)
-    db.flush()
+    if flush:
+        db.flush()
     return existing
 
 
@@ -224,6 +253,8 @@ def sync_symbol_capital_flow_range(
     *,
     start_date: date,
     end_date: date,
+    fill_missing_only: bool = False,
+    allowed_dates: set[date] | None = None,
 ) -> int:
     """Upsert all real fund-flow rows in a requested bounded date range."""
     if start_date > end_date:
@@ -232,14 +263,19 @@ def sync_symbol_capital_flow_range(
         raise ValueError("资金流结束日期不能晚于今天")
     if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
         return 0
+    from app.services.sync_write_policy import DateWriteCount
+    if allowed_dates is not None and not any(start_date <= day <= end_date for day in allowed_dates):
+        return DateWriteCount(0, [])
     rows = _fetch_individual_fund_flow_history(
         db, symbol, start_date=start_date, end_date=end_date
     )
-    written = 0
+    written_dates = []
     for row in rows:
-        if start_date <= row["trade_date"] <= end_date and _upsert_capital_flow(db, symbol, row) is not None:
-            written += 1
-    return written
+        if (start_date <= row["trade_date"] <= end_date
+                and (allowed_dates is None or row["trade_date"] in allowed_dates)
+                and _upsert_capital_flow(db, symbol, row, fill_missing_only=fill_missing_only) is not None):
+            written_dates.append(row["trade_date"])
+    return DateWriteCount(len(written_dates), written_dates)
 
 
 _RANK_FIELD_MAP = {
@@ -298,7 +334,7 @@ def sync_market_capital_flow_snapshot(
     db: Session,
     symbols: list[Symbol],
     trade_date: date | None = None,
-    *, should_cancel=None,
+    *, should_cancel=None, fill_missing_only: bool = False,
 ) -> set[int]:
     """Fetch selected current quotes in batches, writing only the requested day."""
     from app.services.capital_flow_provider import BATCH_SIZE, fetch_capital_flow_quotes
@@ -319,17 +355,42 @@ def sync_market_capital_flow_snapshot(
         batch = eligible[offset:offset + BATCH_SIZE]
         secids = [f"{'1' if _market_prefix(s) == 'sh' else '0'}.{_market_code_for_akshare(s)}" for s in batch]
         quotes = fetch_capital_flow_quotes(db, secids, should_cancel=should_cancel)
+        current_ids = list(dict.fromkeys(s.id for s in batch
+            if (quotes.get(_market_code_for_akshare(s)) or {}).get("trade_date") == requested_date))
+        if not current_ids:
+            continue
+        existing = {row.symbol_id: row for row in db.execute(select(CapitalFlow).where(
+            CapitalFlow.symbol_id.in_(current_ids), CapitalFlow.trade_date == requested_date)).scalars()}
+        # Each indexed range returns at most nine prior rows. Combining the
+        # bounded selects keeps one batch read without MySQL 8 window functions
+        # or loading every symbol's entire history into Python.
+        prior_ranges = [select(CapitalFlow.symbol_id, CapitalFlow.main_net_inflow, CapitalFlow.trade_date)
+            .where(CapitalFlow.symbol_id == symbol_id, CapitalFlow.trade_date < requested_date)
+            .order_by(CapitalFlow.trade_date.desc()).limit(_FLOW_LOOKBACK_DAYS - 1).subquery()
+            for symbol_id in current_ids]
+        recent = union_all(*(select(part.c.symbol_id, part.c.main_net_inflow, part.c.trade_date)
+                              for part in prior_ranges)).subquery()
+        history = {}
+        for symbol_id, inflow in db.execute(select(recent.c.symbol_id, recent.c.main_net_inflow)
+            .order_by(recent.c.symbol_id, recent.c.trade_date.desc())):
+            history.setdefault(symbol_id, []).append(inflow)
         for symbol in batch:
             row = quotes.get(_market_code_for_akshare(symbol))
             if row is None or row.get("trade_date") != requested_date:
                 continue
-            if _upsert_capital_flow(db, symbol, row) is not None:
+            item = _upsert_capital_flow(db, symbol, row,
+                prefetched=(existing.get(symbol.id), history.get(symbol.id, [])), flush=False,
+                fill_missing_only=fill_missing_only)
+            if item is not None:
+                existing[symbol.id] = item
                 synced.add(symbol.id)
+        db.flush()
     db.flush()
     return _SyncedSymbolIds(synced, trade_dates={requested_date} if synced else ())
 
 
-def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None) -> CapitalFlow | None:
+def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None, *,
+                             fill_missing_only: bool = False) -> CapitalFlow | None:
     """Sync one requested day; history is available only through explicit backfill."""
     if symbol.asset_type != "stock":
         return None
@@ -341,7 +402,8 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
     if target_date > date.today():
         raise ValueError("资金流日期不能晚于今天")
     if target_date == date.today():
-        synced = sync_market_capital_flow_snapshot(db, [symbol], target_date)
+        synced = sync_market_capital_flow_snapshot(db, [symbol], target_date,
+            **({"fill_missing_only": True} if fill_missing_only else {}))
         if symbol.id not in synced:
             return None
         item = db.execute(select(CapitalFlow).where(CapitalFlow.symbol_id == symbol.id,
@@ -361,7 +423,7 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
     for row in rows:
         if row.get("trade_date") != target_date:
             continue
-        saved = _upsert_capital_flow(db, symbol, row)
+        saved = _upsert_capital_flow(db, symbol, row, fill_missing_only=fill_missing_only)
         if saved is not None:
             written = saved
             saved_dates.append(saved.trade_date)
@@ -408,11 +470,22 @@ def get_or_sync_capital_flow(db: Session, symbol: Symbol, trade_date: date) -> C
 
 
 def get_main_net_inflow_score(db: Session, symbol: Symbol, trade_date: date) -> float | None:
-    """供评分引擎调用的入口：返回 main_net_inflow_score 或 None。"""
+    """Read the score from current inputs; a saved score can predate repairs."""
     flow = get_or_sync_capital_flow(db, symbol, trade_date)
-    if flow is None:
+    if flow is None or flow.main_net_inflow is None:
         return None
-    return flow.main_net_inflow_score
+    history = db.execute(
+        select(CapitalFlow.main_net_inflow)
+        .where(CapitalFlow.symbol_id == symbol.id, CapitalFlow.trade_date < flow.trade_date)
+        .order_by(desc(CapitalFlow.trade_date))
+        .limit(_FLOW_LOOKBACK_DAYS - 1)
+    ).scalars().all()
+    # Historical imports can correct old inputs or intentionally clear the
+    # stored score. Recompute on read without rewriting source observations
+    # or already published score/model snapshots.
+    return calc_main_net_inflow_score(
+        flow.main_net_inflow, [flow.main_net_inflow] + [value for value in history if value is not None]
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -428,7 +501,8 @@ def northbound_capability() -> dict[str, Any]:
     }
 
 
-def sync_northbound_flow(db: Session, days: int = 30, *, start_date: date | None = None, end_date: date | None = None) -> int:
+def sync_northbound_flow(db: Session, days: int = 30, *, start_date: date | None = None,
+                         end_date: date | None = None, fill_missing_only: bool = False) -> int:
     """同步近 N 日北向资金净流入。
 
     Returns:
@@ -456,6 +530,8 @@ def sync_northbound_flow(db: Session, days: int = 30, *, start_date: date | None
         for _, row in recent.iterrows():
             trade_date = row["日期"]
             net = _safe_float(row.get("当日净流入"))
+            if fill_missing_only and net is None:
+                continue
             existing = db.execute(
                 select(NorthboundFlow).where(NorthboundFlow.trade_date == trade_date)
             ).scalars().first()
@@ -466,6 +542,8 @@ def sync_northbound_flow(db: Session, days: int = 30, *, start_date: date | None
                     source="akshare",
                 ))
             else:
+                if fill_missing_only and (existing.total_net_inflow is not None or net is None):
+                    continue
                 existing.total_net_inflow = net
             count += 1
         db.flush()

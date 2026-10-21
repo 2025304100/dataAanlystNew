@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.security_status import SecurityStatusDaily
+from app.services.security_status.provenance import is_verified_status_row
 
 
 # 生效状态枚举（字符串字面量，便于 JSON 传输）
@@ -134,8 +135,10 @@ class SecurityStatusPitService:
 
         # 状态聚合（优先级按需求文档"退市>停牌>ST>整理期>上市"）
         # 先判断摘牌
-        if not is_listed or (delisting_date is not None and trade_date > delisting_date):
-            status: SecurityStatusValue = "DELISTED"
+        if not is_verified_status_row(row, trade_date):
+            status: SecurityStatusValue = "UNKNOWN"
+        elif not is_listed or (delisting_date is not None and trade_date > delisting_date):
+            status = "DELISTED"
         elif is_suspended:
             status = "SUSPENDED"
         elif is_st:

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, union_all, literal_column, func, text
 from app.models.portfolio_member import PortfolioMember
 from app.models.portfolio_candidate import PortfolioCandidate
+from app.models.symbol import Symbol
 from app.models.universe import UniverseDailyBar
 from app.models.security_status import SecurityStatusDaily
 
@@ -41,6 +42,7 @@ from app.services.bfg_trade_calendar_adapter import (
     TradeCalendarUnavailableError,
     get_trading_days,
 )
+from app.services.security_status.provenance import is_verified_status_row, latest_verified_status_date
 from app.models.security_status import SecurityStatusDaily
 
 if TYPE_CHECKING:
@@ -68,9 +70,7 @@ def compute_data_cutoff(db: Session) -> tuple[DataCutoffInfo | None, bool, str |
         bars_date = None
 
     try:
-        status_date: date | None = db.execute(
-            select(func.max(SecurityStatusDaily.trade_date))
-        ).scalar_one_or_none()
+        status_date: date | None = latest_verified_status_date(db)
     except Exception as exc:  # pragma: no cover
         logger.warning("查询 security_status_daily 截止日期失败: %s", exc)
         status_date = None
@@ -96,7 +96,9 @@ def compute_data_cutoff(db: Session) -> tuple[DataCutoffInfo | None, bool, str |
             break
 
     valid_dates = [d for d in (bars_date, status_date, factors_date) if d is not None]
-    unified_earliest: date | None = min(valid_dates) if valid_dates else None
+    # A date for only the available subsets must not imply that all required
+    # datasets can be used through that date. Keep each known source date below.
+    unified_earliest: date | None = min(valid_dates) if len(valid_dates) == 3 else None
     sync_at = datetime.utcnow()
     version = f"bfg-dataset-{sync_at.strftime('%Y%m%d')}"
 
@@ -112,14 +114,19 @@ def compute_data_cutoff(db: Session) -> tuple[DataCutoffInfo | None, bool, str |
     # mismatch 判断：有效值 >= 2 且不全相等
     distinct = {d.isoformat() for d in valid_dates}
     mismatch = len(valid_dates) >= 2 and len(distinct) > 1
-    warning_zh = (
-        "数据截止日期不一致，回测按最早截止日期计算" if mismatch else None
-    )
+    warning_zh = None
+    if mismatch:
+        warning_zh = ("数据截止日期不一致，回测按最早截止日期计算" if unified_earliest is not None
+            else "行情、股票状态或评分资料不完整，暂时无法确定共同可用的截止日期。")
     return info, mismatch, warning_zh
 
 
 class StatusDataUnavailableError(Exception):
     """security_status_daily 缺失/为空/覆盖率不足（fail-closed）。"""
+
+    def __init__(self, message: str, *, unknown_count: int | None = None):
+        super().__init__(message)
+        self.unknown_count = unknown_count
 
 
 def _cfg_from_dto(dto: BacktestFilterConfigDTO | None) -> BacktestFilterConfig:
@@ -182,7 +189,7 @@ def _collect_security_status_daily_exclusions(
 
     Fail-closed 规则：
       1. 表不存在 / query 抛异常 / 范围空 → StatusDataUnavailableError。
-      2. SSD 覆盖的 distinct trade_days / 应覆盖的 trade_days 总数 < 0.7 → StatusDataUnavailableError。
+      2. 有明确历史来源及上市日的 (symbol, trade_date) / 应有股票日总数 < 0.7 → 阻断。
       3. 正常返回分项（至少在有真实状态 fixture 时 total > 0）。
     """
     if not symbol_ids:
@@ -191,6 +198,7 @@ def _collect_security_status_daily_exclusions(
         raise StatusDataUnavailableError("trade_days 为空，无法做 SSD 覆盖校验")
 
     trade_day_set = set(trade_days)
+    expected_points = len(set(symbol_ids)) * len(trade_day_set)
 
     try:
         stmt = (
@@ -219,33 +227,33 @@ def _collect_security_status_daily_exclusions(
 
     if not rows:
         raise StatusDataUnavailableError(
-            "security_status_daily 范围内无记录（表缺失或空）"
+            "所选股票和日期没有历史状态记录。", unknown_count=expected_points,
         )
 
-    # 覆盖率判定：实际覆盖交易日 / 应覆盖交易日
-    ssd_dates_in_trade = {r.trade_date for r in rows if r.trade_date in trade_day_set}
-    covered_ratio = (
-        len(ssd_dates_in_trade) / len(trade_day_set) if trade_day_set else 0.0
-    )
+    # 每只股票的每个交易日都必须有自己的记录；任意一只不能替其他股票提供覆盖。
+    verified_points = {(r.symbol_id, r.trade_date) for r in rows
+        if r.trade_date in trade_day_set and is_verified_status_row(r, r.trade_date)}
+    unknown_points = expected_points - len(verified_points)
+    covered_ratio = len(verified_points) / expected_points if expected_points else 0.0
     if covered_ratio < 0.7:
         raise StatusDataUnavailableError(
-            "SSD 覆盖率不足 70%（fail-closed 保真回测不允许伪装通过），"
-            f"实际 {len(ssd_dates_in_trade)}/{len(trade_day_set)} = {covered_ratio:.1%}"
+            f"历史状态资料覆盖不足 70%，已提供 {len(verified_points)}/{expected_points} 个股票交易日"
+            f"（{covered_ratio:.1%}）。未知、测试资料及当前快照不计入有效历史记录。",
+            unknown_count=unknown_points,
         )
 
     new_listing_cnt = 0
     st_cnt = 0
     suspended_cnt = 0
     delisting_period_cnt = 0
-    status_unknown_cnt = 0
+    status_unknown_cnt = unknown_points
     price_or_volume_invalid_cnt = 0
 
     for r in rows:
         if r.trade_date not in trade_day_set:
             continue  # 非交易日不计数
 
-        src = (r.status_source or "").lower()
-        is_unknown = src in {"unknown", "missing_historical"}
+        is_unknown = not is_verified_status_row(r, r.trade_date)
 
         # 次新股判定：trade_date - listing_date < min_listing_age；未知 listing_date → UNKNOWN
         is_new_listing = False
@@ -263,7 +271,7 @@ def _collect_security_status_daily_exclusions(
         )
 
         if is_unknown:
-            status_unknown_cnt += 1
+            continue  # 缺失及未知已按完整 symbol×day 分母统计。
         else:
             if is_new_listing:
                 new_listing_cnt += 1
@@ -344,7 +352,7 @@ def run_backtest_precheck(
             )
             effective_symbol_ids = []
     else:
-        effective_symbol_ids = [int(s) for s in req.symbol_ids]
+        effective_symbol_ids = list(dict.fromkeys(int(s) for s in req.symbol_ids))
     effective_sids = effective_symbol_ids
 
     # ---------------- 0. INVALID_DATE_RANGE（T1 保留，return early） ----------------
@@ -531,26 +539,27 @@ def run_backtest_precheck(
             )
             ssd_available = True
         except StatusDataUnavailableError as ssd_ex:
+            if ssd_ex.unknown_count is not None:
+                excluded = ExcludedSymbolDays(status_unknown=ssd_ex.unknown_count)
             blockers.append(
                 _blocker(
                     code="STATUS_DATA_UNAVAILABLE",
                     severity="error",
                     category="data",
-                    title_zh="证券状态日度数据缺失或覆盖不足（fail-closed）",
+                    title_zh="历史股票状态资料不完整",
                     detail_zh=(
-                        "security_status_daily 不可用或覆盖不足 70%，"
-                        "保真回测不允许使用固定 0 基线伪装通过。"
-                        f"详情：{ssd_ex}"
+                        f"{ssd_ex} 请先核对并导入原始历史资料，不能用今天的股票状态补过去。"
                     ),
                     evidence={
                         "start_date": req.start_date.isoformat(),
                         "end_date": req.end_date.isoformat(),
                         "symbol_count": len(effective_sids),
                         "detail": str(ssd_ex),
+                        "missing_or_unverified": ssd_ex.unknown_count,
                     },
                     fix_link={
-                        "tab": "portfolio-backtest",
-                        "label_zh": "补全 security_status_daily 历史状态（ST/次新/停牌/退市）",
+                        "tab": "settings-data-center",
+                        "label_zh": "查看历史股票状态资料",
                     },
                 )
             )
@@ -575,6 +584,38 @@ def run_backtest_precheck(
     elif not trade_calendar_ok:
         # 交易日历不可用 → SSD 也无法覆盖校验，附 info 级说明（非 blocker，因为 trade_calendar 已阻断主链路）
         pass
+
+    if ssd_available and excluded is not None and excluded.status_unknown and cfg.production_fidelity:
+        blockers.append(_blocker(
+            code="STATUS_DATA_UNAVAILABLE", severity="error", category="data",
+            title_zh="部分日期的股票状态仍未知",
+            detail_zh=f"仍有 {excluded.status_unknown} 个股票交易日没有可靠历史状态。请补齐后再进行正式回测。",
+            evidence={"missing_or_unverified": excluded.status_unknown},
+            fix_link={"tab": "settings-data-center", "label_zh": "查看历史股票状态资料"},
+        ))
+
+    # The execution service applies the same check, so API/CLI callers cannot
+    # bypass it by skipping preflight or disabling optional research filters.
+    if trade_calendar_ok and trade_days and effective_sids and not any(
+        item.code == "STATUS_DATA_UNAVAILABLE" for item in blockers
+    ):
+        from app.services.security_status.backtest_guard import BacktestHistoryUnavailable, load_backtest_history
+        try:
+            load_backtest_history(db, effective_sids, req.start_date, req.end_date, trade_days=trade_days)
+        except BacktestHistoryUnavailable as exc:
+            blockers.append(_blocker(
+                code=exc.code, severity="error", category="data", title_zh="历史交易资料不完整",
+                detail_zh=str(exc), evidence={"missing_count": len(exc.missing), "missing_sample": exc.missing[:20]},
+                fix_link={"tab": "settings-data-center", "label_zh": "查看历史股票状态资料"},
+            ))
+        except Exception as exc:
+            logger.exception("回测历史交易资料检查失败")
+            blockers.append(_blocker(
+                code="HISTORICAL_EXECUTION_DATA_UNAVAILABLE", severity="error", category="data",
+                title_zh="历史交易资料检查失败", detail_zh="暂时无法读取历史交易资料，请检查本机数据库后重试。",
+                evidence={"exception_type": type(exc).__name__},
+                fix_link={"tab": "settings-data-center", "label_zh": "查看历史股票状态资料"},
+            ))
 
     if not ssd_available and excluded is None:
         # 仅当 SSD 真实不可用时返回 0 基线，但会加 info 标注
@@ -649,6 +690,8 @@ def run_backtest_precheck(
         requested_trade_days=requested_trade_days,
         usable_trade_days=usable_trade_days,
         minimum_trade_days=minimum,
+        symbols=[{"id": symbol.id, "symbol": symbol.symbol, "name": symbol.name}
+                 for symbol in db.scalars(select(Symbol).where(Symbol.id.in_(effective_sids)).order_by(Symbol.id))],
         excluded_symbol_days=excluded,
         target_coverage=None,
         warnings=warnings,

@@ -532,14 +532,14 @@ export default function SymbolResearchShell({
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", "portfolio");
-      url.searchParams.set("subtab", "portfolio-workbench");
+      url.searchParams.set("subtab", "strategy");
       url.searchParams.set("focus", "portfolio_rule");
       window.history.pushState({}, "", url.toString());
     } catch {
       /* ignore */
     }
     ctx.setActiveTab("portfolio");
-    ctx.setActiveSubTab("portfolio-workbench");
+    ctx.setActiveSubTab("strategy");
   }, [ctx]);
 
   // ── 刷新交易计划 ──

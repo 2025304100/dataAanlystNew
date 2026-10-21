@@ -61,6 +61,89 @@ from app.services.simulation_matching_engine import (
 )
 
 
+@pytest.mark.parametrize("side,open_price,expected", [
+    (OrderSide.BUY, 11.0, 11.0),
+    (OrderSide.SELL, 9.0, 9.0),
+])
+def test_slipped_fill_stays_on_tick_and_inside_market_limits(side, open_price, expected):
+    """Slippage cannot create a fill beyond a daily limit or the quoted bar."""
+    day = date(2026, 10, 16)
+    plan = OrderPlan("bounded-fill", 1, 1, day, "NEXT_OPEN", side, 100)
+    bar = MarketBar(
+        trade_date=day, open=open_price, high=11.0, low=9.0, close=10.0,
+        pre_close=10.0, upper_limit_price=11.0, lower_limit_price=9.0,
+    )
+    result = match_order_plan(plan, bar)
+    assert result.final_status == "FILLED"
+    assert result.executed_price == expected
+
+
+@pytest.mark.parametrize("side,opening,tick,expected", [
+    (OrderSide.BUY, 10.01, 0.01, 10.02),
+    (OrderSide.SELL, 10.01, 0.01, 10.0),
+    (OrderSide.BUY, 1.001, 0.001, 1.002),
+])
+def test_market_fill_respects_the_instrument_price_increment(side, opening, tick, expected):
+    day = date(2026, 10, 16)
+    plan = OrderPlan("tick-fill", 1, 1, day, "NEXT_OPEN", side, 100)
+    bar = MarketBar(
+        trade_date=day, open=opening, high=12.0, low=0.9, close=opening,
+        upper_limit_price=12.0, lower_limit_price=0.9, tick_size=tick,
+    )
+    result = match_order_plan(plan, bar)
+    assert result.final_status == "FILLED"
+    assert result.executed_price == expected
+
+
+def test_missing_price_limits_are_pending_instead_of_an_unbounded_fill():
+    day = date(2026, 10, 16)
+    plan = OrderPlan("missing-limits", 1, 1, day, "NEXT_OPEN", OrderSide.BUY, 100)
+    result = match_order_plan(plan, MarketBar(
+        trade_date=day, open=10.0, high=10.2, low=9.8, close=10.0,
+        volume=1_000_000,
+    ))
+    assert result.filled_quantity == 0
+    assert result.retry_on_next_session is True
+    assert "PRICE_LIMIT_DATA_MISSING" in result.reason_codes
+
+
+def test_slippage_cannot_execute_outside_the_observed_bar():
+    day = date(2026, 10, 16)
+    plan = OrderPlan("bar-bounded", 1, 1, day, "NEXT_OPEN", OrderSide.BUY, 100)
+    result = match_order_plan(plan, MarketBar(
+        trade_date=day, open=10.0, high=10.0, low=9.8, close=9.9, pre_close=10.0,
+    ))
+    assert result.executed_price == 10.0
+
+
+def test_price_outside_the_daily_limits_is_rejected_instead_of_rewritten():
+    day = date(2026, 10, 16)
+    plan = OrderPlan("invalid-open", 1, 1, day, "NEXT_OPEN", OrderSide.BUY, 100)
+    result = match_order_plan(plan, MarketBar(
+        trade_date=day, open=11.5, high=11.7, low=11.2, close=11.6,
+        upper_limit_price=11.0, lower_limit_price=9.0,
+    ))
+    assert result.filled_quantity == 0
+    assert "BAR_PRICE_OUTSIDE_LIMITS" in result.reason_codes
+
+
+@pytest.mark.parametrize("opening,high,low", [
+    (10.0, float("nan"), 9.8),
+    (10.0, 9.9, 10.1),
+    (10.004, 10.005, 10.004),
+])
+def test_invalid_bar_or_empty_tick_interval_cannot_manufacture_a_fill(opening, high, low):
+    day = date(2026, 10, 16)
+    plan = OrderPlan("invalid-bar", 1, 1, day, "NEXT_OPEN", OrderSide.BUY, 100)
+    result = match_order_plan(plan, MarketBar(
+        trade_date=day, open=opening, high=high, low=low, close=opening,
+        upper_limit_price=11.0, lower_limit_price=9.0,
+    ))
+    assert result.filled_quantity == 0
+    assert result.retry_on_next_session is True
+    assert "INVALID_BAR_PRICE_RANGE" in result.reason_codes
+
+
 # ---------------------------------------------------------------------------
 # TR-05.9a：T+1 开盘涨停封板 BUY 侧无法入场 → REJECTED_TRADE_HALTED + 待处理计划
 # ---------------------------------------------------------------------------

@@ -412,7 +412,7 @@ def get_factor_set_members(
 def to_read_dict(factor_set: FactorSet) -> dict[str, Any]:
     """转换为字典（含成员）。"""
     from sqlalchemy.orm import object_session
-    from app.services.factor_set_service import _factor_version_trainable
+    from app.services.factor_set_service import _factor_version_trainable, factor_set_asset_type
     members = sorted(
         factor_set.members,
         key=lambda m: (m.display_order, m.factor_code),
@@ -437,6 +437,7 @@ def to_read_dict(factor_set: FactorSet) -> dict[str, Any]:
     return {
         "id": factor_set.id,
         "name": factor_set.name,
+        "asset_type": factor_set_asset_type(session, members) if session is not None else 'stock',
         "description": factor_set.description,
         "content_hash": factor_set.content_hash,
         "status": factor_set.status,

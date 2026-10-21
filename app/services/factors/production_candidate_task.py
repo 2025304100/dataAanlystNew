@@ -120,6 +120,16 @@ def run_candidate(db, identity, *, progress=lambda *args: None):
             'independent_qualification_complete': False, 'production_scores_published': 0,
             'model_activated': False, 'finished_at': datetime.now(timezone.utc).isoformat()}
         execution._publish(execution.EXECUTION_ROOT / (contract['plan_id'] + '.result.json'), report)
+        # Freeze the evaluation policy before any prospective outcomes arrive.
+        # An already late candidate cannot retrospectively choose its costs.
+        from app.services.factors.production_cost_evaluation import freeze_cost_policy
+        try:
+            freeze_cost_policy(db, contract['plan_id'])
+        except ValueError as exc:
+            if str(exc) != 'production_cost_policy_must_precede_independent_period':
+                raise
+            # Training remains inspectable. A late attempt cannot manufacture
+            # a pre-period policy and the release review keeps it blocked.
         return report
     except BaseException:
         db.rollback()
@@ -139,7 +149,10 @@ def _run(task_id):
             row = session.get(AsyncTaskRecord, task_id)
             if row is None or row.cancel_requested or row.status in ('cancelled', 'failed') or async_tasks.is_worker_stop_requested():
                 raise InterruptedError('production_execution_cancelled')
-        update(status='running', stage=stage, percent=percent, message=stage,
+        messages = {'verifying_source_receipts':'正在核对原始资料','building_isolated_training_store':'正在准备训练数据',
+            'calculating_frozen_factor':'正在计算因子','building_mature_tradable_labels':'正在整理后续涨跌数据',
+            'fitting_frozen_candidate':'正在训练模型','saving_candidate_evidence':'正在保存训练结果'}
+        update(status='running', stage=stage, percent=percent, message=messages.get(stage,'正在训练模型'),
             heartbeat_at=datetime.now(timezone.utc).replace(tzinfo=None), stage_budget_seconds=900)
     try:
         with SessionLocal() as session:
@@ -151,7 +164,7 @@ def _run(task_id):
         with SessionLocal() as session:
             report = run_candidate(session, identity, progress=progress)
         update(status='done', stage='done', percent=100,
-            message='候选训练完成；仍需独立样本及成本后验证，尚未启用',
+            message='训练结束，还需检查后续预测和费用，尚未启用模型',
             result_json=json.dumps(report, default=str),
             finished_at=datetime.now(timezone.utc).replace(tzinfo=None))
     except InterruptedError:

@@ -987,6 +987,9 @@ class FactorExecutor:
                         f"SELECT symbol, trade_date, {', '.join(select_fields)} "
                         f"FROM {table_name} {where_sql}"
                     )
+                    if table_name == "raw_fund_flows":
+                        sql += (" QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol,trade_date "
+                                "ORDER BY ingested_at DESC,source)=1")
                     if table_name == "raw_daily_bars" and range_start is not None:
                         sql = self._daily_bar_history_sql(select_fields,
                             range_start=range_start, range_end=trade_date,
@@ -1107,6 +1110,19 @@ class FactorExecutor:
         if not isinstance(result, pd.Series):
             # 标量结果广播
             return pd.Series(result, index=source_data.index)
+
+        from app.services.factors.definitions import FACTOR_BY_CODE
+        native_flow = FACTOR_BY_CODE["main_inflow_5d_ratio"]
+        if "".join(plan.formula.split()) == "".join(native_flow.formula.split()):
+            # The registered five-day factor requires five paired inputs.
+            # Generic DSL sums allow partial windows, which must not turn a
+            # missing flow into a seemingly valid preview of this factor.
+            paired = source_data[["main_net_inflow", "amount"]].notna().all(axis=1)
+            count = paired.groupby(symbol_series).transform(
+                lambda values: values.rolling(5, min_periods=5).sum())
+            denominator = source_data["amount"].groupby(symbol_series).transform(
+                lambda values: values.rolling(5, min_periods=5).sum())
+            result = result.where(count.eq(5) & denominator.abs().gt(1e-8))
 
         return result
 
@@ -1465,6 +1481,9 @@ class FactorExecutor:
                         f"SELECT symbol, trade_date, {', '.join(select_fields)} "
                         f"FROM {table_name} {where_sql}"
                     )
+                    if table_name == "raw_fund_flows":
+                        sql += (" QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol,trade_date "
+                                "ORDER BY ingested_at DESC,source)=1")
                     if table_name == "raw_daily_bars" and warmup_anchor is not None:
                         sql = self._daily_bar_history_sql(select_fields,
                             range_start=start_date, range_end=end_date,

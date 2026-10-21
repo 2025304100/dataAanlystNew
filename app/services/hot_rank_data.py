@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.hot_rank_snapshot import StockHotRankSnapshot
 from app.services.akshare_utils import (
+    assert_akshare_api_enabled,
     call_akshare_with_retry,
     quiet_akshare_output,
 )
@@ -54,6 +55,7 @@ def _raw_payloads(frame: pd.DataFrame) -> dict[str, str]:
 def _fetch_hot_rank(
     db: Session, as_of: date
 ) -> tuple[pd.DataFrame, dict[str, str]]:
+    from app.services.request_coalescing import coalesced_read, request_key
     def request():
         # The rank payload already contains code/rank; do not fetch 100 quotes
         # merely to obtain price columns that this dataset never stores.
@@ -66,7 +68,11 @@ def _fetch_hot_rank(
         if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
             raise ValueError("人气榜接口返回结构异常")
         return pd.DataFrame(payload["data"])
-    frame = call_akshare_with_retry(request, api_key=_API_KEY, db=db, max_attempts=2)
+    assert_akshare_api_enabled(_API_KEY)
+    frame = coalesced_read(request_key(_API_KEY, "https://emappdata.eastmoney.com/stockrank/getAllCurrentList",
+                                      {"pageNo": 1, "pageSize": 100}),
+        lambda: call_akshare_with_retry(request, api_key=_API_KEY, db=db, max_attempts=2))
+    assert_akshare_api_enabled(_API_KEY)
     if frame is None or frame.empty:
         return normalize_hot_rank_frame(pd.DataFrame(), as_of=as_of), {}
     return normalize_hot_rank_frame(
@@ -75,7 +81,7 @@ def _fetch_hot_rank(
 
 
 def sync_hot_rank_snapshot(
-    db: Session, *, as_of: date | None = None
+    db: Session, *, as_of: date | None = None, fill_missing_only: bool = False
 ) -> HotRankSyncResult:
     """Capture the provider's current top-100 list under one snapshot date."""
     trade_date = as_of or date.today()
@@ -105,6 +111,7 @@ def sync_hot_rank_snapshot(
                 StockHotRankSnapshot.source == source,
             )
         ).scalars().first()
+        was_existing = existing is not None
         if existing is None:
             existing = StockHotRankSnapshot(
                 symbol=code,
@@ -116,10 +123,19 @@ def sync_hot_rank_snapshot(
             )
             db.add(existing)
         else:
-            existing.hot_rank = int(row["hot_rank"])
-            existing.hot_rank_total = int(row["hot_rank_total"])
-            existing.hot_rank_pct = float(row["hot_rank_pct"])
-        existing.raw_json = raw_payloads.get(code)
+            if fill_missing_only:
+                from app.services.sync_write_policy import fill_missing_values, record_missing_fill
+                filled = fill_missing_values(existing, {"hot_rank": int(row["hot_rank"]),
+                    "hot_rank_total": int(row["hot_rank_total"]), "hot_rank_pct": float(row["hot_rank_pct"])})
+                if not filled:
+                    continue
+                record_missing_fill(existing, filled, raw_payloads.get(code), source)
+            else:
+                existing.hot_rank = int(row["hot_rank"])
+                existing.hot_rank_total = int(row["hot_rank_total"])
+                existing.hot_rank_pct = float(row["hot_rank_pct"])
+        if not fill_missing_only or not was_existing:
+            existing.raw_json = raw_payloads.get(code)
         written += 1
     db.flush()
     logger.info(

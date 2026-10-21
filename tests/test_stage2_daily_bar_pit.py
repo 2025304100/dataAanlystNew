@@ -62,6 +62,8 @@ def _seed_strict_snapshot(db_session, *, snapshot_id: str):
     # 使 gate 不再以 FACTOR_SET_REQUIRED 覆盖本用例要验证的每日行情 PIT 原因。
     from tests.portfolio_binding_helpers import bind_applied_snapshot
     bind_applied_snapshot(db_session, snapshot)
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, [date(2025, 1, 6), date(2025, 1, 7), date(2025, 1, 8)])
     db_session.commit()
     return portfolio, symbol, snapshot
 

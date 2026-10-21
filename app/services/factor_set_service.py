@@ -523,6 +523,22 @@ def _member_lineage_issue(
     return None
 
 
+def factor_set_asset_type(db: "Session", members) -> str:
+    """Use existing feature scopes; do not treat ETF-only features as stocks."""
+    import json
+    factor_ids = {member.factor_id for member in members if member.role == 'feature'}
+    scopes = []
+    for value in db.scalars(select(Factor.asset_scope_json).where(Factor.id.in_(factor_ids))):
+        try:
+            scopes.append(set(json.loads(value or '["cn-stock"]')))
+        except (ValueError, TypeError):
+            scopes.append({'cn-stock'})
+    etf_only = [scope == {'cn-etf'} for scope in scopes]
+    if scopes and len(scopes) == len(factor_ids) and all(etf_only):
+        return 'etf'
+    return 'mixed' if any(etf_only) else 'stock'
+
+
 def factor_set_readiness(
     db: "Session",
     factor_set_id: str,

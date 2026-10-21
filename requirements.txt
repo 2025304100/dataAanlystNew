@@ -23,6 +23,7 @@ cryptography>=41.0.0    # required by pymysql for caching_sha2_password auth
 
 # --- Data sources ---
 akshare==1.18.30
+baostock==0.9.4
 
 # --- Data processing ---
 pandas==2.3.3

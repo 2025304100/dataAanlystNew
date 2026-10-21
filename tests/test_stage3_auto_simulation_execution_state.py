@@ -84,6 +84,7 @@ def _seed_snapshot_plan(db_session, *, total_capital: float, volume_limit_pct: f
         portfolio_id=portfolio.id,
         run_type="auto_simulation",
         status="SUCCEEDED",
+        versions_json=json.dumps({"price_reference_policy_version": "signal-close-v1"}),
         trade_date=TRADE_DATE,
         decision_at=datetime(2026, 2, 3, 20, 30),
         data_cutoff_at=datetime(2026, 2, 3, 20, 0),
@@ -111,6 +112,10 @@ def _seed_snapshot_plan(db_session, *, total_capital: float, volume_limit_pct: f
     )
     db_session.add_all([
         evidence,
+        DailyBar(
+            symbol_id=symbol.id, trade_date=TRADE_DATE,
+            open=10.0, high=10.0, low=10.0, close=10.0, volume=300.0,
+        ),
         DailyBar(
             symbol_id=symbol.id,
             trade_date=EXECUTION_DATE,
@@ -358,9 +363,9 @@ def test_snapshot_partial_fill_is_retried_on_next_session_without_duplicate_fill
         db_session,
         portfolio_id=portfolio.id,
         strategy_snapshot_id=snapshot_id,
-        # The scheduler's next decision cycle is the day after the original
-        # execution; the adapter should select the next available bar.
-        trade_date=EXECUTION_DATE,
+        # The retry's execution bar is now available within this decision day.
+        # Never fill using tomorrow's bar before today's decision.
+        trade_date=date(2026, 2, 5),
         dry_run=False,
     )
     order = db_session.execute(
@@ -396,7 +401,7 @@ def test_snapshot_partial_fill_is_retried_on_next_session_without_duplicate_fill
         db_session,
         portfolio_id=portfolio.id,
         strategy_snapshot_id=snapshot_id,
-        trade_date=EXECUTION_DATE,
+        trade_date=date(2026, 2, 5),
         dry_run=False,
     )
     assert third["pending_orders"] == []

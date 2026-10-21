@@ -75,7 +75,7 @@ def test_stored_valid_legacy_turnover_cannot_claim_current_training_readiness(co
 
 @pytest.mark.parametrize("code", ["ep_ttm", "negative_pb", "roe_yoy_growth",
     "main_inflow_5d_ratio", "lhb_institution_net_ratio", "turnover_z20",
-    "hot_rank_attention", "tail_accumulation_proxy"])
+    "hot_rank_attention"])
 def test_exact_native_definition_keeps_its_real_execution_capability(compatibility_client, db_session, code):
     # Seed the actual native metadata, including legacy conditional notation.
     from app.services.factors.definitions import FACTOR_BY_CODE, _PARAMS, _SOURCE_MAPPINGS
@@ -118,24 +118,28 @@ def test_current_compilation_cannot_replace_missing_historical_validation(compat
     assert readiness["code"] == "MEMBER_VERSION_NOT_TRAINABLE"
 
 
-@pytest.mark.parametrize("change", ["formula", "params", "source", "direction"])
-def test_native_factor_name_does_not_exempt_a_changed_contract(compatibility_client, db_session, change):
+@pytest.mark.parametrize("change,expected_ready", [
+    ("formula", False), ("params", True), ("source", False), ("direction", True),
+])
+def test_changed_native_contract_must_still_be_executable(compatibility_client, db_session, change, expected_ready):
     from app.services.factors.definitions import FACTOR_BY_CODE, _PARAMS, _SOURCE_MAPPINGS
-    code = "tail_accumulation_proxy"
+    # The retired minute-tail formula had no DSL fallback. Use an enabled
+    # formula instead: legal DSL changes remain supported; invalid inputs do not.
+    code = "ep_ttm"
     definition = FACTOR_BY_CODE[code]
     metadata = {"formula": definition.formula, "params": dict(_PARAMS[code]),
                 "source": dict(_SOURCE_MAPPINGS[code]), "direction": definition.direction}
     if change == "formula":
         metadata["formula"] += " + absent_field"
     elif change == "params":
-        metadata["params"]["minimum_day_minutes"] = 1
+        metadata["params"]["valuation_max_age_days"] = 1
     elif change == "source":
         metadata["source"]["table"] = "raw_daily_bars"
     else:
         metadata["direction"] = "lower_better"
     set_id, _ = _legacy_set(db_session, code=code, **metadata)
     readiness = compatibility_client.get(f"/api/v1/scoring/factorsets/{set_id}/readiness").json()
-    assert readiness["ready"] is False
+    assert readiness["ready"] is expected_ready
 
 
 @pytest.mark.parametrize("metadata", [

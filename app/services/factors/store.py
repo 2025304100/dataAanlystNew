@@ -845,12 +845,15 @@ class FactorWarehouse:
         watermark: int | None = None,
         skip_unchanged: bool = False,
         update_fields: Iterable[str] | None = None,
+        replace_sql_sources: bool = False,
     ) -> int:
         """Upsert data and its checkpoint atomically.
 
         Local input repair scans use ``skip_unchanged`` so a new mirror batch
         does not turn old, unchanged observations into newly published data.
         It returns the number of inserted or materially updated observations.
+        Fund-flow SQL mirrors may retire their previous source for the same
+        stock/day. Independently ingested sources are retained.
         """
         columns = _UPSERT_TABLE_COLUMNS.get(table)
         keys = _UPSERT_TABLE_KEYS.get(table)
@@ -858,6 +861,8 @@ class FactorWarehouse:
             raise ValueError(f"unsupported warehouse table: {table}")
         if (source_key is None) != (watermark is None):
             raise ValueError("source_key and watermark must be provided together")
+        if replace_sql_sources and (table != "raw_fund_flows" or not skip_unchanged):
+            raise ValueError("source replacement requires a fund-flow SQL repair scan")
 
         records = [tuple(row.get(column) for column in columns) for row in rows]
         placeholders = ", ".join("?" for _ in columns)
@@ -907,6 +912,20 @@ class FactorWarehouse:
                         # SQL rows are ordered by ID, so the final one wins.
                         frame = frame.drop_duplicates(subset=list(keys), keep="last")
                         conn.register("incoming_input_records", frame)
+                        if replace_sql_sources:
+                            # A business row has one current source. Source is
+                            # part of the warehouse key, so a corrected source
+                            # otherwise leaves the old SQL mirror selectable.
+                            # Retire only mirrors, in the same transaction as
+                            # the replacement and checkpoint; keep direct feeds.
+                            conn.execute("""
+                                DELETE FROM raw_fund_flows AS stored
+                                USING incoming_input_records AS incoming
+                                WHERE stored.symbol = incoming.symbol
+                                  AND stored.trade_date = incoming.trade_date
+                                  AND stored.source <> incoming.source
+                                  AND starts_with(stored.batch_id, 'factor-inputs-')
+                            """)
                         changed_count = len(conn.execute(sql).fetchall())
                         conn.unregister("incoming_input_records")
                     else:

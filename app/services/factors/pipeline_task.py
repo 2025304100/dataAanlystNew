@@ -769,11 +769,15 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate, *,
         try:
             existing_request = db.get(AsyncTaskRecord, task_id)
             if existing_request is not None:
-                from app.services.factors.research_requests import validate_research_task
-                validate_research_task(existing_request, payload.hyperparameters_json['source_model_id'],
-                    payload.hyperparameters_json['research_retrain_request_id'])
+                from app.services.factors.research_requests import validate_research_task, validate_etf_training_task
+                hp = payload.hyperparameters_json
+                if 'etf_training_request_id' in hp:
+                    validate_etf_training_task(existing_request, hp['etf_training_request_id'])
+                else:
+                    validate_research_task(existing_request, hp['source_model_id'], hp['research_retrain_request_id'])
                 if existing_request.task_type != TASK_TYPE or existing_request.idempotency_key != 'request:' + fingerprint:
-                    raise ValueError('research_request_conflict')
+                    raise ValueError('训练参数与这次提交的记录不一致，本次未启动训练。'
+                        if 'etf_training_request_id' in hp else 'research_request_conflict')
                 from app.services.async_tasks import _task_to_read
                 return _task_to_read(existing_request).model_dump()
         finally:
@@ -785,13 +789,18 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate, *,
         )
     # Task 9 (1) 取消 fallback + (2) 精确 5 错误码 — 抛 FactorSevenError（7 要素）
     _require_ready_training_factor_set(payload)
+    trusted_dataset = None
     if payload.trusted_history_dataset_id:
         from app.services.factors.trusted_history_training import load_training_dataset
-        load_training_dataset(payload, freeze=True)
+        trusted_dataset = load_training_dataset(payload, freeze=True)
 
     SessionLocal = get_session_local()
     runtime_db = SessionLocal()
     try:
+        if trusted_dataset is not None:
+            from app.services.factors.trusted_history_training import validate_training_features
+            validate_training_features(trusted_dataset,
+                resolve_frozen_factor_specs(runtime_db, (payload.factor_set_id,)))
         freeze_score_universe(runtime_db, payload)
         runtime = _validate_requested_runtime(runtime_db, payload)
         _pin_scoring_runtime(payload, runtime)
@@ -885,7 +894,7 @@ def _classify_pipeline_error(exc: Exception, stage: str):
     # 参数/配置校验类（不可重试）
     if isinstance(exc, (ValueError,)):
         if 'trusted_history' in lower:
-            return ('TRUSTED_HISTORY_INVALID', '可信历史研究数据集校验失败，请核实固定股票池、原始证据及完整样本；未发布评分或启用模型')
+            return ('TRUSTED_HISTORY_INVALID', '历史研究资料校验失败，请核实固定标的范围、原始记录及完整日期；未发布评分或启用模型')
         if 'no_complete_trade_date' in lower:
             return ('DAILY_BAR_INCOMPLETE', '行情尚未收盘或镜像未覆盖完整交易日，请等待本地行情同步完成后重试')
         if 'factor_coverage' in lower:
@@ -958,7 +967,10 @@ def _run_factor_pipeline(task_id: str) -> None:
         frozen_universe = score_universe_summary(payload)
         starting_runtime = _validate_requested_runtime(db, payload)
         _pin_scoring_runtime(payload, starting_runtime)
-        if payload.train_model and (payload.factor_scope_json or {}).get('asset_type', 'stock') != 'stock':
+        training_asset_type = (payload.factor_scope_json or {}).get('asset_type', 'stock')
+        if payload.train_model and training_asset_type != 'stock' and not (
+            training_asset_type == 'etf' and payload.trusted_history_dataset_id
+        ):
             raise ValueError('unsupported_training_asset_type:stock_only')
         if payload.validation_days >= payload.window_days:
             raise ValueError('validation_days must be less than window_days')
@@ -1008,6 +1020,9 @@ def _run_factor_pipeline(task_id: str) -> None:
             training_specs = resolve_frozen_factor_specs(db, (payload.factor_set_id,))
             if not training_specs:
                 raise ValueError('frozen_factor_calculation_requires_features')
+            if trusted_dataset is not None:
+                from app.services.factors.trusted_history_training import validate_training_features
+                validate_training_features(trusted_dataset, training_specs)
             source_tables = sorted(set().union(*(spec.source_tables for spec in training_specs)))
             input_sources = {
                 'include_valuations': 'raw_valuation_snapshots',
@@ -1033,7 +1048,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             status='running',
             stage='mirror',
             percent=5,
-            message=('加载已核实的固定股票池历史，使用独立研究仓库' if trusted_dataset is not None
+            message=('加载已核实的标的历史数据' if trusted_dataset is not None
                      else 'Mirroring local market and factor inputs'),
             started_at=_now(),
         )
@@ -1066,7 +1081,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             task_id,
             stage='mirror',
             percent=27,
-            message=('已隔离默认行情与外部同步，准备研究因子输入' if trusted_dataset is not None
+            message=('行情数据已就绪，准备计算训练特征' if trusted_dataset is not None
                      else 'Mirroring factor inputs (valuations, financials, flows)'),
         )
         if training_specs is not None and not any(input_flags.values()):

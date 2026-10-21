@@ -154,7 +154,8 @@ function csvEscape(value: string | number | null | undefined): string {
 }
 
 type HistoryInitSectionProps = {
-  context?: { symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" } | null;
+  context?: { symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores";
+    symbolIds?: number[]; startDate?: string; endDate?: string; portfolioId?: number } | null;
   onClearContext?: () => void;
   focusSignal?: number;
   onOpenDiagnostic?: (symbolId: number) => void;
@@ -198,12 +199,13 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const scopedSymbolId = context?.symbolId ?? null;
   const scopedSymbolLabel = context?.symbolLabel ?? null;
   const requestedRepairMode = context?.repairMode ?? "both";
+  const requestedRange = context?.startDate && context.endDate ? { start: context.startDate, end: context.endDate } : null;
   const getSymbolRecord = useCallback((symbolId?: number | null) => {
     if (symbolId == null) return null;
     if (ctx.detail?.symbol?.id === symbolId) return ctx.detail.symbol;
     return ctx.symbolDirectory[symbolId] ?? null;
   }, [ctx.detail, ctx.symbolDirectory]);
-  const activeScopedSymbolId = scopedSymbolId ?? (historyTask?.symbol_ids?.length === 1 ? historyTask.symbol_ids[0] : null);
+  const activeScopedSymbolId = scopedSymbolId ?? (context?.symbolIds ? null : historyTask?.symbol_ids?.length === 1 ? historyTask.symbol_ids[0] : null);
   const activeScopedSymbolLabel = useMemo(
     () => formatScopedSymbolLabel(scopedSymbolLabel, getSymbolRecord(activeScopedSymbolId), activeScopedSymbolId),
     [activeScopedSymbolId, getSymbolRecord, scopedSymbolLabel],
@@ -299,11 +301,15 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
     try {
       setHistoryLoading(true);
       // 单标的上下文：显式传 symbol_ids（resolver 中 id 优先）；否则按来源选择处理
-      const scopedSymbolIds = activeScopedSymbolId ? [activeScopedSymbolId] : undefined;
+      const scopedSymbolIds = context?.symbolIds ?? (activeScopedSymbolId ? [activeScopedSymbolId] : undefined);
+      if (requestedRange && !scopedSymbolIds?.length) throw new Error("本次回测没有可补充的标的，请返回回测页检查组合范围。");
       const task = await api.startHistoryInitialization({
         preset,
         adjust: "qfq",
         symbol_ids: scopedSymbolIds,
+        start_date: requestedRange?.start,
+        end_date: requestedRange?.end,
+        portfolio_id: context?.portfolioId,
         repair_mode: requestedRepairMode,
         symbol_source: scopedSymbolIds ? "all" : symbolSource,
         auto_scan: scopedSymbolIds ? false : autoScan,
@@ -407,6 +413,13 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const lastDuration = formatDuration(deriveDurationSeconds(latestRun));
   const latestFailure = latestRun?.status === "failed" || latestRun?.status === "partial" || latestRun?.status === "cancelled" ? latestRun.message : null;
   const isRunning = historyTask?.status === "running";
+  const requestedSymbolIds = context?.symbolIds ?? (scopedSymbolId ? [scopedSymbolId] : []);
+  const historyTaskMatchesRequest = !requestedRange || (
+    historyTask?.start_date === requestedRange.start && historyTask.end_date === requestedRange.end
+    && historyTask.repair_mode === requestedRepairMode
+    && historyTask.symbol_ids?.length === requestedSymbolIds.length
+    && requestedSymbolIds.every((id) => historyTask.symbol_ids?.includes(id))
+  );
   const scopedLookupKey = useMemo(() => {
     const ids = new Set<number>();
     if (activeScopedSymbolId != null) ids.add(activeScopedSymbolId);
@@ -423,10 +436,10 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
     const unresolvedIds = scopedLookupKey
       .split(",")
       .map((item) => Number(item))
-      .filter((item) => Number.isFinite(item) && !getSymbolRecord(item));
+      .filter((item) => Number.isFinite(item) && !(item === scopedSymbolId && scopedSymbolLabel) && !getSymbolRecord(item));
     if (unresolvedIds.length === 0) return;
     ctx.fetchVisibleSymbols().catch(() => {});
-  }, [ctx, getSymbolRecord, scopedLookupKey]);
+  }, [ctx, getSymbolRecord, scopedLookupKey, scopedSymbolId, scopedSymbolLabel]);
 
   const getRunScopeLabel = useCallback((run?: Pick<HistoryInitializationRunRecord, "symbol_ids"> | Pick<HistoryInitializationTask, "symbol_ids"> | null) => {
     const symbolId = run?.symbol_ids?.length === 1 ? run.symbol_ids[0] : null;
@@ -554,9 +567,9 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <Tag color={HISTORY_STATUS_COLORS[run.status]}>{statusLabel(run.status)}</Tag>
-            <Button size="small" onClick={() => handleRetryFailedOnly(run.task_id)} disabled={!retryable} loading={retryFailedLoading === run.task_id}>
+            {!requestedRange && <Button size="small" onClick={() => handleRetryFailedOnly(run.task_id)} disabled={!retryable} loading={retryFailedLoading === run.task_id}>
               {t("histRetryFailedOnly")}
-            </Button>
+            </Button>}
             <Button size="small" type="link" onClick={() => toggleRunExpand(runId)}>
               {expanded ? <><UpOutlined /> {t("histHideDetails")}</> : <><DownOutlined /> {t("histViewDetails")}</>}
             </Button>
@@ -674,18 +687,20 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
       <div ref={panelRef} className="panel history-init-panel" style={focusFlash ? { boxShadow: "0 0 0 2px rgba(22, 119, 255, 0.18), 0 12px 28px rgba(22, 119, 255, 0.10)", transition: "box-shadow 0.2s ease" } : undefined}>
         <div className="panel-head">
           <div>
-            <p className="panel-kicker">{t("histPanelKicker")}</p>
-            <h2>{t("histPanelTitle")}</h2>
+            <p className="panel-kicker">{requestedRange ? "回测资料" : t("histPanelKicker")}</p>
+            <h2>{requestedRange ? "补充回测资料" : t("histPanelTitle")}</h2>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <Tag color={repairModeColor(historyTask?.repair_mode ?? requestedRepairMode)}>{repairModeLabel(historyTask?.repair_mode ?? requestedRepairMode)}</Tag>
+          <Tag color={repairModeColor(requestedRange ? requestedRepairMode : historyTask?.repair_mode ?? requestedRepairMode)}>{repairModeLabel(requestedRange ? requestedRepairMode : historyTask?.repair_mode ?? requestedRepairMode)}</Tag>
           <Tag color={HISTORY_STATUS_COLORS[historyTask?.status || "idle"]}>
             {statusLabel(historyTask?.status || "idle")}
           </Tag>
         </div>
         </div>
 
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("histPanelDesc")} />
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} message={requestedRange ? "按本次标的、日期和缺失项补充资料。完成后返回回测页重新检查。" : t("histPanelDesc")} />
+        {requestedRange && isRunning && !historyTaskMatchesRequest && <Alert type="info" showIcon style={{ marginBottom: 16 }}
+          message="另有历史资料任务正在运行，本次补充还没有开始。请等它结束后重新读取。" />}
 
         {(activeStockPreset || activeEtfPreset) && (
           <Tooltip title={t("scHistActivePresetTip")}>
@@ -715,7 +730,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           </Tooltip>
         )}
 
-        {activeScopedSymbolId && (
+        {activeScopedSymbolId && !requestedRange && (
           <Alert
             type="success"
             showIcon
@@ -731,34 +746,35 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         )}
 
         <div ref={presetFocusRef} className="history-init-toolbar" tabIndex={-1} style={focusFlash ? { outline: "none", borderRadius: 8, background: "rgba(22, 119, 255, 0.06)", padding: 8, margin: "0 -8px 0 -8px", transition: "background 0.2s ease" } : undefined}>
-          <Radio.Group value={historyPreset} onChange={(e) => setHistoryPreset(e.target.value)} optionType="button" buttonStyle="solid">
+          {requestedRange ? <strong>本次补充日期：{requestedRange.start} 至 {requestedRange.end}</strong> : <Radio.Group value={historyPreset} onChange={(e) => setHistoryPreset(e.target.value)} optionType="button" buttonStyle="solid">
             {HISTORY_PRESET_VALUES.map((item) => (
               <Radio.Button key={item.value} value={item.value} disabled={isRunning}>{t(item.i18nKey)}</Radio.Button>
             ))}
-          </Radio.Group>
-          <Tooltip title={activeScopedSymbolId ? t("histSourceDisabledByScope") : t("histSourceHint")}>
+          </Radio.Group>}
+          {!requestedRange && <><Tooltip title={activeScopedSymbolId ? t("histSourceDisabledByScope") : t("histSourceHint")}>
             <Select
               value={symbolSource}
               onChange={(value: HistoryInitializationSymbolSource) => setSymbolSource(value)}
-              disabled={isRunning || !!activeScopedSymbolId}
+              disabled={isRunning || !!activeScopedSymbolId || !!requestedRange}
               style={{ minWidth: 140 }}
               options={HISTORY_SYMBOL_SOURCE_VALUES.map((item) => ({ label: t(item.i18nKey), value: item.value }))}
             />
           </Tooltip>
           <Tooltip title={activeScopedSymbolId ? t("histSourceDisabledByScope") : t("histAutoScanHint")}>
             <div className="history-init-autoscan" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <Switch size="small" checked={autoScan} onChange={setAutoScan} disabled={isRunning || !!activeScopedSymbolId} />
+              <Switch size="small" checked={autoScan} onChange={setAutoScan} disabled={isRunning || !!activeScopedSymbolId || !!requestedRange} />
               <span className="history-init-autoscan__label">{t("histAutoScan")}</span>
             </div>
           </Tooltip>
+          </>}
           <div className="history-init-toolbar__actions">
             <Button icon={<ReloadOutlined />} onClick={loadHistoryTask} disabled={isRunning}>
               {t("histBtnRefresh")}
             </Button>
-            <Button icon={<HistoryOutlined />} onClick={handleRetryLastRun} disabled={!latestRun || isRunning || historyLoading}>
+            {!requestedRange && <Button icon={<HistoryOutlined />} onClick={handleRetryLastRun} disabled={!latestRun || isRunning || historyLoading}>
               {t("histBtnRetry")}
-            </Button>
-            {isRunning ? (
+            </Button>}
+            {isRunning && historyTaskMatchesRequest ? (
               <Popconfirm title={t("histCancelConfirm")} onConfirm={handleCancelTask} okText={t("histBtnCancel")} cancelText={t("cancel")}>
                 <Button danger icon={<CloseOutlined />}>
                   {t("histBtnCancel")}
@@ -766,7 +782,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
               </Popconfirm>
             ) : (
               <Button type="primary" icon={<SyncOutlined spin={historyTask?.status === "running"} />} loading={historyLoading} disabled={isRunning} onClick={handleStartHistoryInitialization}>
-                {t("histBtnInit")}
+                {requestedRange ? "补充所需资料" : t("histBtnInit")}
               </Button>
             )}
           </div>

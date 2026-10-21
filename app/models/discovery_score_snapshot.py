@@ -35,10 +35,8 @@ class DiscoveryScoreSnapshot(Base):
             "trade_date",
             "generated_at",
         ),
-        # (scope, status, trade_date) 同一 scope 同一交易日同时只允许一个 building
-        UniqueConstraint(
-            "scope", "status", "trade_date", name="uq_snapshot_scope_status_date"
-        ),
+        # A day can have multiple ready/failed/superseded historical versions.
+        # The single-process preparation dispatcher serializes active builds.
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

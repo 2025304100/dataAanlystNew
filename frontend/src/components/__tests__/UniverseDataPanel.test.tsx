@@ -12,7 +12,7 @@ const { mockApi } = vi.hoisted(() => ({
       circuit_broken_symbols: 0,
       total_bars: 0,
       by_type: {},
-      latest_synced_at: null,
+      latest_synced_at: null as string | null,
       is_empty: true,
     })),
     getUniverseInitStatus: vi.fn(async () => null),
@@ -101,7 +101,9 @@ describe("UniverseDataPanel sync panel interaction", () => {
     });
 
     expect(screen.getByText("universeViewingNow")).toBeInTheDocument();
-    expect(screen.getByText("universeCurrentSelection")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /其他更新方式/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.getByText(/下载历史设置：/)).toHaveTextContent("universeHistory1y");
     expect(screen.getByText("universeIncrementalTitle")).toBeInTheDocument();
     expect(screen.queryByText("universeSmartTitle")).not.toBeInTheDocument();
     expect(screen.queryByText("universeBackfillTitle")).not.toBeInTheDocument();
@@ -116,6 +118,7 @@ describe("UniverseDataPanel sync panel interaction", () => {
       expect(screen.getByText("universeIncrementalTitle")).toBeInTheDocument();
     });
 
+    await user.click(screen.getByRole("button", { name: /其他更新方式/ }));
     await user.click(screen.getByText("universeQuickSmartTitle"));
 
     await waitFor(() => {
@@ -126,6 +129,7 @@ describe("UniverseDataPanel sync panel interaction", () => {
   });
 
   it("starts incremental sync with the selected scope and rejects an empty scope", async () => {
+    mockApi.getUniverseStats.mockResolvedValueOnce({ total_symbols: 1, synced_symbols: 1, failed_symbols: 0, circuit_broken_symbols: 0, total_bars: 200, by_type: {}, latest_synced_at: null, is_empty: false });
     const user = userEvent.setup();
     render(<UniverseDataPanel />);
 
@@ -144,6 +148,69 @@ describe("UniverseDataPanel sync panel interaction", () => {
 
     await user.click(cnStockScope);
     expect(startButton).toBeDisabled();
+  });
+
+  it("takes a first-time user directly to historical download without starting an empty daily update", async () => {
+    const user = userEvent.setup();
+    render(<UniverseDataPanel />);
+    expect(await screen.findByText("还没有行情数据")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /universeIncrementalStart/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "下载历史行情" }));
+    expect(await screen.findByText("universeTaskTitle")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "universeScopeCnStock" })).toBeChecked();
+    expect(mockApi.startUniverseIncrementalSync).not.toHaveBeenCalled();
+    expect(mockApi.startUniverseInit).not.toHaveBeenCalled();
+  });
+
+  it("offers a read-only retry when saved market data status cannot be read", async () => {
+    mockApi.getUniverseStats.mockRejectedValueOnce(new Error("本地连接暂时不可用"));
+    const user = userEvent.setup();
+    render(<UniverseDataPanel />);
+    expect(await screen.findByText("行情数据状态暂时读不到")).toBeInTheDocument();
+    expect(screen.queryByText("还没有行情数据")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /universeIncrementalStart/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "重试读取行情状态" }));
+    expect(await screen.findByText("还没有行情数据")).toBeInTheDocument();
+    expect(screen.queryByText("行情数据状态暂时读不到")).not.toBeInTheDocument();
+    expect(mockApi.startUniverseIncrementalSync).not.toHaveBeenCalled();
+    expect(mockApi.startUniverseInit).not.toHaveBeenCalled();
+  });
+
+  it("keeps totals visible and reveals detailed market statistics only when requested", async () => {
+    const savedData = {
+      total_symbols: 10, synced_symbols: 8, failed_symbols: 2,
+      circuit_broken_symbols: 0, total_bars: 200,
+      by_scope: { "cn-stock": { total: 8, synced: 6, coverage: 75 } },
+      by_board: { main: { total: 8, synced: 6, coverage: 75 } },
+      by_type: { stock: { total: 8, synced: 6 }, etf: { total: 2, synced: 2 } },
+      freshness: { today: 3, "1_3_days": 2, "3_7_days": 2, over_7_days: 1, no_data: 2 },
+      latest_synced_at: "2026-10-19T08:00:00Z", is_empty: false,
+    };
+    mockApi.getUniverseStats.mockResolvedValueOnce(savedData);
+    const user = userEvent.setup();
+    render(<UniverseDataPanel />);
+
+    expect(await screen.findByText("universeFailedSymbols")).toBeVisible();
+    expect(screen.getByText("2")).toBeVisible();
+    expect(screen.getByText("universeTotalSymbols")).toBeVisible();
+    expect(screen.getByText("universeSyncedSymbols")).toBeVisible();
+    expect(screen.getByText("universeTotalBars")).toBeVisible();
+    expect(screen.getByText(/universeLatestSync/)).toBeVisible();
+    expect(screen.getByRole("button", { name: /universeIncrementalStart/ })).toBeVisible();
+    const details = screen.getByRole("button", { name: /查看行情统计明细/ });
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("universeHealthByScope")).not.toBeInTheDocument();
+    expect(screen.queryByText("universeHealthFreshness")).not.toBeInTheDocument();
+    expect(screen.queryByText("universeHealthByBoard")).not.toBeInTheDocument();
+    expect(screen.queryByText("universeTypeEtf")).not.toBeInTheDocument();
+
+    await user.click(details);
+    expect(screen.getByText("universeHealthByScope")).toBeVisible();
+    expect(screen.getByText("universeHealthFreshness")).toBeVisible();
+    expect(screen.getByText("universeHealthByBoard")).toBeVisible();
+    expect(screen.getByText("universeTypeStock")).toBeVisible();
+    expect(screen.getByText("universeTypeEtf")).toBeVisible();
+    expect(mockApi.startUniverseIncrementalSync).not.toHaveBeenCalled();
   });
 
   it("defaults to init on history tab and switches to backfill when the backfill card is clicked", async () => {
@@ -224,6 +291,7 @@ describe("UniverseDataPanel sync panel interaction", () => {
   it("shows aggregate index-sync progress and submits the clicked row symbol", async () => {
     const user = userEvent.setup();
     render(<UniverseDataPanel />);
+    await user.click(screen.getByRole("button", { name: /回测用的指数行情/ }));
 
     await waitFor(() => {
       expect(screen.getByText("沪深300")).toBeInTheDocument();

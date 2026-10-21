@@ -428,6 +428,7 @@ def get_discovery_snapshot_status(
         has_ready_snapshot=ready is not None,
         ready_snapshot_id=ready.id if ready else None,
         ready_snapshot_generated_at=ready.generated_at if ready else None,
+        ready_snapshot_data_cutoff_at=ready.data_cutoff_at if ready else None,
         ready_snapshot_trade_date=ready.trade_date.date() if ready and ready.trade_date else None,
         ready_snapshot_symbol_count=ready.symbol_count if ready else None,
         ready_snapshot_dirty_symbol_count=ready.dirty_symbol_count if ready else None,

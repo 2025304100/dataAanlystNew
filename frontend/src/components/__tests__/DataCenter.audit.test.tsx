@@ -10,6 +10,8 @@ const mockApi = vi.hoisted(() => ({
   getExternalDataQualitySnapshots: vi.fn(async () => ({ fields: [] })),
   refreshExternalDataQualitySnapshots: vi.fn(async () => ({ fields: 0 })),
   getExternalDataQualityHistory: vi.fn(),
+  getSecurityStatusCoverage: vi.fn(async () => ({ total_records: 0, verified_records: 0, message: "尚无可用的历史股票状态资料。" })),
+  getSecurityStatusTemplate: vi.fn(async () => ({ csv_text: "symbol,trade_date\n", required_columns: [], instructions: [], max_bytes: 20000000, max_rows: 50000 })),
 }));
 vi.mock("../../api/client", () => ({ api: mockApi }));
 
@@ -27,8 +29,12 @@ describe("data-center factor-input entry and tab persistence", () => {
   it("exposes all five data-center tabs and reaches the input component", async () => {
     render(<DataCenter />);
     expect(screen.getAllByRole("tab")).toHaveLength(5);
-    expect(screen.getByRole("tab", { name: "行情底座" })).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(screen.getByRole("tab", { name: "因子输入" }));
+    expect(screen.getByRole("tab", { name: "行情数据" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("平时在“行情数据”更新价格；财报、资金流等资料在“其他数据”更新。遇到问题时，可查看“更新记录”。")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "数据检查" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "更新记录" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "本地副本" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "其他数据" }));
     expect(await screen.findByTestId("input-content")).toBeVisible();
     await waitFor(() => expect(window.localStorage.getItem("settings_data_center_tab")).toBe("inputs"));
   });
@@ -36,14 +42,22 @@ describe("data-center factor-input entry and tab persistence", () => {
   it("restores the input tab from the previous visit", async () => {
     window.localStorage.setItem("settings_data_center_tab", "inputs");
     render(<DataCenter />);
-    expect(screen.getByRole("tab", { name: "因子输入" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "其他数据" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByTestId("input-content")).toBeVisible();
+  });
+
+  it("reaches historical file preparation from the existing data-check tab", async () => {
+    render(<DataCenter />);
+    fireEvent.click(screen.getByRole("tab", { name: "数据检查" }));
+    expect(await screen.findByRole("region", { name: "历史股票状态" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "选择CSV文件" })).toBeEnabled();
+    expect(window.localStorage.getItem("settings_data_center_tab")).toBe("coverage");
   });
 
   it("falls back to the market tab for an invalid persisted tab", () => {
     window.localStorage.setItem("settings_data_center_tab", "untrusted-invalid-tab");
     render(<DataCenter />);
-    expect(screen.getByRole("tab", { name: "行情底座" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "行情数据" })).toHaveAttribute("aria-selected", "true");
     expect(window.localStorage.getItem("settings_data_center_tab")).toBe("market");
   });
 
@@ -70,7 +84,7 @@ describe("data-center factor-input entry and tab persistence", () => {
   it("clears a stale quality error after an explicit successful refresh", async () => {
     window.localStorage.setItem("settings_data_center_tab", "coverage");
     render(<DataCenter />);
-    const button = await screen.findByRole("button", { name: "刷新质量快照" });
+    const button = await screen.findByRole("button", { name: "重新检查本地数据" });
     mockApi.refreshExternalDataQualitySnapshots.mockRejectedValueOnce(new Error("temporary quality error"));
     fireEvent.click(button);
     expect(await screen.findByText("temporary quality error")).toBeInTheDocument();

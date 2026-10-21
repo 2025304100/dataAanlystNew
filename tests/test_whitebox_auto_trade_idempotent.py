@@ -670,10 +670,10 @@ class TestSignalDateIdempotency:
 
 
 class TestConfirmModeIdempotent:
-    """守护 confirm 模式幂等（待确认订单不重复生成）。"""
+    """确认后成交尚未开放，反复运行只保留信号，不产生占位订单。"""
 
     def test_confirm_mode_idempotent(self, db_session):
-        """【Q1·新契约】confirm 建待确认单；同日重跑 pending_key 幂等不重建。"""
+        """旧确认模式成员重复运行时，明确说明不可用且不改变订单。"""
         p = _make_portfolio(db_session, name="QA-Confirm-Idempotent")
         sym = _make_symbol(db_session, symbol="700060")
         _make_daily_bar(db_session, sym.id, close=10.0)
@@ -689,27 +689,26 @@ class TestConfirmModeIdempotent:
             {"symbol_id": sym.id, "execution_mode": EXECUTION_CONFIRM},
         ])
 
-        # 首次：confirm 建一张 pending 单 + signal_decisions 1，不成交
+        # 首次保留信号并说明能力未开放，不创建无法处理的待确认单。
         r1 = run_idempotent_member_source(
             db_session, portfolio_id=p.id, trade_date=date(2026, 7, 17),
         )
         assert len(r1["signal_decisions"]) == 1
         assert r1["signal_decisions"][0]["execution_mode"] == EXECUTION_CONFIRM
-        assert db_session.query(SimOrder).filter_by(
-            portfolio_id=p.id, status="pending_confirmation").count() == 1
-        assert db_session.query(SimOrder).filter_by(
-            portfolio_id=p.id, status="filled").count() == 0
+        assert db_session.query(SimOrder).filter_by(portfolio_id=p.id).count() == 0
+        assert any(item.get("reason") == "CONFIRMATION_NOT_SUPPORTED"
+                   for item in r1["pending_orders"])
 
-        # 第二次同日重跑：pending_key 命中 → 不重复建待确认单
+        # 第二次仍是同一能力限制，不因重跑生成订单或成交。
         r2 = run_idempotent_member_source(
             db_session, portfolio_id=p.id, trade_date=date(2026, 7, 17),
         )
-        pending2 = db_session.query(SimOrder).filter_by(
-            portfolio_id=p.id, status="pending_confirmation").count()
-        assert pending2 == 1, f"重跑重复建待确认单：{pending2}"
+        assert db_session.query(SimOrder).filter_by(portfolio_id=p.id).count() == 0
         conf = [o for o in r2["executed_orders"]
                 if o.get("execution_mode") == EXECUTION_CONFIRM]
-        assert len(conf) == 1 and conf[0]["status"] == "pending_confirmation"
+        assert conf == []
+        assert any(item.get("reason") == "CONFIRMATION_NOT_SUPPORTED"
+                   for item in r2["pending_orders"])
 
 
 # ============================================================================

@@ -36,15 +36,28 @@ import {
   type ExternalDatasetOverview,
   type ExternalDataSyncCapabilities,
   type ExternalDataSyncPlan,
+  type ExternalDataSyncCoverage,
   type ExternalDataCoverage,
   type ExternalDatasetCoverage,
   type ExternalSyncDataset,
+  type ExternalSyncPolicy,
   type ExternalSyncTask,
   type FactorPipelineTask,
 } from "../api/client";
 
 type SyncSource = "watchlist" | "positions" | "all";
 type SyncWatchlist = { id: number; name: string; list_type: string };
+
+const SYNC_POLICY_LABELS: Record<ExternalSyncPolicy, string> = {
+  normal: "只补未更新的部分",
+  missing: "只补缺失数据",
+  force: "重新获取并更新已有数据",
+};
+const SYNC_POLICY_HINTS: Record<ExternalSyncPolicy, string> = {
+  normal: "已完成的股票和日期会跳过，只更新还没有完成的部分；当天数据仍可继续更新。",
+  missing: "只补所选范围内缺少的记录或数值，已有数据保留；休市日不算缺失。",
+  force: "重新获取所选范围的数据，并更新已有记录。能获取的日期仍取决于数据来源。",
+};
 
 const FULL_HISTORY_START_DATE = "1990-01-01";
 const MAX_HISTORY_SPAN_DAYS = 36500;
@@ -97,6 +110,7 @@ type ExternalInputDraft = {
   source: SyncSource;
   includeNorthbound: boolean;
   syncMode: "incremental" | "backfill";
+  syncPolicy: ExternalSyncPolicy;
   datePreset: HistoryPreset;
   dateRange: HistoryDateRange;
 };
@@ -136,6 +150,7 @@ function readInputDraft(storageKey: string | undefined): ExternalInputDraft | nu
       source: draft.source as SyncSource,
       includeNorthbound: draft.includeNorthbound,
       syncMode: draft.syncMode as ExternalInputDraft["syncMode"],
+      syncPolicy: ["normal", "missing", "force"].includes(String(draft.syncPolicy)) ? draft.syncPolicy as ExternalSyncPolicy : "normal",
       datePreset: start && end && datePreset !== "custom" ? matchingDatePreset(dateRange, datePreset) : datePreset,
       dateRange,
     };
@@ -163,9 +178,13 @@ function datasetFromTask(task: ExternalSyncTask): ExternalSyncDataset | null {
   return DATASET_ORDER.includes(dataset) ? dataset : null;
 }
 
-function formatDate(value: string | null, withTime = false): string {
+export function formatDate(value: string | null, withTime = false): string {
   if (!value) return t("extNoData");
-  const parsed = new Date(value);
+  // Backend audit timestamps are UTC even when the serialized value omits its
+  // timezone. Calendar dates and explicitly zoned timestamps retain their form.
+  const timestamp = withTime && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value)
+    ? `${value}Z` : value;
+  const parsed = new Date(timestamp);
   if (Number.isNaN(parsed.getTime())) return value;
   return withTime ? parsed.toLocaleString() : parsed.toLocaleDateString();
 }
@@ -176,11 +195,20 @@ function formatCount(value: number): string {
 
 function taskRange(task: ExternalSyncTask): string {
   try {
-    const plan = (task.batch_recovery?.plan || {}) as Record<string, string | undefined>;
+    const plan = (task.batch_recovery?.plan || task.result?.plan || {}) as Record<string, string | undefined>;
     return `${plan.requested_start_date || plan.start_date || "-"} ~ ${plan.requested_end_date || plan.end_date || "-"}`;
   } catch {
     return "- ~ -";
   }
+}
+
+function taskPolicyLabel(task: ExternalSyncTask): string {
+  const policy = task.batch_recovery?.plan?.sync_policy ?? task.result?.plan?.sync_policy;
+  return policy ? SYNC_POLICY_LABELS[policy] ?? "策略未记录" : "策略未记录";
+}
+
+function taskExecutionTimes(task: ExternalSyncTask): string {
+  return `执行开始：${task.started_at ? formatDate(task.started_at, true) : "尚未开始"} · 执行结束：${task.finished_at ? formatDate(task.finished_at, true) : "尚未结束"}`;
 }
 
 function taskDatasetKey(task: ExternalSyncTask): string {
@@ -232,7 +260,7 @@ function taskProgressText(task: ExternalSyncTask): string {
 
 function statusTag(task: ExternalSyncTask | null) {
   if (!task) return <Tag>{t("extStatusNever")}</Tag>;
-  if (task.cancel_requested && isRunningTask(task)) return <Tag color="warning">正在取消</Tag>;
+  if (task.cancel_requested && isRunningTask(task)) return <Tag color="warning">正在停止</Tag>;
   if (taskAllAttemptsFailed(task)) return <Tag color="error">{t("extStatusFailed")}</Tag>;
   const interrupted = task.status === "failed" && task.stage === "interrupted";
   const config = {
@@ -317,7 +345,7 @@ function scoringOutcome(task: FactorPipelineTask): { label: string; type: "succe
   const completion = task.result?.completion_status;
   if (completion === "TRAINING_REJECTED") return { label: "模型未通过验证", type: "warning", detail: "候选模型未通过数据或模型门槛，未生成可用模型评分。" };
   if (completion === "AWAITING_MODEL_ACTIVATION" || bridge?.status === "SKIPPED") {
-    return { label: "输入计算完成，等待模型激活", type: "warning", detail: "未生成模型评分。请到因子模型查看真实训练结果，激活有效模型后再刷新评分特征。" };
+    return { label: "数据已算好，还需启用评分模型", type: "warning", detail: "未生成模型评分。请到因子模型查看真实训练结果，启用有效模型后再刷新评分。" };
   }
   if (completion === "PARTIAL_SCORE_PUBLICATION" || bridge?.status === "PARTIAL") {
     if (typeof bridge?.materialized_count !== "number") {
@@ -385,6 +413,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const [source, setSource] = useState<SyncSource>(initialInputDraft?.source ?? "watchlist");
   const [includeNorthbound, setIncludeNorthbound] = useState(initialInputDraft?.includeNorthbound ?? true);
   const [syncMode, setSyncMode] = useState<"incremental" | "backfill">(initialInputDraft?.syncMode ?? "incremental");
+  const [syncPolicy, setSyncPolicy] = useState<ExternalSyncPolicy>(initialInputDraft?.syncPolicy ?? "normal");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [datePreset, setDatePreset] = useState<HistoryPreset>(initialInputDraft?.datePreset ?? "60d");
   const [dateRange, setDateRange] = useState<HistoryDateRange>(initialInputDraft?.dateRange ?? [null, null]);
   const [capabilities, setCapabilities] = useState<ExternalDataSyncCapabilities | null>(null);
@@ -393,11 +423,14 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const [coverage, setCoverage] = useState<ExternalDataCoverage | null>(null);
   const [coverageLoading, setCoverageLoading] = useState(true);
   const [coverageError, setCoverageError] = useState<string | null>(null);
+  const [syncCoverage, setSyncCoverage] = useState<ExternalDataSyncCoverage | null>(null);
+  const [syncCoverageError, setSyncCoverageError] = useState<string | null>(null);
   const [previewPlan, setPreviewPlan] = useState<ExternalDataSyncPlan | null>(null);
   const [overview, setOverview] = useState<ExternalDataOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [startingDataset, setStartingDataset] = useState<ExternalSyncDataset | null>(null);
+  const [syncError, setSyncError] = useState<{ dataset: ExternalSyncDataset; detail: string; range: string; retry: () => void } | null>(null);
   const [activeTask, setActiveTask] = useState<ExternalSyncTask | null>(null);
   const [activeTasks, setActiveTasks] = useState<ExternalSyncTask[]>([]);
   const [finishedTask, setFinishedTask] = useState<ExternalSyncTask | null>(null);
@@ -411,6 +444,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const [watchlistsError, setWatchlistsError] = useState<string | null>(null);
   const watchlistsRequest = useRef(0);
   const handledTaskIds = useRef(new Set<string>());
+  const taskPollRequests = useRef(new Map<string, Promise<ExternalSyncTask>>());
+  const syncCoverageRequest = useRef<Promise<void> | null>(null);
   const historySpan = dateRangeSpan(dateRange);
   const historyRangeIssue = syncMode === "backfill" ? historyDateIssue(dateRange) : null;
 
@@ -423,11 +458,12 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         source,
         includeNorthbound,
         syncMode,
+        syncPolicy,
         datePreset,
         dateRange: dateRange.map((date) => date?.format("YYYY-MM-DD") ?? null),
       }));
     } catch { /* Input controls remain usable when browser storage is unavailable. */ }
-  }, [draftStorageKey, source, includeNorthbound, syncMode, datePreset, dateRange]);
+  }, [draftStorageKey, source, includeNorthbound, syncMode, syncPolicy, datePreset, dateRange]);
 
   const changeSyncMode = (mode: "incremental" | "backfill") => {
     setSyncMode(mode);
@@ -539,6 +575,20 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     }
   }, []);
 
+  const refreshSyncCoverage = useCallback(() => {
+    if (syncCoverageRequest.current) return syncCoverageRequest.current;
+    const request = (async () => {
+      try {
+        setSyncCoverage(await api.getExternalDataSyncCoverage());
+        setSyncCoverageError(null);
+      } catch (error: any) {
+        setSyncCoverageError(error?.message || String(error));
+      }
+    })().finally(() => { syncCoverageRequest.current = null; });
+    syncCoverageRequest.current = request;
+    return request;
+  }, []);
+
   const refreshOverview = useCallback(async (silent = false) => {
     if (!silent) setOverviewLoading(true);
     try {
@@ -546,6 +596,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       setOverview(next);
       setOverviewError(null);
       void refreshCoverage();
+      void refreshSyncCoverage();
       const running = next.datasets
         .map((item) => item.latest_task)
         .filter((task): task is ExternalSyncTask => Boolean(task && (task.status === "queued" || task.status === "running")));
@@ -560,10 +611,10 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     } finally {
       if (!silent) setOverviewLoading(false);
     }
-  }, [refreshCoverage]);
+  }, [refreshCoverage, refreshSyncCoverage]);
 
-  const finishTask = useCallback(async (task: ExternalSyncTask) => {
-    if (isRunningTask(task) || handledTaskIds.current.has(task.id)) return;
+  const finishTask = useCallback(async (task: ExternalSyncTask, refresh = true) => {
+    if (isRunningTask(task) || handledTaskIds.current.has(task.id)) return false;
     handledTaskIds.current.add(task.id);
     setFinishedTask(task);
     if (taskAllAttemptsFailed(task)) {
@@ -573,20 +624,32 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     } else if (task.status === "done") {
       message.warning(task.result?.dataset === "etf" && task.result?.warnings?.length ? task.message : t("extTaskCompletedWithErrors"));
     } else if (task.status === "cancelled") {
-      message.info("同步已取消，已完成的数据保留，可从断点继续");
+      message.info("同步已取消，已完成的数据保留，可继续上次更新");
     } else {
       message.error(task.message || t("extStatusFailed"));
     }
     if (task.result?.skip_reason && task.result.records === 0) {
+      void refreshSyncCoverage();
       const dataset = datasetFromTask(task);
       setOverview((current) => current ? {
         ...current, datasets: current.datasets.map((item) => item.dataset === dataset
           ? { ...item, latest_task: task } : item),
       } : current);
-      return;
+      return false;
     }
-    await refreshOverview(true);
-  }, [refreshOverview]);
+    if (refresh) await refreshOverview(true);
+    return true;
+  }, [refreshOverview, refreshSyncCoverage]);
+
+  const readPolledTask = useCallback((taskId: string) => {
+    const pending = taskPollRequests.current.get(taskId);
+    if (pending) return pending;
+    const request = api.getExternalDataSyncTask(taskId).finally(() => {
+      taskPollRequests.current.delete(taskId);
+    });
+    taskPollRequests.current.set(taskId, request);
+    return request;
+  }, []);
 
   useEffect(() => {
     void refreshOverview();
@@ -600,9 +663,12 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     const runningTasks = activeTasks.filter((task) => ["queued", "running"].includes(task.status));
     if (!runningTasks.length) return;
     let disposed = false;
+    let polling = false;
     const poll = async () => {
+      if (disposed || polling) return;
+      polling = true;
       try {
-        const results = await Promise.allSettled(runningTasks.map((task) => api.getExternalDataSyncTask(task.id)));
+        const results = await Promise.allSettled(runningTasks.map((task) => readPolledTask(task.id)));
         if (disposed) return;
         const nextTasks = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
         const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
@@ -616,11 +682,13 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           const next = nextTasks.find((task) => task.id === current?.id);
           return current && next && (isRunningTask(current) || !isRunningTask(next)) ? next : current;
         });
-        nextTasks.forEach((next) => {
-          if (!["queued", "running"].includes(next.status)) void finishTask(next);
-        });
+        const completed = nextTasks.filter((next) => !isRunningTask(next));
+        const refreshNeeded = await Promise.all(completed.map((next) => finishTask(next, false)));
+        if (refreshNeeded.some(Boolean)) await refreshOverview(true);
       } catch (error: any) {
         if (!disposed) message.error(template("extSyncFailed", { message: error?.message || String(error) }));
+      } finally {
+        polling = false;
       }
     };
     void poll();
@@ -629,13 +697,14 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [activeTasks.map((task) => `${task.id}:${task.status}`).join(","), finishTask]);
+  }, [activeTasks.map((task) => `${task.id}:${task.status}`).join(","), finishTask, readPolledTask, refreshOverview]);
 
   const runSync = async (
     dataset: ExternalSyncDataset,
     overrides: Partial<{
       source: SyncSource;
       mode: "incremental" | "backfill";
+      sync_policy: ExternalSyncPolicy;
       start_date: string;
       end_date: string;
     }> = {},
@@ -652,6 +721,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       return;
     }
     setStartingDataset(dataset);
+    setSyncError(null);
     setFinishedTask(null);
     try {
       const effectiveStartDate = overrides.start_date
@@ -674,6 +744,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         portfolio_id: effectiveSource === "positions" ? app?.portfolioId ?? undefined : undefined,
         include_northbound: includeNorthbound && northboundReady,
         mode: effectiveMode,
+        sync_policy: overrides.sync_policy ?? syncPolicy,
         start_date: effectiveMode === "backfill" ? effectiveStartDate : undefined,
         end_date: effectiveMode === "backfill" ? effectiveEndDate : undefined,
         lookback_days: effectiveMode === "backfill" ? dateRangeSpan(requestedRange)! : 1,
@@ -692,6 +763,14 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         await finishTask(task);
       }
     } catch (error: any) {
+      setSyncError({
+        dataset,
+        detail: error?.message || String(error),
+        range: `${configs[dataset].title} · ${syncScopeDescription(effectiveSource, primaryWatchlistName, app?.portfolioId)} · ${effectiveMode === "backfill" ? `${overrides.start_date ?? dateRange[0]?.format("YYYY-MM-DD") ?? "未选开始日期"} 至 ${overrides.end_date ?? dateRange[1]?.format("YYYY-MM-DD") ?? "未选结束日期"}` : "最近数据"} · ${SYNC_POLICY_LABELS[overrides.sync_policy ?? syncPolicy]}`,
+        // Keep this attempt's captured form values. A later draft must not
+        // silently change the source or dates when the failed attempt is retried.
+        retry: () => void runSync(dataset, overrides),
+      });
       message.error(template("extSyncFailed", { message: error?.message || String(error) }));
     } finally {
       setStartingDataset(null);
@@ -735,7 +814,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     await resumeTaskFromCursor(activeTask);
   };
 
-  const refreshFactorScores = async () => { /* P2-4: UX 语义别名 — 显示文案统一使用「评分特征/评分流水线」而不是「因子」 */
+  const refreshFactorScores = async () => { /* P2-4: UX 语义别名 — 显示文案统一使用「评分/评分流水线」而不是「因子」 */
     if (!showScoringRefresh || pipelineStarting) return;
     if (historyRangeIssue) { message.warning(historyRangeIssue); return; }
     if (scoringScopeIssue) { message.warning(scoringScopeIssue); return; }
@@ -762,7 +841,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       const taskId = typeof task === "object" && task ? (task as any).id ?? "-" : "-";
       message.success(`评分流水线任务已提交，任务号：${String(taskId)}`);
     } catch (error: any) {
-      message.error(error?.message || "评分特征刷新启动失败，请稍后重试");
+      message.error(error?.message || "评分刷新启动失败，请稍后重试");
     } finally {
       setPipelineStarting(false);
     }
@@ -817,6 +896,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         start_date: report.start_date,
         end_date: report.end_date,
         gaps: report.gaps,
+        sync_policy: "missing",
       });
       setActiveTask(task);
       handledTaskIds.current.delete(task.id);
@@ -860,6 +940,10 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const coverageByDataset = useMemo(
     () => new Map((coverage?.datasets || []).map((item) => [item.dataset, item])),
     [coverage],
+  );
+  const syncCoverageByDataset = useMemo(
+    () => new Map((syncCoverage?.datasets || []).map((item) => [item.dataset, item])),
+    [syncCoverage],
   );
   const coverageActions = useMemo(
     () => (coverage?.datasets || []).filter((item) => DATASET_ORDER.includes(item.dataset) && ["blocked", "limited", "unknown"].includes(item.readiness)),
@@ -911,7 +995,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       ),
     },
     {
-      title: <Tooltip title="A 股日覆盖率和连续天数按交易日计算，剔除周末及交易所节假日休市，不计为缺失；估值按真实快照日期统计，评分可在 7 天内沿用已有快照。财报按实际公告日期生效，假期公告仍保留。ETF 日覆盖按最新交易日的全市场境内 ETF 统计，本次仅同步观察池时不会代表全市场已覆盖。仓库字段覆盖不表示已生成模型评分。"><span>仓库字段覆盖（非同步结果）<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
+      title: <Tooltip title="A 股日覆盖率和连续天数按交易日计算，剔除周末及交易所节假日休市，不计为缺失；估值按真实快照日期统计，评分可在 7 天内沿用已有快照。财报按实际公告日期生效，假期公告仍保留。ETF 日覆盖按最新交易日的全市场境内 ETF 统计，本次仅同步观察池时不会代表全市场已覆盖。本地数据完整情况不表示已生成模型评分。"><span>本地数据完整情况<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
       width: 230,
       render: (_, row) => {
         const diagnostic = coverageByDataset.get(row.dataset);
@@ -955,6 +1039,22 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       },
     },
     {
+      title: <Tooltip title="观测范围和已记录点数包含盘中或字段不全的数据；完整点数才表示已确认完成。起止日期之间仍可能存在缺口，补缺同步会检查实际缺失。"><span>已更新的标的和日期</span></Tooltip>,
+      width: 230,
+      render: (_, row) => {
+        const item = syncCoverageByDataset.get(row.dataset);
+        if (!item) return <Typography.Text type="secondary">{syncCoverageError ? "同步台账读取失败" : syncCoverage ? "暂无同步记录" : "读取中"}</Typography.Text>;
+        return (
+          <div style={{ fontSize: 12 }}>
+            <div>观测范围：{item.earliest_date || "-"} ~ {item.latest_date || "-"}</div>
+            <div>已记录 {formatCount(item.covered_points)} 个标的日期{item.completed_points != null ? ` · 完整 ${formatCount(item.completed_points)} 个` : " · 完整点数待确认"}</div>
+            <div style={{ color: "var(--text-muted, #667085)", marginTop: 3 }}>首次同步：{formatDate(item.first_synced_at, true)}</div>
+            <div style={{ color: "var(--text-muted, #667085)" }}>最近同步：{formatDate(item.last_synced_at, true)}</div>
+          </div>
+        );
+      },
+    },
+    {
       title: t("extDashboardLastTask"),
       width: 230,
       render: (_, row) => {
@@ -969,7 +1069,10 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                   {Boolean(task.result?.skipped) && ` · 跳过 ${task.result!.skipped}`}
                 </Typography.Text>
                 <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
-                  {formatDate(task.finished_at || task.updated_at, true)}
+                  {taskPolicyLabel(task)} · {taskRange(task)}
+                </div>
+                <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
+                  {taskExecutionTimes(task)}
                 </div>
                 {(task.status === "failed" || taskAllAttemptsFailed(task) || task.result?.skip_reason || task.result?.field_coverage) && task.message && (
                   <Typography.Text type={task.status === "failed" ? "danger" : "secondary"} ellipsis={{ tooltip: task.message }} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
@@ -995,8 +1098,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         let disabledReason: string | null = null;
         if (historyUnsupported && !historyCapabilitiesReady) disabledReason = "历史同步能力尚未确认，请等待加载或重试读取同步能力";
         else if (historyUnsupported) disabledReason = row.dataset === "etf"
-          ? "ETF 历史接口目前只稳定提供净值，溢折价、规模、份额等指标没有统一可靠的历史序列；当前同步按最近快照执行"
-          : "当前数据源仅支持最近快照，请将同步模式切换为“最近快照”";
+          ? "ETF 的溢折价、规模和份额目前只能可靠地获取最近记录，请选择“最近数据”"
+          : "这类数据只能更新最近记录，请在“日期和更新设置”中选择“最近数据”";
         else if (historyRangeIssue) disabledReason = historyRangeIssue;
         else if (spanExceedsLimit) disabledReason = `所选范围为 ${historySpan} 日，超过该数据源 ${historyLimit} 日的历史上限，请缩短日期范围`;
         else if (taskForDataset(row.dataset)) disabledReason = "该数据集正在同步，请等待当前任务完成";
@@ -1023,24 +1126,25 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                 ) : null}
               </span>
             </Tooltip>
-            {repairable ? (
+            {repairable && settingsOpen ? (
               <Button
                 size="small"
                 loading={repairingDataset === row.dataset}
                 disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || historyUnsupported || Boolean(historyRangeIssue) || spanExceedsLimit || ((syncMode !== "backfill" || !dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
                 onClick={() => void repairDetectedGaps(row.dataset as "fundamental" | "financial" | "capital_flow")}
               >
-                检查并修复缺口
+                检查缺失数据
               </Button>
             ) : null}
-            {row.dataset === "fundamental" ? (
-              <Tooltip title={t("extFullValuationHistoryHint")}>
+            {row.dataset === "fundamental" && settingsOpen ? (
+              <Tooltip title={`${t("extFullValuationHistoryHint")} 此操作会重新获取全部股票的历史估值，并更新已有记录。`}>
                 <Button
                   size="small"
                   disabled={controlsDisabled || !historyCapabilitiesReady || Boolean(taskForDataset("fundamental"))}
                   onClick={() => void runSync("fundamental", {
                     source: "all",
                     mode: "backfill",
+                    sync_policy: "force",
                     start_date: FULL_HISTORY_START_DATE,
                     end_date: dayjs().format("YYYY-MM-DD"),
                   })}
@@ -1069,7 +1173,6 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
 
   return (
     <section className="external-data-sync-section" style={{ width: "100%" }}>
-      <VerifiedInputReplay />
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 18 }}>
         <div>
           <Space size={8}>
@@ -1122,21 +1225,23 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
               <Space wrap>
                 <Typography.Text strong>{dataset ? configs[dataset].title : task.task_type}</Typography.Text>
                 {statusTag(task)}
+                <Tag>{taskPolicyLabel(task)}</Tag>
                 <Typography.Text type="secondary">{taskRange(task)}</Typography.Text>
-                {running ? <Button size="small" danger loading={taskActionLoading === "cancel"} disabled={task.cancel_requested} onClick={() => void cancelActiveTask(task)}>{task.cancel_requested ? "正在取消" : "取消同步"}</Button> : null}
-                {!running && taskCanResume(task) ? <Button size="small" type="primary" loading={taskActionLoading === "retry"} onClick={() => void resumeTaskFromCursor(task)}>从断点继续</Button> : null}
+                {running ? <Button size="small" danger loading={taskActionLoading === "cancel"} disabled={task.cancel_requested} onClick={() => void cancelActiveTask(task)}>{task.cancel_requested ? "正在停止" : "停止更新"}</Button> : null}
+                {!running && taskCanResume(task) ? <Button size="small" type="primary" loading={taskActionLoading === "retry"} onClick={() => void resumeTaskFromCursor(task)}>继续上次更新</Button> : null}
               </Space>
               <Typography.Text type="secondary">{taskProgressText(task)}</Typography.Text>
             </div>
             <Progress
               percent={task.stage === "mirror" && running ? undefined : Math.round(task.percent)}
               status={task.status === "failed" || taskAllAttemptsFailed(task) ? "exception" : task.status === "done" ? "success" : "active"}
-              format={task.stage === "mirror" && running ? () => "镜像处理中" : undefined}
+              format={task.stage === "mirror" && running ? () => "正在保存到本地" : undefined}
             />
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap", color: "#475467", fontSize: 12, marginTop: 6 }}>
               <span>{stageLabel(task.stage)}</span><span>同步数量：{taskProgressText(task)}</span>
               <span>{t("extDashboardSuccess")}：{task.ok_count ?? 0}</span><span>{t("extDashboardFailed")}：{task.failed_count ?? 0}</span>
               {task.current_item && <span>{t("extDashboardCurrent")}：{task.current_item}</span>}
+              <span>{taskExecutionTimes(task)}</span>
             </div>
           </div>
         );
@@ -1160,6 +1265,16 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             {syncScopeDescription(source, primaryWatchlistName, app?.portfolioId)}
           </Typography.Text>
         </Space>
+      </div>
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+        {syncMode === "incremental" ? "更新最近数据" : historyRangeIssue ? "历史日期未选完整" : `历史日期：${dateRange[0]!.format("YYYY-MM-DD")} 至 ${dateRange[1]!.format("YYYY-MM-DD")}`} · {SYNC_POLICY_LABELS[syncPolicy]}
+      </Typography.Paragraph>
+      <Collapse
+        size="small"
+        style={{ marginBottom: 14 }}
+        activeKey={settingsOpen ? ["settings"] : []}
+        onChange={(keys) => setSettingsOpen(keys.includes("settings"))}
+        items={[{ key: "settings", label: "日期和更新设置", children: <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
         <Checkbox checked={includeNorthbound && northboundReady} disabled={controlsDisabled || !northboundReady} onChange={(event) => setIncludeNorthbound(event.target.checked)}>
           {t("extIncludeNorthbound")}
         </Checkbox>
@@ -1172,8 +1287,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             disabled={controlsDisabled}
             style={{ width: 130 }}
             options={[
-              { value: "incremental", label: "最近快照" },
-              { value: "backfill", label: "真实历史范围" },
+              { value: "incremental", label: "最近数据" },
+              { value: "backfill", label: "指定历史日期" },
             ]}
           />
           {syncMode === "backfill" ? (
@@ -1197,9 +1312,26 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             </>
           ) : null}
         </Space>
-        {showScoringRefresh && <Tooltip title={`当前评分仅支持 A 股股票。${scoringScopeIssue ?? `仅同步外部数据不会自动刷新评分特征；此操作会计算输入，在真实模型已激活且数据齐全时生成模型评分，并保留任务证据。${syncMode === "backfill" ? "按右侧所选日期范围重算。" : "默认重算最近约 11 天。"}为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。未激活模型或输入不足时会明确说明未生成或仅部分生成评分。`}`}>
+        <Space wrap>
+          <Typography.Text strong>更新方式:</Typography.Text>
+          <Select
+            aria-label="更新方式"
+            value={syncPolicy}
+            onChange={(value: ExternalSyncPolicy) => { setSyncPolicy(value); setPreviewPlan(null); }}
+            disabled={controlsDisabled}
+            style={{ width: 235 }}
+            options={Object.entries(SYNC_POLICY_LABELS).map(([value, label]) => ({ value, label }))}
+          />
+        </Space>
+        <Typography.Text type="secondary" style={{ display: "block", width: "100%" }}>
+          {SYNC_POLICY_HINTS[syncPolicy]}{syncMode === "incremental" ? " 需要过去的数据时，选择“指定历史日期”。" : " ETF 指标和人气榜仅提供最近数据，不能补过去的记录。"}
+        </Typography.Text>
+        </div> }]}
+      />
+      <div style={{ marginBottom: 12 }}>
+        {showScoringRefresh && <Tooltip title={`当前评分仅支持 A 股股票。${scoringScopeIssue ?? `仅同步外部数据不会自动刷新评分；此操作会计算输入，在真实模型已启用且数据齐全时生成模型评分，并保留任务证据。${syncMode === "backfill" ? "按右侧所选日期范围重算。" : "默认重算最近约 11 天。"}为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。未启用模型或输入不足时会明确说明未生成或仅部分生成评分。`}`}>
           <Button
-            aria-label="刷新评分特征"
+            aria-label="刷新评分"
             type="primary"
             ghost
             icon={<SyncOutlined />}
@@ -1207,7 +1339,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             disabled={controlsDisabled || Boolean(historyRangeIssue) || Boolean(scoringScopeIssue) || taskRunning || Boolean(pipelineTask && ["queued", "running"].includes(pipelineTask.status))}
             onClick={() => void refreshFactorScores()}
           >
-            刷新评分特征
+            刷新评分
           </Button>
         </Tooltip>}
       </div>
@@ -1226,19 +1358,20 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         {historyRangeIssue ?? `${dateRange[0]!.format("YYYY-MM-DD")} → ${dateRange[1]!.format("YYYY-MM-DD")} · ${historySpan} 个自然日（含首尾）。选择日/年跨度会保留结束日期；本月至今、今年至今截至今天。`}
       </Typography.Text>}
 
-      {coverageError && <Alert type="error" showIcon message="因子覆盖读取失败" description={coverageError} action={<Button size="small" loading={coverageLoading} onClick={() => void refreshCoverage()}>重试覆盖读取</Button>} style={{ marginBottom: 14 }} />}
-      {capabilitiesError && <Alert type="warning" showIcon message="同步能力读取失败" description={capabilitiesError} action={<Button size="small" loading={capabilitiesLoading} onClick={() => void refreshCapabilities()}>重试同步能力</Button>} style={{ marginBottom: 14 }} />}
+      {coverageError && <Alert type="error" showIcon message="数据检查结果读取失败" description={coverageError} action={<Button size="small" loading={coverageLoading} onClick={() => void refreshCoverage()}>重试读取检查结果</Button>} style={{ marginBottom: 14 }} />}
+      {syncCoverageError && <Alert type="warning" showIcon message="更新记录暂时读不到，仍可更新数据，开始前会检查所选范围" action={<Button size="small" onClick={() => void refreshSyncCoverage()}>重试读取更新记录</Button>} style={{ marginBottom: 14 }} />}
+      {capabilitiesError && <Alert type="warning" showIcon message="可用数据范围读取失败" description={capabilitiesError} action={<Button size="small" loading={capabilitiesLoading} onClick={() => void refreshCapabilities()}>重试读取可用范围</Button>} style={{ marginBottom: 14 }} />}
       {showScoringRefresh && pipelineTask && pipelineOutcome && <Alert
         type={pipelineOutcome.type}
         showIcon
         style={{ marginBottom: 14 }}
-        message={`评分特征：${pipelineOutcome.label}${pipelineTask.stage ? ` · ${scoringStageLabel(pipelineTask.stage)}` : ""}${typeof pipelineTask.percent === "number" ? ` · ${Math.round(pipelineTask.percent)}%` : ""}`}
+        message={`评分：${pipelineOutcome.label}${pipelineTask.stage ? ` · ${scoringStageLabel(pipelineTask.stage)}` : ""}${typeof pipelineTask.percent === "number" ? ` · ${Math.round(pipelineTask.percent)}%` : ""}`}
         description={<Space direction="vertical" size={4}>
           {pipelineUniverseDescription && <span>{pipelineUniverseDescription}</span>}
           {pipelineOutcome.detail && <span>{pipelineOutcome.detail}</span>}
           {pipelineTask.message && <span>{pipelineTask.message}</span>}
           {pipelinePollError && <Typography.Text type="danger">任务状态读取失败：{pipelinePollError}；正在重试</Typography.Text>}
-          {(pipelineTask.result?.completion_status === "AWAITING_MODEL_ACTIVATION" || (pipelineTask.result?.scoring_bridge as { status?: string } | undefined)?.status === "SKIPPED") && <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>去因子模型</Button>}
+          {(pipelineTask.result?.completion_status === "AWAITING_MODEL_ACTIVATION" || (pipelineTask.result?.scoring_bridge as { status?: string } | undefined)?.status === "SKIPPED") && <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>设置评分模型</Button>}
         </Space>}
       />}
 
@@ -1267,7 +1400,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           type="info"
           showIcon
           style={{ marginBottom: 14 }}
-          message="历史范围只使用数据源真实返回的记录；不支持历史回填的数据集会保持不可执行。"
+          message="只保存所选日期内确实能获取的记录。只能提供最近数据的项目不能下载历史。"
         />
       ) : null}
 
@@ -1303,12 +1436,25 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           type="success"
           showIcon
           style={{ marginBottom: 14 }}
-          message={`${previewPlan.dataset}: ${previewPlan.requested_start_date} ~ ${previewPlan.requested_end_date} (${previewPlan.requested_span_days} 日)`}
+          message={`${configs[previewPlan.dataset].title} · ${SYNC_POLICY_LABELS[previewPlan.sync_policy ?? "normal"]}: ${previewPlan.requested_start_date} ~ ${previewPlan.requested_end_date} (${previewPlan.requested_span_days} 日)`}
           description={previewPlan.provider_history_limit_days == null
             ? previewPlan.provider_reason
             : `${previewPlan.provider_reason} 历史上限: ${previewPlan.provider_history_limit_days} 日`}
         />
       ) : null}
+
+      {syncError && <Alert
+        type="error"
+        showIcon
+        style={{ marginBottom: 14 }}
+        message="这次更新遇到问题"
+        description={<Space direction="vertical" size={4}>
+          <span>{syncError.detail}</span>
+          <Typography.Text type="secondary">{syncError.range}</Typography.Text>
+          <span>重试会沿用这次失败时的范围和日期，当前设置保留。</span>
+        </Space>}
+        action={<Button loading={startingDataset === syncError.dataset} disabled={controlsDisabled || Boolean(taskForDataset(syncError.dataset))} onClick={syncError.retry}>重试这次更新</Button>}
+      />}
 
       <Table<ExternalDatasetOverview>
         rowKey="dataset"
@@ -1317,7 +1463,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         loading={overviewLoading && !overview}
         pagination={false}
         size="middle"
-        scroll={{ x: 1050 }}
+        scroll={{ x: 1580 }}
       />
 
       {resultTask?.result && (
@@ -1331,7 +1477,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
               {resultTask.result.dataset === "etf" && resultTask.message && <Typography.Text>{resultTask.message}</Typography.Text>}
               {resultTask.result.warnings?.map((warning) => <Typography.Text type="warning" key={warning}>{warning}</Typography.Text>)}
               {resultTask.result.warehouse_mirror && <Typography.Text type={resultTask.result.warehouse_mirror.status === "warning" ? "warning" : "secondary"}>
-                因子仓库镜像：{resultTask.result.warehouse_mirror.status === "warning" ? `失败：${resultTask.result.warehouse_mirror.error || "请从断点重试"}` : resultTask.result.warehouse_mirror.status === "skipped" ? "未执行" : `已写入 ${formatCount(resultTask.result.warehouse_mirror.records)} 条记录`}
+                本地分析数据：{resultTask.result.warehouse_mirror.status === "warning" ? `失败：${resultTask.result.warehouse_mirror.error || "请继续上次更新"}` : resultTask.result.warehouse_mirror.status === "skipped" ? "未执行" : `已写入 ${formatCount(resultTask.result.warehouse_mirror.records)} 条记录`}
               </Typography.Text>}
               {resultTask.result.northbound && <Typography.Text type={resultTask.result.northbound.status === "warning" ? "warning" : "secondary"}>
                 北向资金：{resultTask.result.northbound.status === "warning" ? `同步未完成：${resultTask.result.northbound.error || "数据源未返回有效记录"}` : `已写入 ${formatCount(resultTask.result.northbound.records)} 条记录`}
@@ -1355,6 +1501,11 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           }
         />
       )}
+      <Collapse
+        size="small"
+        style={{ marginTop: 16 }}
+        items={[{ key: "calculation-checks", label: "检查数据计算过程", children: <VerifiedInputReplay /> }]}
+      />
     </section>
   );
 }

@@ -17,6 +17,7 @@ from app.models.portfolio import Portfolio
 from app.models.decision_engine import StrategyExecutionSnapshot
 from app.models.factor_runtime import FactorRuntimeState
 from app.services.simulation_matching_engine import CostModelConfig
+from app.services.cost_model import resolve_stamp_tax_rate
 from app.services.factors import production_admission as admission
 
 EXECUTION_ROOT = admission.PROJECT / 'tmp/factor_production_executions'
@@ -36,7 +37,7 @@ def normalize_portfolio_cost(portfolio, snapshot=None):
         'buy_commission_rate': (('buy_commission_pct', 'commission_rate'), portfolio.buy_fee_pct, 'portfolio.buy_fee_pct'),
         'sell_commission_rate': (('sell_commission_pct', 'commission_rate'), portfolio.sell_fee_pct, 'portfolio.sell_fee_pct'),
         'min_commission': (('min_commission',), defaults.min_commission, 'matching_engine.default'),
-        'stamp_tax_rate': (('stamp_duty_pct', 'stamp_tax_rate'), defaults.stamp_tax_rate, 'matching_engine.default'),
+        'stamp_tax_rate': (('stamp_duty_pct', 'stamp_tax_rate', 'stamp_duty_rate'), resolve_stamp_tax_rate(), 'execution_date.default'),
         'transfer_fee_rate': (('transfer_fee_rate',), defaults.transfer_fee_rate, 'matching_engine.default'),
         'slippage_buy_bps': (('buy_slippage_bps', 'slippage_buy_bps'), defaults.slippage_buy_bps, 'matching_engine.default'),
         'slippage_sell_bps': (('sell_slippage_bps', 'slippage_sell_bps'), defaults.slippage_sell_bps, 'matching_engine.default'),
@@ -47,6 +48,8 @@ def normalize_portfolio_cost(portfolio, snapshot=None):
         if len(present) > 1 and any(raw[key] != raw[present[0]] for key in present):
             raise ValueError('production_execution_conflicting_cost_aliases:' + name)
         value = raw[present[0]] if present else fallback
+        if name == 'stamp_tax_rate' and value is None:
+            value = fallback
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
             raise ValueError('production_execution_invalid_cost:' + name)
         if ('rate' in name and value > 1) or ('bps' in name and value > 10000):

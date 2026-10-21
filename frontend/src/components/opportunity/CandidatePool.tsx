@@ -8,20 +8,24 @@
 // - 因此 CandidatePool 直接渲染 <Discovery />，保证候选数据与旧入口一致
 // - 未来 WP5 标的研究收口后可逐步抽出共享候选表格组件
 import Discovery from "../Discovery";
+import type { DiscoveryRefreshRequest } from "../Discovery";
 
 export interface CandidatePoolProps {
   /** 自定义 className */
   className?: string;
+  refreshRequest?: DiscoveryRefreshRequest | null;
+  onScopeChange?: (scope: string) => void;
+  simpleMode?: boolean;
 }
 
 /** 机会中心候选池：直接复用 Discovery 组件 */
-export default function CandidatePool({ className }: CandidatePoolProps) {
+export default function CandidatePool({ className, refreshRequest, onScopeChange, simpleMode = false }: CandidatePoolProps) {
   return (
     <div
       className={`opportunity-candidate-pool ${className ?? ""}`}
       data-opportunity-tab="candidate"
     >
-      <Discovery />
+      <Discovery refreshRequest={refreshRequest} onScopeChange={onScopeChange} simpleMode={simpleMode} />
     </div>
   );
 }

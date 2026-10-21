@@ -6,7 +6,7 @@
                     DecisionEvidence(symbol, action, target_quantity)
     (B) 订单侧计划：OrderPlan / SimulationOrder（本项目用 BacktestTrade 或 外部订单系统）
     (C) 撮合结果：simulation_matching_engine.MatchResult（FILLED / 部分成交 / 拒单）
-    (D) 最终持仓：Positions(T+1 收盘后快照)
+    (D) 最终持仓：执行日快照，或完整模拟成交账本按执行日重建
 
   核对 4 类差异：
     R1. 有决策 BUY/SELL 但无订单计划 → MISSING_ORDER_PLAN
@@ -17,19 +17,20 @@
   输出：
     - ReconciliationReport（差异明细 + 汇总）
     - 若无差异：Portfolio.last_reconciled_trade_date = T（只推进，不跳日，不等号安全）
-    - 若有实质差异：写入 RECONCILIATION_RESULT 审计事件并进入
+    - 若有差异或关键证据未核验：写入 RECONCILIATION_RESULT 审计事件并进入
       RECONCILIATION_BLOCKED，留待人工修正 + 确认
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timezone
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, inspect, select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
-from app.models.backtest import BacktestTrade  # 作为 legacy fallback 订单/撮合明细
+from app.models.backtest import BacktestRun, BacktestTrade  # legacy/import evidence
 from app.models.decision_engine import DecisionRun as DecisionRunORM, DecisionEvidence
 from app.models.portfolio import Portfolio, Position
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
@@ -76,7 +77,8 @@ class ReconciliationReport:
 
     @property
     def has_any_diff(self) -> bool:
-        return any(True for d in self.differences if d.kind != "NOT_CHECKED")
+        # Missing evidence is an incomplete check, never a clean account.
+        return bool(self.differences)
 
 
 @dataclass(frozen=True)
@@ -187,6 +189,92 @@ def _load_auto_simulation_execution(
     return order_evidence_ids, normalized
 
 
+def _positions_at_execution_date(
+    db: Session, portfolio: Portfolio, execution_date: date,
+    cash_audit: dict[str, Any] | None,
+) -> dict[int, float] | None:
+    """Rebuild only a complete, attributable simulated account from its fills.
+
+    Position has no historical date. It is used only to validate completeness
+    of the lifetime fill ledger, never as the requested historical snapshot.
+    Unexplained manual positions and legacy missing fills remain unverified.
+    """
+    if not cash_audit or cash_audit.get("status") != "CONSISTENT":
+        return None
+    opening = db.execute(select(CashLedger.entry_type, CashLedger.ref_type,
+        CashLedger.ref_id, CashLedger.note, CashLedger.amount, CashLedger.balance_after)
+        .where(CashLedger.portfolio_id == portfolio.id)
+        .order_by(CashLedger.id).limit(1)).first()
+    if opening is None or opening.entry_type != "deposit":
+        return None
+    standard_funding = (portfolio.account_type == "simulated"
+        and opening.ref_type == "portfolio" and opening.ref_id == portfolio.id
+        and opening.note == "Initial simulated funding")
+    replay_funding = False
+    if opening.ref_type == "backtest_run" and opening.ref_id is not None:
+        source = db.execute(select(BacktestRun.status, BacktestRun.initial_capital)
+            .where(BacktestRun.id == opening.ref_id)).first()
+        # Applying a run to a different simulated portfolio is supported.
+        # Its source portfolio therefore cannot be used as the ownership test.
+        replay_funding = (portfolio.account_type == "simulated" and source is not None
+            and source.status == "success" and float(source.initial_capital or 0) > 0
+            and round(float(opening.amount), 2) == round(float(source.initial_capital), 2)
+            and round(float(opening.balance_after), 2) == round(float(source.initial_capital), 2)
+            and opening.note in {
+                f"Apply backtest run #{opening.ref_id} initial capital",
+                f"Apply backtest run #{opening.ref_id} initial capital (no trades)",
+            })
+    if not standard_funding and not replay_funding:
+        return None
+
+    tables = inspect(db.get_bind()).get_table_names()
+    if "sim_orders" not in tables or "sim_trades" not in tables:
+        return None
+    orders = {int(row.id): row for row in db.execute(select(SimOrder.id,
+        SimOrder.symbol_id, SimOrder.side, SimOrder.filled_quantity)
+        .where(SimOrder.portfolio_id == portfolio.id)).all()}
+    fills = db.execute(select(SimTrade.id, SimTrade.order_id, SimTrade.symbol_id,
+        SimTrade.side, SimTrade.quantity, SimTrade.created_at)
+        .where(SimTrade.portfolio_id == portfolio.id)
+        .order_by(SimTrade.created_at, SimTrade.id)).all()
+    cash_refs = db.execute(select(CashLedger.ref_type, CashLedger.ref_id)
+        .where(CashLedger.portfolio_id == portfolio.id,
+            CashLedger.entry_type.in_(["buy", "sell"]))).all()
+    if any(row.ref_type != "sim_order" or row.ref_id is None for row in cash_refs):
+        return None
+    filled_by_order: dict[int, float] = {}
+    total: dict[int, float] = {}
+    historical: dict[int, float] = {}
+    for fill in fills:
+        order = orders.get(int(fill.order_id))
+        side = str(fill.side or "").lower()
+        quantity = float(fill.quantity or 0)
+        if (order is None or order.symbol_id != fill.symbol_id
+            or str(order.side or "").lower() != side
+            or side not in {"buy", "sell"} or quantity <= 0 or fill.created_at is None):
+            return None
+        filled_by_order[int(fill.order_id)] = filled_by_order.get(int(fill.order_id), 0) + quantity
+        sid = int(fill.symbol_id)
+        delta = quantity if side == "buy" else -quantity
+        total[sid] = total.get(sid, 0) + delta
+        if total[sid] < -1e-6:  # A sale requiring an unknown opening position.
+            return None
+        timestamp = fill.created_at
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        if timestamp.astimezone(ZoneInfo("Asia/Shanghai")).date() <= execution_date:
+            historical[sid] = historical.get(sid, 0) + delta
+    if any(abs(float(order.filled_quantity or 0) - filled_by_order.get(oid, 0)) > 1e-6
+        for oid, order in orders.items()):
+        return None
+    current = {int(sid): float(qty or 0) for sid, qty in db.execute(
+        select(Position.symbol_id, Position.quantity).where(Position.portfolio_id == portfolio.id))}
+    if any(abs(current.get(sid, 0) - total.get(sid, 0)) > 1e-6
+        for sid in set(current) | set(total)):
+        return None
+    return historical
+
+
 # ──────────────────────────────────────────────────────────── 主函数
 def reconcile_trade_date(
     db: Session,
@@ -198,7 +286,7 @@ def reconcile_trade_date(
     # 注入点：仿真交易撮合订单表；本项目若未建专用 order_plan，使用 BacktestTrade 作为
     # 撮合明细（回测路径兼容），真实自动仿真需接 SimulationOrder。
     trades_provider=None,  # Callable[[Session, int, date], list[BacktestTradeLike]]
-    positions_provider=None,  # Callable[[Session, int, date | None], dict[int, int]]
+    positions_provider=None,  # Callable[[Session, int, date], dict[int, int] | None]
     persist: bool = True,
 ) -> ReconciliationReport:
     """对 T 日决策 → T+1 最终持仓做对账。返回差异明细 + 推进 last_reconciled_trade_date。"""
@@ -251,6 +339,11 @@ def reconcile_trade_date(
                 expected={"cash": report.expected_cash}, actual={"cash": report.actual_cash},
                 detail='完整现金账本的收支累计与记录余额不一致；需核对历史流水，未经确认不调整账本。',
             ))
+    if not report.cash_audit or report.cash_audit.get("status") in {"NOT_CHECKED", "PARTIAL"}:
+        report.differences.append(ReconciliationDiff(
+            symbol_id=None, kind="NOT_CHECKED",
+            detail="现金流水缺失或缺少可核验的期初资金，现金核对尚未完成。",
+        ))
 
     if dr is None:
         report.differences.append(ReconciliationDiff(
@@ -270,8 +363,14 @@ def reconcile_trade_date(
             DecisionEvidence.decision_run_id == str(dr.id),
         )
     ).scalars().all()
+    if not evidences and (dr.universe_count or dr.member_count):
+        report.differences.append(ReconciliationDiff(
+            symbol_id=None, kind="NOT_CHECKED",
+            detail="决策运行已完成，但缺少对应的决策明细，尚不能完成对账。",
+        ))
     expected_qty_delta: dict[int, int] = {}  # symbol_id -> target_qty_delta
     expected_target_quantity: dict[int, int] = {}
+    unknown_target_symbols: set[int] = set()
     evidence_id_by_symbol: dict[int, str] = {}
     for ev in evidences:
         if ev.symbol_id is None:
@@ -279,6 +378,12 @@ def reconcile_trade_date(
         delta = int(getattr(ev, "target_qty_delta", 0) or 0)
         target = int(getattr(ev, "target_quantity", 0) or 0)
         action = str(getattr(ev, "action", "") or "")
+        if ev.target_quantity is None:
+            unknown_target_symbols.add(int(ev.symbol_id))
+            report.differences.append(ReconciliationDiff(
+                symbol_id=int(ev.symbol_id), kind="NOT_CHECKED",
+                detail="决策记录缺少目标持仓数量，不能按零持仓核对。",
+            ))
         if action in {"BUY", "SELL"}:
             expected_qty_delta[ev.symbol_id] = delta
             expected_target_quantity[ev.symbol_id] = target
@@ -286,7 +391,7 @@ def reconcile_trade_date(
         elif action in {"HOLD", "NO_ACTION", "DATA_BLOCKED", "REJECTED"}:
             # 仍在范围内，记录为 0 变化（便于 R3 比对最终持仓与目标）
             expected_qty_delta.setdefault(ev.symbol_id, 0)
-            if target:
+            if ev.target_quantity is not None:
                 expected_target_quantity.setdefault(ev.symbol_id, target)
 
     # 3. 订单 / 撮合侧实际
@@ -295,7 +400,7 @@ def reconcile_trade_date(
     order_evidence_ids: set[str] = set()
     if trades_provider is not None:
         trades = list(trades_provider(db, portfolio_id, trade_date) or [])
-        execution_source_connected = bool(trades)
+        execution_source_connected = True
     else:
         # The auto-simulation path owns a stable Evidence -> SimOrder foreign
         # key.  Prefer it to any symbol/date heuristic or historical backtest
@@ -307,9 +412,8 @@ def reconcile_trade_date(
         )
         execution_source_connected = bool(order_evidence_ids)
 
-        # Legacy test/import data predating SimOrder attribution may still be
-        # uncheckable.  Preserve the prior fail-soft behaviour only for that
-        # genuinely unlinked case; it must not hide a partial linked order.
+        # Legacy/import data predating SimOrder attribution may still be
+        # uncheckable. Never let that absence hide a partial linked order.
         if not execution_source_connected:
             try:
                 bt_rows = db.execute(
@@ -323,8 +427,7 @@ def reconcile_trade_date(
             except Exception:
                 trades = []
 
-    if trades_provider is None and not execution_source_connected:
-        # 缺订单表 → NOT_CHECKED，不视为真实差异
+    if trades_provider is None and not execution_source_connected and any(expected_qty_delta.values()):
         report.differences.append(ReconciliationDiff(
             symbol_id=None, kind="NOT_CHECKED",
             detail=(
@@ -383,24 +486,32 @@ def reconcile_trade_date(
             ))
 
     # 4. R3：最终持仓与目标持仓一致
-    post_positions: dict[int, int]
+    execution_date = dr.execution_at.date()
+    post_positions: dict[int, int] | None
     if positions_provider is not None:
-        post_positions = dict(positions_provider(db, portfolio_id, None) or {})
+        # A provider supplies a dated closing snapshot, not today's portfolio.
+        supplied = positions_provider(db, portfolio_id, execution_date)
+        post_positions = None if supplied is None else dict(supplied)
     else:
-        post_positions = {
-            int(pos.symbol_id): int(pos.quantity or 0)
-            for pos in db.execute(
-                select(Position).where(Position.portfolio_id == portfolio_id)
-            ).scalars().all()
-        }
+        post_positions = _positions_at_execution_date(db, p, execution_date, report.cash_audit)
+    if post_positions is None:
+        report.differences.append(ReconciliationDiff(
+            symbol_id=None, kind="NOT_CHECKED",
+            detail=f"缺少 {execution_date.isoformat()} 的可核验持仓记录，不能用当前持仓代替历史持仓。",
+        ))
+        finish()
+        return report
     report.actual_position_count = sum(1 for q in post_positions.values() if q > 0)
     report.expected_position_count = sum(
         1 for sid, q in expected_target_quantity.items() if q > 0
     )
 
-    for sid, target_qty in expected_target_quantity.items():
+    for sid in sorted(set(expected_target_quantity) | set(post_positions)):
+        if sid in unknown_target_symbols:
+            continue
+        target_qty = expected_target_quantity.get(sid, 0)
         actual = int(post_positions.get(sid, 0))
-        if target_qty != actual and sid in expected_qty_delta and expected_qty_delta[sid] != 0:
+        if target_qty != actual:
             report.differences.append(ReconciliationDiff(
                 symbol_id=sid,
                 kind="POSITION_MISMATCH",
@@ -436,15 +547,15 @@ def _finalize_report(
     if report.has_any_diff:
         report.status = "BLOCKED"
         # The audit result and the order-entry stop must be one transaction.
-        # ``NOT_CHECKED`` stays compatibility-only through ``has_any_diff``;
-        # it must never pause a legacy portfolio merely because its old
-        # execution ledger cannot be reconstructed.
+        # Incomplete historical evidence also blocks advancement; callers
+        # must never advertise an unverified account as reconciled.
         from app.services.portfolio_state_machine import _get_status, _set_status
 
         current_state = _get_status(db, p)
         if current_state != "ADMIN_PAUSED":
             _set_status(db, p, "RECONCILIATION_BLOCKED")
         attributes = {
+            "status": report.status,
             "trade_date": report.trade_date.isoformat(),
             "decision_run_id": report.decision_run_id,
             "expected_position_count": report.expected_position_count,
@@ -453,6 +564,9 @@ def _finalize_report(
             "actual_cash": report.actual_cash,
             "diffs_count_non_checked": sum(
                 1 for d in report.differences if d.kind != "NOT_CHECKED"
+            ),
+            "incomplete_checks_count": sum(
+                1 for d in report.differences if d.kind == "NOT_CHECKED"
             ),
             "portfolio_state_before": current_state,
             "portfolio_state_after": (

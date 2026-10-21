@@ -174,6 +174,14 @@ class AkshareApiDisabledError(RuntimeError):
     """An explicitly disabled supplier endpoint must never be contacted."""
 
 
+def assert_akshare_api_enabled(api_key: str | None) -> None:
+    if api_key:
+        from app.services.akshare_registry import is_api_enabled
+
+        if not is_api_enabled(api_key):
+            raise AkshareApiDisabledError(f"Akshare API {api_key} is disabled by configuration")
+
+
 def call_akshare_with_retry(
     func: Callable[..., Any],
     *args: Any,
@@ -206,11 +214,7 @@ def call_akshare_with_retry(
         最后一次重试仍失败时抛出原始异常
     """
     def assert_enabled() -> None:
-        if api_key:
-            from app.services.akshare_registry import is_api_enabled
-
-            if not is_api_enabled(api_key):
-                raise AkshareApiDisabledError(f"Akshare API {api_key} is disabled by configuration")
+        assert_akshare_api_enabled(api_key)
 
     # Check outside the retry/error-statistics path: a policy block is not a
     # supplier failure and must not sleep, contact the supplier or be retried.

@@ -108,6 +108,8 @@ def initialize_history_data(payload: HistoryInitializationRequest) -> dict:
     try:
         return create_history_initialization_task(
             preset=payload.preset,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
             adjust=payload.adjust,
             asset_types=payload.asset_types,
             symbol_ids=payload.symbol_ids,

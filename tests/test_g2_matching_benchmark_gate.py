@@ -110,7 +110,9 @@ def test_g2_sme_02_open_board_fill_vs_signal_expire():
     assert r.filled_quantity == 200
     assert r.executed_price is not None
     # 滑点买侧：10.4 * 1.0005 = 10.4052
-    assert abs(float(r.executed_price) - 10.4 * 1.0005) < 1e-6
+    # A-share stock fills must lie on the 0.01 tick grid. The adverse
+    # 5 bps price 10.4052 rounds upward to an executable buy price of 10.41.
+    assert r.executed_price == pytest.approx(10.41)
 
     # B. 信号过期 → 关闭
     plan_expired = OrderPlan(

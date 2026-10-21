@@ -1,19 +1,62 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-const { api, toast } = vi.hoisted(() => ({ api: { getActiveAlerts: vi.fn(), getAlertRules: vi.fn(), updateAlertRule: vi.fn(), getScheduledTasks: vi.fn() }, toast: vi.fn() }));
+const { api, toast } = vi.hoisted(() => ({ api: { getActiveAlerts: vi.fn(), getAlertRules: vi.fn(), updateAlertRule: vi.fn(), getScheduledTasks: vi.fn(), evaluateAlerts: vi.fn() }, toast: vi.fn() }));
 vi.mock("../../api/client", () => ({ api }));
 vi.mock("../../context/AppContext", () => ({ useApp: () => ({ showToast: toast }) }));
 vi.mock("../../i18n", () => ({ t: (key: string) => key, template: (key: string) => key }));
 import AlertCenter from "../AlertCenter";
 
 beforeEach(() => {
+  vi.clearAllMocks();
   localStorage.clear();
   api.getActiveAlerts.mockResolvedValue({ events: [] });
   api.getAlertRules.mockResolvedValue([{ id: 4, name: "legacy unavailable alert", alert_type: "indicator_trigger", severity: "warn", enabled: 1, cooldown_minutes: 60 }]);
   api.getScheduledTasks.mockResolvedValue([]);
 });
 afterEach(cleanup);
+
+it("does not call unread alerts empty and retries the failed read in place", async () => {
+  const user = userEvent.setup();
+  api.getActiveAlerts.mockRejectedValueOnce(new Error("network down"));
+  render(<AlertCenter />);
+  expect(await screen.findByText("暂时无法读取告警，不能确认当前是否有风险。请重试。")).toBeVisible();
+  expect(screen.queryByText("alertNoEvents")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "重新读取告警" }));
+  expect(await screen.findByText("alertNoEvents")).toBeVisible();
+  expect(screen.queryByText("暂时无法读取告警，不能确认当前是否有风险。请重试。")).not.toBeInTheDocument();
+});
+
+it("preserves previous alerts when a refresh fails and distinguishes a completed evaluation from unread results", async () => {
+  const user = userEvent.setup();
+  api.getActiveAlerts.mockResolvedValueOnce({ events: [{ id: 2, title: "行情已过期", message: "上次结果", alert_type: "data_stale", severity: "warn", resolved: false }] });
+  api.evaluateAlerts.mockResolvedValue({ new_events: 1 });
+  render(<AlertCenter />);
+  expect(await screen.findByText("行情已过期")).toBeVisible();
+  api.getActiveAlerts.mockRejectedValueOnce(new Error("network down"));
+  await user.click(screen.getByRole("button", { name: /alertEvaluate/ }));
+  expect(await screen.findByText("下面保留上次读取的告警，尚未更新。")).toBeVisible();
+  expect(screen.getByText("行情已过期")).toBeVisible();
+  expect(toast).toHaveBeenCalledWith("info", "评估已完成，但暂时读不到结果。请重新读取告警。");
+  expect(toast).not.toHaveBeenCalledWith("success", expect.anything());
+  await user.click(screen.getByRole("button", { name: "重新读取告警" }));
+  expect(await screen.findByText("alertNoEvents")).toBeVisible();
+});
+
+it("shows a separate rules read failure and lets the user recover without changing the rules", async () => {
+  const user = userEvent.setup();
+  api.getAlertRules.mockRejectedValueOnce(new Error("rules unavailable"));
+  render(<AlertCenter />);
+  await screen.findByText("alertNoEvents");
+  await user.click(screen.getByText("alertRules"));
+  expect(await screen.findByText("暂时无法读取告警规则，请重试。")).toBeVisible();
+  expect(screen.queryByText("alertNoRules")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "重新读取规则" }));
+  expect(await screen.findByText("legacy unavailable alert")).toBeVisible();
+  expect(api.updateAlertRule).not.toHaveBeenCalled();
+  await user.click(screen.getByText("alertEvents"));
+  expect(screen.getByText("alertNoEvents")).toBeVisible();
+});
 
 it("keeps an unavailable saved alert visible with its reason and allows only disabling", async () => {
   const user = userEvent.setup();

@@ -2,12 +2,12 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { OPERATOR_LABELS } from "../constants/conditionFields";
-import { enumLabel, t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
+import { enumLabel, t, template, regionLongLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
 import { navigateToResearch } from "../utils/sourceContext";
 import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table, Collapse, Tooltip, Dropdown, Alert, Modal } from "antd";
 import { MoreOutlined, WarningOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
-import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
+import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryScopeStats, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
 // WP1-FIX.2：候选列表接入 OpportunityStatusBadges
 import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
 // WP-S-FIX.4：阻断操作就地处理（按钮替换为 CapabilityGateButton）
@@ -242,7 +242,7 @@ function writeStorage(key: string, value: unknown) {
 function indicatorDisplayValue(value: boolean | number | null | undefined): string {
   if (value == null) return "-";
   if (typeof value === "number") return score(value);
-  return String(value);
+  return t(value ? "yes" : "no");
 }
 
 function indicatorExpectedValue(filter: IndicatorFilter, indicator?: CustomIndicator): boolean | number {
@@ -305,6 +305,8 @@ function saveAdvancedConfig(cfg: Record<string, unknown>) {
   }
 }
 
+export interface DiscoveryRefreshRequest { scope: string; taskId: string }
+
 export interface DiscoveryProps {
   /**
    * 当 Discovery 用作候选池入口时，跳转到标的研究应携带的 source_type。
@@ -315,18 +317,38 @@ export interface DiscoveryProps {
    * 返回来源页面的标识。默认 'candidate'（对应机会中心候选池子页签）。
    */
   returnTo?: "candidate" | "research";
+  refreshRequest?: DiscoveryRefreshRequest | null;
+  onScopeChange?: (scope: string) => void;
+  simpleMode?: boolean;
 }
 
 export default function Discovery({
   sourceType = "candidate",
   returnTo = "candidate",
+  refreshRequest = null,
+  onScopeChange,
+  simpleMode = false,
 }: DiscoveryProps = {}) {
   const ctx = useApp();
   const task = ctx.discoveryTask;
-  const scopeStats = ctx.discoveryScopeStats;
 
   const _savedCfg = loadAdvancedConfig();
   const [scope, setScope] = useState(_savedCfg?.scope ?? "cn-stock");
+  const [loadedScopeStats, setLoadedScopeStats] = useState<DiscoveryScopeStats | null>(null);
+  // Context's legacy statistics describe its default market. They are not a
+  // fallback for the range selected here, including during loading or failure.
+  const scopeStats = loadedScopeStats?.scope === scope ? loadedScopeStats : null;
+  const [preparedScans, setPreparedScans] = useState<Record<string, { taskId: string; legacyTaskId: string | null }>>(() => {
+    if (!refreshRequest || refreshRequest.scope !== scope) return {};
+    return { [scope]: { taskId: refreshRequest.taskId,
+      legacyTaskId: task && task.scope === scope && !["queued", "running", "paused"].includes(task.status) ? String(task.id) : null } };
+  });
+  const preparedScan = preparedScans[scope];
+  const preparedScanCompleteLabel = ctx.locale === "en-US" ? "Current screening completed" : "本次筛选已完成";
+  // A preparation callback certifies its own successful fast scan. It does not
+  // change the legacy task stored in context, nor supersede a newer/live task.
+  const preparedScanIsCurrent = !!preparedScan && !["queued", "running", "paused"].includes(task?.status ?? "")
+    && (!task || (task.scope === scope && String(task.id) === preparedScan.legacyTaskId));
   const [minScore, setMinScore] = useState(_savedCfg?.minScore ?? 55);
   const [dataMode, setDataMode] = useState("sync");
   const [coverageHint, setCoverageHint] = useState<string | null>(null);
@@ -354,6 +376,7 @@ export default function Discovery({
   const [planLoading, setPlanLoading] = useState(false);
   const [indicatorFilters, setIndicatorFilters] = useState<IndicatorFilter[]>([]);
   const [filterLogic, setFilterLogic] = useState<LogicMode>("AND");
+  const [bypassedFilterKey, setBypassedFilterKey] = useState<string | null>(null);
   const [indicatorValues, setIndicatorValues] = useState<Record<number, Record<string, boolean | number | null>>>({});
   const [indicatorErrors, setIndicatorErrors] = useState<Record<number, Record<string, string>>>({});
   const [poolTab, setPoolTab] = useState<PoolTab>("actionable");
@@ -364,7 +387,8 @@ export default function Discovery({
   // 挖掘结果独立加载：不依赖 workbench.candidates（executable 过滤），
   // 直接查 /discovery/latest-candidates 获取全量候选（含 hold/reduce），让用户看到全貌
   const [discoveryCandidates, setDiscoveryCandidates] = useState<WorkbenchCandidate[]>([]);
-  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesLoading, setCandidatesLoading] = useState(true);
+  const [candidatesReadError, setCandidatesReadError] = useState<string | null>(null);
   const candidateRequestRef = useRef(0);
   const candidateTargetRef = useRef("");
   candidateTargetRef.current = `${scope}|${minScore}`;
@@ -381,7 +405,18 @@ export default function Discovery({
   // 首次挂载时也会触发，将保存的 scope 同步到全局 ref（若与默认 cn-stock 不同则重新拉取）。
   useEffect(() => {
     ctx.setDiscoveryScope(scope);
-  }, [scope, ctx.setDiscoveryScope]);
+    onScopeChange?.(scope);
+  }, [scope, ctx.setDiscoveryScope, onScopeChange]);
+
+  const preparedStatsTaskId = refreshRequest && refreshRequest.scope === scope ? refreshRequest.taskId : null;
+  useEffect(() => {
+    let cancelled = false;
+    setLoadedScopeStats(null);
+    api.getDiscoveryScopeStats(scope)
+      .then(stats => { if (!cancelled && stats?.scope === scope) setLoadedScopeStats(stats); })
+      .catch(() => { if (!cancelled) setLoadedScopeStats(null); });
+    return () => { cancelled = true; };
+  }, [scope, preparedStatsTaskId]);
 
   // 卡死检测 effect：任务 running 且 updated_at 超 2 分钟未变化时显示警告
   useEffect(() => {
@@ -404,9 +439,14 @@ export default function Discovery({
     const isCurrent = () => candidateRequestRef.current === requestId && candidateTargetRef.current === target;
     setDiscoveryCandidates([]);
     setCandidatesLoading(true);
+    setCandidatesReadError(null);
     api.getLatestDiscoveryCandidates(minScore, 50, scope)
       .then((rows) => { if (isCurrent()) setDiscoveryCandidates(rows as WorkbenchCandidate[]); })
-      .catch(() => { if (isCurrent()) setDiscoveryCandidates([]); })
+      .catch((error: unknown) => {
+        if (!isCurrent()) return;
+        setDiscoveryCandidates([]);
+        setCandidatesReadError((error instanceof Error ? error.message : String(error ?? "")).trim() || t("opportunity.candidatesReadFailed"));
+      })
       .finally(() => { if (isCurrent()) setCandidatesLoading(false); });
   }, [minScore, scope]);
 
@@ -415,6 +455,18 @@ export default function Discovery({
     reloadDiscoveryCandidates();
     return () => { candidateRequestRef.current += 1; };
   }, [reloadDiscoveryCandidates]);
+
+  const lastPreparedRefresh = useRef(refreshRequest ? `${refreshRequest.scope}|${refreshRequest.taskId}` : null);
+  useEffect(() => {
+    if (!refreshRequest || refreshRequest.scope !== scope) return;
+    const key = `${refreshRequest.scope}|${refreshRequest.taskId}`;
+    if (lastPreparedRefresh.current === key) return;
+    lastPreparedRefresh.current = key;
+    setPreparedScans(previous => ({ ...previous, [scope]: { taskId: refreshRequest.taskId,
+      legacyTaskId: task && task.scope === scope && !["queued", "running", "paused"].includes(task.status) ? String(task.id) : null } }));
+    setErrorModalOpen(false);
+    reloadDiscoveryCandidates();
+  }, [refreshRequest?.scope, refreshRequest?.taskId, scope, reloadDiscoveryCandidates, task?.id, task?.scope, task?.status]);
 
   // P1：根据当前 scope 加载对应的激活评分预设（scope -> asset_type 映射）
   useEffect(() => {
@@ -483,7 +535,7 @@ export default function Discovery({
   const canPause = isTaskActive;
   const canResume = task?.status === "paused" && !!task?.can_resume;
   const canCancel = !!task && ["queued", "running", "paused"].includes(task.status);
-  const canRetry = !!task && ["failed", "cancelled", "expired"].includes(task.status) && !!task?.can_retry;
+  const canRetry = !preparedScanIsCurrent && !!task && ["failed", "cancelled", "expired"].includes(task.status) && !!task?.can_retry;
   const canStart = !isTaskActive;
 
   const sortedResults = useMemo(() => {
@@ -657,12 +709,18 @@ export default function Discovery({
       return filterLogic === "AND" ? matched.every(Boolean) : matched.some(Boolean);
     });
   }, [activeFilters, currentPool, filterLogic, indicatorMap, indicatorValues]);
+  // Viewing the unfiltered rows is temporary and never changes the saved rules.
+  // A range, pool or rule change restores filtering immediately.
+  const filterKey = JSON.stringify([scope, poolTab, filterLogic, indicatorFilters]);
+  const filtersBypassed = bypassedFilterKey === filterKey;
+  const visiblePool = filtersBypassed ? sortedResults : filteredPool;
 
   const indicatorColumnTitle = activeFilters.length
     ? t("dpHitIndicator")
     : t("freshness");
 
-  const resultMeta = (discoveryCandidates.length > 0 || !candidatesLoading) ? `${t("candidates")}: ${filteredPool.length}/${currentPool.length}` : "-";
+  const candidatesReadUnavailable = candidatesLoading || !!candidatesReadError;
+  const resultMeta = candidatesReadUnavailable ? "-" : `${t("candidates")}: ${visiblePool.length}/${filtersBypassed ? sortedResults.length : currentPool.length}`;
 
   const setRowLoading = (symbolId: number, key: "watchlist" | "freeze" | "update" | "promote", value: boolean) => {
     setRowActionLoading((prev) => ({
@@ -986,7 +1044,7 @@ export default function Discovery({
     total: task?.total ?? 0,
     processed: task?.processed ?? 0,
   })}`;
-  const meta = task
+  const meta = preparedScanIsCurrent ? preparedScanCompleteLabel : task
     ? `${enumLabel("taskStatus", task.status)}${DOT}${template("scanCounters", {
         ok: task.ok_count,
         empty: task.empty_count,
@@ -1022,7 +1080,7 @@ export default function Discovery({
               )}
               <span className="symbol-name">{item.name}</span>
             </div>
-            <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
+            <div className="item-subline">{joinParts([regionLongLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
             {strengthTags.length > 0 && (
               <div className="item-reason-tags">
                 {strengthTags.map((tag, tagIndex) => (
@@ -1123,7 +1181,7 @@ export default function Discovery({
                 matched: matchedIndicatorCount,
                 total: indicatorEntries.length,
               })}
-              {indicatorEntries.length > 0 && ` | ${indicatorEntries.map((entry) => `${entry.name} ${entry.operator} ${entry.expectedText}`).join(DOT)}`}
+              {indicatorEntries.length > 0 && `${DOT}${indicatorEntries.map((entry) => `${entry.name} ${t(OPERATOR_LABELS[entry.operator])} ${entry.expectedText}`).join(DOT)}`}
             </div>
           </div>
         );
@@ -1290,7 +1348,7 @@ export default function Discovery({
         width: 90,
       },
       {
-        title: t("action"),
+        title: t("discoveryActionAdvice"),
         dataIndex: "action",
         key: "action",
         render: (v: string) => (
@@ -1314,6 +1372,17 @@ export default function Discovery({
     ];
   }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, indicatorErrors, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleRunBacktest, handleCreateJournal, handleToggleFreeze, handleUpdateRow]);
 
+  const LegacyControls = simpleMode ? "details" : "div";
+  const scopeControl = <label className="inline-control">
+    <span>{t("discoveryScope")}</span>
+    <Select value={scope} onChange={(value) => setScope(value)} options={[
+      { value: "cn-stock", label: t("discoveryScopeCnStock") },
+      { value: "cn-etf", label: t("discoveryScopeCnEtf") },
+      { value: "us-stock", label: t("discoveryScopeUsStock") },
+      { value: "us-etf", label: t("discoveryScopeUsEtf") },
+    ]} />
+  </label>;
+
   return (
     <div className="tab-container" data-tab-content="discovery">
       <section className="band discovery-band">
@@ -1323,22 +1392,17 @@ export default function Discovery({
               <p className="panel-kicker">{t("discoveryKicker")}</p>
               <h2>{t("discoveryTitle")}</h2>
             </div>
-            <p className="panel-meta">
+            {!simpleMode && <p className="panel-meta">
               {meta}
               {ctx.discoveryPolling ? ` ${DOT} ...` : ""}
-            </p>
+            </p>}
           </div>
 
+          {simpleMode && <div className="discovery-control-bar">{scopeControl}</div>}
+          <LegacyControls>
+          {simpleMode && <summary style={{ cursor: "pointer", marginTop: 12 }}>{t("discoveryMoreOptions")}</summary>}
           <div className="discovery-control-bar">
-            <label className="inline-control">
-              <span>{t("discoveryScope")}</span>
-              <Select value={scope} onChange={(value) => setScope(value)} options={[
-                { value: "cn-stock", label: t("discoveryScopeCnStock") },
-                { value: "cn-etf", label: t("discoveryScopeCnEtf") },
-                { value: "us-stock", label: t("discoveryScopeUsStock") },
-                { value: "us-etf", label: t("discoveryScopeUsEtf") },
-              ]} />
-            </label>
+            {!simpleMode && scopeControl}
             <label className="inline-control">
               <span>{t("scDiscoveryPresetLabel")}</span>
               <Tooltip title={t("scHistActivePresetTip")}>
@@ -1454,7 +1518,20 @@ export default function Discovery({
             />
           )}
 
-          <div className="discovery-progress">
+          {preparedScanIsCurrent ? <div className="discovery-progress">
+            <Alert type="success" showIcon aria-label={preparedScanCompleteLabel} message={preparedScanCompleteLabel}
+              description={`${scopeLabel(scope)}${DOT}${preparedScan.taskId}`} />
+            {task && <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor: "pointer" }}>{ctx.locale === "en-US" ? "Previous run" : "上次运行记录"}</summary>
+              <div style={{ marginTop: 8 }}>
+                <p>{`#${task.id}${DOT}${enumLabel("taskStatus", task.status)}${DOT}${task.updated_at || task.created_at || "-"}`}</p>
+                <strong>{task.message || t("discoveryIdle")}</strong>
+                <p>{progressPct}</p>
+                {Array.isArray(task.errors) && task.errors.length > 0 && <Button size="small" type="link"
+                  onClick={() => setErrorModalOpen(true)}>{t("discoveryErrorDetails")}</Button>}
+              </div>
+            </details>}
+          </div> : <div className="discovery-progress">
             <div className="discovery-progress-head">
               <strong>{progressTitle}</strong>
               <span>{progressPct}</span>
@@ -1472,20 +1549,27 @@ export default function Discovery({
                 </Button>
               </div>
             )}
-          </div>
+          </div>}
+          </LegacyControls>
         </div>
       </section>
 
-      <section className="band metrics-band">
+      {simpleMode ? <section className="band">
+        <p className="panel-meta" style={{ margin: 0 }}>{template("discoverySimpleSummary", {
+          total: scopeStats?.total_symbols ?? "-",
+          cached: scopeStats?.cached_symbols ?? "-",
+          count: candidatesReadUnavailable ? "-" : discoveryCandidates.length,
+        })}</p>
+      </section> : <section className="band metrics-band">
         <div className="metric-grid discovery-metrics">
           <div className="metric-card"><span className="metric-label">{t("discoveryScope")}</span><span className="metric-value">{scopeLabel(scope)}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryUniverseTotal")}</span><span className="metric-value">{scopeStats?.total_symbols ?? "-"}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryCachedPool")}</span><span className="metric-value">{scopeStats?.cached_symbols ?? "-"}</span><span className="metric-note">{t("items")}</span></div>
-          <div className="metric-card"><span className="metric-label">{t("candidates")}</span><span className="metric-value">{discoveryCandidates.length}</span><span className="metric-note">{t("items")}</span></div>
-          <div className="metric-card"><span className="metric-label">{t("discoveryCurrentRun")}</span><span className="metric-value">{task ? `${task.processed}/${task.total}` : "0/0"}</span><span className="metric-note">{t("items")}</span></div>
+          <div className="metric-card"><span className="metric-label">{t("candidates")}</span><span className="metric-value">{candidatesReadUnavailable ? "-" : discoveryCandidates.length}</span><span className="metric-note">{t("items")}</span></div>
+          <div className="metric-card"><span className="metric-label">{t("discoveryCurrentRun")}</span><span className="metric-value">{preparedScanIsCurrent ? "--" : task ? `${task.processed}/${task.total}` : "0/0"}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("messageScore")}</span><span className="metric-value">{ctx.newsSnapshot?.symbols_total ?? 0}</span><span className="metric-note">{t("items")}</span></div>
         </div>
-      </section>
+      </section>}
 
       <section className="band">
         <div className="panel wide">
@@ -1499,6 +1583,8 @@ export default function Discovery({
 
           {coverageHint && <div className="coverage-hint">{coverageHint}</div>}
 
+          <LegacyControls style={{ marginTop: 12 }}>
+          {simpleMode && <summary style={{ cursor: "pointer" }}>{t("discoveryFilterOptions")}</summary>}
           <div className="pool-tabs">
             {Object.entries(poolLabels).map(([key, cfg]) => (
               <Tooltip key={key} title={t("discoveryPool" + pascalCaseKey(key) + "Tip")}>
@@ -1510,7 +1596,7 @@ export default function Discovery({
                   aria-label={template("poolTabLabel", { label: t("discoveryPool" + pascalCaseKey(key)) })}
                 >
                   <span className="pool-tab-label">{t("discoveryPool" + pascalCaseKey(key))}</span>
-                  <span className="pool-tab-count" style={{ backgroundColor: cfg.color }}>{(candidatePools as Record<string, any[]>)[key]?.length ?? 0}</span>
+                  <span className="pool-tab-count" style={{ backgroundColor: cfg.color }}>{candidatesReadUnavailable ? "-" : (candidatePools as Record<string, any[]>)[key]?.length ?? 0}</span>
                 </button>
               </Tooltip>
             ))}
@@ -1586,10 +1672,16 @@ export default function Discovery({
               );
             })}
           </div>
+          </LegacyControls>
 
-          {activeFilters.length > 0 && (
+          {(simpleMode || activeFilters.length > 0 || filtersBypassed) && (
             <div className="panel-meta" style={{ marginTop: 12 }}>
-              {indicatorLoading ? t("dpComputing") : template("dpEnabledIndicators", { count: requiredIndicatorKeys.length })}
+              {simpleMode && <span>{template("discoverySelectedPool", { label: t("discoveryPool" + pascalCaseKey(poolTab)) })}{DOT}</span>}
+              {indicatorLoading ? t("dpComputing") : template("dpEnabledIndicators", { count: activeFilters.length })}
+              {filtersBypassed && <span>{DOT}{t("discoveryViewingAll")}</span>}
+              {filtersBypassed && <Button type="link" onClick={() => setBypassedFilterKey(null)}>{t("discoveryRestoreFilters")}</Button>}
+              {!filtersBypassed && !candidatesReadUnavailable && visiblePool.length > 0 && (activeFilters.length > 0 || poolTab !== "all")
+                && <Button type="link" onClick={() => setBypassedFilterKey(filterKey)}>{t("discoveryViewAll")}</Button>}
             </div>
           )}
 
@@ -1599,12 +1691,23 @@ export default function Discovery({
           </>} />}
 
           <div className="table-wrap">
-            <Table<WorkbenchCandidate>
+            {candidatesLoading ? (
+              <p role="status" aria-label={t("opportunity.candidatesReadLoading")}>{t("opportunity.candidatesReadLoading")}</p>
+            ) : candidatesReadError ? (
+              <Alert type="error" showIcon aria-label={t("opportunity.candidatesReadFailed")} message={t("opportunity.candidatesReadFailed")} description={candidatesReadError}
+                action={<Button onClick={reloadDiscoveryCandidates}>{t("opportunity.candidatesReadRetry")}</Button>} />
+            ) : <Table<WorkbenchCandidate>
               columns={columns}
-              dataSource={filteredPool}
+              dataSource={visiblePool}
               rowKey="symbol_id"
               pagination={{ pageSize: 20, hideOnSinglePage: true }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noDiscoveryResults")} /> }}
+              locale={{ emptyText: indicatorLoading ? t("dpComputing") : sortedResults.length > 0 && !filtersBypassed
+                ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={currentPool.length === 0
+                  ? template("discoveryPoolEmpty", { total: sortedResults.length, label: t("discoveryPool" + pascalCaseKey(poolTab)) })
+                  : template("discoveryFilteredEmpty", { total: currentPool.length, count: activeFilters.length })}>
+                  <Button onClick={() => setBypassedFilterKey(filterKey)}>{t("discoveryViewAll")}</Button>
+                </Empty>
+                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noDiscoveryResults")} /> }}
               onRow={(record) => ({
                 onClick: () => handleRowClick(record.symbol_id),
                 onKeyDown: (e) => {
@@ -1626,7 +1729,7 @@ export default function Discovery({
                   candidateCredibility(record).isLow ? "discovery-row-low-credibility" : "",
                 ].filter(Boolean).join(" "),
               })}
-            />
+            />}
           </div>
         </div>
       </section>

@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone, timedelta
 import math
 
 from app.services.simulation_matching_engine import (
-    CostModelConfig, MarketBar, OrderPlan, OrderSide, apply_cost_model, match_order_plan,
+    CostModelConfig, MarketBar, OrderPlan, OrderSide, match_order_plan,
 )
 from app.services.factors import production_admission as admission
 from app.services.factors import production_execution as execution
@@ -87,7 +87,7 @@ def _config(cost, side, *, zero_cost=False):
         slippage_buy_bps=0., slippage_sell_bps=0.) if zero_cost else cfg
 
 
-def _bar(row, day, *, side, previous_close):
+def _bar(row, day, *, side, previous_close, constraints=None):
     fields = ('open', 'high', 'low', 'close', 'volume', 'amount')
     if row is None or any(isinstance(row.get(k), bool) or not isinstance(row.get(k), (int, float))
             or not math.isfinite(row[k]) for k in fields):
@@ -100,28 +100,40 @@ def _bar(row, day, *, side, previous_close):
     # limit prices from a generic 10% default or replace skipped selected stocks.
     locked_buy = one_price and row['open'] / previous_close - 1 >= .095
     locked_sell = one_price and row['close'] / previous_close - 1 <= -.095
-    return MarketBar(trade_date=day, **{k: row[k] for k in fields},
-        halted=row['volume'] == 0 or row['amount'] == 0,
+    explicit = {}
+    if constraints is not None:
+        mode = constraints['price_limit_mode']
+        upper, lower = constraints['upper_limit_price'], constraints['lower_limit_price']
+        explicit = dict(price_limit_mode=mode, upper_limit_price=upper, lower_limit_price=lower,
+            tick_size=constraints['tick_size'])
+        locked_buy = bool(mode == 'LIMITED' and one_price and row['open'] >= upper)
+        locked_sell = bool(mode == 'LIMITED' and one_price and row['close'] <= lower)
+    return MarketBar(trade_date=day, pre_close=previous_close, **{k: row[k] for k in fields},
+        halted=row['volume'] == 0 or row['amount'] == 0 or bool(constraints is not None and not constraints['is_tradable']),
+        **explicit,
         limit_up_locked=side is OrderSide.BUY and locked_buy,
         limit_down_locked=side is OrderSide.SELL and locked_sell)
 
 
-def _affordable_quantity(budget, raw_open, cfg):
-    price = round(raw_open * (1 + cfg.slippage_buy_bps / 10000.), 6)
-    if not math.isfinite(price) or price <= 0:
+def _affordable_quantity(budget, bar, cfg):
+    if not math.isfinite(bar.open) or bar.open <= 0:
         raise ValueError('production_cost_invalid_slipped_price')
-    lower, upper = 0, int(budget / price) // 100
+    lower, upper = 0, int(budget / bar.open) // 100
     while lower < upper:
         mid = (lower + upper + 1) // 2
-        cost = mid * 100 * price + apply_cost_model(OrderSide.BUY, mid * 100, price, cfg=cfg)['total_cost']
-        if cost <= budget:
+        trial = match_order_plan(OrderPlan('cost-sizing',0,0,bar.trade_date,'NEXT_OPEN',OrderSide.BUY,mid*100),bar,cfg=cfg)
+        if trial.final_status != 'FILLED':
+            return 0
+        debit = trial.filled_quantity * trial.executed_price + trial.total_cost
+        if debit <= budget:
             lower = mid
         else:
             upper = mid - 1
     return lower * 100
 
 
-def replay_cash_sleeves(*, signals, calendar, symbols, raw_bars, cost, qfq_closes, zero_cost=False):
+def replay_cash_sleeves(*, signals, calendar, symbols, raw_bars, cost, qfq_closes, zero_cost=False,
+        execution_constraints=None):
     """Pure arithmetic, not an evidence validator; raw bars must be verified.
 
     Each signal has ``date`` and its BEFORE-ENTRY ``predictions``. Rankings are
@@ -169,8 +181,9 @@ def replay_cash_sleeves(*, signals, calendar, symbols, raw_bars, cost, qfq_close
             for close in (prior.get('close'),):
                 if close is None or not math.isfinite(close) or close <= 0:
                     raise ValueError('production_cost_missing_previous_close')
-            entry_bar = _bar(raw_bars.get((symbol, entry)), entry, side=OrderSide.BUY, previous_close=prior['close'])
-            quantity = _affordable_quantity(budget, entry_bar.open, buy_cfg)
+            entry_bar = _bar(raw_bars.get((symbol, entry)), entry, side=OrderSide.BUY, previous_close=prior['close'],
+                constraints=execution_constraints[(symbol,entry)] if execution_constraints is not None else None)
+            quantity = _affordable_quantity(budget, entry_bar, buy_cfg)
             plan = OrderPlan(f'{n}-{symbol}-buy', 0, cost['portfolio_id'], entry, 'NEXT_OPEN', OrderSide.BUY, quantity)
             buy = match_order_plan(plan, entry_bar, cfg=buy_cfg)
             item = {'symbol': symbol, 'selected_before_outcome': True, 'buy': asdict(buy)}
@@ -196,7 +209,8 @@ def replay_cash_sleeves(*, signals, calendar, symbols, raw_bars, cost, qfq_close
             debit = buy.filled_quantity * buy.executed_price + buy.total_cost
             if debit > budget + 1e-7:
                 raise ValueError('production_cost_buy_exceeds_allocated_cash')
-            exit_bar = _bar(raw_bars.get((symbol, exit_day)), exit_day, side=OrderSide.SELL, previous_close=before_exit['close'])
+            exit_bar = _bar(raw_bars.get((symbol, exit_day)), exit_day, side=OrderSide.SELL, previous_close=before_exit['close'],
+                constraints=execution_constraints[(symbol,exit_day)] if execution_constraints is not None else None)
             sell_plan = OrderPlan(f'{n}-{symbol}-sell', 0, cost['portfolio_id'], exit_day, 'T_CLOSE', OrderSide.SELL, buy.filled_quantity)
             sell = match_order_plan(sell_plan, exit_bar, cfg=sell_cfg)
             if sell.final_status != 'FILLED' or sell.filled_quantity != buy.filled_quantity:
@@ -239,12 +253,14 @@ def independent_evaluation_status(db, plan_id):
         blockers.append('MULTIPLE_REPORTS_REQUIRE_REVIEW_NO_AUTOMATIC_SELECTION')
     elif not only['evidence_pass']:
         blockers.append('INDEPENDENT_STATISTICAL_OR_NET_COST_GATE_FAILED')
-    blockers.append('QUALIFICATION_ISSUANCE_AND_RELEASE_REVERIFICATION_REQUIRED')
+    if not status.get('qualification_issued'):
+        blockers.append('QUALIFICATION_ISSUANCE_AND_RELEASE_REVERIFICATION_REQUIRED')
     return {'plan_id': plan_id, 'candidate_model_id': candidate['model_id'],
         'cost_policy_frozen': frozen, 'cost_sha256': admission.fingerprint(contract['cost']),
         'journal_count': status['journal_count'], 'required_signal_days': 50,
         'mature_independent_days_verified': 50 if reports else 0, 'execution_price_evidence_verified': bool(reports),
         'cash_replay_engine_supported': True, 'independent_evidence_binding_supported': True,
-        'qualification_issuer_supported': False,
-        'net_cost_result': only, 'saved_evaluations': reports, 'qualification_issued': False, 'model_activated': False,
+        'qualification_issuer_supported': True,
+        'net_cost_result': only, 'saved_evaluations': reports, 'qualification_issued': status.get('qualification_issued',False),
+        'model_activated': status.get('model_activated',False),
         'blockers': blockers, 'read_only': True}

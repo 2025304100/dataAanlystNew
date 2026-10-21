@@ -93,9 +93,9 @@ describe("组合主壳与治理子页的真实导航", () => {
     expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
   });
 
-  it("点击查审计记录后渲染治理审计表", async () => {
+  it("点击查看操作记录后渲染审计表", async () => {
     render(<PortfolioTradingShell />);
-    fireEvent.click(await screen.findByRole("button", { name: "查审计记录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看操作记录" }));
     expect(await screen.findByRole("heading", { name: "治理审计事件" })).toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
   });

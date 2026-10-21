@@ -27,7 +27,7 @@ from app.models.symbol import Symbol
 from app.services.factors.runtime import get_factor_runtime_snapshot
 # 共享模块：成本模型、绩效指标。抽取自此文件原 _compute_cost/_compute_statistics，
 # 供回测、模拟交易、（未来的）自动下单三方共用，避免重复实现。
-from app.services.cost_model import DEFAULT_COST_CONFIG, compute_cost as _compute_cost
+from app.services.cost_model import DEFAULT_COST_CONFIG, compute_cost as _compute_cost, resolve_stamp_tax_rate
 from app.services.metrics import (
     TRADING_DAYS_PER_YEAR,
     RISK_FREE_RATE,
@@ -283,6 +283,7 @@ def _run_backtest_decision_driven(
     strategy_snapshot_id: str,
     initial_capital: float,
     cost_config: dict[str, Any],
+    historical_constraints: dict[tuple[int, date], dict],
     match_mode: str = "NEXT_OPEN",
 ) -> BacktestRun:
     """Run a backtest from DecisionEngine order plans.
@@ -296,6 +297,7 @@ def _run_backtest_decision_driven(
     from app.services.decision_engine import (
         DecisionStateContext,
         DECISION_SCORE_POLICY_VERSION,
+        BACKTEST_PRICE_REFERENCE_POLICY_VERSION,
         default_engine,
         requires_strict_market_data_pit,
     )
@@ -384,6 +386,8 @@ def _run_backtest_decision_driven(
             # Historical quality/0.7 decisions remain visible for audit, but
             # cannot be replayed under the corrected alpha/100-point policy.
             continue
+        if old_versions.get("backtest_price_reference_policy_version") != BACKTEST_PRICE_REFERENCE_POLICY_VERSION:
+            continue
         # Prefer a backtest DecisionRun when legacy dry_run rows happen to
         # share the same snapshot/date (their identities normally differ).
         previous = persisted_success_by_date.get(row.trade_date)
@@ -438,14 +442,11 @@ def _run_backtest_decision_driven(
                 b for b in bars_by_symbol.get(int(sid), []) if b.trade_date < current_date
             ]
             previous = previous_candidates[-1] if previous_candidates else None
-            # DecisionEngine's intended price is the first executable NEXT_OPEN.
-            next_bar = next(
-                (b for b in bars_by_symbol.get(int(sid), []) if b.trade_date > current_date),
-                None,
-            )
-            intended_open = _bar_price(next_bar, "open") or _bar_price(next_bar, "close") or _bar_price(bar, "open")
+            # The after-close decision can size against today's close only.
+            # Tomorrow's opening price belongs exclusively to the matcher.
             prices[int(sid)] = {
-                "open_price": intended_open,
+                "open_price": _bar_price(bar, "open"),
+                "decision_reference_price": _bar_price(bar, "close"),
                 "close_price": _bar_price(bar, "close"),
                 "high_price": _bar_price(bar, "high"),
                 "low_price": _bar_price(bar, "low"),
@@ -556,6 +557,8 @@ def _run_backtest_decision_driven(
 
     def _execute_plan(plan: Any, execution_date: date) -> None:
         nonlocal cash
+        from app.services.market_rules import lot_size_for_symbol, min_tick_size
+        from app.services.regions import region_from_market
         from app.services.simulation_matching_engine import (
             CostModelConfig,
             MarketBar,
@@ -612,17 +615,36 @@ def _run_backtest_decision_driven(
         previous = previous_candidates[-1] if previous_candidates else None
         prev_close = float(previous.close) if previous is not None else None
         symbol = symbols.get(sid)
-        lot = 100 if symbol is not None and getattr(symbol, "market", None) in {"SH", "SZ", "BJ"} else 1
+        if symbol is None:
+            _mark_rejected(plan, "SYMBOL_METADATA_MISSING")
+            return
+        lot = lot_size_for_symbol(symbol)
         open_price = float(bar.open or 0.0)
-        upper_limit = round(prev_close * 1.10, 4) if prev_close else None
-        lower_limit = round(prev_close * 0.90, 4) if prev_close else None
+        market_region = region_from_market(symbol.market)
+        historical = historical_constraints.get((sid, execution_date)) if market_region == "cn" else None
+        if market_region == "cn" and historical is None:
+            raise ValueError(f"缺少 {symbol.symbol} 在 {execution_date} 的历史交易资料，已停止回测。")
+        if historical:
+            from app.services.security_status.backtest_guard import historical_order_rejection
+            rejection = historical_order_rejection(historical, plan.action, open_price, float(bar.volume or 0),
+                high=float(bar.high or open_price), low=float(bar.low or open_price))
+            if rejection:
+                _mark_rejected(plan, rejection)
+                return
+        upper_limit = historical.get("upper_limit_price") if historical else None
+        lower_limit = historical.get("lower_limit_price") if historical else None
         matching_cfg = CostModelConfig(
-            commission_rate=float(cost_config.get("commission_rate", 0.0003) or 0.0003),
-            min_commission=float(cost_config.get("min_commission", 5.0) or 0.0),
-            stamp_tax_rate=float(cost_config.get("stamp_tax_rate", 0.001) or 0.0),
-            transfer_fee_rate=float(cost_config.get("transfer_fee_rate", 0.00001) or 0.0),
-            slippage_buy_bps=int(float(cost_config.get("slippage_buy_bps", 5.0) or 0.0)),
-            slippage_sell_bps=int(float(cost_config.get("slippage_sell_bps", 5.0) or 0.0)),
+            commission_rate=float(_safe_float(cost_config.get("commission_rate"), 0.0003)),
+            min_commission=float(_safe_float(cost_config.get("min_commission"), 5.0)),
+            stamp_tax_rate=resolve_stamp_tax_rate(
+                execution_date, asset_type=symbol.asset_type, market=symbol.market,
+                override=next((cost_config[key] for key in
+                    ("stamp_tax_rate", "stamp_duty_rate", "stamp_duty_pct")
+                    if cost_config.get(key) is not None), None),
+            ),
+            transfer_fee_rate=float(_safe_float(cost_config.get("transfer_fee_rate"), 0.00001)),
+            slippage_buy_bps=int(_safe_float(cost_config.get("slippage_buy_bps"), 5.0)),
+            slippage_sell_bps=int(_safe_float(cost_config.get("slippage_sell_bps"), 5.0)),
             volume_limit_pct=(
                 float(cost_config["volume_limit_pct"])
                 if cost_config.get("volume_limit_pct") is not None else None
@@ -649,11 +671,16 @@ def _run_backtest_decision_driven(
             pre_close=prev_close,
             volume=float(bar.volume or 0),
             amount=float(bar.amount or 0) if bar.amount is not None else None,
-            halted=bool((bar.volume or 0) <= 0),
+            halted=bool((bar.volume or 0) <= 0 or historical and (
+                historical["is_suspended"] or not historical["is_listed"])),
             upper_limit_price=upper_limit,
             lower_limit_price=lower_limit,
             limit_up_locked=bool(upper_limit is not None and open_price >= upper_limit and float(bar.high or open_price) <= open_price),
             limit_down_locked=bool(lower_limit is not None and open_price <= lower_limit and float(bar.low or open_price) >= open_price),
+            tick_size=historical.get("tick_size", min_tick_size(symbol)) if historical else min_tick_size(symbol),
+            asset_type=symbol.asset_type,
+            market=market_region,
+            price_limit_mode=historical.get("price_limit_mode") if historical else None,
         )
         match_result = match_order_plan(matching_plan, matching_bar, cfg=matching_cfg)
         if match_result.final_status not in {"FILLED", "PARTIAL_FILL"}:
@@ -726,15 +753,15 @@ def _run_backtest_decision_driven(
                 return
             quantity = min(quantity, float(trade.quantity))
             exit_cost = float(match_result.total_cost)
-            pnl = (executed_price - trade.entry_price) * quantity - trade.entry_cost - exit_cost
+            allocated_entry_cost = trade.entry_cost * quantity / float(trade.quantity)
+            pnl = (executed_price - trade.entry_price) * quantity - allocated_entry_cost - exit_cost
             if quantity < float(trade.quantity):
                 # Split a partial sell into a realized child lot and keep the
                 # remainder open for a later DecisionOrderPlan.
-                ratio = quantity / float(trade.quantity)
                 partial_trade = BacktestTrade(
                     run_id=run.id, symbol_id=sid, entry_date=trade.entry_date,
                     entry_price=trade.entry_price, quantity=quantity,
-                    entry_cost=trade.entry_cost * ratio,
+                    entry_cost=allocated_entry_cost,
                     exit_date=execution_date, exit_price=executed_price,
                     exit_reason=plan.reason_code or "DECISION_SELL",
                     exit_cost=exit_cost, pnl=round(pnl, 2),
@@ -747,7 +774,7 @@ def _run_backtest_decision_driven(
                 _apply_order_plan_evidence(partial_trade, exit_plan=plan)
                 db.add(partial_trade)
                 trade.quantity -= quantity
-                trade.entry_cost -= trade.entry_cost * ratio
+                trade.entry_cost -= allocated_entry_cost
                 completed_trades.append(partial_trade)
                 fill_trade = partial_trade
             else:
@@ -2880,7 +2907,9 @@ def run_backtest(
         factor_data_cutoff_at = factor_model.data_cutoff_at if factor_model else None
     rule_config = _prepare_rule_config(db, rule_config)
 
-    cost_config = cost_config or DEFAULT_COST_CONFIG
+    # Omitted stamp tax stays automatic until the actual execution date.
+    # Filling today's defaults here would rewrite pre-2023 historical costs.
+    cost_config = cost_config or {}
     # WP0-5 TR-05.3：将契约参数中尚未独立列化的参数并入 cost_config_json 快照，
     # 确保 run 级参数可溯源，而不必新增 migration 列。
     cost_config = dict(cost_config)
@@ -2901,6 +2930,9 @@ def run_backtest(
         raise ValueError(
             "run_backtest: initial_capital 无效；需请求体传正数或 portfolio.total_capital 为正。"
         )
+
+    from app.services.security_status.backtest_guard import load_backtest_history
+    historical_constraints = load_backtest_history(db, symbol_ids, start_date, end_date)
 
     run = BacktestRun(
         portfolio_id=portfolio_id,
@@ -2953,6 +2985,7 @@ def run_backtest(
                 strategy_snapshot_id=strategy_snapshot_id,
                 initial_capital=effective_initial_capital,
                 cost_config=cost_config,
+                historical_constraints=historical_constraints,
                 match_mode="T_CLOSE" if str(price_type or "").upper() == "T_CLOSE" else "NEXT_OPEN",
             )
 
@@ -3043,7 +3076,29 @@ def run_backtest(
             next_idx = idx + 1
             return sym_bars[next_idx] if next_idx < len(sym_bars) else None
 
-        def _compute_entry_quantity(symbol_id: int, entry_price: float) -> tuple[float, float, float] | None:
+        cost_symbols = {
+            symbol.id: symbol for symbol in db.scalars(select(Symbol).where(Symbol.id.in_(symbol_ids)))
+        }
+
+        def _execution_cost(symbol_id: int, price: float, quantity: float, side: str, trade_date: date) -> float:
+            symbol = cost_symbols[symbol_id]
+            return _compute_cost(
+                price, quantity, side, cost_config, trade_date=trade_date,
+                asset_type=symbol.asset_type, market=symbol.market,
+            )
+
+        def _can_fill(symbol_id: int, bar: DailyBar, price: float, side: str) -> bool:
+            from app.services.security_status.backtest_guard import historical_order_rejection
+            from app.services.regions import region_from_market
+            if region_from_market(cost_symbols[symbol_id].market) != "cn":
+                return True
+            historical = historical_constraints.get((symbol_id, bar.trade_date))
+            if historical is None:
+                raise ValueError(f"缺少 {bar.trade_date} 的历史交易资料，已停止回测。")
+            return historical_order_rejection(historical, side, price, float(bar.volume or 0),
+                high=float(bar.high), low=float(bar.low)) is None
+
+        def _compute_entry_quantity(symbol_id: int, entry_price: float, trade_date: date) -> tuple[float, float, float] | None:
             if entry_price <= 0:
                 return None
             if position_type == "fixed_pct":
@@ -3055,7 +3110,7 @@ def run_backtest(
             quantity = floor(position_amount / entry_price / lot_size) * lot_size
             if quantity <= 0:
                 return None
-            entry_cost = _compute_cost(entry_price, quantity, "buy", cost_config)
+            entry_cost = _execution_cost(symbol_id, entry_price, quantity, "buy", trade_date)
             total_cost = entry_price * quantity + entry_cost
             return quantity, entry_cost, total_cost
 
@@ -3071,7 +3126,10 @@ def run_backtest(
                 if bar is None:
                     continue
                 exit_price = _bar_price(bar, pending.get("price_field", "open"))
-                exit_cost = _compute_cost(exit_price, trade.quantity, "sell", cost_config)
+                if not _can_fill(symbol_id, bar, exit_price, "SELL"):
+                    del pending_exits[symbol_id]
+                    continue
+                exit_cost = _execution_cost(symbol_id, exit_price, trade.quantity, "sell", current_date)
                 pnl = (exit_price - trade.entry_price) * trade.quantity - trade.entry_cost - exit_cost
                 pnl_pct = pnl / (trade.entry_price * trade.quantity)
                 hold_days = (current_date - trade.entry_date).days
@@ -3102,7 +3160,10 @@ def run_backtest(
                 if bar is None:
                     continue
                 entry_price = _bar_price(bar, pending.get("price_field", "open"))
-                entry_plan = _compute_entry_quantity(symbol_id, entry_price)
+                if not _can_fill(symbol_id, bar, entry_price, "BUY"):
+                    del pending_entries[symbol_id]
+                    continue
+                entry_plan = _compute_entry_quantity(symbol_id, entry_price, current_date)
                 if entry_plan is None:
                     del pending_entries[symbol_id]
                     continue
@@ -3172,7 +3233,9 @@ def run_backtest(
                     continue
 
                 exit_price = _bar_price(bar, exit_price_field)
-                exit_cost = _compute_cost(exit_price, trade.quantity, "sell", cost_config)
+                if not _can_fill(symbol_id, bar, exit_price, "SELL"):
+                    continue
+                exit_cost = _execution_cost(symbol_id, exit_price, trade.quantity, "sell", current_date)
                 pnl = (exit_price - trade.entry_price) * trade.quantity - trade.entry_cost - exit_cost
                 pnl_pct = pnl / (trade.entry_price * trade.quantity)
                 hold_days = (current_date - trade.entry_date).days
@@ -3223,7 +3286,9 @@ def run_backtest(
                     continue
 
                 entry_price = _bar_price(bar, entry_price_field)
-                entry_plan = _compute_entry_quantity(symbol_id, entry_price)
+                if not _can_fill(symbol_id, bar, entry_price, "BUY"):
+                    continue
+                entry_plan = _compute_entry_quantity(symbol_id, entry_price, current_date)
                 if entry_plan is None:
                     continue
                 quantity, entry_cost, total_cost = entry_plan

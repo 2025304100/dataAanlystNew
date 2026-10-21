@@ -1,7 +1,7 @@
 """G4：auto_simulation cron 门禁 API 契约测试。
 
 T_G4_CRON_01  3 层检查全部通过：READY + 20:30 + 对账连续性 OK
-            → preflight 返回 proceed=True；from=READY, to=RUNNING_AUTO_SIMULATION
+            → preflight 返回 proceed=True；状态仍为 READY，不创建执行任务
               transition_trace.gate_status="ALLOWED"
 T_G4_CRON_02  门禁失败场景（3 分支）：
             a) ADMIN_PAUSED → PORTFOLIO_NOT_READY（审计 AUTO_SIMULATION_RESULT FAILED/error_code=PORTFOLIO_NOT_READY）
@@ -86,7 +86,7 @@ def _to_ready(db, pid: int) -> None:
 # ===========================================================================
 # T_G4_CRON_01 — 全通过
 # ===========================================================================
-def test_g4_cron_01_all_passed(tmp_alembic_db):
+def test_g4_cron_01_all_passed(tmp_alembic_db, monkeypatch):
     db = tmp_alembic_db
     pid = _seed_portfolio(db,
                           last_decision=date(2025, 1, 14),
@@ -98,12 +98,14 @@ def test_g4_cron_01_all_passed(tmp_alembic_db):
         AutoSimulationPreflightRequest, preflight_auto_simulation,
     )
     td = date(2025, 1, 15)
+    from app.services import decision_schedule_gate
+    monkeypatch.setattr(decision_schedule_gate, "shanghai_now", lambda: datetime(2025, 1, 15, 12, 30, tzinfo=timezone.utc))
     decision_at = datetime(2025, 1, 15, 20, 30, 0, tzinfo=timezone.utc)
     req = AutoSimulationPreflightRequest(trade_date=td, decision_at=decision_at)
     r = preflight_auto_simulation(pid, req, db=db, actor="cron_worker")
     assert r.proceed is True
     assert r.from_state == "READY"
-    assert r.to_state == "RUNNING_AUTO_SIMULATION"
+    assert r.to_state == "READY"
     assert r.transition_trace is not None
     # gate_allowed=True；gate_error_code 为 None
     assert r.transition_trace["gate_allowed"] is True
@@ -112,7 +114,7 @@ def test_g4_cron_01_all_passed(tmp_alembic_db):
 # ===========================================================================
 # T_G4_CRON_02 — 3 个失败分支
 # ===========================================================================
-def test_g4_cron_02_failure_branches(tmp_alembic_db):
+def test_g4_cron_02_failure_branches(tmp_alembic_db, monkeypatch):
     db = tmp_alembic_db
     from app.api.routes.portfolio_governance import (
         AutoSimulationPreflightRequest, preflight_auto_simulation,
@@ -120,6 +122,8 @@ def test_g4_cron_02_failure_branches(tmp_alembic_db):
     from app.services.portfolio_state_machine import transition_portfolio_state as tps
     from app.services.data_governance_audit import DataGovernanceAuditEvent
     from sqlalchemy import select
+    from app.services import decision_schedule_gate
+    monkeypatch.setattr(decision_schedule_gate, "shanghai_now", lambda: datetime(2025, 1, 15, 12, 30, tzinfo=timezone.utc))
 
     # (a) ADMIN_PAUSED → PORTFOLIO_NOT_READY
     pid_a = _seed_portfolio(db)
@@ -143,16 +147,13 @@ def test_g4_cron_02_failure_branches(tmp_alembic_db):
             DataGovernanceAuditEvent.portfolio_id == pid_a,
         )
     ).scalars().all()
-    assert len(rows) == 1
-    import json
-    attr = json.loads(rows[0].attributes_json)
-    assert attr["result_status"] == "FAILED"
-    assert attr["error_code"] == "PORTFOLIO_NOT_READY"
+    assert rows == []  # Looking at a failed check is not a failed execution.
 
     # (b) decision_at=15:05（T 日下午） → SCHEDULE_TOO_EARLY
     pid_b = _seed_portfolio(db)
     _to_ready(db, pid_b)
     db.commit()
+    monkeypatch.setattr(decision_schedule_gate, "shanghai_now", lambda: datetime(2025, 1, 15, 7, 5, tzinfo=timezone.utc))
     r_b = preflight_auto_simulation(
         pid_b,
         AutoSimulationPreflightRequest(
@@ -196,6 +197,7 @@ def test_g4_cron_02_failure_branches(tmp_alembic_db):
     db.add(dr)
     db.flush()
     db.commit()
+    monkeypatch.setattr(decision_schedule_gate, "shanghai_now", lambda: datetime(2025, 1, 15, 12, 32, tzinfo=timezone.utc))
     r_c = preflight_auto_simulation(
         pid_c,
         AutoSimulationPreflightRequest(
@@ -211,7 +213,7 @@ def test_g4_cron_02_failure_branches(tmp_alembic_db):
 # ===========================================================================
 # T_G4_CRON_03 — RECONCILIATION_GAP_WARNING（不阻断 proceed=True）
 # ===========================================================================
-def test_g4_cron_03_reconciliation_gap_warning(tmp_alembic_db):
+def test_g4_cron_03_reconciliation_gap_warning(tmp_alembic_db, monkeypatch):
     db = tmp_alembic_db
     pid = _seed_portfolio(db,
                           last_decision=date(2025, 1, 15),
@@ -221,6 +223,8 @@ def test_g4_cron_03_reconciliation_gap_warning(tmp_alembic_db):
     from app.api.routes.portfolio_governance import (
         AutoSimulationPreflightRequest, preflight_auto_simulation,
     )
+    from app.services import decision_schedule_gate
+    monkeypatch.setattr(decision_schedule_gate, "shanghai_now", lambda: datetime(2025, 1, 16, 12, 30, tzinfo=timezone.utc))
     r = preflight_auto_simulation(
         pid,
         AutoSimulationPreflightRequest(

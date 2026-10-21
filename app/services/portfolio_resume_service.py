@@ -18,10 +18,10 @@ import hashlib
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session_local
@@ -202,7 +202,8 @@ def async_task_already_exists_for_resume(db: Session, portfolio_id: int, trade_d
     stmt = (
         select(AsyncTaskRecord)
         .where(
-            AsyncTaskRecord.idempotency_key == idempotency_key,
+            or_(AsyncTaskRecord.idempotency_key == idempotency_key,
+                AsyncTaskRecord.idempotency_key.startswith(idempotency_key + "|retry:")),
             AsyncTaskRecord.task_type.in_(("portfolio_backtest", "portfolio_auto_run", "portfolio_resume")),
             AsyncTaskRecord.status.in_(("queued", "running", "done")),
         )
@@ -277,61 +278,52 @@ def create_resume_tasks_from_plan(db: Session, plan: dict[str, Any], *,
                                   payload_builder: Callable | None = None,
                                   task_type: str = "portfolio_resume",
                                   ) -> list[dict[str, Any]]:
-    """根据 plan_resume 结果，为每个不 skip 的日期创建 async_tasks。
-
-    payload_builder(portfolio_id, trade_date, idempotency_key, correlation_id) 用于
-    自定义 payload（真实场景会构造 portfolio_auto_run / decision_engine 任务 payload）。
-    默认构造一个最小 payload 供测试。
-    """
-    from app.services.async_tasks import create_async_task, _compute_idempotency_key  # noqa: F401
-    created: list[dict[str, Any]] = []
+    """Create or reattach the original days, then execute them in date order."""
+    if task_type != "portfolio_resume":
+        raise ValueError("恢复执行仅支持组合逐日恢复任务")
+    from app.services.portfolio_execution_task import (
+        _DISPATCH_LOCK, dispatch_execution_tasks, snapshot_for_trade_date, portfolio_execution_in_progress,
+    )
+    created = []
     portfolio_id = int(plan["portfolio_id"])
     cid = plan["resumption_correlation_id"]
-    for item in plan["pending_days"]:
-        if item["will_skip"]:
-            continue
-        trade_date = date.fromisoformat(item["date"])
-        idem = item["idempotency_key"]
-        # 若相同 idempotency_key 已在 async_tasks 存在（另一线程抢跑）→ 跳过
-        if async_task_already_exists_for_resume(db, portfolio_id, trade_date, idem) is not None:
-            continue
-        base_payload: dict[str, Any] = {
-            "resume_mode": True,
-            "portfolio_id": portfolio_id,
-            "trade_date": trade_date.isoformat(),
-            "resumption_correlation_id": cid,
-            "idempotency_key": idem,
-            "operator_id": plan.get("operator_id", "system:resume"),
-            "phase": "daily_fill_gap",
-        }
-        if payload_builder is not None:
-            base_payload.update(payload_builder(portfolio_id, trade_date, idem, cid))
-        task = create_async_task(task_type, base_payload)
-        # 强制以稳定 idem 写回（create_async_task 自己算的可能不同；这里覆盖）
+    with _DISPATCH_LOCK:
+        if portfolio_execution_in_progress(db, portfolio_id):
+            return []
+        for item in plan["pending_days"]:
+            if item.get("decision_done"):
+                continue
+            trade_date = date.fromisoformat(item["date"])
+            idem = item["idempotency_key"]
+            task = async_task_already_exists_for_resume(db, portfolio_id, trade_date, idem)
+            is_new = task is None
+            if task is not None:
+                if task.status != "queued":
+                    continue
+            else:
+                previous = db.scalar(select(AsyncTaskRecord).where(
+                    AsyncTaskRecord.idempotency_key == idem).limit(1))
+                previous_payload = json.loads(previous.payload_json or "{}") if previous else {}
+                payload = {
+                    "resume_mode": True, "portfolio_id": portfolio_id,
+                    "trade_date": trade_date.isoformat(), "resumption_correlation_id": cid,
+                    "idempotency_key": idem, "operator_id": plan.get("operator_id", "system:resume"),
+                    "phase": "daily_fill_gap",
+                    "strategy_snapshot_id": previous_payload.get("strategy_snapshot_id") or snapshot_for_trade_date(db, portfolio_id, trade_date),
+                }
+                if payload_builder is not None:
+                    payload.update(payload_builder(portfolio_id, trade_date, idem, cid))
+                task = AsyncTaskRecord(id=uuid4().hex, task_type=task_type, status="queued", stage="queued",
+                    message="等待按交易日恢复", payload_json=json.dumps(payload, ensure_ascii=False, default=str),
+                    idempotency_key=idem if previous is None else idem + "|retry:" + uuid4().hex[:8],
+                    correlation_id=cid, is_terminal_locked=0)
+                db.add(task)
+                db.flush()
+            created.append({"task_id": task.id, "trade_date": trade_date.isoformat(),
+                "idempotency_key": task.idempotency_key, "correlation_id": task.correlation_id,
+                "status": task.status, "created": is_new})
         db.commit()
-        t = db.get(AsyncTaskRecord, task.id)
-        if t is not None:
-            if t.idempotency_key != idem:
-                t.idempotency_key = idem
-            if not t.correlation_id:
-                t.correlation_id = cid
-            db.commit()
-            db.refresh(t)
-            created.append({
-                "task_id": t.id,
-                "trade_date": trade_date.isoformat(),
-                "idempotency_key": t.idempotency_key,
-                "correlation_id": t.correlation_id,
-                "status": t.status,
-            })
-        else:
-            created.append({
-                "task_id": task.id,
-                "trade_date": trade_date.isoformat(),
-                "idempotency_key": idem,
-                "correlation_id": task.correlation_id or cid,
-                "status": task.status,
-            })
+        dispatch_execution_tasks([item["task_id"] for item in created])
     return created
 
 

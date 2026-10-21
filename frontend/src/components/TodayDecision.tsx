@@ -25,6 +25,7 @@ import { govStatusLabel } from "../utils/govStatusLabel";
 import { modelCoverageSummary } from "../utils/modelCoverage";
 import { useApp } from "../context/AppContext";
 import { navigateToResearch } from "../utils/sourceContext";
+import { openSettingsSection } from "../utils/navigate";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
 import type {
   AutoSimulationPreflightResponse,
@@ -140,6 +141,7 @@ const GOVERNANCE_CODE_LABELS: Record<string, string> = {
   ADMIN_PAUSED: "管理员已暂停",
   PORTFOLIO_NOT_READY: "组合尚未就绪",
   SCHEDULE_TOO_EARLY: "未到自动推演时间",
+  SCHEDULE_DATE_MISMATCH: "交易日期与北京时间不一致",
   DUAL_EXECUTION_RISK_PROHIBITED: "检测到重复执行风险",
   RECONCILIATION_GAP_WARNING: "对账连续性存在缺口",
 };
@@ -287,6 +289,11 @@ export default function TodayDecision() {
   // FR-P1-3 三硬门禁：预检响应 + loading（fail-closed，未预检视为 proceed=false）
   const [preflightResult, setPreflightResult] = useState<AutoSimulationPreflightResponse | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
+  const [simulationStarting, setSimulationStarting] = useState(false);
+  const [simulationTask, setSimulationTask] = useState<{ id: string; status: string; percent: number; trade_date: string; pending_count?: number } | null>(null);
+  const [simulationError, setSimulationError] = useState<string | null>(null);
+  const [simulationTaskReadFailed, setSimulationTaskReadFailed] = useState(false);
+  const [simulationTaskRetry, setSimulationTaskRetry] = useState(0);
   const loadSequence = useRef(0);
   const pageActive = useRef(true);
   const portfolioRef = useRef(portfolioId);
@@ -372,33 +379,109 @@ export default function TodayDecision() {
     setPreflightResult(null);
     try {
       const now = new Date();
-      const tradeDate = now.toISOString().slice(0, 10);
+      const dateParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+      const datePart = (type: string) => dateParts.find((part) => part.type === type)?.value;
+      const tradeDate = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
       const resp = await api.preflightAutoSimulation(portfolioId, {
         trade_date: tradeDate,
         decision_at: now.toISOString(),
       });
+      if (!pageActive.current || portfolioRef.current !== portfolioId) return;
       setPreflightResult(resp);
+      if (resp.proceed && simulationTask && (
+        ["failed", "partial", "cancelled", "expired", "blocked"].includes(simulationTask.status)
+        || (simulationTask.status === "done" && simulationTask.trade_date !== resp.trade_date)
+      )) {
+        setSimulationTask(null);
+        setSimulationTaskReadFailed(false);
+        setSimulationError(null);
+      }
       if (resp.proceed === false) {
-        ctx.showToast("info", `⚠️ FR-P1-3 预检未通过（${resp.skip_reason ?? "未知原因"}），进入自动推演已被硬门禁阻断。`);
+        ctx.showToast("info", "当前还不能开始模拟交易，请按下面的提示处理。");
       } else if (resp.skip_reason === "RECONCILIATION_GAP_WARNING") {
-        ctx.showToast("info", "⚠️ FR-P1-3 HG3 告警：对账连续性缺口>1 天；虽允许进入 Shadow，但已同步写入 AUTO_SIMULATION_RESULT=FAILED 告警追踪。");
+        ctx.showToast("info", "检查通过，但有尚未对账的日期，请查看提示。");
       } else {
-        ctx.showToast("success", "FR-P1-3 三硬门禁预检全部通过，可进入自动推演/Shadow 模式。");
+        ctx.showToast("info", simulationTask?.status === "done" && simulationTask.trade_date === resp.trade_date ? "当天模拟交易已完成，可查看任务记录。" : "检查通过。点击开始后才会创建模拟交易任务。");
       }
     } catch (err: any) {
-      ctx.showToast("error", "FR-P1-3 预检失败：" + (err?.message || String(err)));
+      if (pageActive.current && portfolioRef.current === portfolioId) ctx.showToast("error", "暂时无法完成检查：" + (err?.message || String(err)));
     } finally {
-      setPreflightLoading(false);
+      if (pageActive.current && portfolioRef.current === portfolioId) setPreflightLoading(false);
     }
-  }, [portfolioId, ctx]);
+  }, [portfolioId, simulationTask, ctx]);
   // Fail-closed：未预检 或 预检明确返回 proceed=false → 进入 Shadow/自动推演按钮禁用
   const frp13Proceed = Boolean(preflightResult?.proceed);
   const frp13FailReason = (() => {
-    if (!preflightResult) return "未执行 FR-P1-3 预检；请先点击「预检自动推演」";
-    if (preflightResult.proceed === false) return `预检未通过：${preflightResult.skip_reason ?? "未知原因"} · ${preflightResult.skip_detail ?? ""}`;
+    if (!preflightResult) return "请先检查当前组合能否开始模拟交易。";
+    if (preflightResult.proceed === false) return `检查未通过：${governanceCodeLabel(preflightResult.skip_reason)} · ${preflightResult.skip_detail ?? ""}`;
     if (preflightResult.skip_reason === "RECONCILIATION_GAP_WARNING") return null; // Warning 不阻断
     return null;
   })();
+
+  const handleStartSimulation = useCallback(async () => {
+    if (!preflightResult?.proceed || simulationStarting || simulationTask) return;
+    setSimulationStarting(true);
+    setSimulationError(null);
+    try {
+      const result = await api.startAutoSimulation(portfolioId, { trade_date: preflightResult.trade_date });
+      if (!pageActive.current || portfolioRef.current !== portfolioId) return;
+      setSimulationTask({ id: result.task_id, status: result.status, percent: 0, trade_date: result.trade_date });
+      ctx.showToast("info", result.created ? "模拟交易任务已创建，正在读取进度。" : "当天已有模拟交易任务，正在读取进度。");
+    } catch (err: any) {
+      if (!pageActive.current || portfolioRef.current !== portfolioId) return;
+      const detail = err?.detail;
+      const reason = [detail?.title_zh, detail?.detail_zh].filter(Boolean).join("：") || err?.message || "请稍后重试。";
+      setSimulationError(`没有启动模拟交易。${reason}`);
+      setPreflightResult(null);
+    } finally {
+      if (pageActive.current && portfolioRef.current === portfolioId) setSimulationStarting(false);
+    }
+  }, [portfolioId, preflightResult, simulationStarting, simulationTask, ctx]);
+
+  useEffect(() => {
+    setPreflightResult(null);
+    setPreflightLoading(false);
+    setSimulationTask(null);
+    setSimulationStarting(false);
+    setSimulationError(null);
+    setSimulationTaskReadFailed(false);
+  }, [portfolioId]);
+
+  useEffect(() => {
+    const taskId = simulationTask?.id;
+    const taskDate = simulationTask?.trade_date;
+    if (!taskId || !taskDate) return;
+    let stopped = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setSimulationTaskReadFailed(false);
+    const readProgress = async () => {
+      try {
+        const task = await api.getAsyncTask(taskId);
+        if (stopped) return;
+        failures = 0;
+        setSimulationTaskReadFailed(false);
+        const executionResult = (task.result?.execution_result ?? {}) as { pending_order_count?: number };
+        const pendingCount = Number(executionResult.pending_order_count ?? 0);
+        setSimulationTask({ id: taskId, status: task.status, percent: Number(task.percent ?? 0), trade_date: taskDate,
+          pending_count: Number.isFinite(pendingCount) ? Math.max(0, Math.floor(pendingCount)) : 0 });
+        if (["done", "partial", "failed", "cancelled", "expired", "blocked"].includes(task.status)) {
+          void ctx.loadWorkbench();
+          return;
+        }
+      } catch {
+        if (stopped) return;
+        failures += 1;
+        setSimulationTaskReadFailed(true);
+        if (failures >= 3) return;
+      }
+      timer = setTimeout(readProgress, 2000);
+    };
+    void readProgress();
+    return () => { stopped = true; clearTimeout(timer); };
+    // The id stays fixed as the original task advances; never start a replacement task here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simulationTask?.id, simulationTaskRetry]);
 
   const macroScore = macro?.snapshot?.market_score ?? null;
   const candidates = useMemo(() => {
@@ -684,10 +767,7 @@ export default function TodayDecision() {
         title={
           <Space size={8}>
             <PlayCircleOutlined style={{ color: "var(--pt-primary)" }} />
-            <span style={{ fontWeight: 600 }}>FR-P1-3 三硬门禁 · 自动推演前置预检</span>
-            <Tag color="geekblue" style={{ marginInlineEnd: 0 }}>
-              HG1/HG2/HG3
-            </Tag>
+            <span style={{ fontWeight: 600 }}>开始模拟交易</span>
           </Space>
         }
         extra={
@@ -697,29 +777,24 @@ export default function TodayDecision() {
               icon={<ReloadOutlined />}
               onClick={handlePreflight}
               loading={preflightLoading || statusLoading}
+              disabled={simulationStarting}
               type={!preflightResult ? "primary" : "default"}
             >
-              {preflightLoading ? "预检中..." : !preflightResult ? "执行预检" : "重新预检"}
+              {preflightLoading ? "正在检查…" : !preflightResult ? "检查能否开始" : "重新检查"}
             </Button>
-            <Tooltip title={frp13FailReason || "预检通过（允许进入自动推演 / Shadow 模式）"}>
+            <Tooltip title={frp13FailReason || "检查通过，点击后会真正创建模拟交易任务。"}>
               <span>
                 <Button
                   size="small"
                   type="primary"
                   danger={Boolean(frp13FailReason)}
                   icon={<ExperimentOutlined />}
-                  disabled={!frp13Proceed}
+                  disabled={!frp13Proceed || simulationStarting || simulationTask != null}
+                  loading={simulationStarting}
                   style={{ opacity: !frp13Proceed ? 0.6 : 1, cursor: !frp13Proceed ? "not-allowed" : undefined }}
-                  onClick={() => {
-                    if (!frp13Proceed) return;
-                    // 进入 Shadow：跳治理 Tab（cron worker 会在预检通过后真正执行 evaluate；
-                    // 管理员/QA 在此按钮仅做"查看 auto-simulation 结果"动作）
-                    ctx.setActiveTab("portfolio");
-                    ctx.setActiveSubTab("governance");
-                    ctx.showToast("success", "已允许进入 Shadow 模式；cron worker 将在 20:30 执行 auto_simulation。若需人工介入请前往「治理」Tab。");
-                  }}
+                  onClick={handleStartSimulation}
                 >
-                  进入自动推演 / Shadow
+                  开始模拟交易
                 </Button>
               </span>
             </Tooltip>
@@ -727,26 +802,13 @@ export default function TodayDecision() {
         }
       >
         <Space direction="vertical" size={8} style={{ width: "100%" }}>
-          {/* 3 门门禁状态概览 */}
-          <Space wrap size={10}>
-            {(() => {
-              const hg1 = preflightResult ? (preflightResult.skip_reason === "PORTFOLIO_NOT_READY" ? "fail" : "pass") : null;
-              const hg2 = preflightResult ? (preflightResult.skip_reason === "SCHEDULE_TOO_EARLY" || preflightResult.skip_reason === "DUAL_EXECUTION_RISK_PROHIBITED" ? "fail" : "pass") : null;
-              const hg3 = preflightResult ? (preflightResult.skip_reason === "RECONCILIATION_GAP_WARNING" ? "warn" : "pass") : null;
-              const badge = (name: string, status: "pass" | "fail" | "warn" | null, desc: string) => {
-                const color = status === "pass" ? "green" : status === "fail" ? "red" : status === "warn" ? "orange" : "default";
-                const icon = status === "pass" ? "✅" : status === "fail" ? "❌" : status === "warn" ? "⚠️" : "⏳";
-                return <Tag key={name} color={color} style={{ marginInlineEnd: 0, padding: "2px 8px", fontSize: 12 }}>{icon} {name}：{desc}</Tag>;
-              };
-              return (
-                <>
-                  {badge("HG1 状态机 READY", hg1, hg1 === "fail" ? "组合非 READY 硬拒" : hg1 === "pass" ? "READY ✔" : "未评估")}
-                  {badge("HG2 调度时间/同日重复", hg2, hg2 === "fail" ? "早于20点或已存在 RUNNING/SUCCEEDED" : hg2 === "pass" ? "20:00+ 无同日重复 ✔" : "未评估")}
-                  {badge("HG3 对账连续性", hg3, hg3 === "warn" ? "缺口>1（审计 FAILED 告警，proceed 仍 True）" : hg3 === "pass" ? "连续性 OK ✔" : "未评估")}
-                </>
-              );
-            })()}
-          </Space>
+          {simulationError && <Alert type="error" showIcon message={simulationError} />}
+          {simulationTask && <Alert type={simulationTask.status === "done" ? (simulationTask.pending_count ? "warning" : "success") : ["failed", "partial", "blocked", "expired"].includes(simulationTask.status) ? "warning" : "info"} showIcon
+            message={simulationTaskReadFailed ? "暂时读不到任务进度，任务可能仍在运行。" : simulationTask.status === "done" && simulationTask.pending_count ? "当天处理完成，仍有订单待成交" : ({ done: "模拟交易已完成", partial: "模拟交易只完成了一部分，请查看任务记录", failed: "模拟交易没有完成，请查看任务记录", cancelled: "模拟交易已停止", expired: "模拟交易已超时，请查看任务记录", blocked: "模拟交易暂时不能继续，请查看任务记录", queued: "模拟交易任务已创建，正在等待执行", pending: "模拟交易任务已创建，正在等待执行" } as Record<string, string>)[simulationTask.status] ?? "正在模拟交易"}
+            description={!simulationTaskReadFailed && simulationTask.pending_count ? `待成交订单 ${simulationTask.pending_count} 笔，已完成的成交不会重复执行。` : !simulationTaskReadFailed && ["running", "queued", "pending"].includes(simulationTask.status) ? <Progress percent={simulationTask.percent} size="small" /> : undefined}
+            action={<Space>{simulationTaskReadFailed && <Button size="small" onClick={() => setSimulationTaskRetry((value) => value + 1)}>重新查看任务进度</Button>}<Button size="small" onClick={() => { openSettingsSection("tasks"); ctx.setActiveTab("settings"); }}>查看任务记录</Button></Space>} />}
+          <p style={{ margin: 0, fontSize: 12.5 }}>先检查组合状态、执行时间和对账记录。检查不会下单，也不会修改自动交易设置。</p>
+          <Tag color={preflightResult ? preflightResult.proceed ? "green" : "red" : "default"}>{preflightResult ? preflightResult.proceed ? simulationTask ? "检查通过" : "检查通过，尚未启动任务" : "检查未通过" : "尚未检查"}</Tag>
 
           {/* 预检 skip_reason / skip_detail / warnings 卡片 */}
           {preflightResult && (preflightResult.skip_reason || (preflightResult.warnings && preflightResult.warnings.length > 0)) && (
@@ -758,8 +820,8 @@ export default function TodayDecision() {
                 <>
                   <b style={{ fontSize: 13 }}>
                     {preflightResult.proceed === false
-                      ? "🛑 三硬门禁阻断详情（已写 AUTO_SIMULATION_RESULT=FAILED 审计）"
-                      : "⚠️ 预检通过，但存在告警（仍已同步写 AUTO_SIMULATION_RESULT=FAILED 审计追踪）"}
+                      ? "还不能开始模拟交易"
+                      : "检查通过，请留意以下情况"}
                   </b>
                   {preflightResult.skip_reason && (
                     <div style={{ fontSize: 12.5, marginTop: 4 }}>
@@ -789,7 +851,7 @@ export default function TodayDecision() {
           {!preflightResult && (
             <div style={{ fontSize: 12.5, color: "var(--pt-muted-foreground)" }}>
               <InfoCircleOutlined style={{ marginRight: 4 }} />
-              为保证 fail-closed 安全，<b>未预检默认视为不通过</b>：进入自动推演/Shadow 按钮禁用。请点击右上角「执行预检」通过 HG1/HG2/HG3 检查后再操作。
+              点击「检查能否开始」后，会显示需要处理的问题。检查通过后，再由你决定是否开始。
             </div>
           )}
         </Space>
@@ -797,7 +859,7 @@ export default function TodayDecision() {
 
       <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} lg={6}><Card className="decision-metric"><BarChartOutlined /><span>{t("tdMarket")}</span><strong style={{ color: scoreColor(macroScore) }}>{marketLabel(macroScore)}</strong><Progress percent={macroScore ? Math.round(macroScore) : 0} strokeColor={scoreColor(macroScore)} showInfo={false} /></Card></Col>
-        <Col xs={24} sm={12} lg={6}><Card className="decision-metric"><FireOutlined /><span>{t("tdOpportunities")}</span><strong>{candidates.length}</strong><Button type="link" onClick={() => ctx.setActiveTab("discovery")}>{t("tdGoDiscovery")}</Button></Card></Col>
+        <Col xs={24} sm={12} lg={6}><Card className="decision-metric"><FireOutlined /><span>{t("tdOpportunities")}</span><strong>{candidates.length}</strong><Button type="link" onClick={() => ctx.setActiveTab("opportunity")}>{t("tdGoDiscovery")}</Button></Card></Col>
         <Col xs={24} sm={12} lg={6}><Card className="decision-metric"><AlertOutlined /><span>{t("tdRisks")}</span><strong>{riskEvents.length}</strong><Button type="link" onClick={() => ctx.setActiveTab("news")}>{t("tdGoNews")}</Button></Card></Col>
         <Col xs={24} sm={12} lg={6}><Card className="decision-metric"><SafetyOutlined /><span>{t("tdPosition")}</span><strong>{positionStatus}</strong><Text type="secondary">{pct(investedPct)}</Text></Card></Col>
       </Row>
@@ -962,7 +1024,7 @@ export default function TodayDecision() {
                 )}
               </Space>
             }
-            extra={<Button type="link" onClick={() => ctx.setActiveTab("discovery")}>{t("tdGoDiscovery")}</Button>}
+            extra={<Button type="link" onClick={() => ctx.setActiveTab("opportunity")}>{t("tdGoDiscovery")}</Button>}
             style={!perm.allow_new_buys ? { opacity: 0.62 } : undefined}
           >
             {candidates.length === 0 ? <Empty description={t("tdEmpty")} /> : (

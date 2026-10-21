@@ -12,6 +12,7 @@ describe("data-center external input API contracts", () => {
   it.each([
     ["overview", () => api.getExternalDataOverview(), "/api/v1/external-data/overview"],
     ["coverage", () => api.getExternalDataCoverage(), "/api/v1/external-data/coverage"],
+    ["sync coverage", () => api.getExternalDataSyncCoverage(), "/api/v1/external-data/sync-coverage"],
     ["capabilities", () => api.getExternalDataSyncCapabilities(), "/api/v1/external-data/sync-capabilities"],
     ["task", () => api.getExternalDataSyncTask("id/a#b"), "/api/v1/external-data/sync-tasks/id%2Fa%23b"],
     ["partitions", () => api.getExternalDataSyncTaskPartitions("id/a#b"), "/api/v1/external-data/sync-tasks/id%2Fa%23b/partitions"],
@@ -24,7 +25,7 @@ describe("data-center external input API contracts", () => {
   });
 
   it.each(["preview", "start"] as const)("%s retains selected scope, watchlist, dates, and northbound choice", async (action) => {
-    const payload = { dataset: "capital_flow" as const, source: "watchlist" as const, watchlist_id: 22, include_northbound: false, mode: "backfill" as const, start_date: "2026-07-01", end_date: "2026-08-02", lookback_days: 30, limit: 20 };
+    const payload = { dataset: "capital_flow" as const, source: "watchlist" as const, watchlist_id: 22, include_northbound: false, mode: "backfill" as const, sync_policy: "missing" as const, start_date: "2026-07-01", end_date: "2026-08-02", lookback_days: 30, limit: 20 };
     if (action === "preview") await api.previewExternalDataSyncPlan(payload);
     else await api.startExternalDataSync(payload);
     expect(fetchMock.mock.calls[0][0]).toBe(action === "preview" ? "/api/v1/external-data/sync-plans/preview" : "/api/v1/external-data/sync-tasks");
@@ -42,7 +43,7 @@ describe("data-center external input API contracts", () => {
   });
 
   it("repairs exactly the gaps returned by diagnosis", async () => {
-    const payload = { dataset: "fundamental" as const, start_date: "2026-07-01", end_date: "2026-08-02", gaps: [{ symbol_id: 1, symbol: "600000", trade_date: "2026-07-10" }] };
+    const payload = { dataset: "fundamental" as const, sync_policy: "missing" as const, start_date: "2026-07-01", end_date: "2026-08-02", gaps: [{ symbol_id: 1, symbol: "600000", trade_date: "2026-07-10" }] };
     await api.repairExternalDataGaps(payload);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/external-data/gaps/repair");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(payload);

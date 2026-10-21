@@ -160,6 +160,7 @@ class SnapshotStatusRead(BaseModel):
     has_ready_snapshot: bool = False
     ready_snapshot_id: int | None = None
     ready_snapshot_generated_at: datetime | None = None
+    ready_snapshot_data_cutoff_at: datetime | None = None
     ready_snapshot_trade_date: date | None = None
     ready_snapshot_symbol_count: int | None = None
     ready_snapshot_dirty_symbol_count: int | None = None

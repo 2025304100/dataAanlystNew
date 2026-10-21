@@ -9,7 +9,7 @@ T7 决策时点唯一生产规则落地（tasks.md §WP0-6）：
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from typing import Any, Literal
 
 from sqlalchemy import and_, desc, select
@@ -18,6 +18,19 @@ from sqlalchemy.orm import Session
 from app.models.decision_engine import DecisionRun as DecisionRunORM
 from app.models.portfolio import Portfolio
 from app.services.decision_engine import _run_type_from_db
+
+
+SHANGHAI = timezone(timedelta(hours=8))
+
+
+def shanghai_now() -> datetime:
+    """Server clock; public execution requests never supply their own clock."""
+    return datetime.now(timezone.utc).astimezone(SHANGHAI)
+
+
+def as_shanghai(value: datetime) -> datetime:
+    # Historical internal callers use naive local decision times.
+    return value.replace(tzinfo=SHANGHAI) if value.tzinfo is None else value.astimezone(SHANGHAI)
 
 
 ScheduleErrorCode = Literal[
@@ -48,15 +61,13 @@ def ensure_auto_simulation_schedule(
     - 同日已存在 status=SUCCESS/ RUNNING 的 auto_simulation 行 → DUAL_EXECUTION_RISK；
     - 通过时返回建议 data_cutoff_at = 当日 20:00、data_as_of_trade_date=当日。
     """
+    decision_at = as_shanghai(decision_at)
     hour = int(decision_at.hour)
     if hour < 20:
         return ScheduleGateResult(
             allowed=False,
             error_code="SCHEDULE_TOO_EARLY",
-            message=(
-                f"auto_simulation 正式自动推演仅允许 20:00 后运行（当前 hour={hour}），"
-                "避免一天两份决策。"
-            ),
+            message="每天 20:00 后可以开始自动推演，请稍后再试。",
         )
     # 双决策硬禁止：同日（本地日期）存在 auto_simulation 行
     if db is not None:
@@ -75,10 +86,7 @@ def ensure_auto_simulation_schedule(
             return ScheduleGateResult(
                 allowed=False,
                 error_code="DUAL_EXECUTION_RISK_PROHIBITED",
-                message=(
-                    f"portfolio_id={portfolio_id} trade_date={day.isoformat()} 已存在"
-                    " RUNNING/SUCCEEDED 的 auto_simulation DecisionRun，禁止同日第二份。"
-                ),
+                message="当天已有正在执行或已完成的自动推演，请查看原任务。",
             )
     data_cutoff = datetime(
         decision_at.year, decision_at.month, decision_at.day, 20, 0, 0,

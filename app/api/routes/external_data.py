@@ -86,6 +86,7 @@ class ExternalSyncTaskCreate(BaseModel):
     portfolio_id: int | None = Field(default=None, ge=1)
     include_northbound: bool = True
     mode: ExternalSyncMode = "incremental"
+    sync_policy: Literal["normal", "missing", "force"] = "normal"
     start_date: date | None = None
     end_date: date | None = None
     # This is the request bound, not a provider capability: datasets with real
@@ -124,6 +125,7 @@ class ExternalDataGapRepairRequest(BaseModel):
     start_date: date
     end_date: date
     gaps: list[ExternalDataGapItem] = Field(min_length=1, max_length=1000)
+    sync_policy: Literal["missing"] = "missing"
 
 
 class TailMinuteImportRequest(BaseModel):
@@ -148,6 +150,14 @@ def external_data_overview(db: Session = Depends(get_db)):
 def external_data_coverage(db: Session = Depends(get_db)):
     """Return field coverage and readiness from the factor warehouse cache."""
     return get_external_data_coverage(db)
+
+
+@router.get("/external-data/sync-coverage")
+def external_data_sync_coverage(db: Session = Depends(get_db)):
+    """Observed sync bounds; exact completed points are retained in the ledger."""
+    from app.services.sync_coverage import get_coverage_summary
+
+    return {"datasets": get_coverage_summary(db)}
 
 
 @router.get("/external-data/quality-snapshots")

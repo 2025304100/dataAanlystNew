@@ -224,6 +224,8 @@ def test_backtest_does_not_compare_uncomputed_formula_as_false(db_session, formu
         db_session.add(DailyBar(symbol_id=symbol.id, trade_date=date(2026, 10, day), open=10, high=11, low=9, close=10, volume=10000))
         db_session.add(Score(symbol_id=symbol.id, trade_date=date(2026, 10, day), quality_score=80, quality_grade="A", timing_score=80, priority_score=80, stage="bull", action="buy", published_at=datetime(2026, 9, 30)))
     db_session.commit()
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, [date(2026, 10, day) for day in range(1, 4)])
     rule = {"version": 2, "buy_conditions": {"logic": "AND", "conditions": [{"field": "custom_expr", "operator": "eq", "value": False, "params": {"expr": formula}}]}, "sell_conditions": {"logic": "AND", "conditions": [{"field": "close", "operator": "lt", "value": 0}]}}
     result = run_backtest(db_session, portfolio.id, [symbol.id], date(2026, 10, 1), date(2026, 10, 3), rule)
     assert result.status == "completed"

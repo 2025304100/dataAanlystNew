@@ -27,15 +27,15 @@ it.each(['zh-CN','en-US'] as const)('reviews then explicitly freezes without tra
     return response(report());
   }));
   render(<ProductionAdmissionModal modelId="research-parent" onClose={vi.fn()}/>);
-  const review=()=>screen.getByRole('button',{name:locale==='zh-CN'?'下一步：核对冻结方案':'Next: review the protocol'});
+  const review=()=>screen.getByRole('button',{name:locale==='zh-CN'?'下一步：核对验证方案':'Next: review the protocol'});
   await waitFor(()=>expect(review()).toBeEnabled(),{timeout:5000});
   expect(screen.getAllByText('28 / 274').length).toBeGreaterThan(0);
   expect(writes).toEqual([]);
   fireEvent.click(review());
   await waitFor(()=>expect(screen.getByText('128 → 129 · 000001')).toBeVisible());
   expect(screen.getByText('250 / 50 · T+1 → T+5')).toBeVisible();
-  fireEvent.click(screen.getByRole('button',{name:locale==='zh-CN'?'确认冻结方案（不训练、不启用）':'Freeze protocol (no training or activation)'}));
-  await waitFor(()=>expect(screen.getByText(locale==='zh-CN'?'验证方案已冻结':'Validation protocol frozen')).toBeVisible());
+  fireEvent.click(screen.getByRole('button',{name:locale==='zh-CN'?'确认保存方案':'Freeze protocol (no training or activation)'}));
+  await waitFor(()=>expect(screen.getByText(locale==='zh-CN'?'验证方案已保存':'Validation protocol frozen')).toBeVisible());
   expect(writes).toEqual([{url:expect.stringContaining('/research-parent/production-admission/freeze'),body:{bundle_id:'verified-inputs',expected_identity_sha256:'a'.repeat(64)}}]);
   expect(screen.queryByText('server text')).not.toBeInTheDocument();
 });
@@ -48,13 +48,13 @@ it('recovers an uncertain freeze by GET without submitting a second POST',async(
     return response(committed?frozen():report());
   }));
   render(<ProductionAdmissionModal modelId="research-parent" onClose={vi.fn()}/>);
-  const review=()=>screen.getByRole('button',{name:'下一步：核对冻结方案'});
+  const review=()=>screen.getByRole('button',{name:'下一步：核对验证方案'});
   await waitFor(()=>expect(review()).toBeEnabled(),{timeout:5000});fireEvent.click(review());
-  fireEvent.click(screen.getByRole('button',{name:'确认冻结方案（不训练、不启用）'}));
+  fireEvent.click(screen.getByRole('button',{name:'确认保存方案'}));
   await waitFor(()=>expect(screen.getByText(/冻结结果尚未确认/)).toBeVisible());
-  expect(screen.getByRole('button',{name:'下一步：核对冻结方案'})).toBeDisabled();
-  fireEvent.click(screen.getByRole('button',{name:'刷新准入检查'}));
-  await waitFor(()=>expect(screen.getByText('验证方案已冻结')).toBeVisible());
+  expect(screen.getByRole('button',{name:'下一步：核对验证方案'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('button',{name:'重新检查资料'}));
+  await waitFor(()=>expect(screen.getByText('验证方案已保存')).toBeVisible());
   expect(posts).toBe(1);
 });
 
@@ -66,7 +66,7 @@ it('blocks a mismatched model response and never writes',async()=>{
   }));
   render(<ProductionAdmissionModal modelId="research-parent" onClose={vi.fn()}/>);
   await waitFor(()=>expect(screen.getByText(/返回证据与当前模型或方案不一致/)).toBeVisible());
-  expect(screen.getByRole('button',{name:'下一步：核对冻结方案'})).toBeDisabled();expect(writes).not.toHaveBeenCalled();
+  expect(screen.getByRole('button',{name:'下一步：核对验证方案'})).toBeDisabled();expect(writes).not.toHaveBeenCalled();
 });
 
 it('ignores a late response from the previous model',async()=>{

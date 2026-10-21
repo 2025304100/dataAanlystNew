@@ -100,7 +100,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--commission-rate", type=float, default=0.0003)
     parser.add_argument("--min-commission", type=float, default=5.0)
-    parser.add_argument("--stamp-tax-rate", type=float, default=0.001)
+    parser.add_argument("--stamp-tax-rate", type=float, default=None,
+                        help="Required explicit research assumption, not an automatic statutory rate; use the event-driven engine for date/instrument-specific taxes")
     parser.add_argument("--slippage-rate", type=float, default=0.001)
     parser.add_argument("--stop-loss-pct", type=float)
     parser.add_argument("--take-profit-pct", type=float)

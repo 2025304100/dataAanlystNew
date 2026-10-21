@@ -449,92 +449,41 @@ def test_outbox_circuit_breaker_then_recover(db_session):
 
 
 # ── 8. Portfolio Resume：多日补算，再次运行全 SKIP ───────────
-def test_portfolio_resume_5day_then_idempotent_all_skip(db_session):
-    # today 取 2026-09-01（周二），last_reconciled 2026-08-07（周五）→ 至少 16 个工作日
-    today = date(2026, 9, 1)
-    last_rec = date(2026, 8, 7)
+def test_portfolio_resume_5day_then_idempotent_all_skip(db_session, monkeypatch):
+    # Exercise the real worker and engine instead of inserting SUCCEEDED rows.
+    from app.api.routes import portfolios as api
+    from app.api.routes.decision_engine import list_portfolio_decision_runs
+    from app.models.market_data import MarketCalendar
+    from app.services import decision_schedule_gate as schedule
+    from app.services.portfolio_state_machine import transition_portfolio_state
+    from tests.test_execution_lifecycle_public import seed_approved_no_action_portfolio, wait_task
+    from tests.test_g1_decision_engine import _insert_scores
+    days = [date(2026, 9, d) for d in (2, 3, 4, 7, 8)]
+    monkeypatch.setenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED", "true")
+    monkeypatch.setattr(schedule, "shanghai_now", lambda: datetime(2026, 9, 8, 12, 30, tzinfo=timezone.utc))
     pf = _seed_portfolio(db_session, name="qa-resume-5day",
-                         last_reconciled=last_rec, last_decision=last_rec,
-                         effective=date(2026, 8, 1))
-
-    plan = resume_svc.plan_portfolio_resume(db_session, pf.id, today=today, max_days=20)
-    pending = plan["pending_days"]
-    assert len(pending) >= 10, f"need >=10 pending days, got {len(pending)}: {pending}"
-    tasks = resume_svc.create_resume_tasks_from_plan(db_session, plan)
-    assert len(tasks) >= 10
-
-    # 模拟 DecisionRun 每日都 SUCCEEDED（绕过 FK：直接通过 sqlite3 raw connection，
-    # 保证同一连接内 PRAGMA foreign_keys=OFF + INSERT 生效）
-    from sqlalchemy import inspect as sa_inspect
-    insp = sa_inspect(db_session.bind)
-    cols_set = {c["name"] for c in insp.get_columns("decision_runs")}
-
-    raw_conn = db_session.connection().connection  # sqlite3.Connection
-    cur = raw_conn.cursor()
-    try:
-        cur.execute("PRAGMA foreign_keys = OFF")
-        cid = plan["resumption_correlation_id"]
-        for item in plan["pending_days"]:
-            d = date.fromisoformat(item["date"])
-            idem = item["idempotency_key"]
-            cols = ["id", "strategy_snapshot_id", "portfolio_id", "run_type", "status", "trade_date",
-                    "decision_at", "data_cutoff_at", "execution_at", "idempotency_key",
-                    "correlation_id", "created_at", "blocking_status", "run_mode", "pit_mode",
-                    "universe_count", "member_count", "is_result_production_eligible"]
-            cols = [c for c in cols if c in cols_set]
-            now_str = datetime.utcnow().replace(tzinfo=None).isoformat(sep=" ", timespec="microseconds")
-            vals = {
-                "id": f"dr-{uuid4().hex[:12]}",
-                "strategy_snapshot_id": "snap-qa-placeholder",
-                "portfolio_id": int(pf.id),
-                "run_type": "auto_simulation",
-                "status": "SUCCEEDED",
-                "trade_date": d.isoformat(),
-                "decision_at": now_str,
-                "data_cutoff_at": now_str,
-                "execution_at": now_str,
-                "idempotency_key": idem,
-                "correlation_id": cid,
-                "created_at": now_str,
-                "blocking_status": "READY",
-                "run_mode": "research",
-                "pit_mode": "best_effort",
-                "universe_count": 0,
-                "member_count": 0,
-                "is_result_production_eligible": 1,
-            }
-            # 只用 cols 中有的键
-            insert_cols = [c for c in cols if c in vals]
-            placeholders = ", ".join(["?"] * len(insert_cols))
-            sql = f"INSERT INTO decision_runs ({','.join(insert_cols)}) VALUES ({placeholders})"
-            params = tuple(vals[c] for c in insert_cols)
-            cur.execute(sql, params)
-        raw_conn.commit()
-        cur.execute("PRAGMA foreign_keys = ON")
-    finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-    # ORM 层 expire 保证后续 SELECT 走 DB 而非缓存
+                         last_reconciled=date(2026, 9, 1), last_decision=date(2026, 9, 1))
+    transition_portfolio_state(db_session, pf.id, "READY")
+    db_session.commit()
+    seed_approved_no_action_portfolio(db_session, pf)
+    from app.models.symbol import Symbol
+    symbol = db_session.scalar(select(Symbol).where(Symbol.symbol == "600001"))
+    _insert_scores(db_session, "model-approved-lifecycle", [
+        (symbol.id, d, 50.0, datetime(d.year, d.month, d.day, 6)) for d in days[2:]
+    ], batch_id_suffix="-five-day")
+    db_session.add_all([MarketCalendar(trade_date=d, is_trading_day=1) for d in days])
+    db_session.commit()
+    request = api.PortfolioResumeExecuteRequest(today=days[-1], dry_run=False)
+    result = api.portfolio_resume_execute(pf.id, request, db_session)
+    assert result["created_count"] == 5
+    for task in result["created_tasks"]:
+        assert wait_task(task["task_id"])["status"] == "done"
     db_session.expire_all()
-    # 验证：手动查一次，确保行数 & idempotency_key 正确（避免 SQLite 连接池的幻象）
-    from sqlalchemy import func as sa_func
-    n = db_session.execute(
-        select(sa_func.count()).select_from(DecisionRun)
-        .where(DecisionRun.portfolio_id == int(pf.id), DecisionRun.status == "SUCCEEDED")
-    ).scalar_one()
-    assert n >= len(pending) - 1, (
-        f"Only {n} DecisionRuns found for portfolio {pf.id}, expected >= {len(pending) - 1}. "
-        f"pending[:2]={pending[:2]}"
-    )
-
-    # 再次 plan：幂等跳过所有已补日期
-    plan2 = resume_svc.plan_portfolio_resume(db_session, pf.id, today=today, max_days=20)
-    assert plan2["will_create_tasks"] == 0
-    assert plan2["will_skip_days"] >= len(pending) - 1
-    unskipped_left = [d for d in plan2["pending_days"] if not d["will_skip"]]
-    assert len(unskipped_left) == 0, f"unskipped left: {unskipped_left}"
+    assert pf.last_decision_trade_date == days[-1]
+    repeated = api.portfolio_resume_execute(pf.id, request, db_session)
+    assert repeated["created_count"] == 0
+    assert repeated["created_tasks"] == []
+    assert list_portfolio_decision_runs(pf.id, limit=20, offset=0, db=db_session)["total"] == 5
 
 
 # ── 9. 终态硬锁：cancel → queued 直接终态；覆盖被拒 ───────────

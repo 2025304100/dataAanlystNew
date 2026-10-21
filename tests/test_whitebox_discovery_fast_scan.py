@@ -361,6 +361,13 @@ def test_cache_miss_on_different_snapshot(db_session, monkeypatch):
         discovery_fast_scan, "_assert_no_http_request", lambda: None,
     )
     _setup_ready_snapshot_with_items(db_session, item_count=2)
+    # The new version must be built from actual scores, not an empty snapshot.
+    for symbol in db_session.query(Symbol).all():
+        db_session.add(Score(symbol_id=symbol.id, trade_date=date(2026, 7, 19),
+                             quality_score=70, quality_grade="B", timing_score=65,
+                             priority_score=75, stage="accumulate", action="buy",
+                             scoring_config_id=1, scoring_config_version=1, weight_mode="manual"))
+    db_session.commit()
 
     # 首次扫描
     r1 = discovery_fast_scan.run_fast_scan(

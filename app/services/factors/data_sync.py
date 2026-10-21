@@ -325,6 +325,7 @@ def _mirror_fund_flows(
             source_key=source_key,
             watermark=max(previous_watermark, cursor),
             skip_unchanged=True,
+            replace_sql_sources=True,
         )
     result.fund_flow_watermark = max(previous_watermark, cursor)
 

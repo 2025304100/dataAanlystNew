@@ -269,7 +269,10 @@ def place_sim_order(
     if fee_override is not None:
         fee = _round_money(float(fee_override))
     elif apply_fees:
-        fee = _round_money(compute_cost(fill_price, normalized_quantity, side, cost_config))
+        fee = _round_money(compute_cost(
+            fill_price, normalized_quantity, side, cost_config,
+            asset_type=symbol.asset_type, market=symbol.market,
+        ))
     else:
         fee = 0.0
 

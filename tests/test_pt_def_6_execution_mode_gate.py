@@ -121,10 +121,11 @@ def test_execute_member_source_three_modes_end_to_end(db_session):
     auto_orders = by_sym.get(s_auto.id, [])
     assert len(auto_orders) == 1 and auto_orders[0]["status"] == "filled", auto_orders
     assert "order_id" in auto_orders[0]
-    # confirm 待确认 → Q1 决策：落一张 pending_confirmation 占位单，有 order_id
+    # Unsupported confirmation remains visible without creating a dead-end order.
     confirm_orders = by_sym.get(s_confirm.id, [])
-    assert len(confirm_orders) == 1 and confirm_orders[0]["status"] == "pending_confirmation", confirm_orders
-    assert "order_id" in confirm_orders[0]
+    assert confirm_orders == []
+    assert any(item["symbol_id"] == s_confirm.id and item["reason"] == "CONFIRMATION_NOT_SUPPORTED"
+               for item in result["pending_orders"])
     # manual 仍只提示（不建单）→ 无 order_id
     manual_orders = by_sym.get(s_manual.id, [])
     assert len(manual_orders) == 1 and manual_orders[0]["status"] == "signal_only", manual_orders
@@ -136,7 +137,7 @@ def test_execute_member_source_three_modes_end_to_end(db_session):
     for o in orders:
         by_status.setdefault(o.status, []).append(o)
     assert len(by_status.get("filled", [])) == 1 and by_status["filled"][0].symbol_id == s_auto.id
-    assert len(by_status.get("pending_confirmation", [])) == 1 and by_status["pending_confirmation"][0].symbol_id == s_confirm.id
+    assert by_status.get("pending_confirmation", []) == []
     assert s_manual.id not in {o.symbol_id for o in orders}
 
     # signal_decisions 含 manual/confirm 的提示（execution_mode 可追溯）

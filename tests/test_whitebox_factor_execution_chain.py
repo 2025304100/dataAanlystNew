@@ -203,6 +203,8 @@ def test_old_quality_policy_decision_is_auditable_but_not_reused(db_session, mon
     for day in days:
         db_session.add(DailyBar(symbol_id=symbol.id, trade_date=day, open=10, high=10.1, low=9.9,
             close=10, volume=1000000, amount=10000000))
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, days)
     legacy = DecisionRun(id="legacy-quality-policy", portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id,
         run_type="backtest", status="SUCCEEDED", trade_date=DAY, decision_at=CUTOFF,
         data_cutoff_at=CUTOFF, execution_at=datetime(2026, 9, 3, 1, 30), versions_json="{}")
@@ -439,6 +441,8 @@ def test_formal_backtest_average_cost_stop_decides_on_close_and_fills_next_open(
             factor_member_versions_json=json.dumps({"factor_real-set": 1}), calc_batch_id=f"risk-{day}",
             factor_data_cutoff_at=datetime.combine(day, datetime.min.time()),
             published_at=datetime.combine(day, datetime.min.time())))
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db_session, symbol.id, days)
     # A replay must not borrow an unrelated live account peak, even when it
     # is earlier than the replay's cutoff.
     db_session.add(PortfolioEquitySnapshot(portfolio_id=portfolio.id, snapshot_date=date(2026, 9, 1),
