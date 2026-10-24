@@ -1,0 +1,82 @@
+{
+  "portfolios": {
+    "rows": 12,
+    "sha256": "26da9fdf4ccf02b3220c697642622dc5487c3594e2a5fb68e7b5797a44b2416d"
+  },
+  "positions": {
+    "rows": 2,
+    "sha256": "53b9a0c9b613d44da27aaafcda5aab6ee29cba642e6913cf34ad4a70ac742964"
+  },
+  "cash_ledger": {
+    "rows": 16,
+    "sha256": "5925036de354d10971c42b86cc67eac76a6d889738b048c2ae6c7767cd7b2008"
+  },
+  "sim_orders": {
+    "rows": 10,
+    "sha256": "75f6103b58eb358aa6a02fac524a4b1f7271649f2b9ddd878a8be7de7ea5ceb6"
+  },
+  "sim_trades": {
+    "rows": 10,
+    "sha256": "97c8f6b15c5dc4a1da4a0e8ea689b2b8c818b6fc4b7e43aafd6d694127115b6d"
+  },
+  "sim_accounts": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "g5_dual_run_reports": {
+    "rows": 10,
+    "sha256": "fc00f8ce0f89fa4c6cf4f168cfd99d7332a4da801b9960c5a610b631c129051c"
+  },
+  "portfolio_account_baselines": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "portfolio_reconciliation_cursors": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "inspection_evidence_requests": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "inspection_evidence_decisions": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "g5_admission_controls": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "g5_admission_events": {
+    "rows": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "factor_model_runs": {
+    "rows": 11,
+    "sha256": "9cb182b432d48f52a8487ea436fd257335c663da59238b452b0b837e094232f2"
+  },
+  "factor_model_members": {
+    "rows": 7,
+    "sha256": "8d7a0eb2b5f27a69e5eff519f5d1cf5bf1cc7b9755effb8fecb0a71e6b7fa528"
+  },
+  "factor_weight_snapshots": {
+    "rows": 1,
+    "sha256": "7cb4adc06b03e3c945296256270540613483a204b4a1a106f11ff03b760e55fb"
+  },
+  "factor_runtime_state": {
+    "rows": 1,
+    "sha256": "39dc52a0075df10571a2afefda014f011614ada628885e2ca15893fcce278c94"
+  },
+  "portfolio_rules": {
+    "rows": 12,
+    "sha256": "82cf1f24bfbfa249e7d75dec91ff0515ab98f4b4c55497f93e05b9e1ff8cb32c"
+  },
+  "portfolio_factor_usages": {
+    "rows": 4,
+    "sha256": "b6101cab0dc7f9f00cf2efebba6266b76b4b5e6de0f8114de7912b83b18ecb60"
+  },
+  "strategy_execution_snapshots": {
+    "rows": 4,
+    "sha256": "c76473c856231d2b867e5a98c7fcf13cf90c050319431038d50fc8f56d2f8de5"
+  }
+}

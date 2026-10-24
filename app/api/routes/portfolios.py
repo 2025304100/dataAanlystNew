@@ -602,6 +602,8 @@ def execute_auto_trade(
             save_diff=True,
             require_readiness=True,
         )
+        if not payload.dry_run:
+            db.commit()
         return AutoTradeResult(**result)
     except ValueError as exc:
         msg = str(exc)

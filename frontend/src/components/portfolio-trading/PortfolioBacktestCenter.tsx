@@ -305,6 +305,29 @@ function gateFromHistoricalBacktest(run: BacktestRun): BacktestGateState | null 
   });
 }
 
+function isPortfolioBacktestRunning(run: Record<string, any>): boolean {
+  return ["queued", "pending", "running", "started", "in_progress", "creating", "precheck"]
+    .includes(String(run.status ?? "").trim().toLowerCase());
+}
+
+function gateFromPortfolioBacktest(run: Record<string, any>): BacktestGateState | null {
+  const stage = String(run.stage ?? "").trim().toLowerCase();
+  if (stage === "blocked") {
+    return gateFromHistoricalBacktest({ ...run, status: "blocked", blocking_status: run.blocking_status || "BLOCKED" } as BacktestRun);
+  }
+  if (["failed", "error", "cancelled", "canceled"].includes(stage)) {
+    return gateFromHistoricalBacktest({ ...run, status: stage } as BacktestRun);
+  }
+  return gateFromHistoricalBacktest({ ...run, status: isPortfolioBacktestRunning(run) ? "" : run.status } as BacktestRun);
+}
+
+function portfolioProgressLabel(stage: string | null): string {
+  if (stage === "queued" || stage === "pending") return "正在等待";
+  if (stage === "creating") return "正在准备";
+  if (stage === "precheck") return "正在检查资料";
+  return "正在运行";
+}
+
 /** 历史运行只返回持久化 JSON，解析失败时维持真实空态而不是绘制占位曲线。 */
 function parseStoredEquityCurve(raw: string | null | undefined): EquityCurvePoint[] {
   if (!raw) return [];
@@ -401,7 +424,150 @@ function readTradeLedgerUrlState(): TradeLedgerUrlState {
 }
 
 const BENCHMARKS = ["沪深300", "中证500", "创业板指", "上证50", "科创50"];
-const INDICATORS = ["MA", "MACD", "RSI", "布林带", "KDJ"];
+/** Old drafts keep their actual thresholds; these names are no longer indicator choices. */
+function getSingleScoreRules(savedChoice: string) {
+  const conditions = (() => {
+    if (savedChoice === "MA") return { quality: 60, timing: 70, profit: 0.25, loss: 0.1, days: 45 };
+    if (savedChoice === "RSI") return { quality: 30, timing: 30, profit: 0.12, loss: 0.08, days: 15 };
+    if (savedChoice === "布林带") return { quality: 45, timing: 50, profit: 0.1, loss: 0.12, days: 20 };
+    if (savedChoice === "KDJ") return { quality: 70, timing: 40, profit: 0.08, loss: 0.06, days: 10 };
+    // The previous default (MACD) and unknown old values used these same thresholds.
+    return { quality: 50, timing: 60, profit: 0.2, loss: 0.08, days: 30 };
+  })();
+  return {
+    buy_conditions: { quality_score_min: conditions.quality, timing_score_min: conditions.timing, actions: ["buy", "open"], stages: [] },
+    sell_conditions: { take_profit_pct: conditions.profit, stop_loss_pct: conditions.loss, max_hold_days: conditions.days, score_actions: ["exit", "reduce"] },
+    position_config: { type: "fixed_pct", value: 1, max_positions: 1 },
+    execution_config: { entry_timing: "next_open", exit_timing: "next_open", entry_price_field: "open", exit_price_field: "open" },
+  };
+}
+type SingleScoreRules = ReturnType<typeof getSingleScoreRules>;
+function singleBacktestParameters(portfolioId: number, draft: BacktestDraft) {
+  return {
+    portfolioId, code: draft.singleSymbol.trim(), start: draft.singleStart, end: draft.singleEnd,
+    initialCapital: Number(draft.singleCapital.replace(/,/g, "")),
+    commissionRate: Number(draft.singleCommission) / 100, minCommission: 5, slippageRate: 0.001,
+    rules: getSingleScoreRules(draft.singleIndicator),
+  };
+}
+type SingleBacktestParameters = ReturnType<typeof singleBacktestParameters>;
+type SingleBacktestResult = { run: BacktestRun; parameters: SingleBacktestParameters | null; viewDraftKey?: string };
+function singleBacktestResultState(run: BacktestRun): { kind: "completed" | "running" | "unknown" | "blocked" | "failed"; message: string } {
+  const status = String(run.status ?? "").trim().toLowerCase();
+  // Interpret status locally, while retaining every recorded error and data block.
+  const recordedGate = gateFromHistoricalBacktest({ ...run, status: "" });
+  if (recordedGate) return status === "blocked" ? { ...recordedGate, kind: "blocked" } : recordedGate;
+  if (["queued", "pending", "running", "started", "in_progress"].includes(status)) {
+    return { kind: "running", message: "这条回测还在进行，完成后再查看收益和交易明细。" };
+  }
+  if (isSuccessfulBacktestStatus(status)) return { kind: "completed", message: "这条回测已完成。" };
+  if (status === "blocked") return { kind: "blocked", message: "这条记录没有保存具体的阻断原因，可更新后再查看。" };
+  if (["failed", "error", "cancelled", "canceled", "rejected"].includes(status)) {
+    return { kind: "failed", message: "这条记录没有保存具体的未完成原因，可更新后再查看。" };
+  }
+  return { kind: "unknown", message: "暂不显示收益和交易明细，请更新这条记录后再查看。" };
+}
+type SingleSubmitFailure = {
+  portfolioId: number; version: number; parameters: SingleBacktestParameters;
+  kind: "not_started" | "incomplete" | "unknown"; message: string;
+};
+
+function singleFailureReason(error: any, fallback: string): string {
+  const detail = asRecord(error?.detail), nested = asRecord(detail?.detail);
+  const value = [error?.user_message, detail?.user_message, detail?.detail_zh, nested?.detail_zh,
+    nested?.message, detail?.message, typeof error?.detail === "string" ? error.detail : null, error?.message]
+    .find((item) => typeof item === "string" && item.trim());
+  const text = renderReasonToString(value, 400).trim();
+  if (/failed to fetch|network.?error|network request|econn|connection (?:reset|refused)/i.test(text)) return "连接中断，暂时没有收到结果。";
+  if (/timeout|timed\s*out|aborted/i.test(text)) return "等待时间过长，暂时没有收到结果。";
+  return /[\u4e00-\u9fff]/.test(text) && !/^[\[{]/.test(text) ? text : fallback;
+}
+
+const singleResultStorageKey = (portfolioId: number) => `single-backtest-result:${portfolioId}`;
+function writeSingleResultUrl(runId: number | null) {
+  const query = new URLSearchParams(window.location.search);
+  for (const key of Array.from(query.keys())) if (key.startsWith("bt_")) query.delete(key);
+  if (runId != null) { query.set("bt_run", String(runId)); query.set("bt_mode", "single"); }
+  const search = query.toString();
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
+}
+function readStoredSingleResult(portfolioId: number): SingleBacktestResult | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(singleResultStorageKey(portfolioId)) || "null");
+    if (value == null) return null;
+    const { run, parameters } = value;
+    if (value.version !== 1 || value.portfolioId !== portfolioId || !Number.isSafeInteger(run?.id) || run.id <= 0
+      || run.portfolio_id !== portfolioId || typeof run.status !== "string"
+      || !/^\d{4}-\d{2}-\d{2}$/.test(run.start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(run.end_date)
+      || !Number.isFinite(run.initial_capital) || run.initial_capital <= 0) throw new Error();
+    if (parameters !== null && (parameters?.portfolioId !== portfolioId
+      || typeof parameters.code !== "string" || !/^\d{6}$/.test(parameters.code)
+      || typeof parameters.start !== "string" || typeof parameters.end !== "string"
+      || !Number.isFinite(parameters.initialCapital) || parameters.initialCapital <= 0
+      || parameters.start !== run.start_date || parameters.end !== run.end_date || parameters.initialCapital !== run.initial_capital
+      || !Number.isFinite(parameters.commissionRate) || parameters.commissionRate < 0 || parameters.commissionRate > 1
+      || !Number.isFinite(parameters.minCommission) || parameters.minCommission < 0
+      || !Number.isFinite(parameters.slippageRate) || parameters.slippageRate < 0 || parameters.slippageRate > 1
+      || !parameters.rules?.buy_conditions || !parameters.rules?.sell_conditions || !parameters.rules?.position_config || !parameters.rules?.execution_config
+      || ![parameters.rules.buy_conditions.quality_score_min, parameters.rules.buy_conditions.timing_score_min,
+        parameters.rules.sell_conditions.take_profit_pct, parameters.rules.sell_conditions.stop_loss_pct,
+        parameters.rules.sell_conditions.max_hold_days, parameters.rules.position_config.value,
+        parameters.rules.position_config.max_positions].every((value) => typeof value === "number" && Number.isFinite(value)))) throw new Error();
+    return { run, parameters };
+  } catch { throw new Error("上次结果的本地记录无法读取，请从回测历史重新打开。"); }
+}
+function saveStoredSingleResult(result: SingleBacktestResult): boolean {
+  try {
+    // Keep a small summary; curves and paged transactions are read from the saved run.
+    const keys = ["id", "portfolio_id", "run_name", "symbols_json", "rule_config_json", "cost_config_json",
+      "start_date", "end_date", "initial_capital", "status", "error_message", "created_at", "finished_at",
+      "total_return", "total_return_pct", "max_drawdown", "max_drawdown_pct", "sharpe_ratio", "win_rate", "trade_count", "engine_name", "source_type",
+      "blocking_status", "blocking_reasons", "errors", "warnings"];
+    const run = Object.fromEntries(keys.map((key) => [key, (result.run as unknown as Record<string, unknown>)[key]]));
+    localStorage.setItem(singleResultStorageKey(result.run.portfolio_id), JSON.stringify({
+      version: 1, portfolioId: result.run.portfolio_id, run, parameters: result.parameters,
+    }));
+    return true;
+  } catch { return false; }
+}
+type SingleResultReadState = {
+  runId: number; portfolioId: number;
+  status: "loading" | "ready" | "failed" | "idle";
+  error: string | null;
+};
+type SingleTradesReadState = {
+  key: string; scope: string; status: "loading" | "ready" | "failed";
+  items: BacktestTrade[]; total: number; error: string | null;
+};
+function singleHistorySymbolIds(run: BacktestRun): number[] {
+  try {
+    const ids = JSON.parse(run.symbols_json);
+    return Array.isArray(ids) && ids.every((id) => Number.isSafeInteger(id) && id > 0) ? ids : [];
+  } catch { return []; }
+}
+function isSingleHistoryRun(run: BacktestRun, saved: SingleBacktestResult | null): boolean {
+  if (run.engine_name === "event_driven" || ["member", "members", "legacy_scan", "legacy"].includes(run.source_type || "")) return false;
+  const rules = contractRecord(run.rule_config_json);
+  const buy = contractRecord(rules.buy_conditions);
+  return saved?.run.id === run.id || (singleHistorySymbolIds(run).length === 1
+    && !!rules.sell_conditions && ("quality_score_min" in buy || "timing_score_min" in buy));
+}
+function HistoricalSingleParameters({ run }: { run: BacktestRun }) {
+  const rules = contractRecord(run.rule_config_json);
+  const buy = contractRecord(rules.buy_conditions), sell = contractRecord(rules.sell_conditions);
+  const cost = contractRecord(run.cost_config_json ?? run.cost_config);
+  const number = (value: unknown, suffix = "", scale = 1) => typeof value === "number" && Number.isFinite(value)
+    ? `${Number((value * scale).toPrecision(12))}${suffix}` : "未记录";
+  return <>
+    <p style={{ margin: "8px 0 0" }}>标的编号 {singleHistorySymbolIds(run).join("、") || "未记录"} · {run.start_date} 至 {run.end_date}</p>
+    <p style={{ margin: 0 }}>初始资金 {Number.isFinite(run.initial_capital) ? run.initial_capital.toLocaleString("zh-CN", { maximumFractionDigits: 8 }) : "未记录"} 元 · 佣金 {number(cost.commission_rate, "%", 100)} · 每笔最低 {number(cost.min_commission, " 元")} · 滑点 {number(cost.slippage_rate, "%", 100)}</p>
+    <p style={{ margin: 0 }}>质量评分不低于{number(buy.quality_score_min)}分，择时评分不低于{number(buy.timing_score_min)}分；止盈 {number(sell.take_profit_pct, "%", 100)}，止损 {number(sell.stop_loss_pct, "%", 100)}，持有达到 {number(sell.max_hold_days)} 个自然日。</p>
+    <p style={{ ...sectionSubStyle, marginTop: 4 }}>按历史记录保存的参数显示；未保存的内容标为“未记录”，不使用当前填写内容补齐。</p>
+  </>;
+}
+function singleBacktestContextKey(portfolioId: number, draft: BacktestDraft) {
+  return JSON.stringify([draft.mode, singleBacktestParameters(portfolioId, draft), !!draft.singleCommission.trim()]);
+}
 const UNAVAILABLE_HISTORY_MESSAGES: Record<string, string> = {
   STATUS_DATA_UNAVAILABLE: "portfolioTrading.backtest.flow.statusMissing",
   PRICE_LIMIT_DATA_UNAVAILABLE: "portfolioTrading.backtest.flow.priceLimitsMissing",
@@ -508,19 +674,50 @@ const defaultBacktestDraft = (): BacktestDraft => ({
   mode: "portfolio", portStart: DEFAULT_BACKTEST_RANGE[0], portEnd: DEFAULT_BACKTEST_RANGE[1],
   portRangePreset: "1y", portCapital: "1000000", portBenchmark: BENCHMARKS[0], portCommission: "0.03",
   singleSymbol: "", singleStart: DEFAULT_BACKTEST_RANGE[0], singleEnd: DEFAULT_BACKTEST_RANGE[1],
-  singleRangePreset: "1y", singleIndicator: INDICATORS[1], singleCapital: "100000", singleCommission: "0.03",
+  singleRangePreset: "1y", singleIndicator: "score", singleCapital: "100000", singleCommission: "0.03",
 });
+type PortfolioResultParameters = {
+  startDate: string; endDate: string; initialCapital: number; commissionRate: number; benchmark: string;
+};
+function portfolioBacktestFormKey(portfolioId: number, draft: BacktestDraft): string {
+  return JSON.stringify([portfolioId, draft.portStart, draft.portEnd, draft.portCapital, draft.portCommission, draft.portBenchmark]);
+}
 const PortfolioBacktestCenter: React.FC<PortfolioBacktestCenterProps> = ({ portfolioId }) => {
   const { showToast, setActiveTab, portfolios } = useApp();
   const [storedDraft, setStoredDraft] = useState(() => ({ portfolioId, parameters: readBacktestDraft(portfolioId, defaultBacktestDraft()) }));
+  const singleDraftRef = useRef(storedDraft);
+  const singleContextKey = singleBacktestContextKey(portfolioId, storedDraft.parameters);
+  const singleRequestContextRef = useRef({ key: singleContextKey, version: 0 });
+  if (singleRequestContextRef.current.key !== singleContextKey) {
+    singleRequestContextRef.current = { key: singleContextKey, version: singleRequestContextRef.current.version + 1 };
+  }
+  const portfolioContextKey = JSON.stringify([storedDraft.parameters.mode, portfolioBacktestFormKey(portfolioId, storedDraft.parameters)]);
+  const portfolioRequestContextRef = useRef({ key: portfolioContextKey, version: 0 });
+  if (portfolioRequestContextRef.current.key !== portfolioContextKey) {
+    portfolioRequestContextRef.current = { key: portfolioContextKey, version: portfolioRequestContextRef.current.version + 1 };
+  }
+  singleDraftRef.current = storedDraft;
+  const singleActiveRequestRef = useRef<{ requestId: number; version: number } | null>(null);
   if (storedDraft.portfolioId !== portfolioId) {
     // Reset before rendering the next portfolio; its form must never expose or save the previous form.
     setStoredDraft({ portfolioId, parameters: readBacktestDraft(portfolioId, defaultBacktestDraft()) });
   }
   const draft = storedDraft.parameters;
   const setParameter = useCallback(<K extends keyof BacktestDraft,>(key: K, value: BacktestDraft[K]) => {
-    setStoredDraft((previous) => previous.portfolioId === portfolioId
-      ? { portfolioId, parameters: { ...previous.parameters, [key]: value } } : previous);
+    const previous = singleDraftRef.current;
+    if (previous.portfolioId !== portfolioId) return;
+    const next = { portfolioId, parameters: { ...previous.parameters, [key]: value } };
+    const nextKey = singleBacktestContextKey(portfolioId, next.parameters);
+    // Invalidate immediately, including A → B → A before an old response arrives.
+    if (singleRequestContextRef.current.key !== nextKey) {
+      singleRequestContextRef.current = { key: nextKey, version: singleRequestContextRef.current.version + 1 };
+    }
+    const nextPortfolioKey = JSON.stringify([next.parameters.mode, portfolioBacktestFormKey(portfolioId, next.parameters)]);
+    if (portfolioRequestContextRef.current.key !== nextPortfolioKey) {
+      portfolioRequestContextRef.current = { key: nextPortfolioKey, version: portfolioRequestContextRef.current.version + 1 };
+    }
+    singleDraftRef.current = next;
+    setStoredDraft(next);
   }, [portfolioId]);
   const [draftSaveError, setDraftSaveError] = useState(false);
   const savedDraftRef = useRef(JSON.stringify(storedDraft));
@@ -566,7 +763,12 @@ const PortfolioBacktestCenter: React.FC<PortfolioBacktestCenterProps> = ({ portf
 
   // ---------- 顶部模式 + 抽屉 ----------
   const mode = draft.mode;
-  const setMode = (value: BacktestMode) => setParameter("mode", value);
+  const setMode = (value: BacktestMode) => {
+    const query = new URLSearchParams(window.location.search);
+    if ((value === "portfolio" && query.get("bt_mode") === "single")
+      || (value === "single" && query.get("bt_mode") !== "single")) writeSingleResultUrl(null);
+    setParameter("mode", value);
+  };
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // ---------- 来源状态 + 最近回测时间 ----------
@@ -588,7 +790,10 @@ const PortfolioBacktestCenter: React.FC<PortfolioBacktestCenterProps> = ({ portf
   const setSingleStart = (v: string) => setParameter("singleStart", v);
   const setSingleEnd = (v: string) => setParameter("singleEnd", v);
   const setSingleRangePreset = (v: BacktestRangePreset | null) => setParameter("singleRangePreset", v);
-  const setSingleIndicator = (v: string) => setParameter("singleIndicator", v);
+  // singleIndicator is retained only to read existing drafts without changing their thresholds.
+  const singleScoreRules = useMemo(() => getSingleScoreRules(singleIndicator), [singleIndicator]);
+  const singleParameters = singleBacktestParameters(portfolioId, draft);
+  const singleParametersKey = JSON.stringify(singleParameters);
   const setSingleCapital = (v: string) => setParameter("singleCapital", v);
   const setSingleCommission = (v: string) => setParameter("singleCommission", v);
 
@@ -598,21 +803,43 @@ const PortfolioBacktestCenter: React.FC<PortfolioBacktestCenterProps> = ({ portf
   const [loadedRun, setLoadedRun] = useState<BacktestRun | null>(null);
   /** 组合回测 POST 返回的轻量摘要（含 equity_curve / metrics / diagnostics），优先级最高。 */
   const [latestResult, setLatestResult] = useState<PortfolioBacktestLatestResult | null>(null);
+  const [portfolioResultContext, setPortfolioResultContext] = useState<{
+    portfolioId: number; draftKey: string; parameters: PortfolioResultParameters | null;
+  } | null>(null);
+  const portfolioResultStale = portfolioResultContext?.portfolioId === portfolioId
+    && portfolioResultContext.draftKey !== portfolioBacktestFormKey(portfolioId, draft);
   /** 回测失败/数据门禁状态必须保留在结果区，不能只通过 toast 告知。 */
   const [backtestGateState, setBacktestGateState] = useState<BacktestGateState | null>(null);
-  // 单标的回测结果（独立于组合全局回测，含 trades）
-  const [singleResult, setSingleResult] = useState<BacktestRun | null>(null);
+  // 单标的回测摘要；交易明细按记录编号独立分页读取。
+  const [singleResult, setSingleResult] = useState<SingleBacktestResult | null>(null);
+  const [singleResultRead, setSingleResultRead] = useState<SingleResultReadState | null>(null);
+  const [singlePersistenceError, setSinglePersistenceError] = useState<{ portfolioId: number; type: "read" | "save"; message: string } | null>(null);
+  const persistSingleResult = useCallback((result: SingleBacktestResult) => {
+    const saved = saveStoredSingleResult(result);
+    setSinglePersistenceError(saved ? null : { portfolioId: result.run.portfolio_id, type: "save",
+      message: `这条结果没能保存在本机。离开页面前可记下回测记录 #${result.run.id}，从回测历史重新打开。` });
+    return saved;
+  }, []);
+  const singleResultReadRequestRef = useRef(0);
+  const singleResultReadAbortRef = useRef<AbortController | null>(null);
+  const [singleTradesRead, setSingleTradesRead] = useState<SingleTradesReadState | null>(null);
+  const [singleTradesRetry, setSingleTradesRetry] = useState(0);
+  const [singleTradesPageState, setSingleTradesPageState] = useState({ scope: "", page: 1 });
   const [singleRepair, setSingleRepair] = useState<{ symbol: { id: number; symbol: string; name?: string }; start: string; end: string; type: "scores" | "bars" } | null>(null);
+  const [singleSubmitFailure, setSingleSubmitFailure] = useState<SingleSubmitFailure | null>(null);
 
 // T5 precheck + progress state
 const [precheckLoading, setPrecheckLoading] = useState(false);
 const [precheckResp, setPrecheckResp] = useState<any>(null);
+const [precheckReadScope, setPrecheckReadScope] = useState("");
 const [precheckRetry, setPrecheckRetry] = useState(0);
 const [blockingOpen, setBlockingOpen] = useState(false);
 const [submitting, setSubmitting] = useState(false);
 const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
 const [polledRun, setPolledRun] = useState<any>(null);
 const [progressFailures, setProgressFailures] = useState(0);
+const [progressError, setProgressError] = useState<string | null>(null);
+const [progressReading, setProgressReading] = useState(false);
 const [progressRetry, setProgressRetry] = useState(0);
 const hasActiveBacktest = selectedRunId != null && polledRun != null && ![
   "success", "completed", "finished", "failed", "error", "blocked", "cancelled", "canceled",
@@ -625,36 +852,59 @@ const cutoffMismatchToastFiredRef = useRef(false);
   const [historyList, setHistoryList] = useState<BacktestRun[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyListPortfolioRef = useRef<number | null>(null);
   const historyRequestRef = useRef(0);
+  const singleHistoryLimitRef = useRef<{ portfolioId: number; limit: number } | null>(null);
+  const [singleHistoryRange, setSingleHistoryRange] = useState<{ portfolioId: number; limit: number } | null>(null);
+  const singleHistoryReadLimit = singleHistoryRange?.portfolioId === portfolioId ? singleHistoryRange.limit : 10;
   const historyItemRequestRef = useRef(0);
   const submissionRequestRef = useRef(0);
   const [historyRead, setHistoryRead] = useState<{ runId: number; loading: boolean; error: string | null } | null>(null);
   const historyPortfolioRef = useRef(portfolioId);
   useEffect(() => {
+    if (mode === "single" || !singleHistoryLimitRef.current) return;
+    const expanded = singleHistoryLimitRef.current.limit > 10;
+    singleHistoryLimitRef.current = null;
+    setSingleHistoryRange(null);
+    if (!expanded) return;
+    historyRequestRef.current += 1;
+    setHistoryList((list) => list.slice(0, 10));
+    setHistoryLoading(false);
+    setHistoryError(null);
+  }, [mode]);
+  useEffect(() => {
     if (historyPortfolioRef.current !== portfolioId) {
       historyPortfolioRef.current = portfolioId;
       setHistoryRead(null);
       setLatestResult(null);
+      setPortfolioResultContext(null);
       setLoadedRun(null);
       setCompareResult(null);
       setBacktestGateState(null);
       setSelectedRunId(null);
       setPolledRun(null);
       setSingleResult(null);
+      setSingleResultRead(null);
       setSingleRepair(null);
+      setSingleSubmitFailure(null);
+      singleActiveRequestRef.current = null;
       setSubmitting(false);
       setRunning(false);
       setPrecheckLoading(false);
       setPrecheckResp(null);
       setBlockingOpen(false);
       const query = new URLSearchParams(window.location.search);
-      query.delete("bt_run");
+      for (const key of Array.from(query.keys())) if (key.startsWith("bt_")) query.delete(key);
       const search = query.toString();
       window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
     }
     return () => {
       historyItemRequestRef.current += 1;
       submissionRequestRef.current += 1;
+      singleActiveRequestRef.current = null;
+      singleResultReadRequestRef.current += 1;
+      singleResultReadAbortRef.current?.abort();
+      singleResultReadAbortRef.current = null;
     };
   }, [portfolioId]);
 
@@ -797,6 +1047,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
     };
   }, [portfolioId]);
 
+  const precheckScope = JSON.stringify([portfolioId, mode, mode === "single" ? singleSymbol.trim() : "", mode === "single" ? singleStart : portStart, mode === "single" ? singleEnd : portEnd]);
   const precheckDeps = useMemo<unknown[]>(
     () => [portfolioId, mode, portStart, portEnd, portCapital, portBenchmark, singleSymbol, singleStart, singleEnd, precheckRetry],
     [portfolioId, mode, portStart, portEnd, portCapital, portBenchmark, singleSymbol, singleStart, singleEnd, precheckRetry],
@@ -809,12 +1060,18 @@ const cutoffMismatchToastFiredRef = useRef(false);
   });
   useEffect(() => {
     setPrecheckResp(null);
+    setPrecheckReadScope("");
     const start = mode === "single" ? singleStart : portStart;
     const end = mode === "single" ? singleEnd : portEnd;
     const capitalNum = Number(String(portCapital ?? "").replace(/,/g, ""));
     if (!(portfolioId > 0 && start && end && start <= end && (mode === "single" ? singleSymbol.trim() : capitalNum > 0 && portBenchmark?.trim()))) { setPrecheckLoading(false); return; }
     setPrecheckLoading(true);
     let cancelled = false;
+    const acceptPrecheck = (response: any) => {
+      if (cancelled) return;
+      setPrecheckResp(response);
+      setPrecheckReadScope(precheckScope);
+    };
     let controller: AbortController | null = null;
     const precheckTimer = window.setTimeout(() => {
       if (precheckAbortRef.current) { try { precheckAbortRef.current.abort(); } catch { /* noop */ } precheckAbortRef.current = null; }
@@ -835,7 +1092,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
           }
           const resp = await api.postBacktestPrecheck({ portfolio_id: portfolioId, symbol_ids: symbolIds, start_date: start, end_date: end }, ctrl.signal);
           if (cancelled) return;
-          setPrecheckResp(resp);
+          acceptPrecheck(resp);
           // T5.1 调整（本次）：**自动**预检不再弹模态。之前只要 blocking_reasons>0
           // 就 setBlockingOpen(true)，而模态自带遮罩会把整页（包括其他子导航）锁住：
           // 新装机一进「组合交易」就会被一份自己没索取的报告拦在原地（CI e2e 也是
@@ -847,18 +1104,19 @@ const cutoffMismatchToastFiredRef = useRef(false);
             // 区分「超时中止」与「组件卸载中止」：超时 → 落失败态
             if (ctrl.signal.reason === "timeout") {
               const msg = "数据检查超过 15 秒没有完成，请重试。";
-              setPrecheckResp(_pre500(msg));
+              acceptPrecheck(_pre500(msg));
               // 超时/5xx 也不弹模态：toast + 下方行内提示足够，detail 由用户主动查看。
               try { showToast("error", "数据检查没有按时完成，请重试。"); } catch { /* noop */ }
             }
             return;
           }
-          const sc = err?.status_code; const msg = String(err?.message ?? "");
+          const sc = err?.status_code;
+          const msg = mode === "single" ? singleFailureReason(err, "这次资料检查没有完成，请稍后重新检查。") : String(err?.message ?? "");
           if (sc === 500 || /\b500\b|server.?error/i.test(`${msg} ${sc ?? ""}`)) {
-            setPrecheckResp(_pre500(msg));
+            acceptPrecheck(_pre500(msg));
             try { showToast("error", t("portfolioTrading.backtest.flow.checkFailed")); } catch { /* noop */ }
           } else {
-            setPrecheckResp(_pre500(msg, "PRECHECK_FAILED"));
+            acceptPrecheck(_pre500(msg, "PRECHECK_FAILED"));
           }
         } finally {
           window.clearTimeout(timeoutTimer);
@@ -876,10 +1134,77 @@ const cutoffMismatchToastFiredRef = useRef(false);
   }, precheckDeps);
   useEffect(() => () => { if (precheckAbortRef.current) { try { precheckAbortRef.current.abort(); } catch { /* noop */ } } }, []);
 
-  // 加载回测历史列表（best-effort）
-  const loadHistory = useCallback(async () => {
+  const singleCapitalValue = Number(singleCapital.replace(/,/g, ""));
+  const singleCommissionValue = Number(singleCommission);
+  const singleCapitalError = Number.isFinite(singleCapitalValue) && singleCapitalValue > 0 ? null : "初始资金请填写大于 0 的数字。";
+  const singleCommissionError = singleCommission.trim() && Number.isFinite(singleCommissionValue) && singleCommissionValue >= 0 && singleCommissionValue <= 100 ? null : "佣金费率请填写 0 到 100 之间的数字，单位是 %。";
+  const singleIdentityValid = !!singleSymbol.trim() && !!singleStart && !!singleEnd && singleStart <= singleEnd;
+  const singleCheckCurrent = precheckReadScope === precheckScope && !!precheckResp && Array.isArray(precheckResp.blocking_reasons);
+  // The standalone execution endpoint has no portfolio minimum-trade-day gate.
+  // Keep that threshold and the server's historical-evidence guards unchanged.
+  const singleBlockingReasons: any[] = singleCheckCurrent ? precheckResp.blocking_reasons.filter((item: any) => item.code !== "INSUFFICIENT_TRADE_DAYS") : [];
+  const singleBlocker = singleBlockingReasons.find((item) => UNAVAILABLE_HISTORY_MESSAGES[item.code]) ?? singleBlockingReasons[0];
+  const singleChecking = singleIdentityValid && (precheckLoading || precheckReadScope !== precheckScope);
+  const singleRunReady = singleIdentityValid && !singleCapitalError && !singleCommissionError && singleCheckCurrent && !precheckLoading && !singleBlocker;
+  const visibleSingleResult = singleResult?.run.portfolio_id === portfolioId ? singleResult : null;
+  const singleResultStale = !!visibleSingleResult && (visibleSingleResult.viewDraftKey != null
+    ? visibleSingleResult.viewDraftKey !== singleParametersKey
+    : !!singleCapitalError || !!singleCommissionError || JSON.stringify(visibleSingleResult.parameters) !== singleParametersKey);
+  const visibleSingleResultRead = visibleSingleResult && singleResultRead?.portfolioId === portfolioId && singleResultRead.runId === visibleSingleResult.run.id ? singleResultRead : null;
+  const singleResultState = visibleSingleResult && !singleResultStale ? singleBacktestResultState(visibleSingleResult.run) : null;
+  const singleTradesRunId = mode === "single" && singleResultState?.kind === "completed" ? visibleSingleResult?.run.id ?? null : null;
+  const singleTradesVersion = singleRequestContextRef.current.version;
+  const singleTradesScope = JSON.stringify([portfolioId, singleTradesRunId, singleTradesVersion]);
+  const singleTradesPage = singleTradesPageState.scope === singleTradesScope ? singleTradesPageState.page : 1;
+  const singleTradesQueryKey = JSON.stringify([singleTradesScope, singleTradesPage, singleTradesRetry]);
+  const visibleSingleTrades = singleTradesRunId == null ? null : singleTradesRead?.key === singleTradesQueryKey
+    ? singleTradesRead : { key: singleTradesQueryKey, scope: singleTradesScope, status: "loading" as const, items: [],
+      total: singleTradesRead?.scope === singleTradesScope ? singleTradesRead.total : 0, error: null };
+  useEffect(() => {
+    if (singleTradesRunId == null) return;
+    let active = true;
+    const isCurrent = () => active && singleRequestContextRef.current.version === singleTradesVersion
+      && historyPortfolioRef.current === portfolioId;
+    setSingleTradesRead((previous) => ({ key: singleTradesQueryKey, scope: singleTradesScope, status: "loading", items: [],
+      total: previous?.scope === singleTradesScope ? previous.total : 0, error: null }));
+    api.getBacktestTrades(singleTradesRunId, { page: singleTradesPage, pageSize: 20, sortBy: "signal_at", sortDir: "desc", dedupe: false })
+      .then((response) => {
+        if (!isCurrent()) return;
+        if (!response || !Array.isArray(response.items) || !Number.isInteger(response.total) || response.total < 0
+          || response.page !== singleTradesPage || response.page_size !== 20
+          || response.items.length !== Math.min(20, Math.max(response.total - (singleTradesPage - 1) * 20, 0))
+          || singleTradesPage > Math.max(1, Math.ceil(response.total / 20))
+          || response.items.some((trade) => !trade || trade.run_id !== singleTradesRunId || !Number.isInteger(trade.id) || trade.id <= 0)
+          || new Set(response.items.map((trade) => trade.id)).size !== response.items.length) {
+          throw new Error("交易明细没有完整读到，请重新读取。");
+        }
+        setSingleTradesRead({ key: singleTradesQueryKey, scope: singleTradesScope, status: "ready", items: response.items, total: response.total, error: null });
+      })
+      .catch((error) => {
+        if (!isCurrent()) return;
+        setSingleTradesRead((previous) => ({ key: singleTradesQueryKey, scope: singleTradesScope, status: "failed", items: [],
+          total: previous?.scope === singleTradesScope ? previous.total : 0,
+          error: renderReasonToString(error?.user_message ?? error?.message ?? error, 400) || "连接暂时中断，请重新读取。" }));
+      });
+    return () => { active = false; };
+  }, [portfolioId, singleTradesRunId, singleTradesVersion, singleTradesScope, singleTradesPage, singleTradesQueryKey]);
+  const singleCheckTarget = singleCheckCurrent && Array.isArray(precheckResp.symbols)
+    ? precheckResp.symbols.find((item: any) => item.symbol === singleSymbol.trim() && Number(item.id) > 0) : null;
+  const singleRunLabel = !singleIdentityValid || singleCapitalError || singleCommissionError ? "请先填写完整参数"
+    : singleChecking ? "正在检查资料…" : !singleCheckCurrent || String(singleBlocker?.code).startsWith("PRECHECK_") ? "先重新检查资料"
+    : singleBlocker ? "先补齐资料" : t("portfolioTrading.backtest.startSingleRun");
+
+  // 单标的读取更多时，复用列表接口扩大最近记录的范围；组合回测仍读取原来的 10 条。
+  const loadHistory = useCallback(async (keepExisting = false, requestedLimit?: number) => {
     const requestId = ++historyRequestRef.current;
+    const retainList = keepExisting && historyListPortfolioRef.current === portfolioId;
+    const limit = keepExisting
+      ? requestedLimit ?? (singleHistoryLimitRef.current?.portfolioId === portfolioId ? singleHistoryLimitRef.current.limit : 10)
+      : 10;
+    singleHistoryLimitRef.current = keepExisting ? { portfolioId, limit } : null;
+    if (!keepExisting) setSingleHistoryRange(null);
     if (!portfolioId) {
+      historyListPortfolioRef.current = null;
       setHistoryList([]);
       setHistoryError(null);
       setHistoryLoading(false);
@@ -888,20 +1213,29 @@ const cutoffMismatchToastFiredRef = useRef(false);
     }
     setHistoryLoading(true);
     setHistoryError(null);
-    setHistoryList([]);
-    setLastBacktestTime(null);
+    if (!retainList) {
+      historyListPortfolioRef.current = null;
+      setHistoryList([]);
+      setLastBacktestTime(null);
+    }
     try {
-      const list = await api.getBacktestRuns(portfolioId, 10);
+      const list = await api.getBacktestRuns(portfolioId, limit);
       if (requestId !== historyRequestRef.current) return;
+      if (keepExisting) {
+        if (!Array.isArray(list)) throw new Error("回测记录内容不完整，请重试读取。");
+        if (list.some((run) => !run || run.portfolio_id !== portfolioId)) {
+          throw new Error("读到的回测记录不属于当前组合，请重试读取。");
+        }
+      }
+      historyListPortfolioRef.current = portfolioId;
       setHistoryList((list as BacktestRun[]) ?? []);
+      if (keepExisting) setSingleHistoryRange({ portfolioId, limit });
       // 最近回测时间取首条 finished_at / created_at
       const first = (list as BacktestRun[])?.[0];
-      if (first) {
-        setLastBacktestTime(first.finished_at ?? first.created_at ?? null);
-      }
+      setLastBacktestTime(first?.finished_at ?? first?.created_at ?? null);
     } catch (error) {
       if (requestId !== historyRequestRef.current) return;
-      setHistoryList([]);
+      if (!retainList) setHistoryList([]);
       setHistoryError(renderReasonToString(error, 400));
     } finally {
       if (requestId === historyRequestRef.current) setHistoryLoading(false);
@@ -924,7 +1258,9 @@ const cutoffMismatchToastFiredRef = useRef(false);
     if (submitting || running || hasActiveBacktest) return;
     if (!validateDateRange(portStart, portEnd)) return;
     const requestId = ++submissionRequestRef.current;
-    const isCurrent = () => requestId === submissionRequestRef.current && historyPortfolioRef.current === portfolioId;
+    const version = portfolioRequestContextRef.current.version;
+    const ownsRunning = () => requestId === submissionRequestRef.current && historyPortfolioRef.current === portfolioId;
+    const isCurrent = () => ownsRunning() && version === portfolioRequestContextRef.current.version;
     // 点击二次预检（fail-closed）
     setPrecheckLoading(true);
     try {
@@ -938,7 +1274,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
       setPrecheckResp(_pre500(msg, sc === 500 ? "PRECHECK_500" : "PRECHECK_FAILED"));
       showToast("error", t("portfolioTrading.backtest.flow.checkFailed"));
       return;
-    } finally { if (isCurrent()) setPrecheckLoading(false); }
+    } finally { if (ownsRunning()) setPrecheckLoading(false); }
     if (!isCurrent()) return;
     setSubmitting(true); setRunning(true);
     setLoadedRun(null); setCompareResult(null); setLatestResult(null); setBacktestGateState(null);
@@ -947,6 +1283,10 @@ const cutoffMismatchToastFiredRef = useRef(false);
       const commissionRate = Number(portCommission) / 100;
       if (!Number.isFinite(initialCapital) || initialCapital <= 0) { showToast("error", "初始资金必须是大于 0 的数字"); return; }
       if (!Number.isFinite(commissionRate) || commissionRate < 0) { showToast("error", "手续费必须是非负数字"); return; }
+      setSelectedRunId(null);
+      setPolledRun(null);
+      setPortfolioResultContext({ portfolioId, draftKey: portfolioBacktestFormKey(portfolioId, singleDraftRef.current.parameters),
+        parameters: { startDate: portStart, endDate: portEnd, initialCapital, commissionRate, benchmark: portBenchmark } });
       const summary = (await api.runPortfolioBacktest(portfolioId, {
         start_date: portStart,
         end_date: portEnd,
@@ -1005,13 +1345,81 @@ const cutoffMismatchToastFiredRef = useRef(false);
         showToast("error", t("portfolioTrading.backtest.runFailed") + ": " + errMsg);
       }
     } finally {
-      if (isCurrent()) { setSubmitting(false); setRunning(false); }
+      if (ownsRunning()) { setSubmitting(false); setRunning(false); }
     }
   }, [portfolioId, portStart, portEnd, portCapital, portBenchmark, portCommission, showToast, loadHistory, validateDateRange, BACKTEST_PRECHECK_MINIMUM_TRADE_DAYS, precheckResp, precheckLoading, submitting, running, hasActiveBacktest]);
 
-  // ---------- 单股回测：解析代码 → runBacktest → getBacktestRun（含 trades）----------
+  // Reading an existing result must never resubmit its backtest.
+  const readSingleResult = useCallback(async (target: SingleBacktestResult) => {
+    if (singleResultReadAbortRef.current) return;
+    const requestId = ++singleResultReadRequestRef.current;
+    const version = singleRequestContextRef.current.version;
+    const targetPortfolioId = target.run.portfolio_id;
+    const runId = target.run.id;
+    const controller = new AbortController();
+    singleResultReadAbortRef.current = controller;
+    let timedOut = false;
+    let cancelRead = () => {};
+    // Bound this read even if the connection does not settle after cancellation.
+    const interrupted = new Promise<never>((_, reject) => {
+      cancelRead = () => reject(new Error(timedOut ? "读取完整结果超过20秒，请重新读取。" : "已取消读取。"));
+      controller.signal.addEventListener("abort", cancelRead, { once: true });
+    });
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 20_000);
+    const isCurrent = () => requestId === singleResultReadRequestRef.current
+      && version === singleRequestContextRef.current.version
+      && historyPortfolioRef.current === targetPortfolioId;
+    setSingleResultRead({ runId, portfolioId: targetPortfolioId, status: "loading", error: null });
+    try {
+      const detail = await Promise.race([api.getBacktestRun(runId, controller.signal), interrupted]);
+      if (!isCurrent()) return;
+      if (Number(detail.id) !== runId || Number(detail.portfolio_id) !== targetPortfolioId) {
+        throw new Error("读取到的记录与这次回测不一致，请重新读取。");
+      }
+      setSingleResult((previous) => previous?.run.id === runId && previous.run.portfolio_id === targetPortfolioId
+        ? { ...previous, run: detail } : previous);
+      persistSingleResult({ ...target, run: detail });
+      if (singleDraftRef.current.parameters.mode === "single") writeSingleResultUrl(runId);
+      setSingleResultRead({ runId, portfolioId: targetPortfolioId, status: "ready", error: null });
+    } catch (err: any) {
+      if (!isCurrent()) return;
+      const error = renderReasonToString(err?.user_message ?? err?.message ?? err, 400) || "连接暂时中断，请重新读取。";
+      setSingleResultRead({ runId, portfolioId: targetPortfolioId, status: "failed", error });
+    } finally {
+      window.clearTimeout(timeoutId);
+      controller.signal.removeEventListener("abort", cancelRead);
+      if (requestId === singleResultReadRequestRef.current) {
+        singleResultReadAbortRef.current = null;
+        // A stale response may unlock its own read, but cannot publish its data or error.
+        setSingleResultRead((previous) => previous?.runId === runId && previous.portfolioId === targetPortfolioId && previous.status === "loading"
+          ? { ...previous, status: "idle" } : previous);
+      }
+    }
+  }, [persistSingleResult]);
+
+  const restoredSinglePortfolioRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (restoredSinglePortfolioRef.current === portfolioId) return;
+    restoredSinglePortfolioRef.current = portfolioId;
+    if (readBacktestRunIdFromUrl()) return;
+    let saved: SingleBacktestResult | null;
+    try { saved = readStoredSingleResult(portfolioId); }
+    catch (error) {
+      setSinglePersistenceError({ portfolioId, type: "read", message: (error as Error).message });
+      return;
+    }
+    if (!saved) return;
+    const target = { ...saved, viewDraftKey: singleParametersKey };
+    setSingleResult(target);
+    void readSingleResult(target);
+  }, [portfolioId, singleParametersKey, readSingleResult]);
+
+  // ---------- 单股回测：解析代码 → 提交并保留摘要 → 独立读取详情 ----------
   const runSingleBacktest = useCallback(async () => {
-    if (submitting || running || hasActiveBacktest) return;
+    if (submitting || running || singleActiveRequestRef.current || hasActiveBacktest || !singleRunReady) return;
     const code = singleSymbol.trim();
     if (!code) {
       showToast("info", t("portfolioTrading.backtest.symbolRequired"));
@@ -1021,12 +1429,21 @@ const cutoffMismatchToastFiredRef = useRef(false);
     // P1-FIX: 先校验日期非空 + 起始 <= 结束
     if (!validateDateRange(singleStart, singleEnd)) return;
     const requestId = ++submissionRequestRef.current;
-    const isCurrent = () => requestId === submissionRequestRef.current && historyPortfolioRef.current === portfolioId;
+    const version = singleRequestContextRef.current.version;
+    const ownsRunning = () => requestId === submissionRequestRef.current && historyPortfolioRef.current === portfolioId;
+    const isCurrent = () => ownsRunning() && version === singleRequestContextRef.current.version;
+    singleActiveRequestRef.current = { requestId, version };
+    singleResultReadRequestRef.current += 1;
+    singleResultReadAbortRef.current?.abort();
+    singleResultReadAbortRef.current = null;
+    setSingleResultRead(null);
     setRunning(true);
     setSingleResult(null);
     setBacktestGateState(null);
     setSingleRepair(null);
+    setSingleSubmitFailure(null);
     let resolvedSymbol: { id: number; symbol: string; name?: string } | null = null;
+    let submissionStarted = false;
     try {
       // A repair must target the requested code, never the first fuzzy match.
       const matches = await api.getSymbols(code, { pageSize: 50 });
@@ -1034,54 +1451,21 @@ const cutoffMismatchToastFiredRef = useRef(false);
       const list = Array.isArray(matches) ? matches : [];
       const exact = list.find((s: any) => s?.symbol === code);
       if (!exact || !exact.id) {
-        showToast("error", t("portfolioTrading.backtest.singleRunFailed") + ": " + code);
-        setRunning(false);
-        return;
+        throw new Error("没有找到这个代码，请核对后重试。");
       }
       resolvedSymbol = { id: Number(exact.id), symbol: exact.symbol, name: exact.name };
-      // 2. 构造最小可用 rule_config（根据 singleIndicator 生成不同的买卖阈值，避免"看起来选了实际没影响"）
-      //   MA趋势     → 保守：质量/择时 阈值偏高，持有期较长
-      //   MACD       → 平衡：经典双均线，默认
-      //   RSI        → 激进：质量 30，择时 3，低位反转
-      //   布林带      → 均值回归：宽止损，短持有
-      //   KDJ        → 短线：严格质量，宽松择时，止盈小
-      const indicatorPreset = (() => {
-        const ind = singleIndicator;
-        if (ind === "MA") return { quality_min: 60, timing_min: 70, tp: 0.25, sl: 0.1, hold_days: 45 };
-        if (ind === "MACD") return { quality_min: 50, timing_min: 60, tp: 0.20, sl: 0.08, hold_days: 30 };
-        if (ind === "RSI") return { quality_min: 30, timing_min: 30, tp: 0.12, sl: 0.08, hold_days: 15 };
-        if (ind === "布林带") return { quality_min: 45, timing_min: 50, tp: 0.10, sl: 0.12, hold_days: 20 };
-        if (ind === "KDJ") return { quality_min: 70, timing_min: 40, tp: 0.08, sl: 0.06, hold_days: 10 };
-        return { quality_min: 50, timing_min: 60, tp: 0.20, sl: 0.08, hold_days: 30 };
-      })();
       const commissionPct = Number(singleCommission) || 0;
-      const initialCap = Number(singleCapital);
-      const ruleConfig = {
-        buy_conditions: {
-          quality_score_min: indicatorPreset.quality_min,
-          timing_score_min: indicatorPreset.timing_min,
-          actions: ["buy", "open"],
-          stages: [],
-          indicator_key: singleIndicator,
-        },
-        sell_conditions: {
-          take_profit_pct: indicatorPreset.tp,
-          stop_loss_pct: indicatorPreset.sl,
-          max_hold_days: indicatorPreset.hold_days,
-          score_actions: ["exit", "reduce"],
-        },
-        position_config: { type: "fixed_pct", value: 1, max_positions: 1 },
-        execution_config: { entry_timing: "next_open", exit_timing: "next_open", entry_price_field: "open", exit_price_field: "open" },
-      };
+      const initialCap = singleCapitalValue;
       // 3. 发起回测（initial_capital 真实提交）
+      submissionStarted = true;
       const created = (await api.runBacktest({
         portfolio_id: portfolioId,
         symbol_ids: [Number(exact.id)],
         start_date: singleStart,
         end_date: singleEnd,
-        run_name: `${code}-${singleIndicator}`,
+        run_name: `${code}-评分回测`,
         initial_capital: Number.isFinite(initialCap) && initialCap > 0 ? initialCap : undefined,
-        rule_config: ruleConfig,
+        rule_config: singleScoreRules,
         cost_config: {
           commission_rate: commissionPct / 100,
           min_commission: 5,
@@ -1089,37 +1473,68 @@ const cutoffMismatchToastFiredRef = useRef(false);
         },
       })) as BacktestRun;
       if (!isCurrent()) return;
-      // 4. 拉取明细（含 trades）
-      const detail = (await api.getBacktestRun(created.id)) as BacktestRun;
-      if (!isCurrent()) return;
-      setSingleResult(detail);
+      if (!Number.isSafeInteger(created?.id) || created.id <= 0 || created.portfolio_id !== portfolioId) {
+        throw new Error("回测返回的记录与当前组合不一致，请从回测历史核对。");
+      }
+      // Keep the accepted record and summary even when the following read fails.
+      const accepted = { run: created, parameters: singleParameters };
+      persistSingleResult(accepted);
+      setSingleResult(accepted);
+      writeSingleResultUrl(created.id);
       setLastBacktestTime(new Date().toISOString().replace("T", " ").slice(0, 16));
-      showToast("success", t("portfolioTrading.backtest.singleRunSuccess"));
-      loadHistory().catch(() => {});
+      const acceptedState = singleBacktestResultState(created);
+      showToast(acceptedState.kind === "completed" ? "success" : "info", acceptedState.kind === "completed"
+        ? t("portfolioTrading.backtest.singleRunSuccess") : "回测记录已生成，请在结果区查看当前状态。");
+      loadHistory(true).catch(() => {});
+      await readSingleResult(accepted);
     } catch (err: any) {
       if (!isCurrent()) return;
-      const msg = renderReasonToString(err?.message ?? err, 400) || String(err);
+      const msg = singleFailureReason(err, "暂时没有收到回测结果，请先查看回测记录。");
       const errorText = JSON.stringify(err?.detail ?? "");
       const repairMode = errorText.includes("BACKTEST_SCORE_COVERAGE_INSUFFICIENT")
         ? "scores"
         : errorText.includes("BACKTEST_MARKET_DATA_MISSING")
           ? "bars"
           : null;
+      const status = Number(err?.status_code);
+      const unknown = submissionStarted && (!Number.isFinite(status) || status < 400 || status === 408 || status >= 500);
+      setSingleSubmitFailure({ portfolioId, version, parameters: singleParameters,
+        kind: unknown ? "unknown" : submissionStarted ? "incomplete" : "not_started",
+        message: repairMode === "scores" ? "这段日期的历史评分不足，请先补齐资料。"
+          : repairMode === "bars" ? "这段日期的历史行情不足，请先补齐资料。" : msg });
       if (repairMode) {
         if (resolvedSymbol) setSingleRepair({ symbol: resolvedSymbol, start: singleStart, end: singleEnd, type: repairMode });
         showToast("error", repairMode === "scores" ? "这段日期的历史评分不足，请先补齐资料。" : "这段日期的历史行情不足，请先补齐资料。");
       } else {
-        showToast("error", t("portfolioTrading.backtest.singleRunFailed") + ": " + msg);
+        const title = unknown ? "没有收到提交结果，请先查看回测记录。"
+          : submissionStarted ? "这次回测未完成。" : "这次没有开始回测。";
+        showToast("error", `${title} ${msg}`);
       }
     } finally {
-      if (isCurrent()) setRunning(false);
+      // A changed form must reject the response but still unlock its own button.
+      if (singleActiveRequestRef.current?.requestId === requestId) {
+        singleActiveRequestRef.current = null;
+        if (ownsRunning()) setRunning(false);
+      }
     }
-  }, [singleSymbol, singleStart, singleEnd, singleIndicator, singleCommission, portfolioId, showToast, loadHistory, validateDateRange, openHistoryRepair, submitting, running, hasActiveBacktest]);
+  }, [singleSymbol, singleStart, singleEnd, singleScoreRules, singleCommission, singleCapitalValue, singleParametersKey, singleRunReady, portfolioId, showToast, loadHistory, readSingleResult, persistSingleResult, validateDateRange, openHistoryRepair, submitting, running, hasActiveBacktest]);
 
   // ---------- 回测历史：加载某条记录 ----------
   const loadHistoryItem = useCallback(
     async (runId: number) => {
       const requestId = ++historyItemRequestRef.current;
+      submissionRequestRef.current += 1;
+      singleActiveRequestRef.current = null;
+      singleResultReadRequestRef.current += 1;
+      singleResultReadAbortRef.current?.abort();
+      singleResultReadAbortRef.current = null;
+      setRunning(false);
+      setSingleResult(null);
+      setSingleResultRead(null);
+      setSingleSubmitFailure(null);
+      let saved: SingleBacktestResult | null = null;
+      try { saved = readStoredSingleResult(portfolioId); } catch { /* History can still read the server record. */ }
+      const hint = historyList.find((item) => item.id === runId) ?? (saved?.run.id === runId ? saved.run : null);
       setHistoryRead({ runId, loading: true, error: null });
       setLatestResult(null);
       setLoadedRun(null);
@@ -1127,48 +1542,90 @@ const cutoffMismatchToastFiredRef = useRef(false);
       setBacktestGateState(null);
       setSelectedRunId(null);
       setPolledRun(null);
-      setMode("portfolio");
       setHistoryOpen(false);
+      if (hint?.portfolio_id === portfolioId && isSingleHistoryRun(hint, saved)) {
+        setParameter("mode", "single");
+        const target = { run: hint, parameters: saved?.run.id === runId ? saved.parameters : null, viewDraftKey: singleParametersKey };
+        setSingleResult(target);
+        setHistoryRead(null);
+        persistSingleResult(target);
+        writeSingleResultUrl(runId);
+        await readSingleResult(target);
+        return;
+      }
+      setParameter("mode", "portfolio");
+      setPortfolioResultContext({ portfolioId, draftKey: portfolioBacktestFormKey(portfolioId, singleDraftRef.current.parameters), parameters: null });
+      const query = new URLSearchParams(window.location.search);
+      if (query.has("bt_mode")) {
+        query.delete("bt_mode");
+        const search = query.toString();
+        window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
+      }
+      const version = singleRequestContextRef.current.version;
+      const portfolioVersion = portfolioRequestContextRef.current.version;
+      const isCurrentHistory = () => requestId === historyItemRequestRef.current
+        && version === singleRequestContextRef.current.version && portfolioVersion === portfolioRequestContextRef.current.version;
       try {
         const run = (await api.getBacktestRun(runId)) as BacktestRun;
-        if (requestId !== historyItemRequestRef.current) return;
+        if (!isCurrentHistory()) return;
+        if (run.id !== runId || run.portfolio_id !== portfolioId) throw new Error("读取到的记录与当前组合不一致，请重新读取。");
+        if (isSingleHistoryRun(run, saved)) {
+          setParameter("mode", "single");
+          const target = { run, parameters: saved?.run.id === runId ? saved.parameters : null, viewDraftKey: singleParametersKey };
+          setSingleResult(target);
+          setSingleResultRead({ runId, portfolioId, status: "ready", error: null });
+          persistSingleResult(target);
+          writeSingleResultUrl(runId);
+          setHistoryRead(null);
+          return;
+        }
         // A selected historical run replaces the just-created summary.  Keep
         // this paired with the render priority below so stale latestResult
         // cannot continue to drive metrics, curves or ledger requests.
         setLatestResult(null);
         setLoadedRun(run);
         setCompareResult(null);
-        setBacktestGateState(gateFromHistoricalBacktest(run));
-        setMode("portfolio");
+        const gate = gateFromPortfolioBacktest(run);
+        setBacktestGateState(gate);
+        if (isPortfolioBacktestRunning(run) && !gate) {
+          setSelectedRunId(run.id);
+          setPolledRun(run);
+        }
+        setParameter("mode", "portfolio");
         setHistoryOpen(false);
         setHistoryRead(null);
         showToast("success", t("portfolioTrading.backtest.historyLoaded"));
       } catch (err: any) {
-        if (requestId !== historyItemRequestRef.current) return;
+        if (!isCurrentHistory()) return;
         const msg = renderReasonToString(err?.message ?? err, 400) || String(err);
         setHistoryRead({ runId, loading: false, error: msg });
         showToast("error", t("portfolioTrading.backtest.historyLoadFailed") + ": " + msg);
+      } finally {
+        if (requestId === historyItemRequestRef.current && !isCurrentHistory()) {
+          setHistoryRead((previous) => previous?.runId === runId && previous.loading ? null : previous);
+        }
       }
     },
-    [showToast],
+    [showToast, portfolioId, historyList, singleParametersKey, setParameter, readSingleResult, persistSingleResult],
   );
 
   // Re-open a historical run when a result URL is refreshed or shared.  The
   // result panel owns the tab/filter query state, while the parent owns the
   // persisted run itself, so restoration must happen here before any paged
   // endpoint can be queried.
-  const restoredRunIdRef = React.useRef<number | null | undefined>(undefined);
+  const restoredRunIdRef = React.useRef<string | null>(null);
   useEffect(() => {
     if (!portfolioId) return;
     const runId = readBacktestRunIdFromUrl();
-    if (!runId || restoredRunIdRef.current === runId) return;
-    if (latestResult?.run_id === runId || loadedRun?.id === runId) {
-      restoredRunIdRef.current = runId;
+    const scope = `${portfolioId}:${runId}`;
+    if (!runId || restoredRunIdRef.current === scope) return;
+    if (latestResult?.run_id === runId || loadedRun?.id === runId || visibleSingleResult?.run.id === runId) {
+      restoredRunIdRef.current = scope;
       return;
     }
-    restoredRunIdRef.current = runId;
+    restoredRunIdRef.current = scope;
     void loadHistoryItem(runId);
-  }, [portfolioId, latestResult?.run_id, loadedRun?.id, loadHistoryItem]);
+  }, [portfolioId, latestResult?.run_id, loadedRun?.id, visibleSingleResult?.run.id, loadHistoryItem]);
 
 
   // 查询同一条任务的进度；网络失败不能中断后续查询，更不能重新提交回测。
@@ -1177,41 +1634,64 @@ const cutoffMismatchToastFiredRef = useRef(false);
     const stv = st ? String(st).toLowerCase() : "";
     if (["success","completed","finished"].includes(v) || stv === "success" || stv === "completed") return "success";
     if (["failed","error"].includes(v) || stv === "failed" || stv === "error") return "failed";
-    if (["blocked","cancelled","canceled","queued","running","pending"].includes(v)) return v;
-    if (stv === "running" || stv === "pending") return stv;
+    if (["blocked","cancelled","canceled","queued","creating","precheck","running","pending"].includes(v)) return v;
+    if (["queued","creating","precheck","running","pending"].includes(stv)) return stv;
     return "running";
   };
   useEffect(() => {
     setProgressFailures(0);
-    if (selectedRunId == null || !hasActiveBacktest) return;
+    setProgressError(null);
+    if (selectedRunId == null || !hasActiveBacktest) { setProgressReading(false); return; }
     if (pollAbortRef.current) { try { pollAbortRef.current.abort(); } catch { /* noop */ } pollAbortRef.current = null; }
     let stopped = false;
     let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       if (stopped) return;
+      setProgressReading(true);
       const ctrl = new AbortController(); pollAbortRef.current = ctrl;
+      let timedOut = false;
+      let cancelRead = () => {};
+      const interrupted = new Promise<never>((_, reject) => {
+        cancelRead = () => reject(new Error("已取消读取。"));
+        ctrl.signal.addEventListener("abort", cancelRead, { once: true });
+      });
+      const timeoutId = window.setTimeout(() => { timedOut = true; ctrl.abort(); }, 20_000);
       try {
-        const run = await api.getBacktestRun(selectedRunId, ctrl.signal) as any;
+        const run = await Promise.race([api.getBacktestRun(selectedRunId, ctrl.signal), interrupted]) as any;
         if (stopped) return;
+        if (Number(run?.id) !== selectedRunId || Number(run?.portfolio_id) !== portfolioId) {
+          throw new Error("读取到的记录与当前回测不一致，请重新查看。");
+        }
         failures = 0;
         setProgressFailures(0);
         setPolledRun(run);
         const stage = normalizeStage(run?.stage, run?.status);
-        if (["success","failed","blocked","cancelled","canceled"].includes(String(stage))) {
+        const gate = gateFromPortfolioBacktest(run);
+        if (gate || ["success","failed","blocked","cancelled","canceled"].includes(String(stage))) {
           setLatestResult(null);
           setLoadedRun(run);
-          setBacktestGateState(gateFromHistoricalBacktest(run));
+          setBacktestGateState(gate);
           setSubmitting(false);
           setRunning(false);
           return;
         }
       } catch (err: any) {
-        if (stopped || ctrl.signal.aborted) return;
+        if (stopped || (ctrl.signal.aborted && !timedOut)) return;
+        if (timedOut) {
+          setProgressError("读取回测进度超过20秒，请重新查看。原任务可能仍在运行。");
+          setProgressFailures(3);
+          return;
+        }
         failures += 1;
         setProgressFailures(failures);
         if (failures >= 3) return;
-      } finally { if (pollAbortRef.current === ctrl) pollAbortRef.current = null; }
+      } finally {
+        window.clearTimeout(timeoutId);
+        ctrl.signal.removeEventListener("abort", cancelRead);
+        if (pollAbortRef.current === ctrl) pollAbortRef.current = null;
+        if (!stopped) setProgressReading(false);
+      }
       timer = setTimeout(tick, 2000);
     };
     timer = setTimeout(tick, 500);
@@ -1272,8 +1752,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
         annualReturnPct:
           (m["annual_return_pct"] != null && Number.isFinite(Number(m["annual_return_pct"]))
             ? Number(m["annual_return_pct"])
-            : null) ??
-          pickNum(["total_return_pct"]),
+            : null),
         annualVolatility:
           (m["annual_volatility"] != null && Number.isFinite(Number(m["annual_volatility"]))
             ? Number(m["annual_volatility"])
@@ -1297,7 +1776,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
         profitFactor: loadedRun.profit_factor ?? null,
         tradeCount: loadedRun.trade_count ?? null,
         avgHoldingDays: loadedRun.avg_holding_days ?? null,
-        annualReturnPct: loadedRun.total_return_pct ?? null,
+        annualReturnPct: null,
         annualVolatility: null,
         drawdownDays: null,
         turnoverRate: null,
@@ -1313,7 +1792,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
         profitFactor: m.profit_factor ?? null,
         tradeCount: m.trade_count ?? null,
         avgHoldingDays: m.avg_holding_days ?? null,
-        annualReturnPct: m.total_return_pct ?? null,
+        annualReturnPct: null,
         annualVolatility: null,
         drawdownDays: null,
         turnoverRate: null,
@@ -1390,7 +1869,12 @@ const cutoffMismatchToastFiredRef = useRef(false);
         <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" onClick={persistDraft}>重试保存草稿</button>
       </div>}
       {repairNavigationError && <div role="alert">补资料所需的信息没有保存成功，请留在本页，重试“去补资料”。</div>}
-      {mode === "single" && singleRepair && singleRepair.symbol.symbol === singleSymbol.trim() && singleRepair.start === singleStart && singleRepair.end === singleEnd && <div role="alert">
+      {singlePersistenceError?.portfolioId === portfolioId && <div role="alert" aria-label="结果保存状态">
+        <p>{singlePersistenceError.message}</p>
+        {singlePersistenceError.type === "save" && visibleSingleResult && <button type="button" className="pt-btn pt-btn-outline pt-btn-sm"
+          onClick={() => persistSingleResult(visibleSingleResult)}>重试保存结果</button>}
+      </div>}
+      {mode === "single" && !singleBlocker && singleRepair && singleRepair.symbol.symbol === singleSymbol.trim() && singleRepair.start === singleStart && singleRepair.end === singleEnd && <div role="alert">
         <p>{singleRepair.symbol.symbol} 在 {singleRepair.start} 至 {singleRepair.end} 的{singleRepair.type === "scores" ? "历史评分" : "历史行情"}不足。参数会保留，补齐后再回来检查。</p>
         <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" onClick={() => openHistoryRepair({
           mode: "single", symbols: [singleRepair.symbol], startDate: singleRepair.start, endDate: singleRepair.end,
@@ -1398,13 +1882,23 @@ const cutoffMismatchToastFiredRef = useRef(false);
         })}>去补资料</button>
       </div>}
       {mode === "single" && <div role="status">
-        {precheckLoading ? "正在检查这段日期的资料。" : precheckResp?.blocking_reasons?.length
-          ? String(precheckResp.blocking_reasons[0].code).startsWith("PRECHECK_") ? "这次资料检查没有完成，请重试。"
-            : `检查结果：${UNAVAILABLE_HISTORY_MESSAGES[precheckResp.blocking_reasons[0].code] ? t(UNAVAILABLE_HISTORY_MESSAGES[precheckResp.blocking_reasons[0].code]) : renderReasonToString(precheckResp.blocking_reasons[0].detail_zh || precheckResp.blocking_reasons[0].title_zh, 300)}`
-          : precheckResp ? "资料检查已完成。开始回测仍需手动点击。" : "填好代码和日期后会检查资料。"}
+        {!singleIdentityValid ? "填好代码和日期后会检查资料。" : singleChecking ? "正在检查这段日期的资料。"
+          : !singleCheckCurrent ? "这次资料检查没有完成，请重试。"
+          : String(singleBlocker?.code).startsWith("PRECHECK_") ? singleFailureReason({ user_message: singleBlocker.detail_zh || singleBlocker.title_zh }, "这次资料检查没有完成，请重试。")
+          : singleBlocker ? `检查结果：${UNAVAILABLE_HISTORY_MESSAGES[singleBlocker.code] ? t(UNAVAILABLE_HISTORY_MESSAGES[singleBlocker.code]) : renderReasonToString(singleBlocker.detail_zh || singleBlocker.title_zh, 300)}`
+          : "资料检查已完成。开始回测仍需手动点击。"}
+        {singleCheckTarget && ["STATUS_DATA_UNAVAILABLE", "PRICE_LIMIT_DATA_UNAVAILABLE"].includes(singleBlocker?.code) && <button
+          type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginLeft: 8 }} onClick={() => openHistoryRepair({
+            mode: "single", symbols: [singleCheckTarget], startDate: singleStart, endDate: singleEnd,
+            missingTypes: singleBlockingReasons.filter((item) => ["STATUS_DATA_UNAVAILABLE", "PRICE_LIMIT_DATA_UNAVAILABLE"].includes(item.code))
+              .map((item) => item.code === "STATUS_DATA_UNAVAILABLE" ? "status" : "price_limits"), target: "coverage",
+          })}>去补资料</button>}
         <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginLeft: 8 }}
-          disabled={precheckLoading || !singleSymbol.trim() || !singleStart || !singleEnd || singleStart > singleEnd}
+          disabled={singleChecking || !singleIdentityValid}
           onClick={() => { setPrecheckResp(null); setPrecheckLoading(true); setPrecheckRetry((value) => value + 1); }}>重新检查资料</button>
+        {singleCheckCurrent && precheckResp.blocking_reasons.some((item: any) => item.code === "INSUFFICIENT_TRADE_DAYS") && <p style={{ fontSize: 12, marginBottom: 0 }}>
+          组合回测的区间要求为 {precheckResp.minimum_trade_days} 个交易日；单标的回测沿用原有规则。
+        </p>}
       </div>}
       {/* ========== SubTask 7.1: 顶部模式切换 ========== */}
       <div className="pt-card" style={{ padding: 12 }}>
@@ -1448,7 +1942,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
             <button
               type="button"
               className="pt-btn pt-btn-secondary pt-btn-sm"
-              onClick={() => setHistoryOpen(true)}
+              onClick={() => { setHistoryOpen(true); if (mode === "single") void loadHistory(true); }}
               title="查看回测历史记录"
             >
               <History size={14} />
@@ -1544,6 +2038,8 @@ const cutoffMismatchToastFiredRef = useRef(false);
           decisionSnapshot={decisionSnapshot}
           executionParameters={executionParameters}
           runMetadata={(latestResult ?? loadedRun) as Record<string, any> | null}
+          resultStale={portfolioResultStale}
+          submittedParameters={portfolioResultContext?.portfolioId === portfolioId ? portfolioResultContext.parameters : null}
           running={running || hasActiveBacktest}
           hasResult={hasResult}
           metrics={metrics}
@@ -1563,7 +2059,13 @@ const cutoffMismatchToastFiredRef = useRef(false);
           selectedRunId={selectedRunId}
           polledRun={polledRun}
           progressFailures={progressFailures}
-          onRetryProgress={() => setProgressRetry((value) => value + 1)}
+          progressError={progressError}
+          progressReading={progressReading}
+          onRetryProgress={() => {
+            if (progressReading) return;
+            setProgressReading(true);
+            setProgressRetry((value) => value + 1);
+          }}
           precheckLoading={precheckLoading}
           precheckResp={precheckResp}
           blockersCount={(precheckResp?.blocking_reasons?.length) ?? 0}
@@ -1591,14 +2093,39 @@ const cutoffMismatchToastFiredRef = useRef(false);
           singleRangePreset={singleRangePreset}
           setSingleRangePreset={setSingleRangePreset}
           onApplyRangePreset={applySingleRangePreset}
-          singleIndicator={singleIndicator}
-          setSingleIndicator={setSingleIndicator}
+          scoreRules={singleScoreRules}
           singleCapital={singleCapital}
           setSingleCapital={setSingleCapital}
           singleCommission={singleCommission}
           setSingleCommission={setSingleCommission}
           running={running || hasActiveBacktest}
-          result={singleResult}
+          runDisabled={!singleRunReady || submitting}
+          runLabel={singleRunLabel}
+          capitalError={singleCapitalError}
+          commissionError={singleCommissionError}
+          submitFailure={singleSubmitFailure?.portfolioId === portfolioId && singleSubmitFailure.version === singleRequestContextRef.current.version ? singleSubmitFailure : null}
+          onViewHistory={() => { setHistoryOpen(true); void loadHistory(true); }}
+          result={visibleSingleResult}
+          resultStale={singleResultStale}
+          resultReadState={visibleSingleResultRead}
+          tradesReadState={visibleSingleTrades}
+          onRetryTrades={() => setSingleTradesRetry((value) => value + 1)}
+          tradesPage={singleTradesPage}
+          onTradesPageChange={(page) => setSingleTradesPageState({ scope: singleTradesScope, page })}
+          onRetryResultRead={() => {
+            if (visibleSingleResult && !singleResultStale && !running && !submitting) void readSingleResult(visibleSingleResult);
+          }}
+          onViewPreviousResult={() => {
+            if (!visibleSingleResult || !singleResultStale || submitting || hasActiveBacktest
+              || singleActiveRequestRef.current?.version === singleRequestContextRef.current.version) return;
+            singleResultReadRequestRef.current += 1;
+            singleResultReadAbortRef.current?.abort();
+            singleResultReadAbortRef.current = null;
+            const target = { ...visibleSingleResult, viewDraftKey: singleParametersKey };
+            setSingleResult(target);
+            void readSingleResult(target);
+          }}
+          waitingForOldRequest={!!singleActiveRequestRef.current && singleActiveRequestRef.current.version !== singleRequestContextRef.current.version}
           onRun={runSingleBacktest}
         />
       )}
@@ -1610,8 +2137,12 @@ const cutoffMismatchToastFiredRef = useRef(false);
         list={historyList}
         loading={historyLoading}
         error={historyError}
-        onRetry={loadHistory}
+        onRetry={() => { void loadHistory(mode === "single"); }}
+        singleMode={mode === "single"}
+        readLimit={singleHistoryReadLimit}
+        onReadMore={() => { if (!historyLoading) void loadHistory(true, Math.min(100, singleHistoryReadLimit * 2)); }}
         onSelect={loadHistoryItem}
+        savedSingleResult={visibleSingleResult}
       />
 
       {/* VIZ-0929-13：decision_run_id 应用内输入弹窗 */}
@@ -1898,6 +2429,8 @@ interface PortfolioBacktestPanelProps {
   executionParameters?: Record<string, any> | null;
   /** 持久化回测结果元数据，用于持仓和数据说明 Tab。 */
   runMetadata?: Record<string, any> | null;
+  resultStale?: boolean;
+  submittedParameters?: PortfolioResultParameters | null;
   running: boolean;
   hasResult: boolean;
   metrics: MetricSource;
@@ -1915,6 +2448,8 @@ interface PortfolioBacktestPanelProps {
   selectedRunId?: number | null;
   polledRun?: any;
   progressFailures?: number;
+  progressError?: string | null;
+  progressReading?: boolean;
   onRetryProgress?: () => void;
   precheckLoading?: boolean;
   precheckResp?: any;
@@ -1945,6 +2480,8 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
   decisionSnapshot = null,
   executionParameters = null,
   runMetadata = null,
+  resultStale = false,
+  submittedParameters = null,
   running,
   hasResult,
   metrics,
@@ -1958,6 +2495,8 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
   selectedRunId = null,
   polledRun = null,
   progressFailures = 0,
+  progressError = null,
+  progressReading = false,
   onRetryProgress,
   precheckLoading = false,
   precheckResp = null,
@@ -1986,9 +2525,13 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
     if (cutoffMismatch && !shownCutoffMismatch.current) { try { panelAntApp.message.info("数据截止日期不一致，回测按最早截止日期计算"); } catch { /* noop */ } shownCutoffMismatch.current = true; }
     if (!cutoffMismatch) shownCutoffMismatch.current = false;
   }, [cutoffMismatch, panelAntApp]);
-  const normalizePolledStage = (s: any, st?: string) => { const v=s?String(s).toLowerCase():""; const tv=st?String(st).toLowerCase():""; if(["success","completed","finished"].includes(v)||tv==="success"||tv==="completed") return "success"; if(["failed","error"].includes(v)||tv==="failed"||tv==="error") return "failed"; if(["blocked","cancelled","canceled","queued","running","pending"].includes(v)) return v; if(tv==="running"||tv==="pending") return tv; return "running"; };
+  const normalizePolledStage = (s: any, st?: string) => { const v=s?String(s).toLowerCase():""; const tv=st?String(st).toLowerCase():""; if(["success","completed","finished"].includes(v)||tv==="success"||tv==="completed") return "success"; if(["failed","error"].includes(v)||tv==="failed"||tv==="error") return "failed"; if(["blocked","cancelled","canceled","queued","creating","precheck","running","pending"].includes(v)) return v; if(["queued","creating","precheck","running","pending"].includes(tv)) return tv; return "running"; };
   const polledStage = selectedRunId ? normalizePolledStage(polledRun?.stage, polledRun?.status) : null;
-  const progressPct = selectedRunId && polledRun?.progress_pct != null ? Number(polledRun.progress_pct) : 0;
+  const recordedProgress = selectedRunId && polledRun?.progress_pct != null ? Number(polledRun.progress_pct) : null;
+  const progressPct = recordedProgress != null && Number.isFinite(recordedProgress) && recordedProgress >= 0 && recordedProgress <= 100 ? recordedProgress : null;
+  const progressText = progressPct == null ? "进度未提供" : `${progressPct}%`;
+  const portfolioInProgress = selectedRunId != null && !gateState && polledStage != null
+    && !["success", "failed", "blocked", "cancelled", "canceled"].includes(polledStage);
   // T5.3 button 状态机
   const buttonDisabled = Boolean(precheckLoading || !precheckResp || blockersCount > 0 || submitting || running);
   const buttonText = precheckLoading ? t("portfolioTrading.backtest.flow.checking") : submitting ? t("portfolioTrading.backtest.flow.submitting") : running ? t("portfolioTrading.backtest.flow.running") : blockersCount > 0 ? t("portfolioTrading.backtest.flow.needsAttention") : t("portfolioTrading.backtest.startRun");
@@ -2090,7 +2633,7 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
     window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
   }, [latestRunId, resultTab, tradePage, tradeAction, tradeExecutionStatus, tradeSymbol, tradeSortBy, tradeSortDir, positionPage, positionStatus, positionAsOfDate]);
   useEffect(() => {
-    if (gateState || resultTab !== "trades" || !latestRunId) return;
+    if (resultStale || portfolioInProgress || gateState || resultTab !== "trades" || !latestRunId) return;
     let alive = true;
     setTradesLoading(true);
     setTradesError(null);
@@ -2122,9 +2665,9 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
       } })
       .finally(() => { if (alive) setTradesLoading(false); });
     return () => { alive = false; };
-  }, [gateState, latestRunId, resultTab, tradePage, tradeAction, tradeExecutionStatus, tradeSymbol, tradeSortBy, tradeSortDir, tradesReload, tradesQueryKey]);
+  }, [resultStale, portfolioInProgress, gateState, latestRunId, resultTab, tradePage, tradeAction, tradeExecutionStatus, tradeSymbol, tradeSortBy, tradeSortDir, tradesReload, tradesQueryKey]);
   useEffect(() => {
-    if (gateState || resultTab !== "rejected" || !latestRunId) return;
+    if (resultStale || portfolioInProgress || gateState || resultTab !== "rejected" || !latestRunId) return;
     let alive = true;
     setRejectedLoading(true);
     setRejectedError(null);
@@ -2147,9 +2690,9 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
       } })
       .finally(() => { if (alive) setRejectedLoading(false); });
     return () => { alive = false; };
-  }, [gateState, latestRunId, resultTab, rejectedPage, rejectedReload, rejectedQueryKey]);
+  }, [resultStale, portfolioInProgress, gateState, latestRunId, resultTab, rejectedPage, rejectedReload, rejectedQueryKey]);
   useEffect(() => {
-    if (gateState || resultTab !== "positions" || !latestRunId) return;
+    if (resultStale || portfolioInProgress || gateState || resultTab !== "positions" || !latestRunId) return;
     let alive = true;
     setPositionsLoading(true);
     setPositionsError(null);
@@ -2178,8 +2721,13 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
       })
       .finally(() => { if (alive) setPositionsLoading(false); });
     return () => { alive = false; };
-  }, [gateState, latestRunId, resultTab, positionPage, positionStatus, positionAsOfDate]);
+  }, [resultStale, portfolioInProgress, gateState, latestRunId, resultTab, positionPage, positionStatus, positionAsOfDate]);
   const metadata = contractRecord(runMetadata);
+  const recordedCost = contractRecord(metadata.cost_config_json);
+  const resultParameters = submittedParameters ?? (runMetadata ? {
+    startDate: metadata.start_date, endDate: metadata.end_date, initialCapital: metadata.initial_capital,
+    commissionRate: metadata.commission_rate ?? recordedCost.commission_rate, benchmark: metadata.benchmark,
+  } : null);
   const dataSnapshot = contractRecord(metadata.data_snapshot);
   const dataCutoff = contractValue(metadata, "data_cutoff_at", "factor_data_cutoff_at")
     ?? contractValue(dataSnapshot, "data_cutoff_at", "factor_data_cutoff_at");
@@ -2337,11 +2885,11 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
               {dataVersion ? <Tag color="purple">{`版本: ${String(dataVersion).slice(0, 14)}`}</Tag> : null}
             </Space>
             {selectedRunId != null && polledStage && !["success","failed","blocked","cancelled","canceled"].includes(String(polledStage)) && (
-              <Progress percent={progressPct} showInfo size="small" status={polledStage === "running" ? "active" : "normal"} format={(pct) => `回测记录 #${selectedRunId} · ${["pending", "queued"].includes(String(polledStage)) ? "正在等待" : "正在运行"} ${(pct ?? 0) as number}%`} />
+              <Progress percent={progressPct ?? 0} showInfo size="small" status={polledStage === "running" ? "active" : "normal"} format={() => `回测记录 #${selectedRunId} · ${portfolioProgressLabel(polledStage)} ${progressText}`} />
             )}
-            {progressFailures > 0 && <div role="status" style={{ fontSize: 12 }}>
-              <p style={{ margin: 0 }}>{progressFailures >= 3 ? "暂时读不到回测进度，任务可能仍在运行。" : "暂时读不到回测进度，正在重试。"}</p>
-              {progressFailures >= 3 && <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginTop: 8 }} onClick={onRetryProgress}>重新查看进度</button>}
+            {progressFailures > 0 && (!portfolioInProgress || resultStale) && <div role="status" style={{ fontSize: 12 }}>
+              <p style={{ margin: 0 }}>{progressError || (progressFailures >= 3 ? "暂时读不到回测进度，任务可能仍在运行。" : "暂时读不到回测进度，正在重试。")}</p>
+              {progressFailures >= 3 && <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginTop: 8 }} disabled={progressReading} onClick={onRetryProgress}>重新查看进度</button>}
             </div>}
           </div>
 
@@ -2417,13 +2965,31 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
 
       {/* ---------- 右侧：结果区 ---------- */}
       <div className="pt-backtest-result-column" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {resultReadState?.loading ? (
+        {resultStale && !resultParameters && <div role="status" className="pt-card" style={{ padding: 16 }}>
+          参数已修改，尚未按当前参数回测。上次结果已收起。
+        </div>}
+        {resultParameters && <section aria-label="组合回测结果对应的参数" className="pt-card" style={{ padding: 16, fontSize: 12, lineHeight: 1.8 }}>
+          <h3 style={sectionTitleStyle}>{latestRunId || selectedRunId ? `回测记录 #${latestRunId ?? selectedRunId} 的参数` : "本次提交的参数"}</h3>
+          <p style={{ margin: "8px 0 0" }}>{resultParameters.startDate || "未记录"} 至 {resultParameters.endDate || "未记录"}</p>
+          <p style={{ margin: 0 }}>初始资金 {resultParameters.initialCapital != null && Number.isFinite(Number(resultParameters.initialCapital)) ? Number(resultParameters.initialCapital).toLocaleString("zh-CN", { maximumFractionDigits: 8 }) : "未记录"} 元 · 佣金 {resultParameters.commissionRate != null && Number.isFinite(Number(resultParameters.commissionRate)) ? `${Number((Number(resultParameters.commissionRate) * 100).toPrecision(12))}%` : "未记录"} · 基准 {resultParameters.benchmark || "未记录"}</p>
+          {resultStale && <p role="status" style={{ margin: "8px 0 0", color: "var(--pt-muted-foreground)" }}>参数已修改，尚未按当前参数回测。上次结果已收起。</p>}
+        </section>}
+        {resultStale ? null : resultReadState?.loading ? (
           <div role="status" className="pt-card" style={{ padding: 24 }}>
             {t("portfolioTrading.backtest.readRecovery.runLoading")}
           </div>
         ) : resultReadState?.error ? (
           <BacktestReadFailure title="portfolioTrading.backtest.readRecovery.runFailed"
             error={resultReadState.error} onRetry={onRetryResultRead} />
+        ) : portfolioInProgress ? (
+          <div role="status" aria-label="组合回测状态" className="pt-card" style={{ padding: 16, lineHeight: 1.8 }}>
+            <p style={{ margin: 0 }}>回测记录 #{selectedRunId} · {portfolioProgressLabel(polledStage)} · {progressText}</p>
+            <p style={{ margin: "8px 0 0", color: "var(--pt-muted-foreground)" }}>完成后再查看收益和交易明细。</p>
+            {progressFailures > 0 && <p style={{ margin: "8px 0 0" }}>{progressError || (progressFailures >= 3 ? "暂时读不到回测进度，任务可能仍在运行。" : "暂时读不到回测进度，正在重试。")}</p>}
+            <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginTop: 12 }} disabled={progressReading} onClick={onRetryProgress}>
+              {progressReading ? "正在更新…" : progressFailures >= 3 ? "重新查看进度" : "更新这条记录"}
+            </button>
+          </div>
         ) : <>
         {gateState && (
           <div
@@ -3050,7 +3616,7 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
               <DetailRow
                 label={t("portfolioTrading.backtest.detailAnnualReturn")}
-                value={fmtPct(metrics.annualReturnPct, true)}
+                value={metrics.annualReturnPct == null ? "未提供" : fmtPct(metrics.annualReturnPct, true)}
                 color={pnlColor(metrics.annualReturnPct)}
               />
               <DetailRow
@@ -3141,14 +3707,28 @@ interface SingleBacktestPanelProps {
   singleRangePreset: BacktestRangePreset | null;
   setSingleRangePreset: (preset: BacktestRangePreset | null) => void;
   onApplyRangePreset: (preset: BacktestRangePreset) => void;
-  singleIndicator: string;
-  setSingleIndicator: (v: string) => void;
+  scoreRules: SingleScoreRules;
   singleCapital: string;
   setSingleCapital: (v: string) => void;
   singleCommission: string;
   setSingleCommission: (v: string) => void;
   running: boolean;
-  result: BacktestRun | null;
+  runDisabled: boolean;
+  runLabel: string;
+  capitalError: string | null;
+  commissionError: string | null;
+  submitFailure: SingleSubmitFailure | null;
+  onViewHistory: () => void;
+  result: SingleBacktestResult | null;
+  resultStale: boolean;
+  resultReadState: SingleResultReadState | null;
+  tradesReadState: SingleTradesReadState | null;
+  onRetryTrades: () => void;
+  tradesPage: number;
+  onTradesPageChange: (page: number) => void;
+  onRetryResultRead: () => void;
+  onViewPreviousResult: () => void;
+  waitingForOldRequest: boolean;
   onRun: () => void;
 }
 
@@ -3162,23 +3742,59 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
   singleRangePreset,
   setSingleRangePreset,
   onApplyRangePreset,
-  singleIndicator,
-  setSingleIndicator,
+  scoreRules,
   singleCapital,
   setSingleCapital,
   singleCommission,
   setSingleCommission,
   running,
+  runDisabled,
+  runLabel,
+  capitalError,
+  commissionError,
+  submitFailure,
+  onViewHistory,
   result,
+  resultStale,
+  resultReadState,
+  tradesReadState,
+  onRetryTrades,
+  tradesPage,
+  onTradesPageChange,
+  onRetryResultRead,
+  onViewPreviousResult,
+  waitingForOldRequest,
   onRun,
 }) => {
-  const retPct = result?.total_return_pct ?? null;
-  const ddPct = result?.max_drawdown_pct ?? null;
-  const sharpe = result?.sharpe_ratio ?? null;
-  const winRate = result?.win_rate ?? null;
-  const trades: BacktestTrade[] = result?.trades ?? [];
+  const resultState = result && !resultStale ? singleBacktestResultState(result.run) : null;
+  const currentResult = resultState?.kind === "completed" ? result?.run : null;
+  const retPct = currentResult?.total_return_pct ?? null;
+  const ddPct = currentResult?.max_drawdown_pct ?? null;
+  const sharpe = currentResult?.sharpe_ratio ?? null;
+  const winRate = currentResult?.win_rate ?? null;
+  const trades = tradesReadState?.status === "ready" ? tradesReadState.items : [];
+  const tradeMoney = (value: number | null | undefined, digits = 2) => value == null || !Number.isFinite(Number(value)) ? "—" : `¥${fmtNum(value, digits)}`;
+  const tradeQuantity = (value: number | null | undefined) => value == null || !Number.isFinite(Number(value)) ? "—"
+    : Number(value).toLocaleString("zh-CN", { useGrouping: false, maximumFractionDigits: 8 });
   return (
     <div className="pt-backtest-layout pt-backtest-layout-single" style={{ display: "grid", gridTemplateColumns: "minmax(0, 320px) minmax(0, 1fr)", gap: 16 }}>
+      <section className="pt-card" aria-label="本次买卖条件" style={{ gridColumn: "1 / -1", padding: 16 }}>
+        <h3 style={sectionTitleStyle}>{result?.viewDraftKey != null ? "当前填写的买卖条件" : "本次买卖条件"}</h3>
+        <p style={sectionSubStyle}>{result?.viewDraftKey != null ? "以下条件用于下次手动回测，已保存结果的原条件见“结果对应的参数”。" : "按历史评分判断买入，按以下条件判断卖出。"}</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginTop: 12, fontSize: 13, lineHeight: 1.7 }}>
+          <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+            <strong>买入：同时满足</strong>
+            <p style={{ margin: "4px 0" }}>质量评分不低于{scoreRules.buy_conditions.quality_score_min}分，择时评分不低于{scoreRules.buy_conditions.timing_score_min}分，且评分建议为买入或建仓。</p>
+            <p style={{ margin: "4px 0" }}>最多持有{scoreRules.position_config.max_positions}只标的，买入目标为初始资金的{scoreRules.position_config.value * 100}%；资金不足时会减少买入数量。</p>
+          </div>
+          <div style={{ flex: "2 1 360px", minWidth: 0 }}>
+            <strong>卖出：满足任一条件后尝试全部卖出</strong>
+            <p style={{ margin: "4px 0" }}>当日开盘价较买入价上涨达到{Number((scoreRules.sell_conditions.take_profit_pct * 100).toFixed(2))}%，或下跌达到{Number((scoreRules.sell_conditions.stop_loss_pct * 100).toFixed(2))}%（不含费用）。</p>
+            <p style={{ margin: "4px 0" }}>评分建议为退出或减仓，或从买入日起持有满{scoreRules.sell_conditions.max_hold_days}个自然日。这里的减仓建议也按全部卖出处理。</p>
+          </div>
+        </div>
+        <p style={{ ...sectionSubStyle, marginTop: 8 }}>条件满足后，在下一个有行情的交易日开盘时尝试成交；停牌、涨跌停等限制仍会阻止成交。持有到期不保证当天卖出。</p>
+      </section>
       {/* ---------- 左侧：单股回测配置 ---------- */}
       <div className="pt-card" style={{ overflow: "hidden" }}>
         <div
@@ -3233,21 +3849,6 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
             />
           </div>
 
-          {/* 指标类型 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={fieldLabelStyle}>{t("portfolioTrading.backtest.indicatorType")}</label>
-            <select
-              className="pt-select"
-              style={fullInputStyle}
-              value={singleIndicator}
-              onChange={(e) => setSingleIndicator(e.target.value)}
-            >
-              {INDICATORS.map((i) => (
-                <option key={i} value={i}>{i}</option>
-              ))}
-            </select>
-          </div>
-
           {/* 初始资金 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <label style={fieldLabelStyle}>{t("portfolioTrading.backtest.initialCapital")}</label>
@@ -3258,10 +3859,13 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
                 className="pt-input"
                 style={fullInputStyle}
                 value={singleCapital}
+                aria-label="单标的初始资金"
+                aria-invalid={!!capitalError}
                 onChange={(e) => setSingleCapital(e.target.value)}
                 placeholder="100,000"
               />
             </div>
+            {capitalError && <p role="alert" style={{ margin: 0, fontSize: 12 }}>{capitalError}</p>}
           </div>
 
           {/* 手续费 */}
@@ -3273,10 +3877,14 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
                 className="pt-input"
                 style={{ flex: 1 }}
                 value={singleCommission}
+                aria-label="单标的佣金费率"
+                aria-invalid={!!commissionError}
                 onChange={(e) => setSingleCommission(e.target.value)}
               />
               <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>%</span>
             </div>
+            {commissionError && <p role="alert" style={{ margin: 0, fontSize: 12 }}>{commissionError}</p>}
+            <p style={{ ...sectionSubStyle, lineHeight: 1.7 }}>每笔最低佣金 5 元，滑点固定为 0.1%。费率填 0 仍收最低佣金。</p>
           </div>
 
           {/* 开始单股回测按钮 */}
@@ -3285,18 +3893,63 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
             className="pt-btn pt-btn-primary pt-btn-lg"
             style={{ width: "100%", marginTop: 4 }}
             onClick={onRun}
-            disabled={running}
+            disabled={running || runDisabled || (!resultStale && resultReadState?.status === "loading")}
           >
             <Play size={16} />
-            {running
+            {!resultStale && resultReadState?.status === "loading" ? "正在读取结果…" : running
               ? t("portfolioTrading.backtest.running")
-              : t("portfolioTrading.backtest.startSingleRun")}
+              : runLabel}
           </button>
+          {waitingForOldRequest && <p role="status" style={{ ...sectionSubStyle, lineHeight: 1.7 }}>参数已修改，正在等待上次请求结束。不会按新参数自动回测。</p>}
+          {submitFailure && <div role="alert" aria-label="回测提交状态" style={{ fontSize: 13, lineHeight: 1.7 }}>
+            <strong>{submitFailure.kind === "unknown" ? "没有收到提交结果，还不能确认这次回测是否完成。"
+              : submitFailure.kind === "not_started" ? "这次没有开始回测。" : "这次回测未完成。"}</strong>
+            <p style={{ margin: "4px 0" }}>{submitFailure.message}</p>
+            <p style={{ ...sectionSubStyle, margin: "4px 0" }}>代码 {submitFailure.parameters.code} · {submitFailure.parameters.start} 至 {submitFailure.parameters.end} · 初始资金 {submitFailure.parameters.initialCapital.toLocaleString("zh-CN", { maximumFractionDigits: 8 })} 元</p>
+            {submitFailure.kind === "unknown" && <p style={{ margin: "4px 0" }}>请先查看回测记录，核对后再决定是否重新运行。</p>}
+            <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" onClick={onViewHistory}>查看回测记录</button>
+          </div>}
         </div>
       </div>
 
       {/* ---------- 右侧：结果区 ---------- */}
       <div className="pt-backtest-result-column" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {result && <section className="pt-card" aria-label="结果对应的参数" style={{ padding: 16, fontSize: 13, lineHeight: 1.7 }}>
+          <h3 style={sectionTitleStyle}>{resultStale ? "上次回测的参数" : "结果对应的参数"}</h3>
+          {resultState?.kind === "completed" && <p role="status" aria-label="单标的回测状态" style={{ margin: "8px 0" }}>{resultState.message}</p>}
+          {!resultStale && result.viewDraftKey != null && <p role="status" style={{ margin: "8px 0" }}>正在查看已保存的回测结果，左侧填写内容单独保留。</p>}
+          {resultStale && <p role="status" style={{ margin: "8px 0", color: "var(--pt-state-warning)" }}>参数已修改，尚未按当前参数回测。上次结果已收起。</p>}
+          {resultStale && <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" onClick={onViewPreviousResult}>查看上次结果</button>}
+          {result.parameters ? <><p style={{ margin: "8px 0 0" }}>代码 {result.parameters.code} · {result.parameters.start} 至 {result.parameters.end}</p>
+          <p style={{ margin: 0 }}>初始资金 {result.parameters.initialCapital.toLocaleString("zh-CN", { maximumFractionDigits: 8 })} 元 · 佣金 {Number((result.parameters.commissionRate * 100).toPrecision(12))}% · 每笔最低 {result.parameters.minCommission} 元 · 滑点 {result.parameters.slippageRate * 100}%</p>
+          <p style={{ margin: 0 }}>质量评分不低于{result.parameters.rules.buy_conditions.quality_score_min}分，择时评分不低于{result.parameters.rules.buy_conditions.timing_score_min}分；止盈 {result.parameters.rules.sell_conditions.take_profit_pct * 100}%，止损 {result.parameters.rules.sell_conditions.stop_loss_pct * 100}%，持有达到 {result.parameters.rules.sell_conditions.max_hold_days} 个自然日。</p>
+          </> : <HistoricalSingleParameters run={result.run} />}
+          <p style={{ ...sectionSubStyle, marginTop: 4 }}>以上为这条记录保存的参数，回测记录 #{result.run.id}。</p>
+          {!resultStale && resultReadState && resultReadState.status !== "ready" && <div
+            role={resultReadState.status === "failed" ? "alert" : "status"}
+            aria-label="结果读取状态"
+            style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--pt-border)" }}
+          >
+            <p style={{ margin: 0 }}>{currentResult ? resultReadState.status === "loading"
+              ? "回测记录已生成，正在读取完整结果。已返回的结果可以先查看。"
+              : resultReadState.status === "failed" ? "完整结果暂时没有读到，已保留回测记录和已返回的结果。"
+                : "完整结果尚未读取，已保留回测记录和已返回的结果。"
+              : resultReadState.status === "loading" ? "正在更新这条记录，已保留记录编号和原参数。"
+                : resultReadState.status === "failed" ? "这条记录暂时没有更新，已保留记录编号和原参数。"
+                  : "这条记录尚未重新读取，已保留记录编号和原参数。"}</p>
+            {resultReadState.error && <p style={{ ...sectionSubStyle, margin: "4px 0 8px" }}>原因：{resultReadState.error}</p>}
+            <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginTop: 8 }}
+              disabled={resultReadState.status === "loading"} onClick={onRetryResultRead}>重新读取结果</button>
+          </div>}
+          {!resultStale && resultState?.kind !== "completed" && resultReadState?.status === "ready" && <button
+            type="button" className="pt-btn pt-btn-outline pt-btn-sm" style={{ marginTop: 8 }}
+            onClick={onRetryResultRead}>更新这条记录</button>}
+        </section>}
+        {resultState && resultState.kind !== "completed" ? <div className="pt-card" role={resultState.kind === "running" || resultState.kind === "unknown" ? "status" : "alert"} aria-label="单标的回测状态" style={{ padding: 16 }}>
+          <strong>{resultState.kind === "running" ? "这条回测还在进行。" : resultState.kind === "unknown" ? "这条记录的状态暂时无法确认。"
+            : resultState.kind === "blocked" ? "这条回测因资料不足被阻断。" : "这条回测没有完成。"}</strong>
+          <p style={{ margin: "8px 0 0" }}>{resultState.message}</p>
+        </div> : <>
         {/* 4 指标卡（来自真实回测结果，无结果显示 --） */}
         <div className="pt-backtest-metric-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
           <MetricCard
@@ -3321,8 +3974,8 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
           />
         </div>
 
-        {/* 股价与指标信号图 */}
-        <div className="pt-card" style={{ overflow: "hidden" }}>
+        {/* 尚未接入完整的绘图数据，保持空态，不能用示意图代替回测结果。 */}
+        <div className="pt-card" role="region" aria-label="单标的信号图" style={{ overflow: "hidden" }}>
           <div
             className="pt-backtest-card-header"
             style={{
@@ -3334,11 +3987,6 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
             }}
           >
             <h3 style={sectionTitleStyle}>{t("portfolioTrading.backtest.signalChartTitle")}</h3>
-            <div className="pt-backtest-legend" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <LegendLine color="var(--pt-primary)" label={t("portfolioTrading.backtest.priceLegend")} />
-              <LegendDot color="#22c55e" label={t("portfolioTrading.backtest.buySignal")} />
-              <LegendDot color="#ef4444" label={t("portfolioTrading.backtest.sellSignal")} />
-            </div>
           </div>
           <div style={{ padding: 16 }}>
             <div
@@ -3347,17 +3995,30 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
                 height: 280,
                 borderRadius: "var(--pt-radius-md)",
                 background: "var(--pt-surface-2)",
-                position: "relative",
-                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: 24,
+                boxSizing: "border-box",
+                textAlign: "center",
+                color: "var(--pt-muted-foreground)",
               }}
+              role="status"
             >
-              <SignalChartSvg />
+              <strong style={{ fontSize: 14 }}>暂无数据</strong>
+              <p style={{ margin: 0, fontSize: 13 }}>
+                {currentResult
+                  ? "这份结果未提供完整的行情和交易记录，暂时无法显示曲线和买卖点。"
+                  : resultStale ? "参数已修改，上次结果已收起。请确认参数后手动开始回测。" : "还没有回测结果，暂无行情曲线和买卖点。"}
+              </p>
             </div>
           </div>
         </div>
 
         {/* 交易明细列表 */}
-        <div className="pt-card" style={{ overflowX: "auto" }}>
+        <div className="pt-card" role="region" aria-label="单标的交易明细" style={{ overflowX: "auto" }}>
           <div
             style={{
               padding: "12px 16px",
@@ -3367,58 +4028,63 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
             <h3 style={{ ...sectionTitleStyle, fontSize: 13 }}>
               {t("portfolioTrading.backtest.tradeDetailTitle")}
             </h3>
+            <p style={{ ...sectionSubStyle, marginTop: 4 }}>每行显示一笔持仓的买入和卖出；费用按记录显示，卖出后的盈亏已扣费用。</p>
           </div>
           <div style={{ padding: 12 }}>
-            <table className="pt-table" style={{ minWidth: 560 }}>
+            <table className="pt-table" style={{ minWidth: 880 }}>
               <thead>
                 <tr>
-                  <th>{t("portfolioTrading.backtest.colDate")}</th>
-                  <th>{t("portfolioTrading.backtest.colDirection")}</th>
-                  <th>{t("portfolioTrading.backtest.colPrice")}</th>
-                  <th>{t("portfolioTrading.backtest.colQuantity")}</th>
-                  <th>{t("portfolioTrading.backtest.colPnL")}</th>
+                  <th>买入日期</th><th>买入价格</th><th>卖出日期</th><th>卖出价格</th>
+                  <th>数量</th><th>买入费用</th><th>卖出费用</th><th>盈亏（已扣费用）</th><th>状态</th>
                 </tr>
               </thead>
               <tbody>
-                {trades.length === 0 ? (
+                {!currentResult || tradesReadState?.status !== "ready" || trades.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: "center", padding: "24px 0", color: "var(--pt-muted-foreground)" }}>
-                      {result ? t("portfolioTrading.backtest.noResultTip") : t("portfolioTrading.backtest.historyEmpty")}
+                    <td colSpan={9} style={{ textAlign: "center", padding: "24px 0", color: "var(--pt-muted-foreground)" }}>
+                      {!currentResult ? resultStale ? "参数已修改，上次交易明细已收起。" : "还没有回测结果，暂时无法读取交易明细。"
+                        : tradesReadState?.status === "failed" ? <div role="alert">
+                          <p style={{ margin: "0 0 8px" }}>交易明细读取失败。原因：{tradesReadState.error}</p>
+                          <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" onClick={onRetryTrades}>重新读取交易明细</button>
+                        </div>
+                          : tradesReadState?.status !== "ready" ? <span role="status">正在读取交易明细…</span>
+                            : "这次回测没有交易记录。"}
                     </td>
                   </tr>
                 ) : (
                   trades.map((tr) => {
-                    const isBuy = !tr.exit_date;
+                    const closed = !!tr.exit_date;
+                    const pnl = closed && tr.pnl != null && Number.isFinite(Number(tr.pnl)) ? Number(tr.pnl) : null;
                     return (
                       <tr key={tr.id}>
-                        <td style={{ color: "var(--pt-muted-foreground)" }}>
-                          {(tr.exit_date ?? tr.entry_date ?? "").replace("T", " ").slice(0, 10)}
-                        </td>
-                        <td>
-                          <span
-                            style={{
-                              color: isBuy ? "#22c55e" : "#ef4444",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {isBuy
-                              ? t("portfolioTrading.backtest.dirBuy")
-                              : t("portfolioTrading.backtest.dirSell")}
-                          </span>
-                        </td>
-                        <td className="pt-mono">¥{fmtNum(isBuy ? tr.entry_price : tr.exit_price ?? tr.entry_price)}</td>
-                        <td className="pt-mono">{fmtNum(tr.quantity, 0)}</td>
-                        <td className="pt-mono" style={{ color: pnlColor(tr.pnl) }}>
-                          {tr.pnl == null ? "--" : `${tr.pnl >= 0 ? "+" : ""}¥${fmtNum(tr.pnl)}`}
-                        </td>
+                        <td className="pt-mono">{tr.entry_date?.slice(0, 10) || "—"}</td>
+                        <td className="pt-mono">{tradeMoney(tr.entry_price, 4)}</td>
+                        <td className="pt-mono">{closed ? tr.exit_date!.slice(0, 10) : "—"}</td>
+                        <td className="pt-mono">{closed ? tradeMoney(tr.exit_price, 4) : "—"}</td>
+                        <td className="pt-mono">{tradeQuantity(tr.quantity)}</td>
+                        <td className="pt-mono">{tradeMoney(tr.entry_cost)}</td>
+                        <td className="pt-mono">{closed ? tradeMoney(tr.exit_cost) : "—"}</td>
+                        <td className="pt-mono" style={{ color: pnlColor(pnl) }}>{pnl == null ? "—" : `${pnl > 0 ? "+" : pnl < 0 ? "-" : ""}¥${fmtNum(Math.abs(pnl))}`}</td>
+                        <td>{closed ? "已卖出" : "持有中"}</td>
                       </tr>
                     );
                   })
                 )}
               </tbody>
             </table>
+            {currentResult && tradesReadState && (tradesReadState.total > 0 || tradesPage > 1) && <div
+              aria-label="交易明细分页" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 12 }}>
+              <span style={sectionSubStyle}>共 {tradesReadState.total} 条，第 {tradesPage} / {Math.max(1, Math.ceil(tradesReadState.total / 20))} 页</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" disabled={tradesReadState.status === "loading" || tradesPage <= 1}
+                  onClick={() => onTradesPageChange(tradesPage - 1)}>上一页</button>
+                <button type="button" className="pt-btn pt-btn-outline pt-btn-sm" disabled={tradesReadState.status === "loading" || tradesPage * 20 >= tradesReadState.total}
+                  onClick={() => onTradesPageChange(tradesPage + 1)}>下一页</button>
+              </div>
+            </div>}
           </div>
         </div>
+        </>}
       </div>
     </div>
   );
@@ -3429,6 +4095,9 @@ const SingleBacktestPanel: React.FC<SingleBacktestPanelProps> = ({
 /* ------------------------------------------------------------------ */
 
 interface HistoryDrawerProps {
+  singleMode: boolean;
+  readLimit: number;
+  onReadMore: () => void;
   open: boolean;
   onClose: () => void;
   list: BacktestRun[];
@@ -3436,9 +4105,10 @@ interface HistoryDrawerProps {
   error: string | null;
   onRetry: () => void;
   onSelect: (runId: number) => void;
+  savedSingleResult: SingleBacktestResult | null;
 }
 
-const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, list, loading, error, onRetry, onSelect }) => {
+const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ singleMode, readLimit, onReadMore, open, onClose, list, loading, error, onRetry, onSelect, savedSingleResult }) => {
   return (
     <div
       style={{
@@ -3528,7 +4198,10 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, list, load
               {t("portfolioTrading.backtest.historyLoading")}
             </div>
           )}
-          {!loading && error && <BacktestReadFailure
+          {singleMode && list.length > 0 && (loading || error) && <p role="status" style={sectionSubStyle}>
+            {loading ? "正在更新回测记录，下面是上次读到的内容。" : "记录暂时没更新，下面是上次读到的内容。"}
+          </p>}
+          {!singleMode && !loading && error && <BacktestReadFailure
             title="portfolioTrading.backtest.readRecovery.historyFailed" error={error} onRetry={onRetry}
           />}
           {!loading && !error && list.length === 0 && (
@@ -3537,7 +4210,16 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, list, load
             </div>
           )}
           {list.map((run) => {
-            const ret = run.total_return_pct ?? null;
+            const single = isSingleHistoryRun(run, savedSingleResult);
+            const singleState = single ? singleBacktestResultState(run) : null;
+            const status = String(run.status ?? "").trim().toLowerCase();
+            const portfolioGate = single ? null : gateFromPortfolioBacktest(run);
+            const portfolioRunning = !single && !portfolioGate && isPortfolioBacktestRunning(run);
+            const finished = single ? singleState?.kind === "completed" : !portfolioGate && isSuccessfulBacktestStatus(status);
+            const historyStatus = finished ? "已完成" : singleState?.kind === "running" || portfolioRunning ? "进行中"
+              : singleState?.kind === "blocked" || portfolioGate?.kind === "blocked" ? "资料不足"
+              : singleState?.kind === "failed" || portfolioGate?.kind === "failed" ? "未完成" : "状态待确认";
+            const ret = finished ? run.total_return_pct ?? null : null;
             // P1-FIX: 日期区间展示兜底：若后端返回倒置区间（例如 2025-12-31 ~ 2024-01-01），
             // 交换起止日期后再展示，避免误导用户。记录异常 flag 用于视觉标记。
             const rawStart = run.start_date ?? "";
@@ -3548,6 +4230,8 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, list, load
             return (
               <div
                 key={run.id}
+                role="group"
+                aria-label={`${single ? "单标的" : "组合"}回测记录 #${run.id}`}
                 onClick={() => onSelect(run.id)}
                 style={{
                   padding: "10px 12px",
@@ -3581,8 +4265,14 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, list, load
                     className="pt-mono"
                     style={{ fontSize: 12, fontWeight: 500, color: pnlColor(ret) }}
                   >
-                    {fmtPct(ret, true)}
+                    {finished ? fmtPct(ret, true) : "—"}
                   </span>
+                </div>
+                <div style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 4 }}>
+                  <strong>{historyStatus}</strong>
+                  {!finished && <p style={{ ...sectionSubStyle, margin: "4px 0" }}>{singleState?.message
+                    ?? (portfolioRunning ? "这条回测还在进行，完成后再查看收益和交易明细。" : portfolioGate?.message)
+                    ?? "这条记录的状态还不能确认，请打开查看具体情况。"}</p>}
                 </div>
                 <div
                   style={{
@@ -3617,6 +4307,17 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ open, onClose, list, load
             );
           })}
         </div>
+        {singleMode && <div role="region" aria-label="回测历史读取" style={{ padding: "12px 16px", borderTop: "1px solid var(--pt-border)" }}>
+          <p style={sectionSubStyle}>当前组合的回测记录按时间从新到旧显示，包含组合回测，最多读取最近 100 条。</p>
+          {list.length > 0 && <p style={sectionSubStyle}>已读取最近 {list.length} 条记录。</p>}
+          {!loading && error && <BacktestReadFailure
+            title="portfolioTrading.backtest.readRecovery.historyFailed" error={error} onRetry={onRetry}
+          />}
+          {!loading && !error && list.length === 100 && <p style={sectionSubStyle}>仅显示最近 100 条，较早记录不在本次范围内。</p>}
+          {!loading && !error && list.length > 0 && list.length < readLimit && <p style={sectionSubStyle}>已读到现有记录。</p>}
+          {!error && list.length >= readLimit && readLimit < 100 && <button type="button" className="pt-btn pt-btn-ghost pt-btn-sm"
+            disabled={loading} onClick={onReadMore}>读取更多</button>}
+        </div>}
       </div>
     </div>
   );
@@ -3671,26 +4372,6 @@ interface LegendLineProps {
 const LegendLine: React.FC<LegendLineProps> = ({ color, label }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
     <span style={{ width: 12, height: 2, background: color, display: "inline-block" }} />
-    <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{label}</span>
-  </div>
-);
-
-interface LegendDotProps {
-  color: string;
-  label: string;
-}
-
-const LegendDot: React.FC<LegendDotProps> = ({ color, label }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-    <span
-      style={{
-        width: 8,
-        height: 8,
-        borderRadius: "50%",
-        background: color,
-        display: "inline-block",
-      }}
-    />
     <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{label}</span>
   </div>
 );
@@ -4215,27 +4896,5 @@ const DrawdownSvg: React.FC<DrawdownSvgProps> = ({ equityCurve }) => {
     </svg>
   );
 };
-
-/** 股价与指标信号图：青色折线 + 买点绿色三角↑ + 卖点红色三角↓ */
-const SignalChartSvg: React.FC = () => (
-  <svg viewBox="0 0 800 260" style={{ width: "100%", height: "100%" }} preserveAspectRatio="xMidYMid meet">
-    <line x1="0" y1="65" x2="800" y2="65" stroke="var(--pt-surface-3)" strokeWidth="1" strokeDasharray="4,4" />
-    <line x1="0" y1="130" x2="800" y2="130" stroke="var(--pt-surface-3)" strokeWidth="1" strokeDasharray="4,4" />
-    <line x1="0" y1="195" x2="800" y2="195" stroke="var(--pt-surface-3)" strokeWidth="1" strokeDasharray="4,4" />
-    <path
-      d="M0,180 Q60,160 120,140 T240,150 T360,120 T480,100 T600,110 T720,80 T800,60"
-      fill="none"
-      stroke="#06b6d4"
-      strokeWidth="2"
-    />
-    {/* 买点：绿色三角↑ */}
-    <polygon points="120,148 115,158 125,158" fill="#22c55e" />
-    <polygon points="360,128 355,138 365,138" fill="#22c55e" />
-    <polygon points="600,118 595,128 605,128" fill="#22c55e" />
-    {/* 卖点：红色三角↓ */}
-    <polygon points="240,142 235,132 245,132" fill="#ef4444" />
-    <polygon points="480,92 475,82 485,82" fill="#ef4444" />
-  </svg>
-);
 
 export default PortfolioBacktestCenter;

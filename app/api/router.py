@@ -3,10 +3,20 @@ from fastapi import APIRouter
 from app.api.routes import alerts, app_settings, auto_trade, backtest, custom_indicators, dashboard, db_config, data_mirror, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_experience, factor_mining, factor_mining_wizard, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, g5_dual_run, investment_themes, journals, linkage, macro, market_data, market_events, mining_candidate_pool, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, scoring_facade, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
 from app.core.config import settings
 from app.api.routes import security_status
+from app.api.routes import portfolio_inspection, portfolio_inspection_history, portfolio_inspection_workflow, portfolio_inspection_coverage
+from app.api.routes import g5_admission_governance
 from app.api.routes import etf_history
 
 
 api_router = APIRouter(prefix=settings.api_prefix)
+
+
+@api_router.get('/inspection-acceptance/status', tags=['system'])
+def inspection_execution_mode():
+    from app.services.inspection_acceptance_readonly import acceptance_execution_status
+    return acceptance_execution_status()
+
+
 api_router.include_router(factors.router, tags=['factors'])
 api_router.include_router(factor_models.router, tags=['factor-models'])
 api_router.include_router(factor_pipeline.router, tags=['factor-pipeline'])
@@ -76,6 +86,11 @@ api_router.include_router(portfolio_factor_usage.router, tags=["portfolio-factor
 api_router.include_router(decision_engine.router, tags=["decision-engine"])
 # G3-G4：对账 + 7 状态状态机治理（/portfolios/{pid}/status|reconcile|confirm-reconciliation|transition-state）
 api_router.include_router(portfolio_governance.router)
+api_router.include_router(portfolio_inspection.router)
+api_router.include_router(portfolio_inspection_history.router)
+api_router.include_router(portfolio_inspection_workflow.router)
+api_router.include_router(portfolio_inspection_coverage.router)
+api_router.include_router(g5_admission_governance.router)
 # G5：双跑对账（/portfolios/{pid}/g5-dual-run）
 api_router.include_router(g5_dual_run.router)
 # ═══════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from "react";
-import { Button, Drawer } from "antd";
+import {AcceptanceButton as Button,AcceptanceNotice} from './inspection/AcceptanceControls';
+import React, { useEffect, useState } from "react";
+import { Drawer } from "antd";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,7 +16,6 @@ import type {
   ActionItem,
   ActionItemChecks,
   ActionItemsResponse,
-  ReconciliationResponse,
 } from "../../types";
 import {
   isRawEnum,
@@ -24,8 +24,8 @@ import {
   safeTitle,
 } from "../../utils/actionItemRegistry";
 import { openSettingsSection, requestPortfolioSubtab } from "../../utils/navigate";
-import { reconDimLabel } from "../../utils/reconDimLabel";
 import ModelBindingReview from "./ModelBindingReview";
+import ReconciliationQuickCheckModal, { validReconciliationDate } from "./inspection/ReconciliationQuickCheckModal";
 
 /* P0 修复抽屉：把三套状态的行动项聚合成「一句话问题 + 一个动作」。 */
 
@@ -49,200 +49,6 @@ function fmtTime(iso?: string): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
-/* ---------------- 对账差异三步引导（T8） ---------------- */
-
-const GUIDE_NOTE_MIN = 10;
-
-export const ReconciliationGuide: React.FC<{
-  portfolioId: number;
-  onResolved: () => void;
-}> = ({ portfolioId, onResolved }) => {
-  const { showToast } = useApp();
-  const [phase, setPhase] = useState<"rerun" | "review" | "confirm" | "done">("rerun");
-  const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState<ReconciliationResponse | null>(null);
-  const [note, setNote] = useState("");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const passed = !!report && !report.differences_found && !!report.zero_sum_check_passed;
-
-  const runReconcile = useCallback(async () => {
-    setBusy(true);
-    setErrorMsg(null);
-    try {
-      const r = await api.triggerPortfolioReconcile(portfolioId);
-      setReport(r);
-      setPhase("review");
-    } catch {
-      setErrorMsg(t("repairDrawer.guide.reconcileFailed"));
-    } finally {
-      setBusy(false);
-    }
-  }, [portfolioId]);
-
-  const confirm = useCallback(async () => {
-    if (busy || !passed || note.trim().length < GUIDE_NOTE_MIN) return;
-    setBusy(true);
-    setErrorMsg(null);
-    try {
-      const r = await api.confirmPortfolioReconciliation(portfolioId, {
-        ack: true,
-        review_note: note.trim(),
-        trade_date: report?.trade_date,
-      });
-      if (r.acknowledged_diffs_cleared || r.portfolio_now_ready || r.to_state === "READY") {
-        setPhase("done");
-        showToast("success", t("repairDrawer.guide.confirmed"));
-        onResolved();
-      } else {
-        setErrorMsg(t("repairDrawer.guide.notReady"));
-      }
-    } catch (e) {
-      setErrorMsg((e as { status_code?: number }).status_code === 409
-        ? t("repairDrawer.guide.hasDiffs") : t("repairDrawer.guide.confirmFailed"));
-      setPhase("rerun");
-      setReport(null);
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, note, onResolved, passed, portfolioId, report?.trade_date, showToast]);
-
-  const steps: Array<{ key: string; labelKey: string; active: boolean }> = [
-    { key: "rerun", labelKey: "repairDrawer.guide.step1", active: phase === "rerun" },
-    { key: "review", labelKey: "repairDrawer.guide.step2", active: phase === "review" },
-    { key: "confirm", labelKey: "repairDrawer.guide.step3", active: phase === "confirm" || phase === "done" },
-  ];
-
-  return (
-    <div style={{ marginTop: 10, borderTop: "1px dashed rgba(148,163,184,0.25)", paddingTop: 10 }}>
-      <div style={{ display: "flex", gap: 6, marginBottom: 8, fontSize: 12, color: "#cbd5e1" }}>
-        {steps.map((s, i) => (
-          <span
-            key={s.key}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              color: s.active ? "#22d3ee" : "#64748b",
-              fontWeight: s.active ? 600 : 400,
-            }}
-          >
-            {i + 1} {t(s.labelKey as "repairDrawer.guide.step1")}
-            {i < steps.length - 1 && <ChevronRight size={12} />}
-          </span>
-        ))}
-      </div>
-
-      {phase === "rerun" && (
-        <Button size="small" loading={busy} onClick={runReconcile} icon={<RefreshCw size={13} />}>
-          {t("repairDrawer.guide.rerun")}
-        </Button>
-      )}
-
-      {phase === "review" && report && (
-        <div>
-          {passed ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#34d399", fontSize: 12, marginBottom: 8 }}>
-              <CheckCircle2 size={14} /> {t("repairDrawer.guide.passed")}
-            </div>
-          ) : (
-            <div>
-              <div style={{ color: "#f87171", fontSize: 12, marginBottom: 6 }}>{t("repairDrawer.guide.hasDiffs")}</div>
-              <div style={{ maxHeight: 180, overflow: "auto", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 6, marginBottom: 8 }}>
-                {report.items.map((d, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "baseline",
-                      gap: "2px 10px",
-                      fontSize: 11,
-                      padding: "5px 8px",
-                      borderBottom: "1px solid rgba(148,163,184,0.12)",
-                      color: "#e2e8f0",
-                    }}
-                  >
-                    <span style={{ minWidth: 90, color: "#94a3b8" }}>{reconDimLabel(d.dimension)}</span>
-                    <span style={{ whiteSpace: "nowrap" }}>
-                      {t("repairDrawer.guide.expected")}: {String(d.expected_value ?? "—")}
-                    </span>
-                    <span style={{ whiteSpace: "nowrap" }}>
-                      {t("repairDrawer.guide.actual")}: {String(d.actual_value ?? "—")}
-                    </span>
-                    {d.explain_note ? (
-                      <span style={{ flexBasis: "100%", color: "#94a3b8", wordBreak: "break-word" }}>
-                        {d.explain_note}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <Button size="small" loading={busy} onClick={runReconcile} icon={<RefreshCw size={13} />}>
-            {t("repairDrawer.guide.rerun")}
-          </Button>
-          {passed && (
-            <Button
-              size="small"
-              type="primary"
-              style={{ marginLeft: 8 }}
-              onClick={() => setPhase("confirm")}
-            >
-              {t("repairDrawer.guide.nextConfirm")}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {phase === "confirm" && (
-        <div>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={t("repairDrawer.guide.notePlaceholder")}
-            style={{
-              width: "100%",
-              minHeight: 56,
-              resize: "vertical",
-              background: "rgba(15,23,42,0.6)",
-              border: "1px solid rgba(148,163,184,0.3)",
-              borderRadius: 6,
-              color: "#e2e8f0",
-              padding: 8,
-              fontSize: 12,
-            }}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-            <span style={{ fontSize: 11, color: note.trim().length >= GUIDE_NOTE_MIN ? "#34d399" : "#94a3b8" }}>
-              {template("repairDrawer.guide.noteRule", { n: note.trim().length })}
-            </span>
-            <Button
-              size="small"
-              type="primary"
-              danger
-              loading={busy}
-              disabled={note.trim().length < GUIDE_NOTE_MIN}
-              onClick={confirm}
-            >
-              {t("repairDrawer.guide.confirm")}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {phase === "done" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#34d399", fontSize: 12 }}>
-          <CheckCircle2 size={14} /> {t("repairDrawer.guide.confirmed")}
-        </div>
-      )}
-
-      {errorMsg && <div style={{ color: "#fca5a5", fontSize: 12, marginTop: 8 }}>{errorMsg}</div>}
-    </div>
-  );
-};
-
 /* ---------------- 单条行动项卡片 ---------------- */
 
 const ActionCard: React.FC<{
@@ -254,11 +60,14 @@ const ActionCard: React.FC<{
   onToggleEnabled: () => void;
   onOpenAddCandidate: () => void;
   onResolved: () => void;
-}> = ({ item, portfolioId, toggling, canToggle, primary = false, onToggleEnabled, onOpenAddCandidate, onResolved }) => {
+  onQuickCheck: (tradeDate?: string) => void;
+}> = ({ item, portfolioId, toggling, canToggle, primary = false, onToggleEnabled, onOpenAddCandidate, onResolved, onQuickCheck }) => {
   const { setActiveTab } = useApp();
   const [reviewOpen, setReviewOpen] = useState(false);
   const action = resolveItemAction(item);
   const { Icon, color } = SEVERITY_META[item.severity];
+  const itemDate = item.trade_date ?? item.scope?.trade_date;
+  const invalidDate = itemDate != null && !validReconciliationDate(itemDate);
 
   const exec = () => {
     if (action.kind === "redirect") {
@@ -278,7 +87,7 @@ const ActionCard: React.FC<{
   let actionBtn: React.ReactNode = null;
   if (action.kind === "toggle") {
     actionBtn = canToggle ? (
-      <Button size="small" type={primary ? "primary" : "default"} loading={toggling} onClick={onToggleEnabled} icon={<ChevronRight size={13} />}>
+      <Button mutation size="small" type={primary ? "primary" : "default"} loading={toggling} onClick={onToggleEnabled} icon={<ChevronRight size={13} />}>
         {t("repairDrawer.enable")}
       </Button>
     ) : (
@@ -319,7 +128,12 @@ const ActionCard: React.FC<{
           </div>
           {actionBtn && <div style={{ marginTop: 8 }}>{actionBtn}</div>}
           {action.kind === "guided" && (
-            <ReconciliationGuide portfolioId={portfolioId} onResolved={onResolved} />
+            <div style={{ marginTop: 10 }}><Button size="small" type={primary ? "primary" : "default"}
+              disabled={invalidDate} title={invalidDate ? "交易日不明确，请刷新待办后再核对" : undefined}
+              aria-label={`${safeTitle(item)} 快捷核对`}
+              onClick={() => onQuickCheck(validReconciliationDate(itemDate) ? itemDate : undefined)}>
+              {t("repairDrawer.quickCheck")}
+            </Button></div>
           )}
           {reviewOpen && action.kind === "open-modal" && action.modal === "model-binding-review" && (
             <ModelBindingReview key={portfolioId} portfolioId={portfolioId} onResolved={onResolved} />
@@ -371,6 +185,9 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
   onToggleEnabled,
   onOpenAddCandidate,
 }) => {
+  const [quickCheck, setQuickCheck] = useState<{ tradeDate?: string } | null>(null);
+  useEffect(() => { setQuickCheck(null); }, [portfolioId, open]);
+  const openQuickCheck = (tradeDate?: string) => setQuickCheck({ tradeDate });
   const items = data?.items ?? [];
   const orderedItems = (["blocker", "warning", "info"] as const).flatMap((severity) => items.filter((item) => item.severity === severity));
   const blockers = orderedItems.filter((item) => item.severity === "blocker");
@@ -395,16 +212,19 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
   const lastCheck = fmtTime(data?.generated_at);
 
   return (
-    <Drawer
+    <><Drawer
       title={t("repairDrawer.title")}
       placement="right"
       width={460}
       open={open}
-      onClose={onClose}
+      onClose={() => { if (!quickCheck) onClose(); }}
+      keyboard={!quickCheck}
+      maskClosable={!quickCheck}
       styles={{ body: { padding: 0 } }}
       destroyOnClose
     >
       <div className="pt-theme-scope" style={{ background: "#0b1120", minHeight: "100%", padding: 16, color: "#e2e8f0" }}>
+        <AcceptanceNotice compact/>
         {/* 头部状态 */}
         <div
           style={{
@@ -472,7 +292,7 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
         {!loadError && firstItem && <section aria-label={firstItemTitle} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{firstItemTitle}</div>
           <ActionCard key={`${portfolioId}:${firstItem.id}`} item={firstItem} portfolioId={portfolioId} toggling={toggling} canToggle={canToggle}
-            primary onToggleEnabled={onToggleEnabled} onOpenAddCandidate={onOpenAddCandidate} onResolved={onRefresh} />
+            primary onToggleEnabled={onToggleEnabled} onOpenAddCandidate={onOpenAddCandidate} onResolved={onRefresh} onQuickCheck={openQuickCheck} />
         </section>}
 
         {!loadError && remainingItems.length > 0 && <details>
@@ -495,6 +315,7 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
                       onToggleEnabled={onToggleEnabled}
                       onOpenAddCandidate={onOpenAddCandidate}
                       onResolved={onRefresh}
+                      onQuickCheck={openQuickCheck}
                     />
                   ))}
                 </div>
@@ -509,7 +330,8 @@ const ReadinessRepairDrawer: React.FC<ReadinessRepairDrawerProps> = ({
           </div>
         )}
       </div>
-    </Drawer>
+    </Drawer>{open && quickCheck && <ReconciliationQuickCheckModal key={`${portfolioId}:${quickCheck.tradeDate ?? "pending"}`}
+      portfolioId={portfolioId} tradeDate={quickCheck.tradeDate} onClose={() => setQuickCheck(null)} onChanged={onRefresh}/>}</>
   );
 };
 

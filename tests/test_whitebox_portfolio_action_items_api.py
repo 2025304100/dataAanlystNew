@@ -113,6 +113,8 @@ def test_build_orchestration_is_read_only():
         pai, "_execution_prerequisites", return_value=[]
     ), patch.object(
         pai, "_binding_review", return_value={"requires_confirmation": False}
+    ), patch.object(
+        pai, "_enrich_inspection_items", side_effect=lambda _db, _pid, payload: payload
     ):
         g7.return_value = SimpleNamespace(operational_blockers=[])
         out = pai.build_portfolio_action_items(db, 123)
@@ -203,6 +205,7 @@ def test_real_execution_prerequisites_use_applied_snapshots_and_the_emergency_sw
 
 
 def test_real_candidate_with_fresh_hold_signal_waits_without_changing_execution_readiness(db_session, monkeypatch):
+    import json
     from datetime import datetime, timezone
     from app.models.daily_bar import DailyBar
     from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSnapshot
@@ -210,11 +213,15 @@ def test_real_candidate_with_fresh_hold_signal_waits_without_changing_execution_
     from app.models.portfolio_candidate import PortfolioCandidate
     from app.models.scheduled_task import ScheduledTask
     from app.models.score import Score
+    from app.models.scoring_config import ScoringConfig
     from app.models.symbol import Symbol
     from app.services.auto_trade_readiness import get_auto_trade_readiness
     from tests.test_stage3_factor_binding_contract import _activate, _ready_model
+    from tests.test_portfolio_inspection import _calendar, NOW
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = NOW.replace(tzinfo=None)
+    monkeypatch.setattr("app.services.auto_trade_safety._now_utc_naive", lambda: now)
+    _calendar(db_session)
     monkeypatch.setenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED", "true")
     portfolio = Portfolio(
         name="waiting-fresh-candidate", account_type="simulated", auto_trade_enabled=1,
@@ -223,6 +230,10 @@ def test_real_candidate_with_fresh_hold_signal_waits_without_changing_execution_
     )
     symbol = Symbol(symbol="WAITING-HOLD", name="Waiting", market="SH", asset_type="stock")
     db_session.add_all([portfolio, symbol])
+    config = ScoringConfig(asset_type="stock", preset_key="waiting-actual", name="等待信号实际配置",
+        version=1, is_active=1, config_json=json.dumps({"dimensions": [{"key": "trend", "enabled": True,
+            "factors": [{"key": "trend_score", "source": "builtin"}]}]}))
+    db_session.add(config)
     db_session.flush()
     model = _ready_model(db_session, set_id="fs-waiting", model_id="model-waiting")
     _activate(db_session, model.id)
@@ -252,6 +263,9 @@ def test_real_candidate_with_fresh_hold_signal_waits_without_changing_execution_
             symbol_id=symbol.id, trade_date=now.date(), created_at=now,
             quality_score=70, quality_grade="B", timing_score=50,
             stage="trend", action="hold", priority_score=60,
+            published_at=now, weight_mode="ridge", factor_model_run_id=model.id, factor_set_id="fs-waiting",
+            scoring_config_id=config.id, scoring_config_version=config.version,
+            scoring_config_snapshot_json=config.config_json,
         ),
         StrategyExecutionSnapshot(
             id="waiting-applied-snapshot", portfolio_id=portfolio.id,

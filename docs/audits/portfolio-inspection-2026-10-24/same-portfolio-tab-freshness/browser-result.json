@@ -1,0 +1,83 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "checks": [
+    "两个真实main标签页：A开始重检时，B立即提示旧依据过期并保留09-30日期；A的localStorage通知故障时BroadcastChannel仍送达",
+    "B重新读取遇到受控503后，过期提示继续保留，未恢复旧报告审核资格",
+    "B刷新未完成时A再次重检；B的旧刷新晚返回不能消除过期状态，更新完成通知继续要求重读",
+    "最新依据完整读取成功后解除前端过期标记，原日期与本日历史入口正常；没有提交任何审核",
+    "共享数据更新通知使当前数据依据过期，刷新保留510300筛选；其他组合专属通知不干扰main",
+    "BroadcastChannel不可用时，两个main标签页通过storage事件完成过期通知与只读刷新"
+  ],
+  "simulatedWrites": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconcile",
+      "date": "2026-09-29",
+      "forwarded": false
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconcile",
+      "date": "2026-09-29",
+      "forwarded": false
+    }
+  ],
+  "blockedWrites": [],
+  "errors": [],
+  "httpErrors": [],
+  "faults": [
+    {
+      "status": 503,
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    }
+  ],
+  "boundary": "Both tabs use actual main. Reconcile POST responses are fulfilled only in the browser; no write reaches the backend. Shared-input notifications and changed report versions are browser fixtures; actual fresh GETs still read main. Review confirmation safety is additionally covered by isolated tests.",
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "passed": true
+}

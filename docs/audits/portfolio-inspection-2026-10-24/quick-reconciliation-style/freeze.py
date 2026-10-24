@@ -1,0 +1,60 @@
+"""Archive final read-only visual acceptance separately from earlier evidence."""
+from pathlib import Path
+import hashlib
+import json
+import shutil
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+repo = Path.cwd()
+source = repo / "tmp/inspection-quick-style-2026-10-24"
+target = repo / "docs/audits/portfolio-inspection-2026-10-24/quick-reconciliation-style"
+result = json.loads((source / "browser-result.json").read_text(encoding="utf-8"))
+assert result["passed"] and not result["writeAttempts"] and not result["errors"] and not result["httpErrors"]
+assert result["beforeMode"] == result["afterMode"]
+assert "20 passed (20)" in (source / "frontend-tests.log").read_text(encoding="utf-8")
+assert "built in 30.98s" in (source / "frontend-build-final.log").read_text(encoding="utf-8")
+assert not target.exists(), "Refuse to overwrite an existing audit"
+target.mkdir(parents=True)
+names = ["frontend-tests.log", "frontend-build-final.log", "browser-result.json", "browser-run.log",
+         "verify.mjs", "freeze.py", "desktop.png", "modal.png", "expanded.png", "material.png",
+         "width-1024.png", "width-1024-expanded.png", "width-390.png", "width-390-expanded.png",
+         "width-320.png", "width-320-expanded.png"]
+for name in names:
+    shutil.copy2(source / name, target / name)
+(target / "README.md").write_text("""# 快捷核对界面优化验收
+
+2026-10-24，范围为用户确认的居中快捷核对弹窗。生产前端已更新，后端未重启，核对和放行规则不变。
+
+- 弹窗采用760px宽度，局部隔离全局强制68vw规则，统一标题、日期、状态卡、折叠列表和底部操作。
+- 核对结论与材料查找入口前置，历史与原订单为次级入口；历史材料继续折叠，不引入逐项登记。
+- 鼠标操作不显示原生白色焦点框，键盘操作保留可见焦点；从详情返回后焦点恢复到原入口。
+- 手机端标题、预览标签和按钮分行，正文可滚动，关闭与重新核对入口保持可见。
+
+[新弹窗](modal.png) · [桌面上下文](desktop.png) · [历史缺口展开](expanded.png) · [材料查找](material.png) · [390px](width-390.png) · [320px](width-320.png)
+
+两组[现有测试](frontend-tests.log)共20项通过（15.19秒），包含返回焦点回归断言。[最终生产构建](frontend-build-final.log)通过（30.98秒）。[真实main只读走查](browser-result.json)验证760px居中及1024/390/320px折叠和展开布局、材料方法、独立浮层返回、Tab焦点约束、Escape关闭和父列表滚动保留；无横向溢出，无浏览器异常、接口错误或写入请求。
+
+本轮浏览器拦截所有非读取接口，未点击重检，没有恢复交易、补单、接受新基线或解冻准入。安全模式前后相同，后台作业、自动交易、交易写入及最终审核持续关闭。此处仅保存本轮样式验收，未覆盖上一轮功能验收；主组合历史缺证及正式模型/策略问题保持原结论。
+
+manifest.json保存本目录其他文件的SHA-256与字节数，以及当时交付源码与核查记录的指纹。verify.mjs的原执行位置为仓库tmp/inspection-quick-style-2026-10-24，保留脚本仅供审查与复现，不能在冻结目录运行覆盖证据。
+""", encoding="utf-8")
+
+def fingerprint(path, base):
+    data = path.read_bytes()
+    return {"path": path.relative_to(base).as_posix(), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+sources = ["frontend/src/components/portfolio-trading/inspection/ReconciliationQuickCheckModal.tsx",
+           "frontend/src/components/portfolio-trading/inspection/reconciliationQuickCheck.css",
+           "frontend/src/components/portfolio-trading/inspection/__tests__/ReconciliationQuickCheckModal.test.tsx",
+           "docs/组合交易检查与对账-设计与v10逐项核查及补齐记录-2026-10-23.md"]
+manifest = {"date": "2026-10-24", "scope": "quick reconciliation visual refinement",
+            "files": [fingerprint(p, target) for p in sorted(target.iterdir()) if p.is_file()],
+            "source_files": [fingerprint(repo / p, repo) for p in sources]}
+(target / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+for item in manifest["files"]:
+    assert fingerprint(target / item["path"], target) == item
+for path in sources[:3]:
+    for line in (repo / path).read_text(encoding="utf-8").splitlines():
+        assert line == line.rstrip(), path
+print(json.dumps({"frozen_files": len(manifest["files"]), "verified": True, "path": str(target)}, ensure_ascii=False))

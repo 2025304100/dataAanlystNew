@@ -1,0 +1,622 @@
+{
+  "surfaces": [
+    {
+      "label": "页面说明",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 当前数据与状态这页怎么用",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "关 闭",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "开始引导修复",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": []
+        }
+      ]
+    },
+    {
+      "label": "AI 辅助",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 当前数据与状态AI 诊断与修复引导",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "关 闭",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "分析当前阻断",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "进入对应修复步骤",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "进入对应修复步骤",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "开始引导修复",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": []
+        }
+      ]
+    },
+    {
+      "label": "打开数据修复",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 当前数据与状态整合数据缺口与批量修复",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "关 闭",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "前往数据中心批量修复",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "查看标的证据",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "查看标的证据",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "查看标的证据",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": []
+        }
+      ]
+    },
+    {
+      "label": "运行状态审核",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 当前数据与状态运行状态审核",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "查看历史缺口",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "处理运行绑定",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "✓批量修复数据本次不适用",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "2确认运行绑定待处理",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "3本人审核恢复待处理",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "AI 解释当前步骤",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "审核并确认恢复",
+              "label": null,
+              "disabled": true
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": []
+        }
+      ]
+    },
+    {
+      "label": "每日对账",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 执行与对账执行与对账",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "自动核对作业",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "查看并处理历史缺口",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "本日处理记录",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "刷新只读核对",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重跑当前交易日核对",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": [
+            "查看已读取的核对结果来源数量与适用范围",
+            "执行核对说明核对的作用与处理顺序",
+            "实际资金核验当前完整账本 · 历史时点需独立核实"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "查看作业",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 执行与对账自动对账作业与逐日记录",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "核查 2026-09-29",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "返回按日核对",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新读取作业与逐日记录",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查此交易日",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "核查来源与账户覆盖范围",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": [
+            "逐日核对记录27 个交易日 · 14 日待处理",
+            "来源事件待消费20 项 · 查看来源与后续处理",
+            "任务结果2026/10/23 19:51:48",
+            "任务结果2026/10/23 19:51:48",
+            "任务结果2026/10/23 19:51:48",
+            "任务结果2026/10/24 07:52:33",
+            "任务结果2026/10/24 07:52:33",
+            "任务结果2026/10/24 07:52:33",
+            "任务结果2026/10/24 07:52:37",
+            "任务结果2026/10/24 07:52:39",
+            "任务结果2026/10/24 07:52:42",
+            "任务结果2026/10/24 07:52:42",
+            "任务结果2026/10/24 08:06:01",
+            "任务结果2026/10/24 08:06:01",
+            "任务结果2026/10/24 08:06:01",
+            "任务结果2026/10/24 08:06:03",
+            "任务结果2026/10/24 08:06:03",
+            "任务结果2026/10/24 08:31:36",
+            "任务结果2026/10/24 08:31:36",
+            "任务结果2026/10/24 08:31:37",
+            "任务结果2026/10/24 08:31:41",
+            "任务结果2026/10/24 08:31:41",
+            "覆盖范围与核对说明连续核验、日历依据与作业时点"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "审计记录",
+      "dialogs": [
+        {
+          "title": "检查与对账 / 操作记录处理记录与审核历史",
+          "buttons": [
+            {
+              "text": "",
+              "label": "关闭",
+              "disabled": false
+            },
+            {
+              "text": "本次处理",
+              "label": null,
+              "disabled": true
+            },
+            {
+              "text": "历史记录",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "查询",
+              "label": "查询",
+              "disabled": false
+            },
+            {
+              "text": "重置筛选",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "更多筛选 +",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "自上次对账以来",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "导出当前筛选证据包",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "未登记操作查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "未登记操作查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "未登记操作查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "每日核对结果查看详情",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "加载更多历史批次",
+              "label": null,
+              "disabled": false
+            },
+            {
+              "text": "重新检测当前条件",
+              "label": null,
+              "disabled": false
+            }
+          ],
+          "summaries": [
+            "操作发生时间北京时间 · 与所属交易日分别筛选",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明1 项原审计提示",
+            "来源保留情况与索引说明1 项原审计提示",
+            "来源保留情况与索引说明1 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示",
+            "来源保留情况与索引说明3 项原审计提示"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "engine-entry",
+      "dialogs": []
+    }
+  ],
+  "writes": [],
+  "errors": []
+}

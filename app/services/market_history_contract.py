@@ -11,6 +11,7 @@ _ENDPOINTS = {
     "tencent": ("stock_zh_a_hist_tx", "akshare:tx:cn-stock:v1"),
     "eastmoney_etf": ("fund_etf_hist_em", "akshare:em:cn-etf:v1"),
     "baostock_etf": ("query_history_k_data_plus", "baostock:cn-etf:v1"),
+    "tencent_etf": ("fund_etf_hist_tx", "tencent:cn-etf:v1"),
 }
 
 
@@ -112,7 +113,7 @@ def history_source_tag(frame) -> str:
     provider = contract.get("provider")
     definition = _ENDPOINTS.get(provider) if isinstance(provider, str) else None
     if definition is None or any(contract.get(key) != expected for key, expected in {
-        "version": "cn-etf-shares-v1" if provider in {'eastmoney_etf', 'baostock_etf'} else "cn-stock-shares-v1",
+        "version": "cn-etf-shares-v1" if provider in {'eastmoney_etf', 'baostock_etf', 'tencent_etf'} else "cn-stock-shares-v1",
         "endpoint": definition[0],
         "volume_unit": "share", "amount_unit": "CNY", "turnover_unit": "percentage_point",
     }.items()):

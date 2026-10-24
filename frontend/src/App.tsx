@@ -11,6 +11,8 @@ import { resolveTabFromUrl } from "./utils/tabCompatibility";
 // 顶部栏右侧通知/帮助下拉（Task 12）
 import NotificationDropdown from "./components/portfolio-trading/NotificationDropdown";
 import HelpDropdown from "./components/portfolio-trading/HelpDropdown";
+import {readInspectionReloadLocation} from "./components/portfolio-trading/inspection/inspectionBrowseState";
+import {AcceptanceNotice} from './components/portfolio-trading/inspection/AcceptanceControls';
 
 // ── P2-1 chunk 分割：Tab 页面按需加载 ─────────────────────────
 // 此前这些页面全部静态引入，使 index 打包成 2.3MB、首屏必须下载全部页面代码。
@@ -42,6 +44,15 @@ export default function App() {
   // SubTask 12.5：通知/帮助互斥状态（开一个关另一个，通过 forceClose + onOpenChange 协作）
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const inspectionReload=useRef(readInspectionReloadLocation());
+  useEffect(()=>{
+    const pid=inspectionReload.current;
+    if(!pid||!ctx.portfolios.length)return;
+    inspectionReload.current=null;
+    if(!ctx.portfolios.some(item=>item.id===pid))return;
+    ctx.setActiveSubTab("governance");ctx.setActiveTab("portfolio");
+    if(ctx.portfolioId!==pid)void ctx.switchPortfolio(pid);
+  },[ctx.portfolios,ctx.portfolioId]);
 
   // 消息通知「查看全部 / 点击通知」跳转设置页指定分区：
   // Settings 仅在 settings tab 挂载，故先切 tab，再经 effect 派发 settings:navigate 事件
@@ -215,6 +226,7 @@ export default function App() {
         {/* 原右上角独立工具区已移除（2026-10-17 并入一级菜单，见 nav 内 .nav-tools-light） */}
       </div>
 
+      <AcceptanceNotice/>
       <main className="layout">
         <React.Suspense
           fallback={

@@ -59,25 +59,34 @@ def test_preview_accepts_long_real_history_ranges(preview_client, dataset, start
     assert plan["requested_span_days"] == span
 
 
-@pytest.mark.parametrize(
-    ("dataset", "span", "start"),
-    [("lhb", 31, "2026-09-14"), ("capital_flow", 100, "2026-07-07")],
-)
-def test_preview_preserves_exact_provider_limit(preview_client, dataset, span, start):
+def test_preview_preserves_exact_capital_flow_provider_limit(preview_client):
     accepted = preview_client.post(
         "/external-data/sync-plans/preview",
-        json={"dataset": dataset, "mode": "backfill", "lookback_days": span},
+        json={"dataset": "capital_flow", "mode": "backfill", "lookback_days": 100},
     )
     assert accepted.status_code == 200, accepted.text
-    assert accepted.json()["requested_start_date"] == start
-    assert accepted.json()["provider_history_limit_days"] == span
+    assert accepted.json()["requested_start_date"] == "2026-07-07"
+    assert accepted.json()["provider_history_limit_days"] == 100
 
     rejected = preview_client.post(
         "/external-data/sync-plans/preview",
-        json={"dataset": dataset, "mode": "backfill", "lookback_days": span + 1},
+        json={"dataset": "capital_flow", "mode": "backfill", "lookback_days": 101},
     )
     assert rejected.status_code == 400
-    assert f"provider limit {span}" in rejected.json()["detail"]
+    assert "provider limit 100" in rejected.json()["detail"]
+
+
+def test_preview_chunks_long_lhb_history_instead_of_rejecting_it(preview_client):
+    response = preview_client.post(
+        "/external-data/sync-plans/preview",
+        json={"dataset": "lhb", "mode": "backfill", "lookback_days": 365},
+    )
+    assert response.status_code == 200, response.text
+    plan = response.json()
+    assert plan["requested_span_days"] == 365
+    assert plan["provider_history_limit_days"] == 31
+    assert plan["chunk_days"] == 31
+    assert plan["chunk_count"] == 12
 
 
 @pytest.mark.parametrize("dataset", service.EXTERNAL_DATASETS)

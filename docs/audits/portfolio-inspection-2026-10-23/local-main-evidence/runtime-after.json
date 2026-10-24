@@ -1,0 +1,610 @@
+{
+  "portfolio_id": 1,
+  "generated_at": "2026-10-23T04:41:56.992360+00:00",
+  "guide": {
+    "schema_version": "inspection-guide-v1",
+    "steps": [
+      {
+        "key": "reconciliation",
+        "label": "核实执行",
+        "status": "INCOMPLETE",
+        "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+        "proof_hash": "97386c2fd90fdc059d9d8cd6fd21c9e41a167abdf3f6c7d65c1f097a4baedb13",
+        "proof": {
+          "check": {
+            "key": "reconciliation",
+            "passed": false,
+            "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+            "not_applicable": false,
+            "trade_date": "2026-09-29",
+            "report_id": "reconciliation::1::2026-09-29",
+            "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a"
+          },
+          "scope": null,
+          "report_id": "reconciliation::1::2026-09-29",
+          "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a",
+          "reports": [
+            {
+              "trade_date": "2026-08-20",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-21",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-22",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-26",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-03",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-04",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-24",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-29",
+              "report_id": "reconciliation::1::2026-09-29",
+              "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-09-30",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-10-12",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-10-14",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-10-19",
+              "report_id": "reconciliation::1::2026-10-19",
+              "report_version": "ad3fcb4dd85139814da88a451bd48ee854b9c081ea04a7a86367fee91a467c1e",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            }
+          ],
+          "verified_through_trade_date": null,
+          "pending_days": [],
+          "source_event_ids": [],
+          "source_event_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "tasks": [],
+        "next_action": "OPEN_STEP"
+      },
+      {
+        "key": "data",
+        "label": "批量修复数据",
+        "status": "NOT_APPLICABLE",
+        "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+        "proof_hash": "b01ef1e959634aaec3a4556d89c27483a41650b588dfe781b4673aa22b9f8159",
+        "proof": {
+          "check": {
+            "key": "data",
+            "passed": true,
+            "not_applicable": true,
+            "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+            "snapshot_id": "cb33ab406afda88efc70fa7def9bba7ffef1fc9b23bbc04b6a10072fca899a75",
+            "reason_codes": [],
+            "evidence": [],
+            "coverage": {
+              "entry_symbols": 0,
+              "healthy_symbols": 0,
+              "restricted_symbols": 0
+            },
+            "restricted_symbol_ids": [],
+            "aggregation_policy": "existing_any_healthy_symbol_v1"
+          },
+          "scope": null
+        },
+        "tasks": [],
+        "next_action": "OPEN_STEP"
+      },
+      {
+        "key": "binding",
+        "label": "确认运行绑定",
+        "status": "INCOMPLETE",
+        "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+        "proof_hash": "078b538b26649096dfd16e14f6508dc060275a934a072b92c3f91ded8a2d7db6",
+        "proof": {
+          "check": {
+            "key": "binding",
+            "passed": false,
+            "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+            "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+            "not_applicable": false
+          },
+          "scope": null
+        },
+        "tasks": [],
+        "next_action": "OPEN_STEP"
+      },
+      {
+        "key": "runtime",
+        "label": "本人审核恢复",
+        "status": "INCOMPLETE",
+        "reason": "当前状态允许在核实全部材料后提交本人审核",
+        "proof_hash": "7dfceef020705f478820d813cc7518f84754bfc9f458da8c0fa9e38347481b33",
+        "proof": {
+          "check": {
+            "key": "runtime",
+            "passed": true,
+            "reason": "当前状态允许在核实全部材料后提交本人审核"
+          },
+          "scope": null,
+          "permissions": {
+            "allow_new_buys": false,
+            "allow_risk_exits": true,
+            "allow_auto_recovery": false
+          },
+          "can_confirm": false,
+          "activation": null
+        },
+        "tasks": [],
+        "next_action": "REVIEW_CURRENT_SCOPE"
+      }
+    ],
+    "snapshot_id": "da6d61a656dd248e710f15b1421d4eb800bdbef3bfbec93329fc503d22be88ee",
+    "can_confirm": false,
+    "completion_proofs": [
+      {
+        "key": "reconciliation",
+        "status": "INCOMPLETE",
+        "proof_hash": "97386c2fd90fdc059d9d8cd6fd21c9e41a167abdf3f6c7d65c1f097a4baedb13",
+        "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+        "proof": {
+          "check": {
+            "key": "reconciliation",
+            "passed": false,
+            "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+            "not_applicable": false,
+            "trade_date": "2026-09-29",
+            "report_id": "reconciliation::1::2026-09-29",
+            "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a"
+          },
+          "scope": null,
+          "report_id": "reconciliation::1::2026-09-29",
+          "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a",
+          "reports": [
+            {
+              "trade_date": "2026-08-20",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-21",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-22",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-26",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-03",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-04",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-24",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-29",
+              "report_id": "reconciliation::1::2026-09-29",
+              "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-09-30",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-10-12",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-10-14",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-10-19",
+              "report_id": "reconciliation::1::2026-10-19",
+              "report_version": "ad3fcb4dd85139814da88a451bd48ee854b9c081ea04a7a86367fee91a467c1e",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            }
+          ],
+          "verified_through_trade_date": null,
+          "pending_days": [],
+          "source_event_ids": [],
+          "source_event_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      },
+      {
+        "key": "data",
+        "status": "NOT_APPLICABLE",
+        "proof_hash": "b01ef1e959634aaec3a4556d89c27483a41650b588dfe781b4673aa22b9f8159",
+        "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+        "proof": {
+          "check": {
+            "key": "data",
+            "passed": true,
+            "not_applicable": true,
+            "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+            "snapshot_id": "cb33ab406afda88efc70fa7def9bba7ffef1fc9b23bbc04b6a10072fca899a75",
+            "reason_codes": [],
+            "evidence": [],
+            "coverage": {
+              "entry_symbols": 0,
+              "healthy_symbols": 0,
+              "restricted_symbols": 0
+            },
+            "restricted_symbol_ids": [],
+            "aggregation_policy": "existing_any_healthy_symbol_v1"
+          },
+          "scope": null
+        }
+      },
+      {
+        "key": "binding",
+        "status": "INCOMPLETE",
+        "proof_hash": "078b538b26649096dfd16e14f6508dc060275a934a072b92c3f91ded8a2d7db6",
+        "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+        "proof": {
+          "check": {
+            "key": "binding",
+            "passed": false,
+            "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+            "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+            "not_applicable": false
+          },
+          "scope": null
+        }
+      }
+    ],
+    "effects": {
+      "target_state": "READY",
+      "current_permissions": {
+        "allow_new_buys": false,
+        "allow_risk_exits": true,
+        "allow_auto_recovery": false
+      },
+      "historical_unknown_retained": false,
+      "force_recovery_enabled": false
+    }
+  },
+  "source_events": {
+    "count": 0,
+    "blocking_count": 0,
+    "material_count": 0,
+    "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "status": "CURRENT",
+    "events": []
+  },
+  "current_state": "RECONCILIATION_BLOCKED",
+  "dimensions": {
+    "status_score": "READY",
+    "status_data": "READY",
+    "status_model": "READY",
+    "status_reconciliation": "RECONCILIATION_BLOCKED"
+  },
+  "permissions": {
+    "allow_new_buys": false,
+    "allow_risk_exits": true,
+    "allow_auto_recovery": false,
+    "requires_manual_ack": true
+  },
+  "capability_reasons": {
+    "allow_new_buys": [
+      "对账异常暂停尚待证据重检和本人确认",
+      "对账审核尚未通过（RECONCILIATION_BLOCKED）",
+      "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验"
+    ],
+    "allow_risk_exits": [
+      "当前状态门禁允许风险退出；成交仍需持仓与订单条件满足"
+    ],
+    "allow_auto_recovery": [
+      "对账异常暂停尚待证据重检和本人确认",
+      "对账审核尚未通过（RECONCILIATION_BLOCKED）",
+      "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验"
+    ]
+  },
+  "recovery_summary": {
+    "can_confirm": false,
+    "blockers": [
+      "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+      "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验"
+    ],
+    "checks": [
+      {
+        "key": "reconciliation",
+        "passed": false,
+        "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+        "not_applicable": false,
+        "trade_date": "2026-09-29",
+        "report_id": "reconciliation::1::2026-09-29",
+        "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a"
+      },
+      {
+        "key": "data",
+        "passed": true,
+        "not_applicable": true,
+        "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+        "snapshot_id": "cb33ab406afda88efc70fa7def9bba7ffef1fc9b23bbc04b6a10072fca899a75",
+        "reason_codes": [],
+        "evidence": [],
+        "coverage": {
+          "entry_symbols": 0,
+          "healthy_symbols": 0,
+          "restricted_symbols": 0
+        },
+        "restricted_symbol_ids": [],
+        "aggregation_policy": "existing_any_healthy_symbol_v1"
+      },
+      {
+        "key": "binding",
+        "passed": false,
+        "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+        "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+        "not_applicable": false
+      },
+      {
+        "key": "runtime",
+        "passed": true,
+        "reason": "当前状态允许在核实全部材料后提交本人审核"
+      }
+    ],
+    "review_required": true,
+    "confirmation_action": "RECONCILIATION_CONFIRM",
+    "phase": "BLOCKED",
+    "recommended_action": "VIEW_BLOCKERS",
+    "waiting_reason": null,
+    "next_check_at": null,
+    "coverage_activation_review": null,
+    "target_state": "READY",
+    "force_recovery_enabled": false
+  },
+  "coverage": null,
+  "limitations": [
+    "NO_ACCEPTED_ACCOUNT_BASELINE",
+    "LEGACY_REPORT_AUDIT_ADAPTER"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "state_and_request_handlers_unchanged": true,
+  "reconciliation_review_gate_unchanged": true,
+  "inspection_api_segment_unchanged": true,
+  "backend_entrypoint_unchanged": true,
+  "whole_api_client_unchanged": false,
+  "unrelated_client_type_delta_preserved": true
+}

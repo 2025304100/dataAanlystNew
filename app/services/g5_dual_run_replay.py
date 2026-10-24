@@ -34,6 +34,18 @@ from typing import Any, Callable, Literal
 logger = logging.getLogger(__name__)
 
 ACTION_TYPES = ("BUY", "SELL", "HOLD", "NO_ACTION", "REJECTED", "DATA_BLOCKED")
+G5_ACCEPTANCE_POLICY_VERSION = "engine-source-v1"
+
+
+def get_g5_acceptance_policy() -> dict[str, Any]:
+    """Immutable admission policy; a policy change requires a new version."""
+    return {"version": G5_ACCEPTANCE_POLICY_VERSION, "comparison_kind": "engine_source",
+            "evidence_scope": "decision_actions_only", "admission_supported": False,
+            "unsupported_proof_domains": ["DEPLOYMENT_RUNNER_PROOF", "OPENING_ACCOUNT_SNAPSHOT",
+                "ISOLATED_ORDER_PLAN", "RISK_INPUT_SNAPSHOT", "FACTOR_DEPENDENCY_SNAPSHOT"],
+            "min_trade_days": 10, "min_symbol_days": 10, "min_daily_coverage_pct_exclusive": 0,
+            "max_p0_unexplained": 0, "max_p1_hold_noaction_flip": 0,
+            "same_cutoff_required": True, "unreviewed_differences_allowed": False}
 
 ReasonCategory = Literal[
     # 可解释分类
@@ -100,7 +112,15 @@ class DailyDualRunReport:
     chain_a_meta: dict[str, Any] = field(default_factory=dict)
     chain_b_meta: dict[str, Any] = field(default_factory=dict)
     # 1) universe
-    universe_jaccard: float = 0.0
+    universe_jaccard: float | None = None
+    universe_union_count: int = 0
+    universe_intersection_count: int = 0
+    chain_a_checked_count: int = 0
+    chain_b_checked_count: int = 0
+    chain_a_coverage_pct: float = 0.0
+    chain_b_coverage_pct: float = 0.0
+    valid_symbol_days: int = 0
+    sample_status: str = "INSUFFICIENT"
     universe_added: list[int] = field(default_factory=list)   # B \ A（新来源独有）
     universe_removed: list[int] = field(default_factory=list)  # A \ B（旧来源独有）
     # 2) actions 混淆矩阵: confusion[action_a][action_b] = count
@@ -110,7 +130,10 @@ class DailyDualRunReport:
     # 4) 单证券明细差异（最多 top_k，避免超大 JSON）
     symbol_diffs: list[dict[str, Any]] = field(default_factory=list)
     # 指标
-    action_match_rate: float = 0.0   # (动作完全一致的证券数) / (A ∪ B 的证券数)
+    action_match_rate: float | None = None
+    action_denominator: int = 0
+    action_match_count: int = 0
+    metric_status: str = "NOT_APPLICABLE"
     p0_unexplained_count: int = 0    # BUY/SELL 方向相反 + UNKNOWN/UNMAPPED
     p1_hold_noaction_flip: int = 0   # HOLD↔NO_ACTION 反转
     warnings: list[str] = field(default_factory=list)
@@ -132,8 +155,13 @@ class G5ReplaySummary:
     skipped_days: list[date] = field(default_factory=list)
     daily_reports: list[DailyDualRunReport] = field(default_factory=list)
     # 汇总
-    avg_action_match_rate: float = 0.0
-    avg_universe_jaccard: float = 0.0
+    avg_action_match_rate: float | None = None
+    avg_universe_jaccard: float | None = None
+    valid_symbol_days: int = 0
+    comparison_passed: bool = False
+    acceptance_policy_version: str = G5_ACCEPTANCE_POLICY_VERSION
+    acceptance_policy: dict[str, Any] = field(default_factory=get_g5_acceptance_policy)
+    evidence_scope: str = "decision_actions_only"
     total_p0_unexplained: int = 0
     total_p1_hold_noaction_flip: int = 0
     failing_days_p0: list[date] = field(default_factory=list)
@@ -241,7 +269,15 @@ def compare_one_day(
     set_b = set(b.universe_symbol_ids)
     inter = set_a & set_b
     union = set_a | set_b
-    report.universe_jaccard = (len(inter) / len(union)) if union else 1.0
+    report.universe_jaccard = (len(inter) / len(union)) if union else None
+    report.universe_union_count, report.universe_intersection_count = len(union), len(inter)
+    checked_a = {sid for sid in set_a if sid in a.decisions and a.decisions[sid].action in ACTION_TYPES}
+    checked_b = {sid for sid in set_b if sid in b.decisions and b.decisions[sid].action in ACTION_TYPES}
+    report.chain_a_checked_count, report.chain_b_checked_count = len(checked_a), len(checked_b)
+    report.chain_a_coverage_pct, report.chain_b_coverage_pct = a.coverage_pct, b.coverage_pct
+    report.valid_symbol_days = sum(a.decisions[sid].action != "DATA_BLOCKED" and b.decisions[sid].action != "DATA_BLOCKED"
+                                  for sid in checked_a & checked_b)
+    report.sample_status = "VALID" if report.valid_symbol_days and a.coverage_pct > 0 and b.coverage_pct > 0 else "INSUFFICIENT"
     report.universe_added = sorted(set_b - set_a)   # B 独有（新来源新增）
     report.universe_removed = sorted(set_a - set_b)  # A 独有（旧来源移除）
 
@@ -296,7 +332,9 @@ def compare_one_day(
     # 匹配率
     match_count = sum(confusion[x][x] for x in ACTION_TYPES)
     denom = sum(sum(row.values()) for row in confusion.values())
-    report.action_match_rate = (match_count / denom) if denom else 1.0
+    report.action_match_count, report.action_denominator = match_count, denom
+    report.action_match_rate = (match_count / denom) if denom else None
+    report.metric_status = "APPLICABLE" if denom else "NOT_APPLICABLE"
 
     if report.p0_unexplained_count > 0:
         report.warnings.append(
@@ -359,8 +397,9 @@ def run_g5_dual_run_replay(
         daily = compare_one_day(result_a, result_b, portfolio_id=portfolio_id)
         summary.daily_reports.append(daily)
         summary.days_replayed += 1
-        amr_sum += daily.action_match_rate
-        uj_sum += daily.universe_jaccard
+        amr_sum += daily.action_match_rate or 0
+        uj_sum += daily.universe_jaccard or 0
+        summary.valid_symbol_days += daily.valid_symbol_days
         summary.total_p0_unexplained += daily.p0_unexplained_count
         summary.total_p1_hold_noaction_flip += daily.p1_hold_noaction_flip
         if daily.p0_unexplained_count > 0:
@@ -368,19 +407,24 @@ def run_g5_dual_run_replay(
         if daily.p1_hold_noaction_flip > 0:
             summary.failing_days_p1.append(td)
 
-    n = max(1, summary.days_replayed)
-    summary.avg_action_match_rate = amr_sum / n
-    summary.avg_universe_jaccard = uj_sum / n
+    n = sum(day.action_denominator > 0 for day in summary.daily_reports)
+    summary.avg_action_match_rate = amr_sum / n if n else None
+    summary.avg_universe_jaccard = uj_sum / n if n else None
 
-    summary.g5_eligible_for_g6 = (
+    summary.comparison_passed = (
         summary.total_p0_unexplained == 0
         and summary.total_p1_hold_noaction_flip == 0
-        and summary.days_replayed >= 10  # AC-15 至少 10
+        and summary.days_replayed >= summary.acceptance_policy["min_trade_days"]
+        and summary.valid_symbol_days >= summary.acceptance_policy["min_symbol_days"]
+        and all(day.sample_status == "VALID" for day in summary.daily_reports)
         and not summary.skipped_days  # 连续窗口不得存在漏跑/故障日
     )
-    if summary.g5_eligible_for_g6:
+    # The arithmetic framework cannot certify capture provenance or an actual
+    # deployment. Only validate_g5_report may certify an archived export.
+    summary.g5_eligible_for_g6 = False
+    if summary.comparison_passed:
         summary.summary_notes.append(
-            f"G5 通过（{summary.days_replayed} 日，P0/P1 未解释差异清零）→ 准入 G6。"
+            f"算法比较满足样本与差异阈值（{summary.days_replayed} 日）；来源及方案尚未核验，不产生准入。"
         )
     else:
         summary.summary_notes.append(

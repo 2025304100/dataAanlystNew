@@ -31,6 +31,8 @@ export default function SecurityStatusDownloadPanel({ portfolioId: selectedId, r
   const [dates, setDates] = useState({ start: "", end: "" });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [dateFillApplied, setDateFillApplied] = useState(false);
+  const dateFieldsRef = useRef<HTMLDetailsElement | null>(null);
   const [reading, setReading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<SecurityStatusDownloadInput | null>(null);
@@ -54,6 +56,7 @@ export default function SecurityStatusDownloadPanel({ portfolioId: selectedId, r
   const load = useCallback(async () => {
     const id = portfolioId, token = ++sequence.current;
     setScope(null); setResult(null); setError(""); setNotice(""); setPending(null); setUnconfirmed(false);
+    setDateFillApplied(false);
     setReading(true); setBusy(false); working.current = false;
     if (id === null) { setReading(false); return; }
     try {
@@ -162,6 +165,17 @@ export default function SecurityStatusDownloadPanel({ portfolioId: selectedId, r
   const validScope = scope?.portfolio_id === portfolioId ? scope : null;
   const requestedDays = (Date.parse(dates.end) - Date.parse(dates.start)) / 86400000 + 1;
   const rangeUnavailable = !!requestedRange && !!validScope && (dates.end > validScope.end_date || requestedDays > validScope.max_days);
+  const dayMs = 86400000;
+  const allowedEnd = Math.min(Date.parse(dates.end), Date.parse(validScope?.end_date ?? ""));
+  const allowedStart = Math.max(Date.parse(dates.start), allowedEnd - ((validScope?.max_days ?? 0) - 1) * dayMs);
+  const allowedDates = validScope && validScope.max_days > 0 && Number.isFinite(allowedStart) && Number.isFinite(allowedEnd) && allowedStart <= allowedEnd
+    ? { start: new Date(allowedStart).toISOString().slice(0, 10), end: new Date(allowedEnd).toISOString().slice(0, 10) } : null;
+  const dateFillDisabled = reading || busy || active || !!pending || unconfirmed || !allowedDates;
+  const outsideDownload: string[] = [];
+  if (dateFillApplied && requestedRange) {
+    if (requestedRange.start < dates.start) outsideDownload.push(`${requestedRange.start} 至 ${new Date(Date.parse(dates.start) - dayMs).toISOString().slice(0, 10)}`);
+    if (requestedRange.end > dates.end) outsideDownload.push(`${new Date(Date.parse(dates.end) + dayMs).toISOString().slice(0, 10)} 至 ${requestedRange.end}`);
+  }
   const taskMessage = !task ? "" : task.stage === "interrupted" ? "应用上次关闭时下载尚未完成，请重新下载。" : ({
     queued: "正在等待下载…", running: "正在下载历史股票状态…", done: "下载完成，历史资料仍不完整。",
     partial: "原始文件已保存，部分状态仍待核对。", failed: "下载没有完成，请查看下方原因后重试。",
@@ -176,7 +190,16 @@ export default function SecurityStatusDownloadPanel({ portfolioId: selectedId, r
     {error && <Alert type="error" showIcon message={error} />}
     {notice && <Typography.Paragraph role="status">{notice}</Typography.Paragraph>}
     {rangeUnavailable && <Alert type="warning" showIcon message="本次日期超出了来源可提供的范围"
-      description={`当前最多下载到 ${validScope!.end_date}，一次最多 ${validScope!.max_days} 天。回测原日期已保留；可在下方调整下载日期，或返回回测页调整区间后再补充。`} />}
+      description={`当前最多下载到 ${validScope!.end_date}，一次最多 ${validScope!.max_days} 天。回测原日期已保留。${allowedDates ? "可按下面的按钮填写下载日期，确认后再下载。" : "所选日期目前没有可填写的下载范围，请调整日期后再试。"}`}
+      action={<Button disabled={dateFillDisabled} onClick={() => {
+        if (dateFillDisabled || !allowedDates) return;
+        setDates(allowedDates); setDateFillApplied(true);
+        if (dateFieldsRef.current) dateFieldsRef.current.open = true;
+      }}>按可下载日期填写</Button>} />}
+    {dateFillApplied && requestedRange && <Typography.Paragraph role="status" style={{ marginTop: 10 }}>
+      原回测日期：{requestedRange.start} 至 {requestedRange.end}。本次下载日期：{dates.start} 至 {dates.end}。日期已填好，请确认后点击下载。
+      {outsideDownload.length > 0 && <><br />本次不会补充：{outsideDownload.join("、")}。返回回测后仍按原日期检查。</>}
+    </Typography.Paragraph>}
     {validScope?.reasons.map(reason => <Typography.Paragraph key={reason} type="warning">{reason}</Typography.Paragraph>)}
     <Space wrap style={{ margin: "10px 0" }}>
       <Button type="primary" loading={busy && !active} disabled={!validScope?.can_download || reading || busy || active || unconfirmed || rangeUnavailable || !dates.start || !dates.end || dates.start > dates.end}
@@ -186,11 +209,11 @@ export default function SecurityStatusDownloadPanel({ portfolioId: selectedId, r
       {report && report.raw_files.length > 0 && <Button disabled={busy} onClick={() => void saveFiles()}>保存原始文件</Button>}
       {!active && !unconfirmed && <Button disabled={busy || reading || portfolioId === null} onClick={() => void load()}>重新读取范围</Button>}
     </Space>
-    {validScope && <details style={{ margin: "4px 0 14px" }}><summary>调整日期</summary><Space wrap style={{ marginTop: 8 }}>
+    {validScope && <details ref={dateFieldsRef} style={{ margin: "4px 0 14px" }}><summary>调整日期</summary><Space wrap style={{ marginTop: 8 }}>
       <label>开始日期 <Input aria-label="历史资料开始日期" type="date" value={dates.start} disabled={active || busy || !!pending}
-        onChange={event => setDates(d => ({ ...d, start: event.target.value }))} /></label>
+        onChange={event => { setDateFillApplied(false); setDates(d => ({ ...d, start: event.target.value })); }} /></label>
       <label>结束日期 <Input aria-label="历史资料结束日期" type="date" value={dates.end} max={validScope.end_date} disabled={active || busy || !!pending}
-        onChange={event => setDates(d => ({ ...d, end: event.target.value }))} /></label>
+        onChange={event => { setDateFillApplied(false); setDates(d => ({ ...d, end: event.target.value })); }} /></label>
       <Typography.Text type="secondary">每次最多 {validScope.max_symbols} 个标的、{validScope.max_days} 天。</Typography.Text>
     </Space></details>}
     {task && <Alert showIcon type={active ? "info" : task.status === "failed" ? "error" : "warning"}

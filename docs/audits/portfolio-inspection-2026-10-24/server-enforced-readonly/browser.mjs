@@ -1,0 +1,32 @@
+import {chromium} from '../../frontend/node_modules/playwright/index.mjs';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const root='D:/ai_project/dataAanlystNew/tmp/inspection-server-readonly-2026-10-24',base='http://127.0.0.1:8000',phase=process.argv[2]??'before-restart';
+const originalKey='45fd110f-7cc0-4111-b0e2-4df89a42e1c6',prefix='portfolio-inspection-recheck-request-v1:1';
+let profile;if(phase==='before-restart'){profile=root+'/isolated-profile-'+Date.now();fs.writeFileSync(root+'/profile.txt',profile);}else profile=fs.readFileSync(root+'/profile.txt','utf8');
+const out={phase,checks:[],posts:[],pageErrors:[],getErrors:[],boundary:'All APIs go directly to the real read-only acceptance server. No API interception and no proxy. Only local production HTML/assets pinned.'};
+const ctx=await chromium.launchPersistentContext(profile,{headless:true,executablePath:'C:/Users/demo/AppData/Local/ms-playwright/chromium-1223/chrome-win64/chrome.exe',viewport:{width:1440,height:950},serviceWorkers:'block'});
+ctx.on('page',p=>{p.setDefaultTimeout(25000);p.on('pageerror',e=>out.pageErrors.push(e.message));p.on('response',r=>{const req=r.request();if(!r.url().includes('/api/'))return;if(req.method()==='POST')out.posts.push({path:new URL(r.url()).pathname,status:r.status()});else if(r.status()>=400&&!r.url().includes('/reconciliation-job/requests/'))out.getErrors.push({path:new URL(r.url()).pathname,status:r.status()});});});
+await ctx.route(base+'/',r=>r.fulfill({contentType:'text/html',body:fs.readFileSync('D:/ai_project/dataAanlystNew/app/web/dist/index.html')}));
+await ctx.route(base+'/assets/**',r=>{const path=new URL(r.request().url()).pathname;return r.fulfill({contentType:path.endsWith('.js')?'application/javascript':path.endsWith('.css')?'text/css':'application/octet-stream',body:fs.readFileSync('D:/ai_project/dataAanlystNew/app/web/dist'+path)});});
+if(phase==='before-restart')await ctx.addInitScript(({prefix,key,origin})=>{if(location.origin!==origin)return;if(!localStorage.getItem(prefix))localStorage.setItem(prefix,JSON.stringify({version:1,portfolioId:1,requestKey:key,tradeDate:null,createdAt:Date.now()}));},{prefix,key:originalKey,origin:base});
+const check=s=>{out.checks.push(s);console.log(s);};
+async function job(p){await p.waitForLoadState('networkidle');if(await p.getByRole('region',{name:'自动核对作业详情',exact:true}).isVisible().catch(()=>false))return;await p.getByText('组合交易',{exact:true}).first().click();await p.getByText('检查与对账',{exact:true}).first().click();await p.getByText('新买入已暂停',{exact:true}).waitFor();await p.waitForLoadState('networkidle');if(!await p.getByRole('region',{name:'自动核对作业详情',exact:true}).isVisible().catch(()=>false))await p.getByRole('button',{name:'查看作业',exact:true}).click();await p.getByRole('region',{name:'自动核对作业详情',exact:true}).waitFor();}
+let a,b;
+try{
+ const mode=await(await fetch(base+'/api/v1/inspection-acceptance/status')).json();assert(mode.read_only&&!mode.task_dispatch_allowed&&!mode.task_registration_allowed);
+ if(phase==='before-restart'){
+  a=await ctx.newPage();await a.goto(base+'/');await job(a);await a.getByText('验收产生的请求关联',{exact:true}).waitFor();await a.screenshot({path:root+'/retained-provenance.png',animations:'disabled'});check('真实原请求可读，独立来源备注明确显示验收关页异常，不冒充正式业务或授权。');
+  const direct=await a.evaluate(async key=>{const r=await fetch('/api/v1/portfolios/1/inspection/reconciliation-job/recheck',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request_key:key})});return {status:r.status,body:await r.json()};},originalKey);assert.equal(direct.status,423);assert.equal(direct.body.request_registered,false);check('浏览器直接向真实旧接口提交原键，服务端423拒绝；没有浏览器或代理拦截。');
+  const closeKey=await a.evaluate(()=>crypto.randomUUID());await a.evaluate(key=>{void fetch('/api/v1/portfolios/1/inspection/reconciliation-job/recheck',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({request_key:key})}).catch(()=>{});},closeKey);await a.close();
+  b=await ctx.newPage();await b.goto(base+'/');await job(b);const missing=await b.evaluate(async key=>(await fetch('/api/v1/portfolios/1/inspection/reconciliation-job/requests/'+key)).status,closeKey);assert.equal(missing,404);check('新键keepalive请求后立即关闭发起页，另一页回查仍404，没有误登记。');
+  const unknownKey=await b.evaluate(({prefix})=>{const key=crypto.randomUUID();localStorage.setItem(prefix,JSON.stringify({version:1,portfolioId:1,requestKey:key,tradeDate:null,createdAt:Date.now()}));return key;},{prefix});fs.writeFileSync(root+'/unknown-key.txt',unknownKey);
+  await b.reload({waitUntil:'domcontentloaded'});await job(b);await b.getByRole('region',{name:'原对账请求恢复'}).getByRole('button',{name:'使用原请求重新核对'}).click();await b.getByText('当前为只读验收服务：可以查看结果，不能登记、修改或派发任务。',{exact:true}).waitFor();assert.equal(await b.evaluate(prefix=>JSON.parse(localStorage.getItem(prefix)).requestKey,prefix),unknownKey);await b.screenshot({path:root+'/server-rejected-original-retry.png',animations:'disabled'});check('真实404后的显式原键重试也被服务端拒绝，保留原键与范围。');
+  const count=out.posts.length;await b.reload({waitUntil:'domcontentloaded'});await job(b);await b.getByRole('region',{name:'原对账请求恢复'}).getByRole('button',{name:'使用原请求重新核对'}).waitFor();assert.equal(out.posts.length,count);check('刷新只恢复读取，不自动重放失败请求。');
+ }else{
+  b=await ctx.newPage();await b.goto(base+'/');await job(b);await b.getByRole('region',{name:'原对账请求恢复'}).getByRole('button',{name:'使用原请求重新核对'}).waitFor();assert.equal(await b.evaluate(prefix=>JSON.parse(localStorage.getItem(prefix)).requestKey,prefix),fs.readFileSync(root+'/unknown-key.txt','utf8'));assert.equal(out.posts.length,0);check('服务端和隔离浏览器均重启后，原键保留、只读恢复，不自动提交。');
+  await b.getByRole('region',{name:'原对账请求恢复'}).getByRole('button',{name:'使用原请求重新核对'}).click();await b.getByText('当前为只读验收服务：可以查看结果，不能登记、修改或派发任务。',{exact:true}).waitFor();assert(out.posts.every(p=>p.status===423));await b.screenshot({path:root+'/after-restart-rejected.png',animations:'disabled'});check('重启后再次明确点击也仍由真实服务423拒绝，无法因进程重启解除只读。');
+ }
+ assert(out.posts.every(p=>p.status===423));assert.deepEqual(out.pageErrors,[]);assert.deepEqual(out.getErrors,[]);out.passed=true;
+}catch(e){out.passed=false;out.error=e.stack;console.error(e);if(b&&!b.isClosed())await b.screenshot({path:root+'/failure-'+phase+'.png'});else if(a&&!a.isClosed())await a.screenshot({path:root+'/failure-'+phase+'.png'});process.exitCode=1;}
+finally{await ctx.close();fs.writeFileSync(root+'/browser-'+phase+'.json',JSON.stringify(out,null,2));}

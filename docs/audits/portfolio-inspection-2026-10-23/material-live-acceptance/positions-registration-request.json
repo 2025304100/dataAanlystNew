@@ -1,0 +1,16 @@
+{
+  "trade_date": "2026-09-29",
+  "material": "positions",
+  "report_ref": "reconciliation::1::2026-09-29",
+  "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+  "conclusion": "NOT_FOUND",
+  "attempted_sources": [
+    "该日逐标的持仓快照或完整账本重建来源",
+    "本日原成交与资金流水"
+  ],
+  "evidence_refs": [
+    "检查与对账 → 2026-09-29 → 该交易日的持仓明细 → 本日检查与来源明细；本次安全验收留存来源报告与只读页面证据。"
+  ],
+  "note": "本次验收已查看当日历史持仓检查、原成交与流水，尚未取得九月二十九日可核验的逐标的快照或完整重建证据；当前持仓及当前资金一致不代替当日历史持仓证明。",
+  "request_key": "da3e79dc-ab60-4180-834f-d163d325190c"
+}

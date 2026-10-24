@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "portfolio": "main",
+  "scope": "per-trading-day centered reconciliation modal",
+  "files": [
+    {
+      "path": "after-mode.json",
+      "bytes": 242,
+      "sha256": "37afda385062131893dc762a39fd86e060f0a3967452bbd22d4c9ad2f9e4b830"
+    },
+    {
+      "path": "after.json",
+      "bytes": 1320985,
+      "sha256": "2cdcf609006e5164a19dccf50b9adce6483e12a18c8009be59a3c168e114fdbd"
+    },
+    {
+      "path": "before-mode.json",
+      "bytes": 242,
+      "sha256": "37afda385062131893dc762a39fd86e060f0a3967452bbd22d4c9ad2f9e4b830"
+    },
+    {
+      "path": "before.json",
+      "bytes": 1320985,
+      "sha256": "ed826e442d08e092f1471881aa682eabbb0e353f1aadf3c7248e1b7544b0a618"
+    },
+    {
+      "path": "browser-result.json",
+      "bytes": 11633,
+      "sha256": "1f94a5b631373070b92a596c429cbf8d46f716a417725e32824ae78e89e5749b"
+    },
+    {
+      "path": "browser-run.log",
+      "bytes": 11935,
+      "sha256": "7f69ae9865de56985eb322d865e4f44970c1dfac817718d45a6f610934af1f3b"
+    },
+    {
+      "path": "capture.py",
+      "bytes": 1016,
+      "sha256": "14212245ef9030d637a41a6bb02d3fc191cc58ef9de361966cdc01e0e174018c"
+    },
+    {
+      "path": "card-entry.png",
+      "bytes": 238448,
+      "sha256": "becf75e0f24473e3e7ee1cd076623f45ae36ba17f399e9d34d54028c25464377"
+    },
+    {
+      "path": "compare.py",
+      "bytes": 2711,
+      "sha256": "2aaeb6e9189271491908959751202dbc4877b5470acfe2f421dfe434d81c39e9"
+    },
+    {
+      "path": "final-mode.json",
+      "bytes": 242,
+      "sha256": "37afda385062131893dc762a39fd86e060f0a3967452bbd22d4c9ad2f9e4b830"
+    },
+    {
+      "path": "final-queue.json",
+      "bytes": 10538,
+      "sha256": "25adb71c833d06a1081031904232b71842927cc2ddab4ad3d6195dd1a6138bf1"
+    },
+    {
+      "path": "final-runtime.json",
+      "bytes": 39675,
+      "sha256": "b1df2b980203dc9b165a8cbecae93b9b70ab316a402b2b12459ad1724a4d56b5"
+    },
+    {
+      "path": "freeze.py",
+      "bytes": 6844,
+      "sha256": "e6cf4bb3eed48f6c4b488bb1359e9a5f0966864ff416c8f76924dd2dfbe170cd"
+    },
+    {
+      "path": "frontend-build.log",
+      "bytes": 3351,
+      "sha256": "0183f21c214bb5f5197c0546c78dafd5cd4e71e24331dadca19f6c6919d1e607"
+    },
+    {
+      "path": "frontend-tests-delta.log",
+      "bytes": 764,
+      "sha256": "20590db6075c017daa296ab44ddf94ab12d83ecb081606949e548c5bf83fab0e"
+    },
+    {
+      "path": "frontend-tests.log",
+      "bytes": 5026,
+      "sha256": "747d6a7367e22975162ab269e1a9e53acd137e2ff90c8f94efc66b49281a33e9"
+    },
+    {
+      "path": "live-recheck.json",
+      "bytes": 9558,
+      "sha256": "4eb820f50941d73994d3d1b9f02e3379f7b4a6d878a13f38012a523ff20aa26e"
+    },
+    {
+      "path": "quick-320.png",
+      "bytes": 79122,
+      "sha256": "7f701583388b4e5b9d93d2119a60fbd3b817587d2696e1d45c6fca6d589a47df"
+    },
+    {
+      "path": "quick-390.png",
+      "bytes": 80233,
+      "sha256": "ad7fb08d13adc85c836210b6a5bcb51c3ffb4688051ff38f0cefcaa14b7d535d"
+    },
+    {
+      "path": "quick-check.png",
+      "bytes": 230356,
+      "sha256": "dc0a206e3d16dfc48595468331dfdda8df401fcf3378144c739402273d9df00c"
+    },
+    {
+      "path": "quick-history.png",
+      "bytes": 239748,
+      "sha256": "c1106c8b629c10e96853e3b7e9fc37ec944a308cff0fc27f24d1ac8d770e86f6"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3749,
+      "sha256": "60fa5f91798067e1af50d1f3fb111385e5f22d62bc59420411215b40721bf401"
+    },
+    {
+      "path": "reference-scripts/protected-table-capture.py",
+      "bytes": 4082,
+      "sha256": "410f078333772a10ee283acc1ec65a52484b6211527165feead0e81589f51132"
+    },
+    {
+      "path": "safety.json",
+      "bytes": 955,
+      "sha256": "bcc391df0323afb421538260aa9369190cb7225e372f58f8b4754c1f10ab3fbe"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 8904,
+      "sha256": "06c7c781fce47adba0f4fb43081e81c197e78e1013fd73f3e74884c3c9dcd305"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "frontend/src/components/portfolio-trading/ReadinessRepairDrawer.tsx",
+      "bytes": 14478,
+      "sha256": "3ed2ae0a1fc7e3f875a89d7cf83cb22c3012e5fb88b5078ec2c1732b744e4392"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/__tests__/ReadinessRepairDrawer.test.tsx",
+      "bytes": 9465,
+      "sha256": "1cc4d8857c7cddc53e92016b7b62d418ca8a3411e86abbe5d1cdcd3da598fb6b"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/ReconciliationQuickCheckModal.tsx",
+      "bytes": 12130,
+      "sha256": "43660a4a38034c6af99f898785b2d6603c688403a3f08497a10fc90f3af5b94f"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/reconciliationQuickCheck.css",
+      "bytes": 1989,
+      "sha256": "b56a115196328559259c6534466401edc94e3048c93aec773db17e56f483c0f7"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/__tests__/ReconciliationQuickCheckModal.test.tsx",
+      "bytes": 8778,
+      "sha256": "d6345bdc0351194a93cff9ec264cbd05ec8ac187da2ff3b2681f25e5ffe37992"
+    },
+    {
+      "path": "frontend/src/i18n/zh-CN.ts",
+      "bytes": 398320,
+      "sha256": "1c50883f54c52862e0deffe13c45948a87175cc35f82b7e6a423fe59f6861e4c"
+    },
+    {
+      "path": "frontend/src/i18n/en-US.ts",
+      "bytes": 409443,
+      "sha256": "9a8fbb82e0de4afdbbe86dee756515c3723356c858796b72dde5956cbe88de41"
+    },
+    {
+      "path": "docs/组合交易检查与对账-功能闭环与交互重构设计-2026-10-21.md",
+      "bytes": 151961,
+      "sha256": "7c5212761d2483498bbebba2e05ab092027847f682b07563cb58164d7565ccce"
+    },
+    {
+      "path": "docs/组合交易检查与对账-设计与v10逐项核查及补齐记录-2026-10-23.md",
+      "bytes": 71018,
+      "sha256": "77f959b010bd7b4a74d3b1b18569b8583a6290adaaf414e7f841b3568694433d"
+    }
+  ]
+}

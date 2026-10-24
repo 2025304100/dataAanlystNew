@@ -1,0 +1,25 @@
+{
+  "errors": [],
+  "httpErrors": [],
+  "writes": [],
+  "checks": [
+    "原批成功两只保留；失败ETF有来源、日期、原因及下一步；已保存任务显示2条，无终态等待提示",
+    "任务详情→失败详情→原任务逐层返回，仅顶层接管焦点，390px无横向溢出"
+  ],
+  "task_id": "cdeb2a1d202db141c32f83febfd0fe08",
+  "narrow": {
+    "viewport": 390,
+    "document": 390,
+    "body": [
+      {
+        "width": 390,
+        "scrollWidth": 390
+      },
+      {
+        "width": 0,
+        "scrollWidth": 0
+      }
+    ]
+  },
+  "passed": true
+}

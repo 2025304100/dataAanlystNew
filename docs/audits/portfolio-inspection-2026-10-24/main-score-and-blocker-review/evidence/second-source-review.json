@@ -1,0 +1,172 @@
+[
+  {
+    "symbol": "000001",
+    "verified_dates": 50,
+    "conflicts": [
+      {
+        "trade_date": "2026-08-07",
+        "stored_close": 10.949999809265137,
+        "tencent_qfq_close": 10.94,
+        "difference": -0.009999809265137216,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-10",
+        "stored_close": 11.050000190734863,
+        "tencent_qfq_close": 11.04,
+        "difference": -0.010000190734864134,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-11",
+        "stored_close": 11.020000457763672,
+        "tencent_qfq_close": 11.01,
+        "difference": -0.010000457763672088,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-12",
+        "stored_close": 11.010000228881836,
+        "tencent_qfq_close": 11.0,
+        "difference": -0.010000228881835938,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-13",
+        "stored_close": 11.010000228881836,
+        "tencent_qfq_close": 11.0,
+        "difference": -0.010000228881835938,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-14",
+        "stored_close": 10.869999885559082,
+        "tencent_qfq_close": 10.86,
+        "difference": -0.0099998855590826,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-17",
+        "stored_close": 10.859999656677246,
+        "tencent_qfq_close": 10.85,
+        "difference": -0.009999656677246449,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-18",
+        "stored_close": 10.8100004196167,
+        "tencent_qfq_close": 10.8,
+        "difference": -0.010000419616698508,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-19",
+        "stored_close": 11.029999732971191,
+        "tencent_qfq_close": 11.02,
+        "difference": -0.009999732971191833,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-20",
+        "stored_close": 11.15999984741211,
+        "tencent_qfq_close": 11.15,
+        "difference": -0.00999984741210902,
+        "stored_source": "akshare"
+      },
+      {
+        "trade_date": "2026-08-21",
+        "stored_close": 11.170000076293945,
+        "tencent_qfq_close": 11.16,
+        "difference": -0.01000007629394517,
+        "stored_source": "akshare"
+      }
+    ],
+    "response": {
+      "provider": "tencent",
+      "endpoint": "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get",
+      "symbol": "sz000001",
+      "requested_adjustment": "qfq",
+      "actual_adjustment": "qfq",
+      "returned_mode": "qfqday",
+      "adjustment_evidence": "response_key",
+      "start_date": "2026-08-07",
+      "end_date": "2026-10-23",
+      "raw_date_count": 640,
+      "selected_date_count": 50,
+      "range_filter_only": true,
+      "raw_date_range": {
+        "start": "2024-03-04",
+        "end": "2026-10-23"
+      },
+      "selected_date_range": {
+        "start": "2026-08-07",
+        "end": "2026-10-23"
+      },
+      "range_completeness_certified": false,
+      "input_unit_contract": {
+        "version": "tencent-cn-stock-wire-quantity-v2",
+        "provider": "tencent",
+        "symbol": "sz000001",
+        "instrument_family": "sz_main",
+        "wire_field": "amount",
+        "volume_input_unit": "lot_100_shares",
+        "volume_to_shares": 100,
+        "evidence_sha256": "bdf2c1f31aa282942156c591d050102730f33993e16425ceade8df0be475409b"
+      },
+      "response_sha256": "2d0f9eac9e8142b0e2bc6db02c20471ece83a822fb821be2c2fc1cd9d1b485fa",
+      "raw_response_archived": false
+    },
+    "database_writes": false,
+    "response_sha256": "2d0f9eac9e8142b0e2bc6db02c20471ece83a822fb821be2c2fc1cd9d1b485fa"
+  },
+  {
+    "symbol": "600428",
+    "verified_dates": 50,
+    "conflicts": [
+      {
+        "trade_date": "2026-08-07",
+        "stored_close": 8.09000015258789,
+        "tencent_qfq_close": 11.95,
+        "difference": 3.8599998474121087,
+        "stored_source": "akshare"
+      }
+    ],
+    "response": {
+      "provider": "tencent",
+      "endpoint": "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get",
+      "symbol": "sh600428",
+      "requested_adjustment": "qfq",
+      "actual_adjustment": "qfq",
+      "returned_mode": "qfqday",
+      "adjustment_evidence": "response_key",
+      "start_date": "2026-08-07",
+      "end_date": "2026-10-23",
+      "raw_date_count": 640,
+      "selected_date_count": 50,
+      "range_filter_only": true,
+      "raw_date_range": {
+        "start": "2024-03-04",
+        "end": "2026-10-23"
+      },
+      "selected_date_range": {
+        "start": "2026-08-07",
+        "end": "2026-10-23"
+      },
+      "range_completeness_certified": false,
+      "input_unit_contract": {
+        "version": "tencent-cn-stock-wire-quantity-v2",
+        "provider": "tencent",
+        "symbol": "sh600428",
+        "instrument_family": "sh_main",
+        "wire_field": "amount",
+        "volume_input_unit": "lot_100_shares",
+        "volume_to_shares": 100,
+        "evidence_sha256": "bdf2c1f31aa282942156c591d050102730f33993e16425ceade8df0be475409b"
+      },
+      "response_sha256": "98e37b2fc37f53c84eb633125e97311fdec0232704ec027c58a1e2388fb63662",
+      "raw_response_archived": false
+    },
+    "database_writes": false,
+    "response_sha256": "98e37b2fc37f53c84eb633125e97311fdec0232704ec027c58a1e2388fb63662"
+  }
+]

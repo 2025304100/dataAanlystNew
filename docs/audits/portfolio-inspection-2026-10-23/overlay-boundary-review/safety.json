@@ -1,0 +1,19 @@
+{
+  "protected_tables": 25,
+  "protected_table_differences": [],
+  "protected_tables_identical": true,
+  "auto_trade_tasks_identical": true,
+  "automatic_dispatches_identical": true,
+  "active_tasks_after": [],
+  "main_status_reconciliation_after": "RECONCILIATION_BLOCKED",
+  "last_reconciled_trade_date_after": "2026-09-28",
+  "audit_before": 3765,
+  "audit_after": 3767,
+  "material_notes_before": 3,
+  "material_notes_after": 4,
+  "concurrent_audits": [
+    3766,
+    3767
+  ],
+  "concurrent_activity_note": "An investigation note and a reconciliation rerun appeared during the work window. They are outside the read-only browser script request stream, whose writes list is empty. They were preserved. No actor beyond the recorded local_user identity is inferred."
+}

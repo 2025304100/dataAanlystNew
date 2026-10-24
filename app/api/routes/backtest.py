@@ -339,11 +339,15 @@ def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_d
             start_date=payload.start_date,
             end_date=payload.end_date,
             rule_config=payload.rule_config.model_dump(),
+            initial_capital=payload.initial_capital,
             cost_config=payload.cost_config.model_dump() if payload.cost_config else None,
             run_name=payload.run_name,
             score_weight_mode=score_weight_mode,
             factor_model_run_id=factor_model_run_id,
         )
+        # The engine commits the run; normal sessions expire ORM attributes on commit.
+        if isinstance(result, BacktestRun):
+            db.refresh(result)
         payload_result = dict(result) if isinstance(result, dict) else dict(result.__dict__)
         result_id = payload_result.get("id")
         contract = _enrich_backtest_result_contract(db, {"run_id": result_id})

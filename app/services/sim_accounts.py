@@ -236,6 +236,17 @@ def place_sim_order(
         select(Portfolio.id).where(Portfolio.id == portfolio.id).with_for_update()
     )
 
+    if side == "buy":
+        # Account coverage also bounds direct manual/AI simulated entries.
+        # Risk exits retain their independent existing route.
+        from zoneinfo import ZoneInfo
+        from app.services.portfolio_reconciliation_activation import CoverageError, assert_execution_within_active_coverage
+        try:
+            assert_execution_within_active_coverage(db, portfolio.id, datetime.now(ZoneInfo("Asia/Shanghai")).date())
+            from app.services.portfolio_reconciliation_events import assert_account_sources_checked_for_buy
+            assert_account_sources_checked_for_buy(db, portfolio.id)
+        except CoverageError as exc:
+            raise HTTPException(exc.status_code, detail={"error_code": exc.code, "message": str(exc)}) from exc
     ensure_sim_account_seed(db, portfolio)
 
     normalized_quantity = normalize_order_quantity(symbol, quantity)

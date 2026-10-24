@@ -1,0 +1,66 @@
+{
+  "errors": [],
+  "httpErrors": [],
+  "writes": [],
+  "checks": [
+    "原材料独立预览并返回原详情位置",
+    "当前阻断→历史列表→批次详情→原材料，逐层返回保留筛选、滚动与草稿",
+    "数据诊断→标的详情→历史→原标的→数据中心完整页面→原详情/筛选/步骤，批量工作区草稿保留"
+  ],
+  "widths": [
+    {
+      "viewport": 390,
+      "document": 390,
+      "drawers": [
+        390
+      ]
+    },
+    {
+      "viewport": 320,
+      "document": 320,
+      "drawers": [
+        320
+      ]
+    }
+  ],
+  "tradeDate": "2026-09-29 · 材料待核实",
+  "symbol": "000001",
+  "returnContext": {
+    "portfolioId": 1,
+    "panel": "data",
+    "layers": [
+      "guide",
+      "data"
+    ],
+    "step": 1,
+    "reviewNote": "",
+    "verifiedProofs": {
+      "data": "3bd8d28248b8531c5ae964f3928d472d6d79bfbcdc39c9753428b7b3bebc6dbf"
+    },
+    "selectedTradeDate": "2026-09-29",
+    "materialSelection": {
+      "kind": "execution",
+      "view": "handle",
+      "origin": "reconciliation"
+    },
+    "evidenceMaterialOrigin": false,
+    "historyContext": {
+      "issue_id": "1:daily_bar",
+      "security_ids": [
+        "sz:000001"
+      ],
+      "trade_date": "2026-10-23"
+    },
+    "historyOrigin": {
+      "panel": "data",
+      "step": 1
+    },
+    "scrollPositions": {
+      "material": 0
+    },
+    "pageScroll": 0,
+    "savedAt": 1792765827057,
+    "destination": "settings:data-center:inspection-repair"
+  },
+  "passed": true
+}

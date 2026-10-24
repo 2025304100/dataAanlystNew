@@ -1,0 +1,162 @@
+[
+  {
+    "file": "inspection/InspectionDataPanel.tsx",
+    "kind": "Button",
+    "action": "onClick={reviewOriginal}"
+  },
+  {
+    "file": "inspection/InspectionDataPanel.tsx",
+    "kind": "Button",
+    "action": "onClick={() => prepare()}"
+  },
+  {
+    "file": "inspection/InspectionDataPanel.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void cancelTask()}"
+  },
+  {
+    "file": "inspection/InspectionDataPanel.tsx",
+    "kind": "Button",
+    "action": "onClick={() => prepare(true)}"
+  },
+  {
+    "file": "inspection/InspectionDataPanel.tsx",
+    "kind": "Modal",
+    "action": ""
+  },
+  {
+    "file": "inspection/InspectionEvidencePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={()=>{setAck(false);setConfirmation({kind:\"submit\",candidates:data.candidates.filter(row=>selected.inc"
+  },
+  {
+    "file": "inspection/InspectionEvidencePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={()=>{setAck(false);setReviewNote(\"\");setConfirmation({kind:\"review\",request:row,decision,key:key()});"
+  },
+  {
+    "file": "inspection/InspectionEvidencePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={()=>void onRecheck()}"
+  },
+  {
+    "file": "inspection/InspectionEvidencePanel.tsx",
+    "kind": "Modal",
+    "action": ""
+  },
+  {
+    "file": "inspection/InspectionCoveragePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={() => setApplicationOpen(true)}"
+  },
+  {
+    "file": "inspection/InspectionCoveragePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void query()}"
+  },
+  {
+    "file": "inspection/InspectionCoveragePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={onRecoverBackup}"
+  },
+  {
+    "file": "inspection/InspectionCoveragePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={onCreateIndependentAccount}"
+  },
+  {
+    "file": "inspection/InspectionCoveragePanel.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void accept()}"
+  },
+  {
+    "file": "inspection/InspectionJobPanel.tsx",
+    "kind": "Button",
+    "action": "onClick={onRecheckSources}"
+  },
+  {
+    "file": "inspection/InspectionRecheckRequest.tsx",
+    "kind": "Button",
+    "action": "onClick={onRetry}"
+  },
+  {
+    "file": "inspection/ReconciliationQuickCheckModal.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void recheck()}"
+  },
+  {
+    "file": "inspection/PortfolioInspectionWorkbench.tsx",
+    "kind": "Button",
+    "action": "onClick={() => beginConfirm(\"reconcile\")}"
+  },
+  {
+    "file": "inspection/PortfolioInspectionWorkbench.tsx",
+    "kind": "Button",
+    "action": "onClick={() => beginConfirm(\"binding\")}"
+  },
+  {
+    "file": "inspection/PortfolioInspectionWorkbench.tsx",
+    "kind": "Button",
+    "action": "onClick={() => beginConfirm(\"resume\")}"
+  },
+  {
+    "file": "inspection/PortfolioInspectionWorkbench.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void recheckSources()}"
+  },
+  {
+    "file": "inspection/PortfolioInspectionWorkbench.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void analyse()}"
+  },
+  {
+    "file": "inspection/PortfolioInspectionWorkbench.tsx",
+    "kind": "Modal",
+    "action": ""
+  },
+  {
+    "file": "ReadinessRepairDrawer.tsx",
+    "kind": "Button",
+    "action": "onClick={onToggleEnabled}"
+  },
+  {
+    "file": "ModelBindingReview.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void confirm()}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={handleOpenTransition}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={p.onConfirm}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={runReconcile}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={doConfirm}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={doLaunch}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void runG6Action(\"start\")}"
+  },
+  {
+    "file": "PortfolioGovernanceTab.tsx",
+    "kind": "Button",
+    "action": "onClick={() => void runG6Action(\"rollback\")}"
+  }
+]

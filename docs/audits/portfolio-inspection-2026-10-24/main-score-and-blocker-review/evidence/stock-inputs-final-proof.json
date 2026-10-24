@@ -1,0 +1,174 @@
+[
+  {
+    "symbol": "000001",
+    "symbol_id": 1,
+    "config_id": 3,
+    "trade_date": "2026-10-23",
+    "window_start": "2026-08-07",
+    "verified_dates": 50,
+    "existing_price_contract": "app.services.market_history_evidence._CROSS_PROVIDER_PRICE_ATOL",
+    "cross_provider_price_atol_CNY": 0.02,
+    "cross_provider_max_ohlc_gap": 0.010000000000001563,
+    "recent_amount_max_gap_CNY": 0.0,
+    "unresolved_price_conflicts": [],
+    "original_bar_conflicts": [],
+    "correction": null,
+    "sina_evidence": {
+      "symbol": "sz000001",
+      "adjust": "qfq",
+      "history_rows": 8459,
+      "selected_rows": 50,
+      "price_method": "raw_ohlc / effective_qfq_factor rounded_2_decimals",
+      "decoder": {
+        "name": "akshare.stock.stock_zh_a_sina.hk_js_decode:d",
+        "code_sha256": "39a599c94dde4df1c2eb0882d4bff9560160cfd52ead0797cebb04b3122c2f52",
+        "akshare_version": "1.18.30",
+        "javascript_runtime": {
+          "mini-racer": "0.14.1"
+        }
+      },
+      "shares_records": 66,
+      "qfq_records": 33,
+      "shares_unknown_effective_records": 0,
+      "turnover_unknown_selected_rows": 0,
+      "turnover_method": "raw_volume / effective_outstanding_share * 100",
+      "shares_source_unit": "ten_thousand_share",
+      "volume_source_unit": "share",
+      "amount_source_unit": "CNY",
+      "asof_direction": "backward",
+      "historical_availability_proven": false,
+      "response_sha256": {
+        "history": "eb226369a04fda7b33067487ef27d9daa2da1c7b5f527a2c7b15b1f5cb6c7b23",
+        "shares": "deb4311f47ce5fbe016d1a277e88a755aa70b9e4670169d1602ff325071640ea",
+        "qfq": "c2bc3536f2321f9704bb000adda39a0e8d595b66b8c6134642c7a44ff88ed98c"
+      }
+    },
+    "receipts": [
+      {
+        "path": "rule-input-receipts/000001/history.response",
+        "sha256": "eb226369a04fda7b33067487ef27d9daa2da1c7b5f527a2c7b15b1f5cb6c7b23"
+      },
+      {
+        "path": "rule-input-receipts/000001/qfq.response",
+        "sha256": "c2bc3536f2321f9704bb000adda39a0e8d595b66b8c6134642c7a44ff88ed98c"
+      },
+      {
+        "path": "rule-input-receipts/000001/shares.response",
+        "sha256": "deb4311f47ce5fbe016d1a277e88a755aa70b9e4670169d1602ff325071640ea"
+      },
+      {
+        "path": "second-source-receipts/000001/qfq.response",
+        "sha256": "2d0f9eac9e8142b0e2bc6db02c20471ece83a822fb821be2c2fc1cd9d1b485fa"
+      }
+    ],
+    "network_access": false,
+    "database_writes": false,
+    "pit_historical_availability_certified": false,
+    "status": "VERIFIED_UNCHANGED"
+  },
+  {
+    "symbol": "600428",
+    "symbol_id": 3215,
+    "config_id": 3,
+    "trade_date": "2026-10-23",
+    "window_start": "2026-08-07",
+    "verified_dates": 50,
+    "existing_price_contract": "app.services.market_history_evidence._CROSS_PROVIDER_PRICE_ATOL",
+    "cross_provider_price_atol_CNY": 0.02,
+    "cross_provider_max_ohlc_gap": 0.0,
+    "recent_amount_max_gap_CNY": 0.0,
+    "unresolved_price_conflicts": [],
+    "original_bar_conflicts": [
+      "2026-08-07"
+    ],
+    "correction": {
+      "before": {
+        "id": 774401,
+        "symbol_id": 3215,
+        "trade_date": "2026-08-07",
+        "open": 8.130000114440918,
+        "high": 8.25,
+        "low": 8.0,
+        "close": 8.09000015258789,
+        "volume": 319711.0,
+        "amount": 260480608.0,
+        "turnover_rate": 1.309999942779541,
+        "source": "akshare",
+        "created_at": "2026-08-07 15:02:30"
+      },
+      "after": {
+        "id": 774401,
+        "symbol_id": 3215,
+        "trade_date": "2026-08-07",
+        "open": 11.98,
+        "high": 12.13,
+        "low": 11.77,
+        "close": 11.95,
+        "volume": 66880281.0,
+        "amount": 798051001.0,
+        "turnover_rate": 2.735070351903351,
+        "source": "akshare:sina:cn-stock:v1:qfq",
+        "created_at": "2026-08-07 15:02:30"
+      },
+      "reason": "single_legacy_bar_exceeds_existing_cross_provider_price_contract",
+      "independent_tencent_qfq_ohlc": {
+        "open": 11.98,
+        "high": 12.13,
+        "low": 11.77,
+        "close": 11.95
+      }
+    },
+    "sina_evidence": {
+      "symbol": "sh600428",
+      "adjust": "qfq",
+      "history_rows": 5783,
+      "selected_rows": 50,
+      "price_method": "raw_ohlc / effective_qfq_factor rounded_2_decimals",
+      "decoder": {
+        "name": "akshare.stock.stock_zh_a_sina.hk_js_decode:d",
+        "code_sha256": "39a599c94dde4df1c2eb0882d4bff9560160cfd52ead0797cebb04b3122c2f52",
+        "akshare_version": "1.18.30",
+        "javascript_runtime": {
+          "mini-racer": "0.14.1"
+        }
+      },
+      "shares_records": 15,
+      "qfq_records": 25,
+      "shares_unknown_effective_records": 0,
+      "turnover_unknown_selected_rows": 0,
+      "turnover_method": "raw_volume / effective_outstanding_share * 100",
+      "shares_source_unit": "ten_thousand_share",
+      "volume_source_unit": "share",
+      "amount_source_unit": "CNY",
+      "asof_direction": "backward",
+      "historical_availability_proven": false,
+      "response_sha256": {
+        "history": "e8423cf6d18039024f3dffab81d3c9060839f209e9513e337694b1b976e23ff3",
+        "shares": "60f6796dbd3f1d9f8385aff3e56360275a9d2830885a75da24dc03fa3aabc48a",
+        "qfq": "c8089e5ecd3c2b92ae43e41a0ecb1a874e6afa063b1d596f7356cd76e6dc6f61"
+      }
+    },
+    "receipts": [
+      {
+        "path": "rule-input-receipts/600428/history.response",
+        "sha256": "e8423cf6d18039024f3dffab81d3c9060839f209e9513e337694b1b976e23ff3"
+      },
+      {
+        "path": "rule-input-receipts/600428/qfq.response",
+        "sha256": "c8089e5ecd3c2b92ae43e41a0ecb1a874e6afa063b1d596f7356cd76e6dc6f61"
+      },
+      {
+        "path": "rule-input-receipts/600428/shares.response",
+        "sha256": "60f6796dbd3f1d9f8385aff3e56360275a9d2830885a75da24dc03fa3aabc48a"
+      },
+      {
+        "path": "second-source-receipts/600428/qfq.response",
+        "sha256": "98e37b2fc37f53c84eb633125e97311fdec0232704ec027c58a1e2388fb63662"
+      }
+    ],
+    "network_access": false,
+    "database_writes": false,
+    "pit_historical_availability_certified": false,
+    "status": "VERIFIED_AFTER_SPECIFIED_SINGLE_DAY_CORRECTION"
+  }
+]

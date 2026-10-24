@@ -238,6 +238,12 @@ def test_sync_plan_rejects_unsupported_or_too_long_history():
         "fundamental", {"mode": "backfill", "lookback_days": 60}, today=date(2026, 8, 15)
     )
     assert fundamental_plan["provider_history_limit_days"] is None
+    lhb_plan = service.build_external_sync_plan(
+        "lhb", {"mode": "backfill", "lookback_days": 365}, today=date(2026, 8, 15)
+    )
+    assert lhb_plan["chunk_days"] == 31
+    assert lhb_plan["chunk_count"] == 12
+    assert lhb_plan["requested_span_days"] == 365
     with pytest.raises(ValueError, match="does not support backfill"):
         service.build_external_sync_plan("hot_rank", {"mode": "backfill"})
 

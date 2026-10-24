@@ -1,0 +1,20 @@
+{
+  "frontend/src/components/portfolio-trading/inspection/InspectionActivityEvidence.tsx": "158b51972855a0b280a061003e44850db57dbfdcf3e5158edb76d3910eb60786",
+  "frontend/src/components/portfolio-trading/inspection/InspectionCoveragePanel.tsx": "25c41284dd4a4fdb93294ddfcf82c0ca87a6f7689f3e97630f78a7ef3b4a1648",
+  "frontend/src/components/portfolio-trading/inspection/InspectionDataOverview.tsx": "93e53aa7f8a5f764374c4ad0ea5028931b2ee283a9805b1cc0df6e155bf90ea8",
+  "frontend/src/components/portfolio-trading/inspection/InspectionDataPanel.tsx": "e93cdc7eb9e13491ffa40aed5ec9161b7ba73cbf42e31f58200c41fd7e4df65a",
+  "frontend/src/components/portfolio-trading/inspection/InspectionDrawer.tsx": "2052a1997c371aa10ff1a54ac0ea887e6c4ec2ac30b9cafff033d5088264b4df",
+  "frontend/src/components/portfolio-trading/inspection/InspectionEvidencePanel.tsx": "3aa35183a3bb1820e0d7c2599a426f4844217684e2a40fbd6a069c9441ef638b",
+  "frontend/src/components/portfolio-trading/inspection/InspectionExecutionEntry.tsx": "673f7ea90b4573bfb322b50a9117a1e2b3f9654c915b35d961dd339c209a4580",
+  "frontend/src/components/portfolio-trading/inspection/InspectionExecutionToolbar.tsx": "8e0165cfb2650a0c05ddb9ea925ef3fd8de43b3c8fc11c31f347b3b48296bce3",
+  "frontend/src/components/portfolio-trading/inspection/InspectionHistoryGapPanel.tsx": "9d7df62b00e07213c5fb7f01e0851e68c30ea92e56ef00017ed464492e3ed30f",
+  "frontend/src/components/portfolio-trading/inspection/InspectionHistoryPanel.tsx": "b1e76951ca3582e4d3682862151e01061648ce8bb02498b047688094446a72ed",
+  "frontend/src/components/portfolio-trading/inspection/InspectionJobPanel.tsx": "14e588b75229c06d738cfd42cdcc265af427b725cc71938a352d69ae20ec2be2",
+  "frontend/src/components/portfolio-trading/inspection/InspectionReconciliationSummary.tsx": "ece18d1ff60222a78a8d424653066bf39e982debfbc170c264eeb3bc574d79cd",
+  "frontend/src/components/portfolio-trading/inspection/InspectionRepairWorkspace.tsx": "cd4caba067d16f6197d59284548f55e1b4871703165fe60042552ba70d4c338b",
+  "frontend/src/components/portfolio-trading/inspection/InspectionReturnLink.tsx": "60ab0536a79f6d43369bb5a156e26528338a78708933ebedfe51a6d79c807be5",
+  "frontend/src/components/portfolio-trading/inspection/InspectionRuntimeReview.tsx": "75b43d67552ad329fab5fe4f95095bf3fcd4e01fa10125bd58523b79284679b4",
+  "frontend/src/components/portfolio-trading/inspection/InspectionSurface.tsx": "393ab5de146f77f1a1cfa1f920478fc46f2cda3035bb67f87b7ae828866ee2d2",
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": "3bf9ac9dc8977ebef797bebd2099c4c5419e02c0baa3c79cc0147d47724d242b",
+  "frontend/src/components/portfolio-trading/inspection/ReconciliationQuickCheckModal.tsx": "63ef207e1edce96e5fc70fd76e53c7659785380622d3d97a89f2102d4fe3d1f1"
+}

@@ -1,0 +1,504 @@
+<div id="pt-reconcile-lab" aria-label="组合交易检查与对账重构原型">
+  <div class="pt-reviewbar">
+    <span><b>交互评审</b><span class="pt-review-sep">/</span>检查与对账 · 重构方案</span>
+    <span class="pt-demo">演示数据 · 不连接交易账户</span>
+    <label class="pt-review-scene">场景 <select id="pt-scene-select" aria-label="选择评审场景"><option value="blocked">日常阻断</option><option value="history">历史证据未知</option><option value="job">自动核对等待撮合</option><option value="unavailable">验收能力未接通</option><option value="healthy">正常运行</option><option value="error">检查读取失败</option><option value="permission">无审核权限</option></select></label>
+  </div>
+  <div class="pt-window">
+    <header class="pt-topbar">
+      <div class="pt-brand"><span class="pt-brand-icon"><i data-lucide="activity" aria-hidden="true"></i></span><span>量化工作台</span></div>
+      <div class="pt-breadcrumb">组合交易 <span>/</span> 稳健成长组合 <span>/</span> <b>检查与对账</b></div>
+      <div class="pt-user"><span class="pt-avatar">陈</span><span>本人</span></div>
+    </header>
+    <div class="pt-shell">
+      <aside class="pt-rail" aria-label="工作台导航">
+        <span class="pt-rail-icon"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span>总览</span></span>
+        <span class="pt-rail-icon"><i data-lucide="chart-no-axes-combined" aria-hidden="true"></i><span>研究</span></span>
+        <span class="pt-rail-icon pt-rail-active"><i data-lucide="layers-3" aria-hidden="true"></i><span>组合</span></span>
+        <span class="pt-rail-icon"><i data-lucide="database" aria-hidden="true"></i><span>数据</span></span>
+        <span class="pt-rail-icon"><i data-lucide="settings-2" aria-hidden="true"></i><span>设置</span></span>
+        <span class="pt-rail-foot">模拟<br>账户</span>
+      </aside>
+      <main class="pt-main">
+        <div class="pt-page-heading"><div><div class="pt-overline">组合运行与核验</div><h1>检查与对账</h1><p>找到原因，看清证据，完成处理。</p></div><div class="pt-heading-actions"><span class="pt-account"><i data-lucide="flask-conical" aria-hidden="true"></i>模拟账户</span><button class="pt-button" data-action="select:status"><i data-lucide="shield-check" aria-hidden="true"></i>运行状态审核</button></div></div>
+        <section id="pt-health" aria-label="当前组合状态"></section>
+        <section id="pt-jobbar" aria-label="自动对账作业"></section>
+        <div class="pt-tabs" role="tablist" aria-label="检查与对账功能"><button id="pt-tab-todo" class="pt-tab pt-tab-active" data-action="view:todo" role="tab" aria-selected="true" aria-controls="pt-content">待处理事项 <span id="pt-tab-count">2</span></button><button id="pt-tab-records" class="pt-tab" data-action="view:records" role="tab" aria-selected="false" aria-controls="pt-content">验收与记录</button><button class="pt-text-button pt-record-link" data-action="select:queue"><i data-lucide="calendar-check-2" aria-hidden="true"></i>每日核对记录</button></div>
+        <div id="pt-content" role="tabpanel" aria-labelledby="pt-tab-todo"></div>
+        <footer class="pt-footnote"><span><i data-lucide="lock-keyhole" aria-hidden="true"></i>普通对账不支持跳过校验 · 例外恢复默认关闭</span><span>检查快照 <b id="pt-snapshot">V17</b> · 2026-10-22 10:32</span></footer>
+      </main>
+    </div>
+  </div>
+  <div id="pt-feedback" class="pt-feedback" role="status" aria-live="polite"></div>
+</div>
+<style>
+#pt-reconcile-lab{--pt-canvas:light-dark(#f5f7fa,#0b1119);--pt-surface:light-dark(#fff,#111b28);--pt-soft:light-dark(#f8fafc,#152131);--pt-line:light-dark(#e5eaf0,#253247);--pt-strong:light-dark(#d6dfe8,#38475c);--pt-text:light-dark(#172536,#e9eff7);--pt-muted:light-dark(#64748b,#a4b3c6);--pt-dim:light-dark(#7c899a,#7e91aa);--pt-brand:light-dark(#087f70,#50d9c2);--pt-brand-on:light-dark(#fff,#082d27);--pt-brand-soft:light-dark(#e9f6f2,#123b36);--pt-danger:light-dark(#bc3d42,#ff989b);--pt-danger-soft:light-dark(#fff1ef,#36252c);--pt-warn:light-dark(#98610e,#efc16f);--pt-warn-soft:light-dark(#fff7e8,#342e20);--pt-blue:light-dark(#3676bb,#86b6f4);--pt-blue-soft:light-dark(#eef5ff,#1a2c44);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:13px;line-height:1.6;color:var(--pt-text);width:100%;color-scheme:light dark}
+#pt-reconcile-lab *{box-sizing:border-box}
+#pt-reconcile-lab [hidden]{display:none!important}
+#pt-reconcile-lab button,#pt-reconcile-lab input,#pt-reconcile-lab textarea,#pt-reconcile-lab select{font:inherit}
+#pt-reconcile-lab button{color:inherit}
+#pt-reconcile-lab button:disabled{opacity:.5;cursor:not-allowed}
+#pt-reconcile-lab button:focus-visible,#pt-reconcile-lab input:focus-visible,#pt-reconcile-lab select:focus-visible,#pt-reconcile-lab textarea:focus-visible{outline:3px solid var(--pt-brand);outline-offset:3px}
+#pt-reconcile-lab i[data-lucide],#pt-reconcile-lab svg.lucide{width:16px;height:16px;flex-shrink:0;vertical-align:middle}
+#pt-reconcile-lab .pt-reviewbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 2px 14px;font-size:12px;color:var(--pt-muted)}
+#pt-reconcile-lab .pt-reviewbar b{font-weight:600;color:var(--pt-text)}
+#pt-reconcile-lab .pt-review-sep{margin:0 9px;color:var(--pt-dim)}
+#pt-reconcile-lab .pt-demo{margin-left:auto}
+#pt-reconcile-lab .pt-review-scene{display:flex;gap:7px;align-items:center}
+#pt-reconcile-lab select{background:var(--pt-surface);color:var(--pt-text);padding:6px 9px;border:1px solid var(--pt-line);border-radius:6px;max-width:100%;min-width:0}
+#pt-reconcile-lab .pt-window{background:var(--pt-canvas);border:1px solid var(--pt-line);border-radius:14px;overflow:clip}
+#pt-reconcile-lab .pt-topbar{display:flex;gap:24px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--pt-line);background:var(--pt-surface)}
+#pt-reconcile-lab .pt-brand{display:flex;gap:9px;align-items:center;font-weight:650;white-space:nowrap}
+#pt-reconcile-lab .pt-brand-icon{width:28px;height:28px;background:var(--pt-brand);border-radius:7px;color:var(--pt-brand-on);display:grid;place-items:center}
+#pt-reconcile-lab .pt-breadcrumb{font-size:12px;color:var(--pt-muted)}
+#pt-reconcile-lab .pt-breadcrumb span{margin:0 9px;color:var(--pt-dim)}
+#pt-reconcile-lab .pt-breadcrumb b{font-weight:500;color:var(--pt-text)}
+#pt-reconcile-lab .pt-user{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px}
+#pt-reconcile-lab .pt-avatar{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--pt-brand-soft);color:var(--pt-brand);font-weight:600}
+#pt-reconcile-lab .pt-shell{display:grid;grid-template-columns:66px minmax(0,1fr)}
+#pt-reconcile-lab .pt-rail{border-right:1px solid var(--pt-line);background:var(--pt-surface);padding:20px 8px;display:flex;flex-direction:column;gap:12px}
+#pt-reconcile-lab .pt-rail-icon{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 5px;color:var(--pt-dim);font-size:11px;border-radius:8px}
+#pt-reconcile-lab .pt-rail-active{color:var(--pt-brand);background:var(--pt-brand-soft);font-weight:600}
+#pt-reconcile-lab .pt-rail-foot{margin-top:auto;text-align:center;color:var(--pt-dim);font-size:11px;padding-top:80px}
+#pt-reconcile-lab .pt-main{padding:24px 25px 14px;min-width:0}
+#pt-reconcile-lab .pt-page-heading{display:flex;align-items:center;gap:16px;margin-bottom:21px}
+#pt-reconcile-lab .pt-overline{font-size:11px;letter-spacing:.12em;color:var(--pt-dim);margin-bottom:3px}
+#pt-reconcile-lab h1{font-size:25px;line-height:1.35;margin:0;font-weight:650;letter-spacing:.01em;color:var(--pt-text)}
+#pt-reconcile-lab .pt-page-heading p{margin:5px 0 0;color:var(--pt-muted);font-size:12px}
+#pt-reconcile-lab .pt-heading-actions{margin-left:auto;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+#pt-reconcile-lab .pt-account{display:flex;gap:5px;align-items:center;color:var(--pt-muted);font-size:12px}
+#pt-reconcile-lab .pt-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--pt-strong);background:var(--pt-surface);padding:7px 11px;border-radius:7px;font-weight:500;white-space:normal;max-width:100%;text-align:center;min-height:34px}
+#pt-reconcile-lab .pt-button:hover:not(:disabled){border-color:var(--pt-brand);color:var(--pt-brand)}
+#pt-reconcile-lab .pt-button-primary{background:var(--pt-brand);border-color:var(--pt-brand);color:var(--pt-brand-on)}
+#pt-reconcile-lab .pt-button-primary:hover:not(:disabled){color:var(--pt-brand-on);filter:brightness(.95)}
+#pt-reconcile-lab .pt-button-quiet{background:var(--pt-soft);border-color:var(--pt-line)}
+#pt-reconcile-lab .pt-text-button{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;padding:4px 0;color:var(--pt-brand);font-size:12px;max-width:100%;text-align:left}
+#pt-reconcile-lab .pt-health{display:flex;gap:16px;align-items:flex-start;padding:18px 19px;background:var(--pt-surface);border:1px solid var(--pt-line);border-radius:10px;border-left:3px solid var(--pt-warn)}
+#pt-reconcile-lab .pt-health-good{border-left-color:var(--pt-brand)}
+#pt-reconcile-lab .pt-health-error{border-left-color:var(--pt-danger)}
+#pt-reconcile-lab .pt-health-icon{background:var(--pt-warn-soft);color:var(--pt-warn);width:34px;height:34px;border-radius:9px;display:grid;place-items:center}
+#pt-reconcile-lab .pt-health-good .pt-health-icon{background:var(--pt-brand-soft);color:var(--pt-brand)}
+#pt-reconcile-lab .pt-health-error .pt-health-icon{background:var(--pt-danger-soft);color:var(--pt-danger)}
+#pt-reconcile-lab .pt-health-text{flex:1;min-width:0}
+#pt-reconcile-lab .pt-health-title{font-size:16px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+#pt-reconcile-lab .pt-health-text p{margin:0;color:var(--pt-muted);font-size:12px}
+#pt-reconcile-lab .pt-capabilities{display:flex;gap:13px;flex-wrap:wrap;font-size:11px;margin-top:12px}
+#pt-reconcile-lab .pt-capabilities span{display:flex;gap:5px;align-items:center}
+#pt-reconcile-lab .pt-capabilities b{font-weight:500}
+#pt-reconcile-lab .pt-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+#pt-reconcile-lab .pt-negative{color:var(--pt-danger)}
+#pt-reconcile-lab .pt-positive{color:var(--pt-brand)}
+#pt-reconcile-lab .pt-warning{color:var(--pt-warn)}
+#pt-reconcile-lab .pt-muted{color:var(--pt-muted)}
+#pt-reconcile-lab .pt-health-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;padding-top:1px}
+#pt-reconcile-lab .pt-jobbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:12px 3px;color:var(--pt-muted);font-size:11px}
+#pt-reconcile-lab .pt-jobbar .pt-text-button{margin-left:auto;font-size:11px}
+#pt-reconcile-lab .pt-job-divider{width:1px;height:11px;background:var(--pt-strong);margin:0 2px}
+#pt-reconcile-lab .pt-tabs{display:flex;align-items:center;gap:24px;border-bottom:1px solid var(--pt-line);margin-top:7px}
+#pt-reconcile-lab .pt-tab{border:0;background:transparent;border-bottom:2px solid transparent;padding:12px 0 13px;color:var(--pt-muted);font-weight:500}
+#pt-reconcile-lab .pt-tab-active{color:var(--pt-brand);border-bottom-color:var(--pt-brand)}
+#pt-reconcile-lab .pt-tab span{margin-left:5px;border-radius:5px;background:var(--pt-brand-soft);padding:1px 6px;font-size:11px}
+#pt-reconcile-lab .pt-record-link{margin-left:auto;white-space:nowrap}
+#pt-reconcile-lab .pt-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr);gap:17px;align-items:start;padding-top:17px}
+#pt-reconcile-lab .pt-list{background:var(--pt-surface);border:1px solid var(--pt-line);border-radius:10px;overflow:clip;min-width:0}
+#pt-reconcile-lab .pt-list-head{display:flex;gap:12px;padding:15px 17px;align-items:center;border-bottom:1px solid var(--pt-line)}
+#pt-reconcile-lab .pt-list-head h2{font-size:14px;font-weight:600;margin:0}
+#pt-reconcile-lab .pt-list-head .pt-text-button{margin-left:auto}
+#pt-reconcile-lab .pt-small{font-size:11px;color:var(--pt-dim)}
+#pt-reconcile-lab .pt-group-label{display:flex;gap:7px;align-items:center;padding:13px 17px 8px;color:var(--pt-muted);font-size:11px;font-weight:500}
+#pt-reconcile-lab .pt-item{position:relative;border:0;border-bottom:1px solid var(--pt-line);display:block;width:100%;background:var(--pt-surface);text-align:left;padding:16px 17px 15px 21px}
+#pt-reconcile-lab .pt-item:last-child{border-bottom:0}
+#pt-reconcile-lab .pt-item:hover{background:var(--pt-soft)}
+#pt-reconcile-lab .pt-item-selected{background:var(--pt-brand-soft)}
+#pt-reconcile-lab .pt-item-selected:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--pt-brand)}
+#pt-reconcile-lab .pt-item-heading{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+#pt-reconcile-lab .pt-item-title{font-weight:600;font-size:13px;margin-bottom:5px}
+#pt-reconcile-lab .pt-item p{margin:5px 0;color:var(--pt-muted);font-size:12px}
+#pt-reconcile-lab .pt-tag{display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:500;white-space:nowrap;background:var(--pt-soft);color:var(--pt-muted)}
+#pt-reconcile-lab .pt-tag-danger{color:var(--pt-danger);background:var(--pt-danger-soft)}
+#pt-reconcile-lab .pt-tag-warn{color:var(--pt-warn);background:var(--pt-warn-soft)}
+#pt-reconcile-lab .pt-tag-good{color:var(--pt-brand);background:var(--pt-brand-soft)}
+#pt-reconcile-lab .pt-tag-blue{color:var(--pt-blue);background:var(--pt-blue-soft)}
+#pt-reconcile-lab .pt-item-evidence{display:flex;gap:9px;flex-wrap:wrap;margin:9px 0 7px;font-size:11px;color:var(--pt-muted)}
+#pt-reconcile-lab .pt-item-action{display:flex;gap:6px;align-items:center;color:var(--pt-brand);font-size:12px;font-weight:500;margin-top:10px}
+#pt-reconcile-lab .pt-item-action i{width:13px;height:13px}
+#pt-reconcile-lab .pt-list-footer{padding:12px 17px;border-top:1px solid var(--pt-line);background:var(--pt-soft);font-size:11px;color:var(--pt-muted)}
+#pt-reconcile-lab .pt-list-footer .pt-text-button{font-size:11px;margin-top:4px}
+#pt-reconcile-lab .pt-panel{border:1px solid var(--pt-line);background:var(--pt-surface);border-radius:10px;min-width:0;overflow:clip}
+#pt-reconcile-lab .pt-panel-tabs{display:flex;gap:17px;align-items:center;padding:0 17px;border-bottom:1px solid var(--pt-line);height:48px}
+#pt-reconcile-lab .pt-panel-tab{border:0;background:transparent;color:var(--pt-muted);font-size:12px;padding:13px 0;border-bottom:2px solid transparent}
+#pt-reconcile-lab .pt-panel-tab-active{color:var(--pt-brand);border-bottom-color:var(--pt-brand)}
+#pt-reconcile-lab .pt-panel-tabs .pt-tag{margin-left:auto}
+#pt-reconcile-lab .pt-panel-body{padding:18px}
+#pt-reconcile-lab h2{font-size:17px;margin:0 0 7px;line-height:1.4;font-weight:600;color:var(--pt-text)}
+#pt-reconcile-lab h3{font-size:12px;margin:18px 0 9px;font-weight:600;color:var(--pt-text)}
+#pt-reconcile-lab .pt-eyebrow{color:var(--pt-muted);font-size:11px;margin-bottom:6px;display:flex;gap:7px;align-items:center}
+#pt-reconcile-lab .pt-subtitle{font-size:12px;line-height:1.7;color:var(--pt-muted);margin:6px 0 13px}
+#pt-reconcile-lab .pt-callout{padding:11px 12px;border-radius:7px;background:var(--pt-soft);font-size:12px;color:var(--pt-muted);margin:11px 0}
+#pt-reconcile-lab .pt-callout b{color:var(--pt-text);font-weight:600}
+#pt-reconcile-lab .pt-callout-warn{background:var(--pt-warn-soft);color:var(--pt-warn)}
+#pt-reconcile-lab .pt-callout-danger{background:var(--pt-danger-soft);color:var(--pt-danger)}
+#pt-reconcile-lab .pt-callout-good{background:var(--pt-brand-soft);color:var(--pt-brand)}
+#pt-reconcile-lab .pt-check{display:flex;align-items:flex-start;gap:9px;padding:11px 0;border-bottom:1px solid var(--pt-line)}
+#pt-reconcile-lab .pt-check:last-child{border-bottom:0}
+#pt-reconcile-lab .pt-check-icon{padding-top:2px;color:var(--pt-brand)}
+#pt-reconcile-lab .pt-check-main{min-width:0;flex:1}
+#pt-reconcile-lab .pt-check-title{display:flex;align-items:center;gap:7px;justify-content:space-between;font-size:12px;font-weight:500}
+#pt-reconcile-lab .pt-check p{font-size:11px;color:var(--pt-muted);margin:3px 0 0}
+#pt-reconcile-lab .pt-check .pt-text-button{font-size:11px}
+#pt-reconcile-lab .pt-kv{display:grid;grid-template-columns:92px minmax(0,1fr);gap:7px 11px;font-size:12px;margin:12px 0}
+#pt-reconcile-lab .pt-kv dt{color:var(--pt-muted)}
+#pt-reconcile-lab .pt-kv dd{margin:0;overflow-wrap:anywhere}
+#pt-reconcile-lab .pt-panel-footer{padding:14px 18px;border-top:1px solid var(--pt-line);background:var(--pt-surface)}
+#pt-reconcile-lab .pt-action-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#pt-reconcile-lab .pt-panel-footer p{color:var(--pt-muted);font-size:11px;margin:8px 0 0}
+#pt-reconcile-lab .pt-steps{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--pt-muted);margin:13px 0}
+#pt-reconcile-lab .pt-steps b{color:var(--pt-brand);font-weight:500}
+#pt-reconcile-lab .pt-progress{height:5px;background:var(--pt-line);border-radius:4px;overflow:hidden;margin:11px 0}
+#pt-reconcile-lab .pt-progress-fill{background:var(--pt-brand);height:100%;transition:width .25s}
+#pt-reconcile-lab .pt-quote{border-left:2px solid var(--pt-strong);padding:5px 0 5px 12px;font-size:12px;color:var(--pt-muted);margin:12px 0}
+#pt-reconcile-lab .pt-input-label{display:block;color:var(--pt-muted);font-size:11px;margin:12px 0 6px}
+#pt-reconcile-lab textarea,#pt-reconcile-lab input[type="date"]{width:100%;border:1px solid var(--pt-strong);border-radius:6px;background:var(--pt-surface);color:var(--pt-text);padding:9px;min-width:0}
+#pt-reconcile-lab textarea{min-height:74px;resize:vertical;font-size:12px}
+#pt-reconcile-lab .pt-agree{display:flex;gap:7px;align-items:flex-start;font-size:11px;margin:11px 0;color:var(--pt-muted)}
+#pt-reconcile-lab .pt-agree input{accent-color:var(--pt-brand);margin-top:3px}
+#pt-reconcile-lab .pt-permission{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid var(--pt-line);padding:11px 0;font-size:12px}
+#pt-reconcile-lab .pt-permission b{font-weight:500}
+#pt-reconcile-lab .pt-permission p{font-size:11px;color:var(--pt-muted);margin:3px 0 0}
+#pt-reconcile-lab .pt-note-row{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--pt-line);font-size:12px}
+#pt-reconcile-lab .pt-note-row span:first-child{color:var(--pt-muted)}
+#pt-reconcile-lab details{font-size:11px;color:var(--pt-muted);margin:13px 0}
+#pt-reconcile-lab details summary{padding:6px 0}
+#pt-reconcile-lab .pt-records{padding-top:17px}
+#pt-reconcile-lab .pt-record-tabs{display:flex;gap:8px;margin-bottom:16px}
+#pt-reconcile-lab .pt-record-tab{background:transparent;color:var(--pt-muted);border:1px solid transparent;padding:7px 11px;border-radius:6px;font-size:12px}
+#pt-reconcile-lab .pt-record-tab[aria-selected="true"]{background:var(--pt-surface);border-color:var(--pt-line);color:var(--pt-text)}
+#pt-reconcile-lab .pt-record-surface{padding:22px;background:var(--pt-surface);border:1px solid var(--pt-line);border-radius:10px}
+#pt-reconcile-lab .pt-section-heading{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+#pt-reconcile-lab .pt-section-heading h2{font-size:18px}
+#pt-reconcile-lab .pt-chain-grid{display:grid;grid-template-columns:1fr 28px 1fr;gap:12px;align-items:center;margin:19px 0}
+#pt-reconcile-lab .pt-chain{border:1px solid var(--pt-line);border-radius:8px;padding:16px;background:var(--pt-soft);min-width:0}
+#pt-reconcile-lab .pt-chain>strong{display:block;font-size:15px;margin:8px 0;font-weight:600}
+#pt-reconcile-lab .pt-chain p{margin:6px 0;color:var(--pt-muted);font-size:12px}
+#pt-reconcile-lab .pt-chain select{width:100%;margin:8px 0}
+#pt-reconcile-lab .pt-chain-arrow{color:var(--pt-dim);text-align:center}
+#pt-reconcile-lab .pt-data-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+#pt-reconcile-lab .pt-data-table th{font-size:11px;color:var(--pt-muted);font-weight:500;padding:10px 9px;background:var(--pt-soft)}
+#pt-reconcile-lab .pt-data-table td{padding:11px 9px;border-bottom:1px solid var(--pt-line);vertical-align:top}
+#pt-reconcile-lab .pt-data-table th:first-child,#pt-reconcile-lab .pt-data-table td:first-child{padding-left:0}
+#pt-reconcile-lab .pt-table-wrap{overflow-x:auto;max-width:100%}
+#pt-reconcile-lab .pt-inline-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+#pt-reconcile-lab .pt-timeline{margin-top:19px}
+#pt-reconcile-lab .pt-timeline-row{display:grid;grid-template-columns:52px 18px 1fr;gap:10px;padding-bottom:23px}
+#pt-reconcile-lab .pt-timeline-time{font-size:11px;color:var(--pt-dim);font-variant-numeric:tabular-nums}
+#pt-reconcile-lab .pt-timeline-marker{position:relative;color:var(--pt-brand)}
+#pt-reconcile-lab .pt-timeline-marker:after{content:"";position:absolute;top:15px;bottom:-15px;left:3px;width:1px;background:var(--pt-line)}
+#pt-reconcile-lab .pt-timeline-row:last-child .pt-timeline-marker:after{display:none}
+#pt-reconcile-lab .pt-timeline-title{font-size:13px;font-weight:500}
+#pt-reconcile-lab .pt-timeline-row p{margin:5px 0;color:var(--pt-muted);font-size:12px}
+#pt-reconcile-lab .pt-footnote{display:flex;justify-content:space-between;gap:9px;flex-wrap:wrap;color:var(--pt-dim);font-size:11px;padding-top:15px}
+#pt-reconcile-lab .pt-footnote>span{display:flex;align-items:center;gap:5px}
+#pt-reconcile-lab .pt-footnote svg{width:12px;height:12px}
+#pt-reconcile-lab .pt-feedback{margin:9px 0 0;color:var(--pt-brand);font-size:12px;min-height:20px}
+#pt-reconcile-lab .pt-empty{padding:36px 20px;text-align:center}
+#pt-reconcile-lab .pt-empty-symbol{width:45px;height:45px;display:grid;place-items:center;background:var(--pt-brand-soft);color:var(--pt-brand);border-radius:50%;margin:0 auto 14px}
+#pt-reconcile-lab .pt-empty p{font-size:12px;color:var(--pt-muted)}
+#pt-reconcile-lab .pt-ai-intro{display:flex;gap:9px;align-items:center;margin-bottom:13px}
+#pt-reconcile-lab .pt-ai-badge{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:var(--pt-brand);background:var(--pt-brand-soft)}
+#pt-reconcile-lab .pt-numbered{display:flex;gap:10px;margin:15px 0}
+#pt-reconcile-lab .pt-step-number{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:var(--pt-brand);background:var(--pt-brand-soft);flex-shrink:0}
+#pt-reconcile-lab .pt-numbered strong{font-size:12px;font-weight:600}
+#pt-reconcile-lab .pt-numbered p{font-size:11px;color:var(--pt-muted);margin:3px 0}
+#pt-reconcile-lab .pt-queue-date{font-variant-numeric:tabular-nums}
+@media(max-width:850px){#pt-reconcile-lab .pt-main{padding:20px 17px 13px}#pt-reconcile-lab .pt-shell{grid-template-columns:54px minmax(0,1fr)}#pt-reconcile-lab .pt-workspace{grid-template-columns:minmax(0,1fr)}#pt-reconcile-lab .pt-health{flex-wrap:wrap}#pt-reconcile-lab .pt-health-actions{width:100%;justify-content:flex-start;padding-left:50px}#pt-reconcile-lab .pt-breadcrumb{display:none}#pt-reconcile-lab .pt-rail{padding:18px 4px}#pt-reconcile-lab .pt-item{padding:13px 17px}#pt-reconcile-lab .pt-rail-foot{padding-top:35px}#pt-reconcile-lab .pt-list-footer{padding:10px 17px}}
+@media(max-width:520px){#pt-reconcile-lab .pt-shell{display:block}#pt-reconcile-lab .pt-rail{display:none}#pt-reconcile-lab .pt-main{padding:17px 12px 12px}#pt-reconcile-lab .pt-topbar{padding:12px}#pt-reconcile-lab .pt-reviewbar{gap:7px}#pt-reconcile-lab .pt-demo{margin-left:0}#pt-reconcile-lab .pt-review-scene{width:100%}#pt-reconcile-lab .pt-page-heading{flex-wrap:wrap;gap:10px}#pt-reconcile-lab .pt-heading-actions{width:100%;justify-content:flex-start;margin-left:0}#pt-reconcile-lab h1{font-size:22px}#pt-reconcile-lab .pt-health{padding:14px 12px;gap:10px}#pt-reconcile-lab .pt-health-actions{padding-left:0}#pt-reconcile-lab .pt-health-title{font-size:15px}#pt-reconcile-lab .pt-tabs{gap:15px;flex-wrap:wrap}#pt-reconcile-lab .pt-record-link{margin-left:0;padding-bottom:10px}#pt-reconcile-lab .pt-chain-grid{grid-template-columns:minmax(0,1fr)}#pt-reconcile-lab .pt-chain-arrow{transform:rotate(90deg)}#pt-reconcile-lab .pt-inline-columns{grid-template-columns:minmax(0,1fr)}#pt-reconcile-lab .pt-record-surface{padding:15px}#pt-reconcile-lab .pt-panel-body{padding:15px}#pt-reconcile-lab .pt-kv{grid-template-columns:78px minmax(0,1fr)}#pt-reconcile-lab .pt-job-divider{display:none}#pt-reconcile-lab .pt-health-icon{width:29px;height:29px}#pt-reconcile-lab .pt-health-text{flex-basis:calc(100% - 40px)}}
+@media(pointer:coarse){#pt-reconcile-lab button,#pt-reconcile-lab select{min-height:44px}#pt-reconcile-lab textarea,#pt-reconcile-lab select{font-size:16px}}
+@media(prefers-reduced-motion:reduce){#pt-reconcile-lab *{transition:none!important}}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('pt-reconcile-lab');
+  const scenes = ['blocked','history','job','unavailable','healthy','error','permission'];
+  const initial = {scene:'blocked',view:'todo',selected:'recon',panel:'detail',record:'dual',dataFixed:false,dataPhase:'idle',reconFixed:false,reconInspected:false,confirmed:false,baselineStep:'inspect',baselineAccepted:false,baselineBlocked:false,dualCandidate:'unified',dualStage:'precheck',dualDay:'10-20',note:'',ack:false,jobRetried:false,version:17,theme:'auto',audit:[]};
+  const saved = globalThis.openai?.widgetState?.modelContent;
+  let restored = {};
+  if(saved && scenes.includes(saved.scene)){
+    restored.scene=saved.scene;
+    for(const key of ['dataFixed','reconFixed','confirmed','baselineAccepted'])if(typeof saved[key]==='boolean')restored[key]=saved[key];
+    if(['todo','records'].includes(saved.view))restored.view=saved.view;
+    if(['recon','data','status','queue','history','job','error','dual','evidence'].includes(saved.selected)&&saved.selected!=='evidence')restored.selected=saved.selected;
+  }
+  let state = {...initial,...restored};
+  const ui = {scene:state.scene,theme:'auto'};
+  let epoch = 0;
+  const icons = () => { if (globalThis.lucide?.createIcons) globalThis.lucide.createIcons({attrs:{width:16,height:16}}); };
+  const ic = name => '<i data-lucide="'+name+'" aria-hidden="true"></i>';
+  const escape = text => String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const tag = (text,tone='') => '<span class="pt-tag '+(tone?'pt-tag-'+tone:'')+'">'+text+'</span>';
+  const button = (text,action,primary=false,icon='',disabled=false) => '<button class="pt-button '+(primary?'pt-button-primary':'')+' cursor-interaction" data-action="'+action+'" '+(disabled?'disabled':'')+'>'+(icon?ic(icon):'')+text+'</button>';
+  const link = (text,action,icon='') => '<button class="pt-text-button cursor-interaction" data-action="'+action+'">'+(icon?ic(icon):'')+text+'</button>';
+  const callout = (text,tone='') => '<div class="pt-callout '+(tone?'pt-callout-'+tone:'')+'">'+text+'</div>';
+  const isRestricted = () => state.scene==='permission';
+  const healthy = () => state.scene==='healthy'||state.confirmed;
+  const coverage = () => state.scene==='history' ? (state.baselineAccepted?{id:'B03',generation:'G3',start:'2026-10-22',through:'尚未核验任何新日期'}:{id:'B02',generation:'G2',start:'2026-09-29',through:'2026-09-29'}) : {id:'B02',generation:'G2',start:'2026-10-19',through:state.scene==='job'?'2026-10-20':(healthy()||state.reconFixed)?'2026-10-21':'2026-10-19'};
+  const dates = () => {
+    if(state.scene==='error')return [{day:'10-20',status:'读取失败',detail:'当前无法读取核验记录，保留已有门禁。',tone:'danger'}];
+    if(state.scene==='job')return [{day:'10-19',status:'已通过',detail:'核验完成。',tone:'good'},{day:'10-20',status:'已通过',detail:'前序核验完成。',tone:'good'},{day:'10-21',status:'等待撮合',detail:'10-22 执行中，尚未超过结算截止。',tone:'warn'}];
+    const closed=healthy()||state.reconFixed;
+    return [{day:'10-19',status:'已通过',detail:'执行、持仓、资金证据完整。',tone:'good'},{day:'10-20',status:closed?'已通过':'缺执行证据',detail:closed?'报告 R17 v3 已核验通过。':'当前最早缺口，需先核查已有执行记录。',tone:closed?'good':'warn'},{day:'10-21',status:closed?'已通过':'等待前序',detail:closed?'后续核验已完成，连续边界已更新。':'等待 10-20 处理，不跳过前序。',tone:closed?'good':'warn'}];
+  };
+  const pendingDays = () => state.scene==='history'?1:dates().filter(x=>x.status!=='已通过').length;
+  const blockers = () => state.scene==='error'?null:healthy()?0:state.scene==='history'?(state.baselineAccepted?0:1):state.scene==='job'?0:(state.dataFixed?0:1)+(state.reconFixed?0:1);
+  const footer = (actions,note='') => '<div class="pt-panel-footer"><div class="pt-action-row">'+actions+'</div>'+(note?'<p>'+note+'</p>':'')+'</div>';
+  const heading = (eyebrow,title,sub) => '<div class="pt-eyebrow">'+eyebrow+'</div><h2>'+title+'</h2><p class="pt-subtitle">'+sub+'</p>';
+  const kv = values => '<dl class="pt-kv">'+values.map(([a,b])=>'<dt>'+a+'</dt><dd>'+b+'</dd>').join('')+'</dl>';
+  const check = (title,status,description,tone='good',action='') => '<div class="pt-check"><span class="pt-check-icon '+(tone==='danger'?'pt-negative':tone==='warn'?'pt-warning':'')+'">'+ic(tone==='good'?'circle-check':tone==='danger'?'circle-alert':'clock-3')+'</span><div class="pt-check-main"><div class="pt-check-title"><span>'+title+'</span>'+tag(status,tone)+'</div><p>'+description+'</p>'+(action?link('查看依据',action):'')+'</div></div>';
+  const store = () => { try {globalThis.openai?.setWidgetState({modelContent:{scene:state.scene,view:state.view,selected:state.selected,dataFixed:state.dataFixed,reconFixed:state.reconFixed,confirmed:state.confirmed,baselineAccepted:state.baselineAccepted},privateContent:{theme:ui.theme}})?.catch(()=>{});}catch{} };
+  function feedback(text){root.querySelector('#pt-feedback').textContent=text;}
+  function audit(title,detail){state.audit.unshift({time:'10:33',title,detail});}
+  function setScene(scene){
+    epoch++;
+    state={...initial,scene,audit:[]};
+    if(scene==='history')state.selected='history';
+    if(scene==='job')state.selected='job';
+    if(scene==='unavailable'){state.view='records';state.selected='dual';state.dualCandidate='unavailable';}
+    if(scene==='healthy'){state.selected='status';state.dataFixed=true;state.reconFixed=true;}
+    if(scene==='error')state.selected='error';
+    ui.scene=scene;
+    render();store();feedback('已切换评审场景：所有状态、证据与权限同时更新。');
+  }
+  function healthHTML(){
+    const n=blockers();
+    let title,sub,tone='',icon='pause',buys='已暂停',recovery='待本人审核';
+    if(state.scene==='error'){title='暂时无法判断运行状态';sub='核对服务读取失败。最近一次结果仅供参考，请先恢复检查。';tone='error';icon='circle-alert';buys='无法判定';recovery='无法判定';}
+    else if(healthy()){title='日常运行条件已满足';sub='当前核验范围内无未解决阻断，自动接管将按计划执行。';tone='good';icon='shield-check';buys='门禁允许';recovery='无需审核';}
+    else if(state.scene==='history'){title=state.baselineAccepted?'新账户基线已接受，等待首日核验':'历史证据缺失，需要确认核验起点';sub=state.baselineAccepted?'新覆盖范围从 10-22 开始，旧期仍保留未知；尚未核验任何新日期。':'09-30 的必要材料无法恢复。先核验当前账户，再申请新的覆盖范围。';icon='history';buys=state.baselineAccepted?'待首日核验':'已暂停';recovery='待核验';}
+    else if(state.scene==='job'){title='执行结果尚未到齐，正在等待撮合';sub='10-21 决策预计在 10-22 执行，暂未超过结算截止；系统将自动继续核对。';icon='clock-3';buys='执行中';recovery='无需处理';}
+    else if(n===0){title='修复已完成，等待本人确认恢复';sub='对账与评分检查已通过。请核对修复材料后解除异常暂停。';icon='clipboard-check';buys='待审核';}
+    else {title='新买入已暂停 · '+n+' 项待处理';sub=(state.reconFixed?'对账缺口已解决':'10-20 对账缺执行证据')+'；'+(state.dataFixed?'评分数据已修复':'000001 评分缺少指标输入')+'。';}
+    const capTone=healthy()?'pt-positive':state.scene==='error'?'pt-muted':'pt-warning';
+    return '<div class="pt-health '+(tone?'pt-health-'+tone:'')+'"><div class="pt-health-icon">'+ic(icon)+'</div><div class="pt-health-text"><div class="pt-health-title">'+title+'</div><p>'+sub+(isRestricted()?' 当前账号只读，可查看证据，不能提交修复或本人确认。':'')+'</p><div class="pt-capabilities"><span class="'+capTone+'"><b class="pt-dot"></b>新买入 '+buys+'</span><span class="'+(state.scene==='error'?'pt-muted':'pt-positive')+'"><b class="pt-dot"></b>风险退出 '+(state.scene==='error'?'按独立门禁判断':'门禁允许')+'</span><span class="pt-muted"><b class="pt-dot"></b>自动恢复 '+recovery+'</span></div></div><div class="pt-health-actions">'+button('重新检查','recheck',false,'refresh-cw')+button('AI 辅助处理','ai',true,'sparkles')+'</div></div>';
+  }
+  function jobbarHTML(){
+    const wait=state.scene==='job',fail=state.scene==='error';
+    return '<div class="pt-jobbar">'+ic(fail?'circle-alert':wait?'clock-3':'circle-check')+'<b class="'+(fail?'pt-negative':'pt-positive')+'">自动核对 · '+(fail?'读取异常':wait?'等待撮合':'运行正常')+'</b><span class="pt-job-divider"></span><span>上次 10:30</span><span>下次 10:35</span><span class="pt-job-divider"></span><span>'+(fail?'待核对数量未知':state.baselineAccepted?'首日待核验':pendingDays()+' 日待核对')+'</span>'+link('查看作业','select:job','arrow-up-right')+'</div>';
+  }
+  function item(id,title,status,desc,evidence,action,tone='danger'){
+    return '<button class="pt-item cursor-interaction '+(state.selected===id?'pt-item-selected':'')+'" data-action="select:'+id+'" aria-pressed="'+(state.selected===id)+'"><div class="pt-item-heading"><div class="pt-item-title">'+title+'</div>'+tag(status,tone)+'</div><p>'+desc+'</p><div class="pt-item-evidence">'+evidence.map(x=>'<span>'+x+'</span>').join('')+'</div><div class="pt-item-action">'+action+ic('arrow-right')+'</div></button>';
+  }
+  function listHTML(){
+    let rows='';
+    if(state.scene==='error')rows='<div class="pt-empty"><div class="pt-empty-symbol">'+ic('unplug')+'</div><h2>检查结果读取失败</h2><p>保留原有门禁，不把未知当作通过。</p>'+button('重试检查','recheck',false,'refresh-cw')+'</div>';
+    else if(healthy())rows='<div class="pt-empty"><div class="pt-empty-symbol">'+ic('check')+'</div><h2>当前没有阻断事项</h2><p>最近核验日期：10-21<br>自动核对仍会持续检查账户活动。</p>'+button('查看每日核对记录','select:queue',false,'calendar-check-2')+'</div>';
+    else if(state.scene==='history')rows=item('history','09-30 历史证据无法恢复',state.baselineAccepted?'旧期保留未知':'覆盖待确认','历史执行配置与持仓快照缺失，不能声明当日账实相符。',['当前账户可核验','旧期不填零'],state.baselineAccepted?'查看新覆盖范围':'核查并申请账户基线','warn')+item('queue','核对覆盖范围','独立记录','新起点与已完成日期分别记录，不将旧期缺口隐藏。',['代次 '+(state.baselineAccepted?'G3':'G2'),'历史缺口 1 段'],'查看覆盖与游标','blue');
+    else if(state.scene==='job')rows=item('job','10-21 正在等待成交回报','正常等待','未超过核对截止时点，系统不会提前判缺单。',['预计 10-22 执行','下次检查 10:35'],'查看作业与执行条件','blue')+item('queue','每日核对队列','1 日待核验','前序 10-19、10-20 均已通过，10-21 正常等待撮合。',['已核验至 10-20'],'查看日期队列','blue');
+    else{
+      if(!state.reconFixed)rows+=item('recon','10-20 对账缺执行证据','阻断新买入','当日应执行，但未找到成功的自动模拟记录。',['订单 0 · 已查','现金与持仓已核验'],'核查并处理');
+      if(!state.dataFixed)rows+=item('data','000001 评分数据有缺口','阻断新买入','成交量指标输入缺失，评分不能用于当前模型。',['1 / 3 标的异常','模型 A · 应到 10-21'],'修复数据缺口');
+      if(state.reconFixed&&state.dataFixed)rows+=item('status','修复完成，待本人确认','待审核','原阻断项均已修复，本人审核后才能解除异常暂停。',['最新报告 R17 v3','材料 4 / 4 齐全'],'运行状态审核','warn');
+      if(state.reconFixed||state.dataFixed)rows+='<div class="pt-group-label">'+ic('circle-check')+'本次已解决 '+((state.reconFixed?1:0)+(state.dataFixed?1:0))+' 项</div>'+item('audit','查看本次修复经过','已留痕','已完成动作与重检结果可追溯。',['仅解除已解决条件'],'查看修复记录','good');
+      rows+='<div class="pt-group-label">方案切换准入 · 不计入日常买入阻断</div>'+item('dual','统一决策链尚未完成验收','准入待办','用于切换新方案，不是每天必须完成的核对。',['当前方案保持不变'],'准备版本切换验收','blue');
+    }
+    const c=coverage();
+    return '<section class="pt-list"><div class="pt-list-head"><h2>需要处理的事项</h2><span class="pt-small">'+(blockers()===null?'状态未知':blockers()+' 项阻断')+'</span>'+link('查看记录','records:audit')+'</div>'+rows+'<div class="pt-list-footer">核验范围：'+c.start.slice(5)+' 起 · 账户基线 '+c.id+' · '+c.generation+'<br>'+link('查看日期队列与基线来源','select:queue','calendar-range')+'</div></section>';
+  }
+  function reconHTML(){
+    const ready=state.reconInspected;
+    return heading('每日对账 / 10-20',state.reconFixed?'执行证据已关联，该日核验通过':ready?'已找到真实记录，待关联并核对':'缺少自动模拟记录，尚未完成核对',state.reconFixed?'已关联原始运行，账户核验通过；是否恢复仍按独立门禁判断。':'核对计划、实际执行、资金与持仓是否一致。本次问题属于执行证据缺口。')+
+      callout('<b>当时应执行：</b>接管与调度均已启用，计划 20:30 运行，已超过执行窗口。','warn')+
+      '<h3>已核验的事实</h3>'+check('执行链',state.reconFixed?'已关联并通过':ready?'已找到，待关联':'缺运行关联',ready?'找到真实运行 DR-1020，组合、日期、来源一致。':'未找到成功记录；没有用“无记录”推断为正常无活动。',state.reconFixed?'good':'warn','evidence:execution')+
+      check('订单与成交','已查，无活动','订单 0，成交 0；已完整查询，非读取失败。','good','evidence:orders')+
+      check('现金与持仓','账实一致','现金差额 0；3 个持仓数量及成本与对应快照一致。','good','evidence:account')+
+      '<h3>完成条件</h3><p class="pt-subtitle">'+(ready?'关联已有真实运行后重新核对。不会补写交易，也不会重新下单。':'先查找已有执行与调度记录；如历史确实未执行，按独立处置流程审核。')+'</p>'+
+      (state.reconFixed?callout('对账检查已通过。'+(state.dataFixed?'修复材料已齐全，可进入运行状态审核。':'评分缺口仍在，尚不能恢复新买入。'),'good'):'')+
+      footer(state.reconFixed?button('运行状态审核','select:status',true,'shield-check'):ready?button('关联证据并重新核对','recon-resolve',true,'check-check',isRestricted()):button('核查已有执行记录','recon-inspect',true,'search')+link('查看相关审计','records:audit'),isRestricted()?'当前无审核权限，可核查资料，不能提交关联或确认。':'仅核查/关联真实证据，不补跑历史交易。');
+  }
+  function dataHTML(plan=false){
+    const phase=state.dataPhase;
+    let body=heading('数据健康 / 000001 平安银行',state.dataFixed?'评分数据已恢复':'评分缺口来自指标输入','检查范围为当前组合 3 个标的，2 个通过、1 个异常；按模型 A 的实际依赖检查。');
+    body+='<div class="pt-steps"><span>同步日 K</span>'+ic('chevron-right')+'<span>计算成交量指标</span>'+ic('chevron-right')+'<b>重算模型 A 评分</b></div>';
+    body+=check('日 K · 应到 10-21','正常','实际 10-21，当前复权口径。','good','evidence:bars');
+    body+=check('成交量指标 · 10-21',state.dataFixed?'已补齐':phase==='partial'?'计算失败':'缺失',state.dataFixed?'本次修复已计算完成。':'评分所需的成交量指标缺少当日输入。',state.dataFixed?'good':'warn','evidence:indicator');
+    body+=check('模型 A 评分',state.dataFixed?'正常':'等待上游',state.dataFixed?'实际业务日期 10-21，模型与配置匹配。':'实际 10-20；当前要求 10-21，不能用新入库时间代替。',state.dataFixed?'good':'warn');
+    if(phase==='running')body+=callout('<b>正在修复：</b>任务 RP-8821 · 仅处理 000001 / 10-21。<div class="pt-progress"><div class="pt-progress-fill" style="width:62%"></div></div>日 K 输入已核实，正在计算依赖指标。');
+    if(phase==='partial')body+=callout('<b>部分完成：</b>日 K 输入已就绪，指标任务连接超时。评分步骤尚未开始，只需重试失败部分。','warn');
+    if(state.dataFixed)body+=callout('数据项已解决。'+(state.reconFixed?'请进入运行状态审核，确认解除异常暂停。':'仍有 10-20 对账证据待处理。'),'good');
+    if(plan&&phase==='idle')body+='<h3>本次执行范围</h3>'+kv([['标的 / 日期','000001 / 2026-10-21'],['模型 / 配置','模型 A / 已接受配置 C17'],['动作范围','核实输入 → 计算指标 → 重算评分'],['账户影响','不创建订单，不修改资金与持仓']]);
+    const action=state.dataFixed?button('处理剩余事项',state.reconFixed?'select:status':'select:recon',true,'arrow-right'):phase==='running'?button('修复进行中','none',true,'loader-circle',true):phase==='partial'?button('仅重试失败步骤','data-retry',true,'rotate-cw',isRestricted()):plan?button('确认执行此修复计划','data-run',true,'play',isRestricted()):button('预览修复计划','data-plan',true,'list-checks');
+    return body+footer(action+link('查看任务记录','records:audit'),isRestricted()?'当前只能查看计划，提交修复需要操作权限。':'修复后自动重检；解决数据项不会清除对账等独立门禁。');
+  }
+  function statusHTML(){
+    if(state.scene==='history')return heading('运行状态审核','先确认账户核验覆盖范围','历史证据未知与真实账差分别处理，不用改状态来清除旧期问题。')+check('当前账户',state.baselineBlocked?'资金依据不足':'独立核验通过',state.baselineBlocked?'当前有未明现金差额，不能建立新基线。':'现金、逐标的持仓与未决义务已核查。',state.baselineBlocked?'danger':'good')+check('历史覆盖',state.baselineAccepted?'旧期保留未知':'等待基线审核',state.baselineAccepted?'新代自 10-22 起，尚未核验任何日期。':'09-30 必要证据不可恢复，需审核新覆盖起点。','warn')+callout('例外恢复默认关闭；新基线不声明旧期通过，也不自动接受模型变更。')+footer(button('查看历史缺口与基线','select:history',true,'history'));
+    if(state.scene==='job')return heading('运行状态审核','正在等待合法执行结果','当前没有需本人签署的恢复动作，系统到期后自动继续核对。')+check('新买入','执行窗口内','10-21 计划预计在 10-22 执行，不重复生成执行任务。','warn')+check('风险退出','按独立门禁判断','核对等待本身不禁止已有持仓的风险退出。','good')+footer(button('查看自动核对作业','select:job',true,'clock-3'));
+    if(state.scene==='error')return heading('运行状态审核','当前无法给出有效审核结论','检查服务读取失败，保留现有门禁；不得要求用户对未知结果确认通过。')+callout('新买入与自动恢复状态无法判定。风险退出由其独立门禁继续判断。','danger')+footer(button('重试读取检查','recover',true,'refresh-cw'));
+    const n=blockers(),can=state.reconFixed&&state.dataFixed&&state.scene!=='error';
+    let body=heading('运行状态审核',healthy()?'当前可按计划运行':can?'修复完成，请核验恢复材料':'先解决阻断，再确认恢复','审核具体变化、证据与恢复范围；运行状态始终与当前组合事实一致。');
+    body+='<div class="pt-permission"><div><b>新买入</b><p>'+(healthy()?'当前覆盖范围内检查已通过':can?'异常已修复，等待本人确认':state.scene==='error'?'当前检查无法读取':'对账证据与评分数据仍有缺口')+'</p></div>'+tag(healthy()?'允许':can?'待审核':'已阻断',healthy()?'good':'warn')+'</div>';
+    body+='<div class="pt-permission"><div><b>风险退出</b><p>当前问题不禁止风险退出，仍按实际订单条件执行。</p></div>'+tag('门禁允许','good')+'</div>';
+    body+='<div class="pt-permission"><div><b>自动恢复</b><p>'+(healthy()?'当前无需人工恢复':'异常暂停需要本人核验修复报告。')+'</p></div>'+tag(healthy()?'无需审核':'需本人审核',healthy()?'good':'warn')+'</div>';
+    body+='<h3>本次审核材料</h3>'+check('对账报告 R17 v3',state.reconFixed?'已通过':'未完成',state.reconFixed?'真实运行关联已补齐，执行、持仓、现金检查通过。':'待关联/核验目标日真实运行。',state.reconFixed?'good':'warn')+check('数据检查',state.dataFixed?'已通过':'未完成',state.dataFixed?'000001 指标与当前模型评分已恢复。':'当前模型所需评分仍缺指标输入。',state.dataFixed?'good':'warn');
+    if(!healthy()){
+      body+='<label class="pt-input-label" for="pt-review-note">本人审核备注</label><textarea id="pt-review-note" placeholder="核对修复内容与恢复范围，至少 10 个字">'+escape(state.note)+'</textarea><label class="pt-agree"><input id="pt-review-ack" type="checkbox" '+(state.ack?'checked':'')+'>我已核对以上材料，接受本次解除异常暂停</label>';
+    }
+    body+='<details><summary>高级处理 · 例外恢复已关闭</summary><p>普通对账不跳过校验。当前策略未启用例外恢复，不能提交申请；当前账差也不能靠备注豁免。</p>'+button('例外恢复未启用','none',false,'lock-keyhole',true)+'</details>';
+    return body+footer(healthy()?button('查看核对记录','select:queue',false,'calendar-check-2'):button('确认恢复并重新检查','confirm',true,'shield-check',!can||!state.ack||state.note.trim().length<10||isRestricted()),isRestricted()?'无审核权限：仍可查看完整材料。':!can?'尚有 '+(n===null?'未知':n)+' 项阻断，先完成相关处理。':'仅解除本次已核验的限制，不改变模型绑定或其他独立门禁。');
+  }
+  function queueHTML(){
+    const hist=state.scene==='history',accepted=state.baselineAccepted;
+    if(hist)return heading('每日核对记录','覆盖范围与历史缺口','只声明当前代可核验的范围；旧代未知不因新基线接受而消失。')+kv([['账户基线',accepted?'B03 · 本人已接受':'B02 · 历史期初'],['当前代次',accepted?'G3':'G2'],['覆盖起点',accepted?'2026-10-22':'2026-09-29'],['已核验至',accepted?'尚未核验任何新日期':'2026-09-29']])+check(accepted?'10-22':'09-30',accepted?'首日待核验':'历史证据未知',accepted?'等待首日符合检查时点后核验；不能把基线接受当作当日通过。':'原期间必要证据无法恢复，旧代边界不跳过这一天。','warn')+callout('09-30 历史缺口持续展示，相关材料与本人接受记录可追溯。','warn')+footer(button('查看账户基线处理','select:history',true,'history'));
+    const c=coverage();
+    return heading('每日核对记录','日期队列与覆盖范围','按最早未完成日期连续推进；后日先通过，也不会跳过前面的缺口。')+kv([['账户基线',c.id+' · 已接受'],['当前代次',c.generation],['覆盖起点',c.start],['已核验至',c.through]])+
+      '<h3>逐日结论</h3>'+dates().map(d=>check(d.day,d.status,d.detail,d.tone,d.day==='10-20'&&d.status==='缺执行证据'?'select:recon':'')).join('')+
+      footer(link('查看当前账户基线来源','evidence:baseline','shield-check')+link('查看审计时间线','records:audit'));
+  }
+  function historyHTML(){
+    const accepted=state.baselineAccepted,plan=state.baselineStep==='plan';
+    let body=heading('历史覆盖 / 09-30',accepted?'新基线已接受，旧期仍未知':plan?'申请建立当前账户新基线':'历史材料无法恢复，确认后续核验起点','已核查执行历史与备份，旧期仍缺配置/快照。不能把缺证据改成零活动或历史通过。');
+    body+=callout('<b>旧期结论：</b>历史证据未知 · 09-30<br>接受新起点不会推进旧代游标，也不会抹掉旧期缺口。','warn');
+    body+='<h3>当前账户能否独立核验</h3>'+check('现金与账本',state.baselineBlocked?'有未明差额':'独立核验通过',state.baselineBlocked?'有一笔来源未明资金变动，需先恢复原始流水。':'当前现金与完整流水一致，有可信期初来源。',state.baselineBlocked?'danger':'good')+check('逐标的持仓','独立核验通过','3 个持仓数量、成本与成交依据一致。','good')+check('未决义务','已核查','没有未完成订单、未明成交或待结算义务。','good');
+    if(accepted)body+=kv([['新基线 / 代次','B03 / G3'],['覆盖起点','2026-10-22'],['已核验日期','尚无；首日核验后才推进'],['旧期 09-30','保持未知，接受记录可追溯']]);
+    else if(plan)body+=kv([['采用时点','2026-10-22 10:32'],['新覆盖范围','从 10-22 开始'],['账户快照','可信现金 + 逐标的持仓 + 源记录水位'],['历史处置','旧期归档为无法核实，不声明已通过']])+'<label class="pt-input-label" for="pt-baseline-note">本人申请说明</label><textarea id="pt-baseline-note" placeholder="说明无法恢复的历史范围与接受新基线的依据">'+escape(state.note)+'</textarea><label class="pt-agree"><input id="pt-baseline-ack" type="checkbox" '+(state.ack?'checked':'')+'>我理解旧期仍未知，只接受所列新覆盖范围</label>';
+    if(!accepted)body+='<details><summary>查看不能重建基线的分支</summary><p>当前资金或持仓也核不清时，必须先补证/修复；不能通过新基线抹平差额。</p>'+button(state.baselineBlocked?'切回当前已核验分支':'演示当前现金也无法核验','baseline-block-toggle',false,'git-branch')+'</details>';
+    const action=accepted?button('查看新代核对队列','select:queue',true,'calendar-range'):state.baselineBlocked?button('定位缺失流水依据','evidence:ledger-gap',true,'search'):plan?button('本人确认建立新基线','baseline-accept',true,'shield-check',!state.ack||state.note.trim().length<10||isRestricted()):button('登记缺口并申请新基线','baseline-plan',true,'file-plus-2',isRestricted());
+    return body+footer(action,accepted?'新基线接受与旧期通过是不同事实。':state.baselineBlocked?'暂不能申请：当前资金存在未明差额；可先查看原始流水与修复路径。':'独立审核覆盖范围，不绕过真实账差，不自动接受模型变更。');
+  }
+  function jobHTML(){
+    const wait=state.scene==='job',failed=state.scene==='error',history=state.scene==='history';
+    return heading('自动对账作业','自动核对在后台持续执行','独立于浏览器刷新；执行与数据到齐后核验，异常才需要人工处理。')+
+      kv([['运行方式','业务事件触发 + 每 5 分钟兜底扫描'],['最近运行',failed?'10:30 · 读取异常':'10:30 · 本轮扫描完成'],['下一次检查','10:35'],['当前工作',failed?'等待读取服务恢复':history?(state.baselineAccepted?'新代首日尚待核验':'等待历史覆盖审核'):wait?'10-21 等待 T+1 成交/结算结果':pendingDays()===0?'本覆盖范围内全部日期已核验':'最早缺口 10-20 等待补证']])+
+      '<h3>任务与业务结果分别记录</h3>'+check('作业 RC-1030',failed?'读取失败':'本轮已完成',failed?'不能把读取失败映射为无活动或通过。':'本轮任务完成，不代表每个业务日期都通过。',failed?'danger':'good')+
+      (history?check(state.baselineAccepted?'10-22 新代首日':'09-30 旧期',state.baselineAccepted?'待首日核验':'历史未知','基线、覆盖范围与核验结果分别记录。','warn'):dates().filter(d=>d.day!=='10-19').map(d=>check(d.day+' 核验',d.status,d.detail,d.tone)).join(''))+
+      callout('作业重启会从持久化日期队列补派；新成交会产生新的证据版本，不会被已完成任务覆盖。')+
+      footer(button(state.jobRetried?'重检任务已排队':'立即重检此范围','job-retry',true,'refresh-cw',state.jobRetried),state.jobRetried?'新任务 RC-1033 已登记，只核验当前范围，不补下单。':'重检不会自动签署对账确认，也不会改变模型或人工暂停。');
+  }
+  function aiHTML(){
+    const n=blockers(),unknown=state.scene==='error';
+    if(unknown)return heading('AI 辅助处理','证据读取失败，暂不能诊断','当前没有完整事实可支撑建议。未知来源不会被改写为“没有记录”。')+callout('请先恢复核对服务，人工证据与任务入口继续保留。','danger')+footer(button('重试读取检查','recover',true,'refresh-cw'));
+    if(healthy())return heading('AI 辅助处理','当前没有未解决阻断','不创建无必要的修复任务；自动核对继续检查后续账户活动。')+check('日常核验','已通过','当前范围至 10-21，业务状态与作业记录一致。','good')+footer(button('查看最近处理记录','records:audit',true,'history'));
+    if(state.scene==='history')return heading('AI 辅助处理','先确认历史缺口与可验证起点','旧期必要材料无法恢复。AI 只能整理当前账户核验与新基线申请材料，不能声明历史通过。')+check('当前账户',state.baselineBlocked?'资金依据不足':'可独立核验',state.baselineBlocked?'先恢复现金流水依据，暂不能重建基线。':'现金、逐标的持仓与未决义务已有核验依据。',state.baselineBlocked?'danger':'good')+callout(state.baselineAccepted?'新代 G3 自 10-22 起；旧期仍未知，尚未核验任何新日期。':'本人审核只接受明确的新覆盖范围，不将旧期未知改成通过。','warn')+footer(button('查看历史缺口与基线材料','select:history',true,'history'));
+    if(state.scene==='job')return heading('AI 辅助处理','当前为正常等待，无需补执行','10-21 的决策预计于 10-22 执行，尚未超过结算截止。前序日期已经核验通过。')+check('当前建议','等待自动续检','查看已有任务进度；不创建重复交易或不相关的数据修复。','good')+footer(button('查看作业与截止条件','select:job',true,'clock-3'));
+    if(n===0)return heading('AI 辅助处理','修复已完成，请本人审核恢复','对账与数据检查已经通过，AI 可整理材料；不能代替本人签署。')+footer(button('打开运行状态审核','select:status',true,'shield-check'));
+    return '<div class="pt-ai-intro"><span class="pt-ai-badge">'+ic('sparkles')+'</span><div><h2>按当前证据辅助处理</h2><span class="pt-small">组合 A · 诊断快照 V'+state.version+' · 只读分析</span></div></div>'+
+      (unknown?callout('<b>无法完成诊断：</b>核对服务当前不可读，以下原因不能凭空推测。请先恢复证据读取。','danger'):callout('<b>当前结论：</b>'+(healthy()?'没有未解决阻断。':state.scene==='history'?'历史资料无法恢复，先核验当前账户与覆盖起点。':n===0?'业务检查已完成，尚需本人审核。':'有 '+n+' 项日常运行阻断；方案准入另行判断。')))+
+      '<h3>推荐顺序</h3>'+(!state.reconFixed?'<div class="pt-numbered"><span class="pt-step-number">1</span><div><strong>从可确认的证据开始</strong><p>先看真实运行与账户活动，未知来源不会被改写为“没有记录”。</p>'+link('定位对账执行证据','select:recon')+'</div></div>':'')+(!state.dataFixed?'<div class="pt-numbered"><span class="pt-step-number">2</span><div><strong>按依赖修复评分缺口</strong><p>仅处理 000001 / 10-21 / 模型 A，先计算缺失指标，再重算评分。</p>'+link('查看具体指标与范围','select:data')+'</div></div>':'')+'<div class="pt-numbered"><span class="pt-step-number">3</span><div><strong>重检后交回本人审核</strong><p>AI 整理材料；不会代替本人确认对账、模型切换或例外申请。</p></div></div>'+
+      callout('计划内动作都来自业务白名单。授权前可看对象、日期与影响；不会触发交易。')+
+      footer(state.dataFixed?button('处理剩余对账事项','select:recon',true,'search'):button('预览数据修复计划','data-plan',true,'list-checks',isRestricted()),'同一计划可一次授权限定范围，范围变化需要重新预览。');
+  }
+  function evidenceHTML(){
+    const names={execution:'执行记录与调度依据',orders:'订单与成交查询',account:'现金与逐标的持仓',bars:'日 K 业务日期',indicator:'成交量指标依赖',baseline:'当前账户基线来源','ledger-gap':'来源未明资金流水'};
+    const name=names[state.evidence]||'证据来源';
+    return heading('原始依据',name,'证据可定位到具体对象、日期与查询结果，技术信息默认收起。')+
+      kv([['归属组合','稳健成长组合 / 模拟账户'],['业务日期',state.evidenceDate||'2026-10-21'],['检查时点','2026-10-22 10:32'],['来源状态',state.evidence==='ledger-gap'?'待补充原始资金凭据':'读取完成'],['可用性',state.evidence==='indicator'?'当日依赖项缺失，其余来源正常':'来源与记录指纹已固定']])+
+      callout(state.evidence==='execution'?(state.reconInspected?'真实运行 DR-1020 与组合/日期匹配，可关联后重新核对。':'当日应执行计划存在，执行关联尚缺。应先查询已有运行，不重跑历史交易。'):state.evidence==='ledger-gap'?'先从原始现金流水、导入记录或可信备份恢复来源。当前不能申请新基线。':'展示实际查询结果，成功查到 0 与读取失败严格区分。')+
+      '<details><summary>技术信息与追溯编号</summary>'+kv([['证据 ID','EV-1022-'+escape(state.evidence||'snapshot')],['源版本','固定于当前快照 V'+state.version],['接受审计','AE-731 / 本人确认记录']])+'</details>'+
+      footer(button('返回处理事项','evidence-back',false,'arrow-left'));
+  }
+  function detailHTML(){
+    if(state.panel==='ai')return aiHTML();
+    if(state.selected==='recon')return reconHTML();
+    if(state.selected==='data')return dataHTML();
+    if(state.selected==='plan')return dataHTML(true);
+    if(state.selected==='status')return statusHTML();
+    if(state.selected==='queue')return queueHTML();
+    if(state.selected==='history')return historyHTML();
+    if(state.selected==='job')return jobHTML();
+    if(state.selected==='evidence')return evidenceHTML();
+    if(state.selected==='error')return heading('检查服务','当前证据读取失败','读取失败不会展示为“订单 0”或“全部通过”。')+callout('核对服务暂不可用；保留现有门禁，恢复服务后可重检。','danger')+footer(button('重试读取检查','recover',true,'refresh-cw'),'原型中可演示重试恢复，不连接实际服务。');
+    return heading('版本切换验收','当前方案保持运行','双跑只用于本次新链切换或扩大范围，不能当作每天的签字任务。')+footer(button('查看验收预检','records:dual',true,'git-compare-arrows'));
+  }
+  function panelHTML(){
+    return '<section class="pt-panel" aria-label="事项处理面板"><div class="pt-panel-tabs"><button class="pt-panel-tab '+(state.panel==='detail'?'pt-panel-tab-active':'')+'" data-action="panel:detail">处理详情</button><button class="pt-panel-tab '+(state.panel==='ai'?'pt-panel-tab-active':'')+'" data-action="panel:ai">'+ic('sparkles')+' AI 建议</button>'+tag('当前证据 V'+state.version)+'</div><div class="pt-panel-body">'+detailHTML()+'</div></section>';
+  }
+  function dualHTML(){
+    const unavailable=state.dualCandidate==='unavailable',result=state.dualStage==='result';
+    let html='<div class="pt-section-heading"><div><div class="pt-eyebrow">方案切换 / 隔离比较</div><h2>旧链与候选新链，对同一输入验收</h2><p class="pt-subtitle">引擎链是验收对象；模型、策略和数据分别固定。通过后仍须本人审核切换。</p></div>'+tag(result?'演示报告 · 不可准入':unavailable?'环境能力未接通':'预检待完成',result?'blue':'warn')+'</div>';
+    html+='<div class="pt-chain-grid"><div class="pt-chain">'+tag('当前已接受方案','good')+'<strong>旧来源决策链</strong><p>执行器 legacy · 构建 2026.10.16</p><p>独立模型：模型 A / 因子集 F18</p><p>策略快照 S17 · 本人接受于 10-19</p>'+link('查看基线接受来源','baseline-source','shield-check')+'</div><div class="pt-chain-arrow">'+ic('arrow-right')+'</div><div class="pt-chain">'+tag('待验收方案','blue')+'<label class="pt-input-label" for="pt-candidate">选择真实配置来源</label><select id="pt-candidate"><option value="unified" '+(!unavailable?'selected':'')+'>统一决策链 · 候选快照 C21</option><option value="unavailable" '+(unavailable?'selected':'')+'>当前环境未接入真实执行器</option></select><p>独立模型：模型 A / 因子集 F18</p><p>候选未激活，不影响当前方案</p></div></div>';
+    if(state.dualStage==='source')html+=callout('<b>基线取数：</b>本人接受事件 AE-731 → 已接受绑定 S17 → 冻结策略/成员/时钟 → 执行器构建清单。最新保存版本与全局活动模型不自动覆盖此基线。','good');
+    if(unavailable)html+=callout('<b>当前环境没有真实执行器，无法启动真实验收。</b><br>不能靠填写引擎名称或虚拟空样本报告放行；可查看缺少的执行能力。','warn');
+    if(result){
+      html+='<h3>逐日结果 · 仅用于交互演示</h3><p class="pt-subtitle">示例日为 10-19、10-20、10-21，只有 3 个有效交易日，未满足至少 10 日要求。不能用于准入。</p><div class="pt-table-wrap"><table class="pt-data-table"><thead><tr><th>日期</th><th>有效标的</th><th>动作一致</th><th>需解释差异</th><th></th></tr></thead><tbody><tr><td>10-19</td><td>12</td><td>12 / 12</td><td>0</td><td>'+link('查看','dual-day:10-19')+'</td></tr><tr><td>10-20</td><td>12</td><td>11 / 12</td><td>1</td><td>'+link('查看','dual-day:10-20')+'</td></tr><tr><td>10-21</td><td>12</td><td>12 / 12</td><td>0</td><td>'+link('查看','dual-day:10-21')+'</td></tr></tbody></table></div><h3>'+state.dualDay+' · 标的差异</h3>'+callout(state.dualDay==='10-20'?'<b>000001：</b>基线 HOLD → 候选 NO_ACTION。候选覆盖阈值未满足，保留原因等待审核。其余 11 个动作一致。':'本日 12 个标的动作一致，有实际样本；仍不足以证明整个区间已通过。')+
+      footer(button('证据不足，暂不能切换','none',true,'lock-keyhole',true)+link('返回预检','dual-precheck'),'演示来源永不产生可准入结论。真实报告缺失或解析失败也不能补造通过。');
+    }else{
+      html+='<h3>验收预检</h3>'+check('验收区间 / 最低样本','尚不足','示例覆盖 10-19 至 10-21，仅 3 日；需至少 10 个有效交易日。','warn')+check('同源输入与期初账户','已固定','双方使用账户基线 B02、同一标的范围和数据截止时点。','good')+check('真实执行器',unavailable?'未接通':'演示占位',unavailable?'能力发现未返回可调用执行器，不能启动。':'此为设计评审环境，执行器信息仅演示，不产生真实验收证据。','warn')+check('数据覆盖','候选有缺口','000001 的 10-21 评分缺指标输入，可从具体事项修复。','warn','select:data');
+      html+=footer(button('开始真实验收','none',true,'play',true)+button('查看演示报告结构','dual-result',false,'file-chart-column'),unavailable?'未连接真实执行器；不提供无效启动或手填版本入口。':'尚缺真实执行器、完整区间和评分覆盖；当前仅可查看演示结构。');
+    }
+    return html;
+  }
+  function auditHTML(){
+    const events=state.audit.concat([{time:'10:32',title:'检测到对账与评分缺口',detail:'10-20 无成功运行关联；000001 缺 10-21 指标输入。只读检测，未修改交易账户。'},{time:'10:30',title:'自动核对作业完成',detail:'核验任务 RC-1030 完成；业务结论：10-20 证据未齐，等待人工处理。'},{time:'10-19',title:'本人接受组合执行方案',detail:'接受审计 AE-731 → 绑定 S17。模型 A、因子集 F18、策略时钟和执行范围已固定。'}]);
+    return heading('问题追溯','从发现原因，到修复与本人确认','时间线同时保留发生时间、归属交易日、证据来源和操作结果。')+'<div class="pt-timeline">'+events.map(e=>'<div class="pt-timeline-row"><span class="pt-timeline-time">'+e.time+'</span><span class="pt-timeline-marker"><span class="pt-dot"></span></span><div><div class="pt-timeline-title">'+escape(e.title)+'</div><p>'+escape(e.detail)+'</p>'+tag('本组合 · 演示记录')+'</div></div>').join('')+'</div>'+footer(link('返回待处理事项','view:todo','arrow-left'));
+  }
+  function recordsHTML(){
+    return '<div class="pt-records"><div class="pt-record-tabs" aria-label="验收与记录内容"><button class="pt-record-tab" data-action="records:dual" aria-selected="'+(state.record==='dual')+'">版本切换验收</button><button class="pt-record-tab" data-action="records:audit" aria-selected="'+(state.record==='audit')+'">审计时间线</button></div><section class="pt-record-surface">'+(state.record==='dual'?dualHTML():auditHTML())+'</section></div>';
+  }
+  function render(){
+    root.style.colorScheme=ui.theme==='auto'?'light dark':ui.theme;
+    root.querySelector('#pt-health').innerHTML=healthHTML();
+    root.querySelector('#pt-jobbar').innerHTML=jobbarHTML();
+    root.querySelector('#pt-content').innerHTML=state.view==='todo'?'<div class="pt-workspace">'+listHTML()+panelHTML()+'</div>':recordsHTML();
+    root.querySelector('#pt-tab-todo').classList.toggle('pt-tab-active',state.view==='todo');
+    root.querySelector('#pt-tab-records').classList.toggle('pt-tab-active',state.view==='records');
+    root.querySelector('#pt-tab-todo').setAttribute('aria-selected',String(state.view==='todo'));
+    root.querySelector('#pt-tab-records').setAttribute('aria-selected',String(state.view==='records'));
+    root.querySelector('#pt-content').setAttribute('aria-labelledby','pt-tab-'+(state.view==='todo'?'todo':'records'));
+    root.querySelector('#pt-tab-count').textContent=blockers()===null?'?':String(blockers());
+    root.querySelector('#pt-snapshot').textContent='V'+state.version;
+    root.querySelector('#pt-scene-select').value=state.scene;
+    root.querySelector('.pt-user span:last-child').textContent=isRestricted()?'只读访客':'本人';
+    root.querySelectorAll('button').forEach(b=>b.classList.add('cursor-interaction'));
+    icons();
+  }
+  function select(id){state.view='todo';state.panel='detail';state.selected=id==='audit'?'status':id;if(id==='audit'){state.view='records';state.record='audit';}render();}
+  function advanceData(retry=false){
+    if(isRestricted())return;
+    state.dataPhase='running';state.selected='data';state.panel='detail';state.view='todo';
+    const thisEpoch=epoch;render();feedback(retry?'仅重试失败的指标与评分步骤。':'修复任务已提交，正在处理限定范围。');
+    setTimeout(()=>{if(epoch!==thisEpoch)return;if(!retry){state.dataPhase='partial';audit('数据修复部分完成','日 K 输入已核实，指标任务超时；评分尚未开始，可仅重试失败步骤。');feedback('部分完成：请重试失败部分，已成功步骤不会重复执行。');}else{state.dataPhase='done';state.dataFixed=true;state.version++;audit('评分缺口已修复并重检','000001 / 10-21 / 模型 A 数据已恢复；对账等独立门禁不受影响。');feedback('数据项已解决；'+(state.reconFixed?'请本人核验恢复材料。':'仍需处理对账证据。'));}render();store();},1000);
+  }
+  root.addEventListener('click',event=>{
+    const el=event.target.closest('[data-action]');
+    if(!el||el.disabled)return;
+    const [action,arg]=el.dataset.action.split(':');
+    if(action==='select')select(arg);
+    else if(action==='view'){state.view=arg;render();}
+    else if(action==='records'){state.view='records';state.record=arg;render();}
+    else if(action==='panel'){state.panel=arg;render();}
+    else if(action==='ai'){state.view='todo';state.panel='ai';render();}
+    else if(action==='recheck'){state.version++;render();feedback('已按当前证据重检；仍缺少的事项保留，不因点击消失。');}
+    else if(action==='recover'){setScene('blocked');feedback('演示读取已恢复：现有 2 项阻断，未自动放行。');}
+    else if(action==='recon-inspect'){state.reconInspected=true;state.version++;audit('执行证据核查完成','找到真实运行 DR-1020，待核验组合/日期/来源并关联；未重跑交易。');render();feedback('已定位已有真实运行，可关联后重新核对。');}
+    else if(action==='recon-resolve'&&!isRestricted()){state.reconFixed=true;state.version++;audit('对账执行关联已补齐','关联真实运行 DR-1020，报告 R17 v3 核验通过；仍需独立审核恢复。');render();feedback('对账项已解决；'+(state.dataFixed?'修复材料已齐，待本人审核。':'仍有评分缺口。'));}
+    else if(action==='data-plan'){state.selected='plan';state.view='todo';state.panel='detail';render();}
+    else if(action==='data-run')advanceData();
+    else if(action==='data-retry')advanceData(true);
+    else if(action==='confirm'&&!isRestricted()&&state.ack&&state.note.trim().length>=10&&state.reconFixed&&state.dataFixed){state.confirmed=true;state.version++;audit('本人确认恢复日常运行',state.note+'；基于 R17 v3，异常暂停已解除；模型与方案没有切换。');render();feedback('本人审核已完成，当前日常运行门禁通过。');}
+    else if(action==='baseline-plan'){state.baselineStep='plan';state.note='';state.ack=false;render();}
+    else if(action==='baseline-block-toggle'){state.baselineBlocked=!state.baselineBlocked;render();}
+    else if(action==='baseline-accept'&&!state.baselineBlocked&&!isRestricted()&&state.ack&&state.note.trim().length>=10){state.baselineAccepted=true;state.version++;audit('本人接受新账户基线 B03','覆盖自 10-22 / G3 开始，旧期 09-30 仍未知；未核验任何新日期。');render();feedback('新基线已接受；旧期未知保留，新代核验日期为空。');}
+    else if(action==='job-retry'){state.jobRetried=true;audit('提交限定范围重检任务','RC-1033 已排队；不触发交易、不确认恢复。');render();feedback('重检需求已持久化，任务 RC-1033 等待执行。');}
+    else if(action==='evidence'){state.previous=state.selected;state.evidence=arg;state.evidenceDate=['execution','orders','account'].includes(arg)?'2026-10-20':['ledger-gap','baseline'].includes(arg)?'2026-10-22':'2026-10-21';state.selected='evidence';state.panel='detail';state.view='todo';render();}
+    else if(action==='evidence-back'){state.selected=state.previous||'recon';render();}
+    else if(action==='baseline-source'){state.dualStage=state.dualStage==='source'?'precheck':'source';render();}
+    else if(action==='dual-result'){state.dualStage='result';render();}
+    else if(action==='dual-precheck'){state.dualStage='precheck';render();}
+    else if(action==='dual-day'){state.dualDay=arg;render();}
+    store();
+  });
+  root.addEventListener('input',event=>{
+    if(event.target.id==='pt-review-note'||event.target.id==='pt-baseline-note'){state.note=event.target.value;const b=root.querySelector('[data-action="'+(event.target.id==='pt-review-note'?'confirm':'baseline-accept')+'"]');if(b)b.disabled=!state.ack||state.note.trim().length<10||isRestricted()||(event.target.id==='pt-review-note'&&(!state.reconFixed||!state.dataFixed))||state.baselineBlocked;}
+  });
+  root.addEventListener('change',event=>{
+    if(event.target.id==='pt-scene-select')setScene(event.target.value);
+    else if(event.target.id==='pt-review-ack'||event.target.id==='pt-baseline-ack'){state.ack=event.target.checked;const b=root.querySelector('[data-action="'+(event.target.id==='pt-review-ack'?'confirm':'baseline-accept')+'"]');if(b)b.disabled=!state.ack||state.note.trim().length<10||isRestricted()||(event.target.id==='pt-review-ack'&&(!state.reconFixed||!state.dataFixed))||state.baselineBlocked;}
+    else if(event.target.id==='pt-candidate'){state.dualCandidate=event.target.value;state.dualStage='precheck';render();store();}
+  });
+  globalThis.addEventListener('openai:set_globals',event=>{const saved=event.detail?.globals?.widgetState?.modelContent;if(saved&&scenes.includes(saved.scene)&&saved.scene!==state.scene)setScene(saved.scene);});
+  render();
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:root,onChange:()=>{if(ui.scene!==state.scene)setScene(ui.scene);else render();}});
+    tweak.addSelect(ui,'scene',{label:'评审场景',options:[{label:'日常阻断',value:'blocked'},{label:'历史证据未知',value:'history'},{label:'自动核对等待撮合',value:'job'},{label:'验收能力未接通',value:'unavailable'},{label:'正常运行',value:'healthy'},{label:'检查读取失败',value:'error'},{label:'无审核权限',value:'permission'}]});
+    tweak.addSelect(ui,'theme',{label:'界面外观',options:[{label:'跟随外观',value:'auto'},{label:'浅色工作台',value:'light'},{label:'深色工作台',value:'dark'}]});
+    if(tweak.supported)root.querySelector('.pt-review-scene').hidden=true;
+  }
+})();
+</script>

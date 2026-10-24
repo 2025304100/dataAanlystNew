@@ -1,0 +1,218 @@
+{
+  "portfolios": {
+    "backup_rows": 1,
+    "current_rows": 1,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": [
+      {
+        "id": "1",
+        "fields": {
+          "updated_at": {
+            "backup": "2026-09-29 07:56:13",
+            "current": "2026-10-23 04:23:46"
+          },
+          "status_reconciliation": {
+            "backup": "READY",
+            "current": "RECONCILIATION_BLOCKED"
+          }
+        }
+      }
+    ]
+  },
+  "positions": {
+    "backup_rows": 2,
+    "current_rows": 2,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": [
+      {
+        "id": "2",
+        "fields": {
+          "latest_price": {
+            "backup": "4.515",
+            "current": 4.22
+          },
+          "market_value": {
+            "backup": 45150,
+            "current": 42200.0
+          },
+          "position_pct": {
+            "backup": "0.0903",
+            "current": 0.0844
+          },
+          "updated_at": {
+            "backup": "2026-10-19 08:00:13",
+            "current": "2026-10-21 08:00:10"
+          }
+        }
+      }
+    ],
+    "source": "backup-additional/backup-20261020/extraction-manifest.json"
+  },
+  "cash_ledger": {
+    "backup_rows": 11,
+    "current_rows": 11,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": [
+      {
+        "id": "20",
+        "fields": {
+          "balance_after": {
+            "backup": "437004.25",
+            "current": 437004.51
+          },
+          "amount": {
+            "backup": "1537.260009765625",
+            "current": 1537.26
+          }
+        }
+      },
+      {
+        "id": "13",
+        "fields": {
+          "balance_after": {
+            "backup": "174714.1875",
+            "current": 174714.36
+          },
+          "amount": {
+            "backup": "-130800.8203125",
+            "current": -130800.82
+          }
+        }
+      },
+      {
+        "id": "17",
+        "fields": {
+          "balance_after": {
+            "backup": "435466.875",
+            "current": 435467.25
+          },
+          "amount": {
+            "backup": "260752.890625",
+            "current": 260752.89
+          }
+        }
+      },
+      {
+        "id": "10",
+        "fields": {
+          "balance_after": {
+            "backup": "305515.1875",
+            "current": 305515.18
+          },
+          "amount": {
+            "backup": "-130800.8203125",
+            "current": -130800.82
+          }
+        }
+      },
+      {
+        "id": "21",
+        "fields": {
+          "balance_after": {
+            "backup": "435878.13",
+            "current": 435878.39
+          }
+        }
+      },
+      {
+        "id": "22",
+        "fields": {
+          "balance_after": {
+            "backup": "434752.01",
+            "current": 434752.27
+          }
+        }
+      }
+    ]
+  },
+  "sim_orders": {
+    "backup_rows": 10,
+    "current_rows": 10,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "sim_trades": {
+    "backup_rows": 10,
+    "current_rows": 10,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "decision_runs": {
+    "backup_rows": 77,
+    "current_rows": 77,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "decision_evidence": {
+    "backup_rows": 0,
+    "current_rows": 0,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "decision_order_plans": {
+    "backup_rows": 0,
+    "current_rows": 0,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "portfolio_factor_usages": {
+    "backup_rows": 4,
+    "current_rows": 4,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "strategy_execution_snapshots": {
+    "backup_rows": 4,
+    "current_rows": 4,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "portfolio_rules": {
+    "backup_rows": 8,
+    "current_rows": 8,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "signal_rules": {
+    "backup_rows": 1,
+    "current_rows": 1,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": [],
+    "source": "backup-additional/backup-20261020/extraction-manifest.json"
+  },
+  "portfolio_members": {
+    "backup_rows": 2,
+    "current_rows": 2,
+    "missing_in_current": [],
+    "current_only": [],
+    "changed": []
+  },
+  "data_governance_audit_events": {
+    "backup_rows": 162,
+    "current_rows": 170,
+    "missing_in_current": [],
+    "current_only": [
+      "3736",
+      "3737",
+      "3738",
+      "3739",
+      "3740",
+      "3741",
+      "3742",
+      "3743"
+    ],
+    "changed": []
+  }
+}

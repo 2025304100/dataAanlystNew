@@ -1,0 +1,72 @@
+[
+  {
+    "file": "data-center-workspace.png",
+    "bytes": 117856,
+    "sha256": "cba63df271f2f631edad12a08e1a737e051f7b2863a5459269e38fb9eb7c5b5c"
+  },
+  {
+    "file": "frontend-build.log",
+    "bytes": 3351,
+    "sha256": "2baee7a583aa41fd72600335af4c6c842c4ff478cfe56ef1af2c09011828bc59"
+  },
+  {
+    "file": "frontend-tests.log",
+    "bytes": 10486,
+    "sha256": "b77e0286c83a11735c051101849811bbba515cfa56d96b645c7c02d6b624e788"
+  },
+  {
+    "file": "history-detail.png",
+    "bytes": 237125,
+    "sha256": "f4bccecd4dfb6c8d3ac040f7ccda7c72a53064e8c2fb9746175bbe92b5809445"
+  },
+  {
+    "file": "job-day-detail.png",
+    "bytes": 270262,
+    "sha256": "59a0579728887b8e306f840605b9561f9ac0123b50721f26545c44d5c5662bcc"
+  },
+  {
+    "file": "material-320.png",
+    "bytes": 83978,
+    "sha256": "fb60d96f41c3cb3a70bb9e7c2ad07c9d9a7c6a73f6b45da83485a1cecbc8fe6c"
+  },
+  {
+    "file": "material-390.png",
+    "bytes": 86191,
+    "sha256": "5c004462d04e38349d53640ea268caca091cc7377343a00a1dc84f9cab5c46c2"
+  },
+  {
+    "file": "material-preview.png",
+    "bytes": 174015,
+    "sha256": "17d698dce4c53e1604f1b5caaffc27fd6f5cd376d018d9e7af405eb6ff59e1b7"
+  },
+  {
+    "file": "result.json",
+    "bytes": 1777,
+    "sha256": "24835d29a805c554613228b7caf2923846eed2477c37b215dc0150e6ba3df2cc"
+  },
+  {
+    "file": "safety.json",
+    "bytes": 461,
+    "sha256": "323d528405ccbcd3b60f8d47fcfdb557950e2fd9cd1e694c376c955da91fb8c5"
+  },
+  {
+    "file": "state-after.json",
+    "bytes": 30004,
+    "sha256": "cfc85bb2dc8bafdad88ae44e283841c2f01e80c5730223c4a1cef7abeafee6f6"
+  },
+  {
+    "file": "state-before.json",
+    "bytes": 30004,
+    "sha256": "51276cb7a2bb5e1cc16966e8f1129e22afbb9c9629a3c3c6de3cc18663044e88"
+  },
+  {
+    "file": "symbol-detail.png",
+    "bytes": 211592,
+    "sha256": "5d91bead3a99c38542899c71f7a2bb0cb4d83af4e69be2a7860a1e4617563998"
+  },
+  {
+    "file": "verify.mjs",
+    "bytes": 12773,
+    "sha256": "a77a4630dbc2331b7ef1e365ab87355a808761cab7276af8bc87f7b1623a44eb"
+  }
+]

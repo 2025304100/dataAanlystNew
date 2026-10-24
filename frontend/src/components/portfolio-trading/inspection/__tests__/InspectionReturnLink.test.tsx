@@ -1,0 +1,10 @@
+import {afterEach,beforeEach,expect,it,vi} from "vitest";
+import {cleanup,fireEvent,render,screen} from "@testing-library/react";
+import InspectionReturnLink from "../InspectionReturnLink";
+const {ctx}=vi.hoisted(()=>({ctx:{portfolioId:1,portfolios:[{id:1}],setActiveTab:vi.fn(),setActiveSubTab:vi.fn()}}));
+vi.mock("../../../../context/AppContext",()=>({useApp:()=>ctx}));
+beforeEach(()=>{vi.clearAllMocks();sessionStorage.clear();ctx.portfolioId=1;});afterEach(cleanup);
+it("returns to the same portfolio guide without consuming its draft or approving",()=>{sessionStorage.setItem("portfolio-inspection-return-v1",JSON.stringify({portfolioId:1,step:2,savedAt:Date.now()}));
+  render(<InspectionReturnLink/>);fireEvent.click(screen.getByRole("button",{name:"返回检查与对账并重检"}));expect(ctx.setActiveSubTab).toHaveBeenCalledWith("governance:overview");expect(ctx.setActiveTab).toHaveBeenCalledWith("portfolio");expect(sessionStorage.getItem("portfolio-inspection-return-v1")).not.toBeNull();});
+it("does not show another portfolio or expired draft as the current context",()=>{sessionStorage.setItem("portfolio-inspection-return-v1",JSON.stringify({portfolioId:2,step:2,savedAt:Date.now()}));const view=render(<InspectionReturnLink/>);expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  sessionStorage.setItem("portfolio-inspection-return-v1",JSON.stringify({portfolioId:1,step:2,savedAt:Date.now()-31*60*1000}));view.rerender(<InspectionReturnLink/>);expect(screen.queryByRole("button")).not.toBeInTheDocument();});

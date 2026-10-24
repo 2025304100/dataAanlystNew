@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.services.akshare_utils import quiet_akshare_output, request_proxy_bypass
+from app.services.market_data_errors import etf_qfq_source_error
 from app.models.daily_bar import DailyBar
 from app.models.portfolio import Position
 from app.models.scan import ScanResult
@@ -41,6 +42,7 @@ from app.services.market_data_sources.sources._normalize import (
 )
 from app.services.market_history_contract import tencent_quantity_to_shares_multiplier
 from app.services.market_data_sources.sources.tencent_history import fetch_tencent_history_raw
+from app.services.market_data_sources.sources.tencent_etf_history import fetch_tencent_etf_history
 from app.services.market_data_sources.sources.sina_history_http import fetch_sina_history_raw
 from app.services.market_history_contract import (
     is_cn_stock_history, is_cn_etf_history, mark_cn_stock_production_mode, production_history_source_tag, require_cn_stock_qfq,
@@ -314,7 +316,7 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                 )
                     if region == "cn" and symbol.asset_type == "etf":
                         try:
-                            return normalize_cn_etf_em_history(
+                            frame = normalize_cn_etf_em_history(
                                 call_akshare_with_retry(
                                     ak.fund_etf_hist_em,
                                     symbol=symbol.symbol,
@@ -326,12 +328,24 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                     max_attempts=2,
                                 )
                             )
+                            if frame.empty:
+                                raise ValueError('eastmoney_etf_history_empty')
+                            return frame
                         except Exception as exc:
+                            if adjust == 'qfq':
+                                logger.info('ETF primary source failed for %s; checking Tencent qfq backup',
+                                            symbol.symbol, exc_info=True)
+                                try:
+                                    frame = call_akshare_with_retry(fetch_tencent_etf_history,
+                                        symbol=symbol, start_date=start_date, end_date=end_date,
+                                        adjust=adjust, api_key='fund_etf_hist_tx', max_attempts=1)
+                                    frame.attrs['history_response']['fallback_used'] = True
+                                    frame.attrs['history_response']['attempted_sources'] = ['eastmoney_etf', 'tencent_etf']
+                                    return frame
+                                except Exception as backup_error:
+                                    raise etf_qfq_source_error(backup_error, backup_attempted=True) from backup_error
                             if adjust != '':
-                                # Sina's ETF endpoint has no adjustment argument.
-                                # Persisting its raw prices as qfq creates a false
-                                # loss at a dividend and corrupts the single basis.
-                                raise ValueError('ETF前复权行情获取失败，未使用不复权数据替代，请稍后重试。') from exc
+                                raise etf_qfq_source_error(exc) from exc
                             logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             return _normalize_cn_etf_sina_history(
                                 call_akshare_with_retry(
@@ -358,7 +372,8 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
             logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
             continue
     if last_error is not None:
-        logger.warning("All AKShare sources failed for %s", symbol.symbol, exc_info=True)
+        logger.warning("All AKShare sources failed for %s", symbol.symbol,
+                       exc_info=(type(last_error), last_error, last_error.__traceback__))
         raise last_error
     raise RuntimeError("AKShare fetch failed without an explicit exception")
 
@@ -380,6 +395,8 @@ def _dedupe_history_rows(frame: pd.DataFrame) -> list[dict]:
     return list(deduped.values())
 
 def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int, int]:
+    from app.services.etf_sync_validation import validate_etf_backup_write
+    validate_etf_backup_write(db, symbol, frame)
     source = production_history_source_tag(frame,
         cn_stock=is_cn_stock_history(symbol) or is_cn_etf_history(symbol))
     inserted = 0
@@ -551,6 +568,9 @@ def sync_symbol_daily_bars(
 
     inserted, updated = _upsert_bars(db=db, symbol=symbol, frame=frame)
     db.flush()
+    continuity = frame.attrs.get('etf_basis_comparison')
+    history_evidence = ({**frame.attrs['history_response'], 'basis_comparison': continuity,
+                         'source_label': '腾讯财经 · ETF前复权日K'} if continuity is not None else None)
     return {
         "symbol_id": symbol.id,
         "symbol": symbol.symbol,
@@ -561,6 +581,7 @@ def sync_symbol_daily_bars(
         "rows": len(frame),
         "start_date": resolved_start.isoformat() if hasattr(resolved_start, 'isoformat') else str(resolved_start),
         "end_date": resolved_end.isoformat() if hasattr(resolved_end, 'isoformat') else str(resolved_end),
+        **({'history_evidence': history_evidence} if history_evidence is not None else {}),
     }
 
 

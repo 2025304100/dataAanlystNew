@@ -104,6 +104,17 @@ describe("data-center factor-input entry and tab persistence", () => {
     expect(screen.queryByText("尾盘代理分数")).not.toBeInTheDocument();
   });
 
+  it("keeps a long failure reason out of the table and shows it after clicking the detail button", async () => {
+    mockApi.getExternalDataCoverage.mockResolvedValue({ datasets: [{ dataset: "financial", fields: [{ field: "roe_ttm", table_rows: 1, nonnull_rows: 1 }] }] });
+    mockApi.getExternalDataQualitySnapshots.mockResolvedValue({ fields: [{ field: "roe_ttm", captured_at: "2026-10-19T06:49:16Z", failure_reason: "'NoneType' object is not subscriptable" }] } as any);
+    localStorage.setItem("settings_data_center_tab", "coverage");
+    render(<DataCenter />);
+    const trigger = await screen.findByRole("button", { name: "最近失败 · 查看原因" });
+    expect(screen.queryByText("'NoneType' object is not subscriptable")).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(await screen.findByText("'NoneType' object is not subscriptable")).toBeInTheDocument();
+  });
+
   it("does not reopen a dismissed quality history when its request completes", async () => {
     let resolveHistory!: (value: unknown) => void;
     mockApi.getExternalDataQualityHistory.mockImplementation(() => new Promise((resolve) => { resolveHistory = resolve; }));

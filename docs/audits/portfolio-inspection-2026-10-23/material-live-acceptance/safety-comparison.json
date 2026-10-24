@@ -1,0 +1,144 @@
+{
+  "tables": {
+    "portfolios": {
+      "rows_before": 12,
+      "rows_after": 12,
+      "unchanged": true
+    },
+    "positions": {
+      "rows_before": 2,
+      "rows_after": 2,
+      "unchanged": true
+    },
+    "cash_ledger": {
+      "rows_before": 16,
+      "rows_after": 16,
+      "unchanged": true
+    },
+    "sim_orders": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true
+    },
+    "sim_trades": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true
+    },
+    "sim_accounts": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "g5_dual_run_reports": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true
+    },
+    "portfolio_account_baselines": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "portfolio_reconciliation_cursors": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "inspection_evidence_requests": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "inspection_evidence_decisions": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "g5_admission_controls": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "g5_admission_events": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "factor_model_runs": {
+      "rows_before": 11,
+      "rows_after": 11,
+      "unchanged": true
+    },
+    "factor_model_members": {
+      "rows_before": 7,
+      "rows_after": 7,
+      "unchanged": true
+    },
+    "factor_weight_snapshots": {
+      "rows_before": 1,
+      "rows_after": 1,
+      "unchanged": true
+    },
+    "factor_runtime_state": {
+      "rows_before": 1,
+      "rows_after": 1,
+      "unchanged": true
+    },
+    "portfolio_rules": {
+      "rows_before": 12,
+      "rows_after": 12,
+      "unchanged": true
+    },
+    "portfolio_factor_usages": {
+      "rows_before": 4,
+      "rows_after": 4,
+      "unchanged": true
+    },
+    "strategy_execution_snapshots": {
+      "rows_before": 4,
+      "rows_after": 4,
+      "unchanged": true
+    },
+    "portfolio_members": {
+      "rows_before": 6,
+      "rows_after": 6,
+      "unchanged": true
+    },
+    "decision_runs": {
+      "rows_before": 77,
+      "rows_after": 77,
+      "unchanged": true
+    },
+    "decision_evidence": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "decision_order_plans": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true
+    },
+    "scheduled_tasks": {
+      "rows_before": 16,
+      "rows_after": 16,
+      "unchanged": true
+    }
+  },
+  "automatic_tasks_unchanged": true,
+  "automatic_dispatches_unchanged": true,
+  "active_tasks_after": [],
+  "material_records_added": 3,
+  "audit_rows_added": 3,
+  "all_protected_tables_unchanged": true,
+  "restart_only_unchanged": true,
+  "runtime_permissions_unchanged": true,
+  "runtime_state_unchanged": true,
+  "recovery_can_confirm": false,
+  "current_state": "RECONCILIATION_BLOCKED",
+  "auto_task_type_counts": {
+    "portfolio_auto_trade": 16
+  },
+  "automatic_dispatch_count": 66
+}

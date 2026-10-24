@@ -1,0 +1,24 @@
+{
+  "verified_through": "2026-09-28",
+  "mode": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "audit": 3800,
+  "coverage_start": null,
+  "can_confirm": false,
+  "portfolio_ids": [
+    1
+  ],
+  "permissions": {
+    "allow_new_buys": false,
+    "allow_risk_exits": true,
+    "allow_auto_recovery": false,
+    "requires_manual_ack": true
+  }
+}

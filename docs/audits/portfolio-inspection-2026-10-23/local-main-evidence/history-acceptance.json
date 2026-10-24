@@ -1,0 +1,57 @@
+[
+  {
+    "filter": "current-report",
+    "total": 1,
+    "relation_status": "matched",
+    "empty_reason": null,
+    "filters": {
+      "occurred_from": "2026-09-23T12:41:56.506818+08:00",
+      "occurred_to": "2026-10-23T12:41:56.506818+08:00",
+      "trade_date_from": "2026-10-19",
+      "trade_date_to": "2026-10-19",
+      "security_ids": [],
+      "actions": [],
+      "review_decision": null,
+      "execution_result": null,
+      "operator": null,
+      "actor_type": null,
+      "failure_code": null,
+      "ai_assisted": null,
+      "since_last_reconciliation": false,
+      "q": null,
+      "issue_id": null,
+      "correlation_id": null,
+      "report_ref": "reconciliation::1::2026-10-19",
+      "report_version": "ad3fcb4dd85139814da88a451bd48ee854b9c081ea04a7a86367fee91a467c1e"
+    }
+  },
+  {
+    "filter": "multi-security",
+    "total": 0,
+    "relation_status": "not_requested",
+    "empty_reason": "当前范围无匹配记录",
+    "filters": {
+      "occurred_from": "2026-09-23T12:41:56.615500+08:00",
+      "occurred_to": "2026-10-23T12:41:56.615500+08:00",
+      "trade_date_from": "2026-09-29",
+      "trade_date_to": "2026-10-19",
+      "security_ids": [
+        "SH:510300",
+        "SZ:000001"
+      ],
+      "actions": [],
+      "review_decision": null,
+      "execution_result": null,
+      "operator": null,
+      "actor_type": null,
+      "failure_code": null,
+      "ai_assisted": null,
+      "since_last_reconciliation": false,
+      "q": null,
+      "issue_id": null,
+      "correlation_id": null,
+      "report_ref": null,
+      "report_version": null
+    }
+  }
+]

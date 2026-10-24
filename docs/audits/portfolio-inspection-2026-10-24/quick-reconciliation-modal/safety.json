@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "protected_table_count": 25,
+  "comparisons": {
+    "tables": true,
+    "market_rows": true,
+    "main": true,
+    "active_tasks": true,
+    "auto_trade_tasks": true,
+    "automatic_dispatches": true,
+    "universe_etf": true
+  },
+  "audit_before": 3799,
+  "audit_after": 3800,
+  "new_audit_count": 1,
+  "only_mutation": "main / 2026-09-30 explicit reconciliation recheck",
+  "verified_through": "2026-09-28",
+  "permissions": {
+    "allow_new_buys": false,
+    "allow_risk_exits": true,
+    "allow_auto_recovery": false,
+    "requires_manual_ack": true
+  },
+  "recovery_can_confirm": false,
+  "automatic_trading_tasks": 16,
+  "automatic_trade_dispatches": 66,
+  "active_tasks": [],
+  "trading_resumed": false,
+  "orders_created": false,
+  "baseline_accepted": false,
+  "admission_unfrozen": false,
+  "market_data_changed": false,
+  "model_or_strategy_changed": false,
+  "backend_restarted": false
+}

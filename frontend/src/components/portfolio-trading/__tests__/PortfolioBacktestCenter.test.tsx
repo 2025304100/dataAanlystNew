@@ -262,7 +262,7 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     fireEvent.change(screen.getByPlaceholderText("portfolioTrading.backtest.symbolPlaceholder"), {
       target: { value: "600000" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
+    fireEvent.click(await screen.findByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
 
     await waitFor(() => expect(mockApi.runBacktest).toHaveBeenCalledOnce());
     const payload = mockApi.runBacktest.mock.calls[0][0];
@@ -621,8 +621,14 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     let resolveCurrent!: (value: unknown) => void;
     const oldRead = new Promise((resolve, reject) => { resolveOld = resolve; rejectOld = reject; });
     const currentRun = new Promise((resolve) => { resolveCurrent = resolve; });
-    mockApi.getSymbols.mockImplementation((code: string) => stage === "symbol" && code === "600000"
-      ? oldRead : Promise.resolve([{ id: 11, symbol: code }]));
+    let initialCheckRead = true;
+    mockApi.getSymbols.mockImplementation((code: string) => {
+      if (stage === "symbol" && code === "600000") {
+        if (initialCheckRead) { initialCheckRead = false; return Promise.resolve([{ id: 11, symbol: code }]); }
+        return oldRead;
+      }
+      return Promise.resolve([{ id: 11, symbol: code }]);
+    });
     mockApi.runBacktest.mockImplementation((payload: { portfolio_id: number }) => payload.portfolio_id === 2
       ? currentRun : stage === "submission" ? oldRead : Promise.resolve(historicalRun));
     mockApi.getBacktestRun.mockImplementation((runId: number) => runId === 77
@@ -631,11 +637,11 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     const view = render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
     fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.modeSingle" }));
     fireEvent.change(screen.getByPlaceholderText("portfolioTrading.backtest.symbolPlaceholder"), { target: { value: "600000" } });
-    fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
+    fireEvent.click(await screen.findByRole("button", { name: "portfolioTrading.backtest.startSingleRun" }));
     await waitFor(() => {
       if (stage === "symbol") expect(mockApi.getSymbols).toHaveBeenCalledWith("600000", { pageSize: 50 });
       else if (stage === "submission") expect(mockApi.runBacktest).toHaveBeenCalledTimes(1);
-      else expect(mockApi.getBacktestRun).toHaveBeenCalledWith(77);
+      else expect(mockApi.getBacktestRun).toHaveBeenCalledWith(77, expect.any(AbortSignal));
     });
     view.rerender(<PortfolioBacktestCenter portfolioId={2} autoTradeEnabled />);
     fireEvent.click(screen.getByRole("button", { name: "portfolioTrading.backtest.modeSingle" }));

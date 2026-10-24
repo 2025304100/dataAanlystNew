@@ -449,6 +449,114 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     return existing
 
 
+def _fetch_etf_nav_history(
+    db: Session, symbol: Symbol, start_date: date, end_date: date
+) -> dict[date, float]:
+    """Fetch bounded ETF NAV history once instead of one provider call per day."""
+    code = _etf_code(symbol)
+    history: dict[date, float] = {}
+    cursor = start_date
+    while cursor <= end_date:
+        chunk_end = min(end_date, cursor + timedelta(days=365))
+        try:
+            with _proxy_bypass(), quiet_akshare_output():
+                frame = call_akshare_with_retry(
+                    ak.fund_etf_fund_info_em, fund=code,
+                    start_date=cursor.strftime("%Y%m%d"),
+                    end_date=chunk_end.strftime("%Y%m%d"),
+                    api_key="fund_etf_fund_info_em", max_attempts=2, db=db,
+                )
+        except Exception as exc:
+            logger.debug("fund_etf_fund_info_em history failed for %s: %s", symbol.symbol, exc)
+            frame = None
+        if frame is not None and not frame.empty:
+            data = frame.copy()
+            data["净值日期"] = pd.to_datetime(data["净值日期"], errors="coerce").dt.date
+            for _, row in data.iterrows():
+                day = row["净值日期"]
+                nav = _safe_float(row.get("单位净值"))
+                if isinstance(day, date) and nav is not None and start_date <= day <= end_date:
+                    history[day] = nav
+        cursor = chunk_end + timedelta(days=1)
+    return history
+
+
+def sync_etf_indicator_range(
+    db: Session, symbol: Symbol, start_date: date, end_date: date, *,
+    fill_missing_only: bool = False,
+    should_cancel: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
+    """Backfill historical ETF NAV, close and premium/discount only.
+
+    Shares, fund size and tracking error have no historical provider contract
+    and stay snapshot-only; this function never invents them.
+    """
+    if symbol.asset_type != "etf" or region_from_market(symbol.market) != "cn":
+        return {"total": 0, "written": 0, "skipped": 0, "written_dates": ()}
+    if start_date > end_date:
+        raise ValueError("start_date must not be after end_date")
+    if end_date > date.today():
+        raise ValueError("ETF 历史回填结束日期不能晚于今天")
+    nav_history = _fetch_etf_nav_history(db, symbol, start_date, end_date)
+    close_rows = db.execute(
+        select(DailyBar.trade_date, DailyBar.close).where(
+            DailyBar.symbol_id == symbol.id,
+            DailyBar.trade_date >= start_date,
+            DailyBar.trade_date <= end_date,
+        )
+    ).all()
+    closes = {row[0]: _safe_float(row[1]) for row in close_rows}
+    dates = sorted(
+        {day for day, nav in nav_history.items() if nav is not None}
+        | {day for day, close in closes.items() if close is not None}
+    )
+    written = 0
+    skipped = 0
+    written_dates: set[date] = set()
+    for day in dates:
+        if should_cancel and should_cancel():
+            raise InterruptedError("ETF 历史回填已取消")
+        nav = nav_history.get(day)
+        close = closes.get(day)
+        premium = (close - nav) / nav * 100 if nav and close and nav > 0 else None
+        score = calc_premium_discount_score(premium)
+        existing = db.execute(
+            select(EtfIndicator).where(
+                EtfIndicator.symbol_id == symbol.id,
+                EtfIndicator.trade_date == day,
+            )
+        ).scalars().first()
+        if existing is None:
+            existing = EtfIndicator(symbol_id=symbol.id, trade_date=day)
+            db.add(existing)
+        values = {"nav": nav, "close": close, "premium_discount": premium, "premium_discount_score": score}
+        if fill_missing_only:
+            from app.services.sync_write_policy import fill_missing_values
+            filled = fill_missing_values(existing, values)
+            if not filled:
+                skipped += 1
+                continue
+        else:
+            for field, value in values.items():
+                if value is not None:
+                    setattr(existing, field, value)
+        existing.source = "akshare"
+        existing.raw_json = json.dumps(
+            {"history_backfill": True, "history_fields": list(values),
+             "unavailable_fields": ["total_shares", "fund_size", "tracking_error"]},
+            ensure_ascii=False,
+        )
+        written += 1
+        written_dates.add(day)
+    db.flush()
+    return {
+        "total": len(dates),
+        "written": written,
+        "skipped": skipped,
+        "written_dates": tuple(sorted(written_dates)),
+    }
+
+
 def get_latest_etf_indicator(
     db: Session, symbol_id: int, *, as_of: date | None = None
 ) -> EtfIndicator | None:

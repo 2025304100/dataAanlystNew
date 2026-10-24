@@ -1,0 +1,16 @@
+{
+  "backend-identity-contract.log": "acef8bd0a8c4ffa32511977a8a7228a8b761243182caac6c160e01c47ff1754d",
+  "browser-reopened-original-task.png": "a9dc7225cbe07e8076d4c7ab7042d7baf273f9d8478ee3dc2198a017083d9f09",
+  "browser-result.json": "286cb045d39ca33840883db1e8fc674bd4157d74df6b0cd4f53c05991d415f1f",
+  "browser-run.log": "03b87cbda807c68c2ed76a794738d9bd8674a8fefe274dce738324005474672e",
+  "built-assets.json": "a5f16fa280d8a19cbecbe3c7e11a06a37e043f7226ee8a4829857b25347bf733",
+  "diff-check.log": "4fbe79f0d7a7b9c04b493cc7b95509748fc0c5d0b13e12a4417e05552a76a275",
+  "final-safety.json": "1b6793b584bb375a231f19418b7fe5df93cffc78d78796e2bbe3d2011fa55817",
+  "frontend-build.log": "a1ce63ee205f9ce415464dc69a821985fa79f92e512266d0a443be108a5db295",
+  "frontend-tests.log": "5bcfd03c72b69c761a4219f4aabdfe8374ec41060aad61db865063b8876b2a07",
+  "README.md": "b3959a58e756cdcee7e321c17013d34f69672f9c2c44cfb14f2d272ab1e84111",
+  "reloaded-original-task.png": "4c4b132d46d02cfbf5c850191126c85801ea0673db118e20e4a7fb1a6d235862",
+  "source-after.json": "5481ae54f87c7e46dae63fa0108bf355a8ea2a28d68491bc2e234444c7ca0b5b",
+  "unknown-original-request.png": "19bb36cb87bc522f431f98be5a235f4b4c5f688cd477f5ef8549a26fd475c7b6",
+  "verify.mjs": "d22a855f86542fa622dec0aa3c730de67a4dac63a32d425cdf49d34fd8562406"
+}

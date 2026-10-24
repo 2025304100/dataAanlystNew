@@ -1,0 +1,568 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "current_state": "RECONCILIATION_BLOCKED",
+    "audit_watermark": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "days": [
+      {
+        "trade_date": "2026-08-20",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-21",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-22",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-25",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-26",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-27",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-28",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-03",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-04",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-24",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-25",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-27",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-28",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-29",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-09-30",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-08",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-09",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-12",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-13",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-14",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-15",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-16",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-19",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-20",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-21",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-22",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-23",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      }
+    ]
+  },
+  "writeAttempts": [],
+  "errors": [],
+  "httpErrors": [],
+  "checks": [
+    "执行核对先显示本日结论与处理入口；缺证不铺空比较；资金和来源按需展开；切换交易日只读取得同日报告",
+    "历史缺口处理入口在前，三类依据及查找方法保留；相关历史携带同日/版本，返回保留展开；空原订单有出口，无法恢复说明不接受基线",
+    "自动作业先显示待核对日期和进度；逐日/工作单/来源折叠可用；顶部及逐日入口只读核对正确日期，关闭返回原作业，窄屏展开不溢出"
+  ],
+  "layouts": {
+    "execution-1440": {
+      "viewport": 1440,
+      "height": 1000,
+      "documentWidth": 1440,
+      "left": 680,
+      "right": 1440,
+      "bodyWidth": 760,
+      "bodyScrollWidth": 760,
+      "closeTop": 24,
+      "closeRight": 1414,
+      "footerBottom": 1000,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 1000,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 87.296875
+      }
+    },
+    "execution-1024": {
+      "viewport": 1024,
+      "height": 768,
+      "documentWidth": 1024,
+      "left": 264,
+      "right": 1024,
+      "bodyWidth": 760,
+      "bodyScrollWidth": 760,
+      "closeTop": 24,
+      "closeRight": 998,
+      "footerBottom": 768,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 768,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 87.296875
+      }
+    },
+    "execution-390": {
+      "viewport": 390,
+      "height": 844,
+      "documentWidth": 390,
+      "left": 0,
+      "right": 390,
+      "bodyWidth": 390,
+      "bodyScrollWidth": 390,
+      "closeTop": 23.859375,
+      "closeRight": 364.15625,
+      "footerBottom": 844,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 844,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 78.296875
+      }
+    },
+    "execution-320": {
+      "viewport": 320,
+      "height": 740,
+      "documentWidth": 320,
+      "left": 0,
+      "right": 320,
+      "bodyWidth": 320,
+      "bodyScrollWidth": 320,
+      "closeTop": 19,
+      "closeRight": 300,
+      "footerBottom": 740,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 740,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 78.296875
+      }
+    },
+    "history-gap-1440": {
+      "viewport": 1440,
+      "height": 1000,
+      "documentWidth": 1440,
+      "left": 680,
+      "right": 1440,
+      "bodyWidth": 760,
+      "bodyScrollWidth": 760,
+      "closeTop": 24,
+      "closeRight": 1414,
+      "footerBottom": 1000,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 1000,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 87.296875
+      }
+    },
+    "history-gap-1024": {
+      "viewport": 1024,
+      "height": 768,
+      "documentWidth": 1024,
+      "left": 264,
+      "right": 1024,
+      "bodyWidth": 760,
+      "bodyScrollWidth": 760,
+      "closeTop": 24,
+      "closeRight": 998,
+      "footerBottom": 768,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 768,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 87.296875
+      }
+    },
+    "history-gap-390": {
+      "viewport": 390,
+      "height": 844,
+      "documentWidth": 390,
+      "left": 0,
+      "right": 390,
+      "bodyWidth": 390,
+      "bodyScrollWidth": 390,
+      "closeTop": 23.109375,
+      "closeRight": 365.078125,
+      "footerBottom": 844,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 844,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 124.296875
+      }
+    },
+    "history-gap-320": {
+      "viewport": 320,
+      "height": 740,
+      "documentWidth": 320,
+      "left": 0,
+      "right": 320,
+      "bodyWidth": 320,
+      "bodyScrollWidth": 320,
+      "closeTop": 19,
+      "closeRight": 300,
+      "footerBottom": 740,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 740,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 124.296875
+      }
+    },
+    "job-1440": {
+      "viewport": 1440,
+      "height": 1000,
+      "documentWidth": 1440,
+      "left": 680,
+      "right": 1440,
+      "bodyWidth": 760,
+      "bodyScrollWidth": 760,
+      "closeTop": 24,
+      "closeRight": 1414,
+      "footerBottom": 1000,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 1000,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 87.296875
+      }
+    },
+    "job-1024": {
+      "viewport": 1024,
+      "height": 768,
+      "documentWidth": 1024,
+      "left": 264,
+      "right": 1024,
+      "bodyWidth": 760,
+      "bodyScrollWidth": 760,
+      "closeTop": 24,
+      "closeRight": 998,
+      "footerBottom": 768,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 768,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 87.296875
+      }
+    },
+    "job-390": {
+      "viewport": 390,
+      "height": 844,
+      "documentWidth": 390,
+      "left": 0,
+      "right": 390,
+      "bodyWidth": 390,
+      "bodyScrollWidth": 390,
+      "closeTop": 21.9375,
+      "closeRight": 366.46875,
+      "footerBottom": 844,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 844,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 124.296875
+      }
+    },
+    "job-320": {
+      "viewport": 320,
+      "height": 740,
+      "documentWidth": 320,
+      "left": 0,
+      "right": 320,
+      "bodyWidth": 320,
+      "bodyScrollWidth": 320,
+      "closeTop": 19,
+      "closeRight": 300,
+      "footerBottom": 740,
+      "afterScreenshot": {
+        "top": 0,
+        "bottom": 740,
+        "scrollTop": 0,
+        "headerTop": 0,
+        "headerBottom": 124.296875
+      }
+    }
+  },
+  "scopedReads": [
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-09-30&trade_date_to=2026-09-30&occurred_from=2026-09-24T11%3A42%3A00%2B08%3A00&occurred_to=2026-10-24T11%3A42%3A59%2B08%3A00&report_ref=reconciliation%3A%3A1%3A%3A2026-09-30&report_version=19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9&page_size=20",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history/securities?",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+  ],
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "current_state": "RECONCILIATION_BLOCKED",
+    "audit_watermark": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "days": [
+      {
+        "trade_date": "2026-08-20",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-21",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-22",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-25",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-26",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-27",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-08-28",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-03",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-04",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-24",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-25",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-27",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-28",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true
+      },
+      {
+        "trade_date": "2026-09-29",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-09-30",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-08",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-09",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-12",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-13",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-14",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-15",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-16",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-19",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-20",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-21",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-22",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      },
+      {
+        "trade_date": "2026-10-23",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false
+      }
+    ]
+  },
+  "passed": true
+}

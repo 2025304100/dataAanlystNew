@@ -1,0 +1,37 @@
+[
+  {
+    "path": "portfolios/1/inspection/guide/review",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  },
+  {
+    "path": "portfolios/1/inspection/coverage/activate",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  },
+  {
+    "path": "portfolios/1/inspection/coverage/accept",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  },
+  {
+    "path": "portfolios/1/auto-simulation/start",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  },
+  {
+    "path": "portfolios/1/confirm-reconciliation",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  },
+  {
+    "path": "portfolios/1/sim-orders",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  },
+  {
+    "path": "g5-admission/control",
+    "status": 423,
+    "code": "LOCAL_INSPECTION_REVIEW_ONLY"
+  }
+]

@@ -41,7 +41,7 @@ def _gen_cid() -> str:
 
 
 # ---------------------------------------------------------------------------
-# 交易日历辅助（从 market_calendar 表查；如无则回退"周一~周五"弱近似）
+# 交易日历辅助（未知时保持未知，禁止工作日近似）
 # ---------------------------------------------------------------------------
 def _next_trade_date(db: Session, after: date) -> date | None:
     """返回 `after` 之后的第一个交易日。"""
@@ -57,22 +57,203 @@ def _next_trade_date(db: Session, after: date) -> date | None:
         if row is not None:
             return row
     except Exception:
-        # 降级本身是设计内的（交易日历表缺失时用弱近似兜底），但**必须留痕**：
-        # 这里曾因 `app/models/market_data.py` 长期不存在而静默降级，
-        # 导致国庆这类长假被当成交易日排进「待补算交易日」（见模块 docstring）。
         logger.warning(
-            "portfolio_resume: trade_calendar 查询失败，回退到工作日近似（假期会被误判）",
+            "portfolio_resume: trade_calendar 查询失败，日期保持未知，不生成近似交易日",
             exc_info=True,
         )
-
-    # 弱回退：扫 1~14 天，取第一个周一到周五（不含 10/1、5/1 等假期，但 resume 前若
-    # 有 DB 应该走上面分支；这里兜底仅用于单测或无 market_calendar 场景）
-    d = after + timedelta(days=1)
-    for _ in range(30):
-        if d.weekday() < 5:
-            return d
-        d += timedelta(days=1)
     return None
+
+
+def get_reconciliation_queue(db: Session, portfolio_id: int, *, today: date | None = None) -> dict[str, Any]:
+    """Read report facts separately from the historical execution-resume queue.
+
+    No account baseline is invented from net-value totals or current positions.
+    Until baseline/generation tables are deployed the legacy checkpoint is
+    explicitly labelled, with unknown coverage exposed to the caller.
+    """
+    from zoneinfo import ZoneInfo
+    from sqlalchemy import inspect
+    from app.models.market_data import MarketCalendar
+    from app.services.portfolio_reconciliation import latest_reconciliation_results
+    portfolio = db.get(Portfolio, int(portfolio_id))
+    if portfolio is None:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
+    today = today or datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    from app.services.portfolio_reconciliation import _active_coverage
+    active = _active_coverage(db, portfolio_id)
+    if active:
+        return _coverage_reconciliation_queue(db, portfolio_id, active, today)
+    results = latest_reconciliation_results(db, portfolio_id)
+    verified = portfolio.last_reconciled_trade_date
+    limitations = ["NO_ACCEPTED_ACCOUNT_BASELINE", "LEGACY_CHECKPOINT_NOT_FULL_HISTORY_PROOF"]
+    from app.services.portfolio_inspection_diagnostics import resolve_inspection_calendar
+    calendar = resolve_inspection_calendar(db)
+    calendar_status = "KNOWN" if calendar["status"] == "PASSED" else "UNKNOWN"
+    start = verified + timedelta(days=1) if verified else min(results, default=today)
+    end = min(today, calendar["expected_trade_date"]) if calendar["expected_trade_date"] else None
+    calendar_days = [day for day in calendar["trading_dates"] if end and start <= day <= end] if calendar_status == "KNOWN" else []
+    if calendar_status == "UNKNOWN":
+        limitations.append("CALENDAR_UNKNOWN")
+    # Only an existing checkpoint defines a legacy continuation. Without it,
+    # expose already observed report days, not invented mandatory history.
+    days = sorted(set(results) | (set(calendar_days) if verified else set()))
+    items = []
+    for day in days:
+        attrs = results.get(day, {})
+        verdict = attrs.get("verdict") or attrs.get("status") or "NOT_CHECKED"
+        history_only = bool(verified and day <= verified and verdict == "NOT_CHECKED")
+        if history_only:
+            verdict = "HISTORICAL_EVIDENCE_UNKNOWN"
+        items.append({"trade_date": day.isoformat(), "status": verdict,
+            "history_only": history_only,
+            "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯" if history_only else "；".join(attrs.get("reason_codes") or []) or
+                      ("已有核对通过报告" if verdict == "PASSED" else "等待读取本日证据并核对"),
+            "work_state": "history_unknown" if history_only else attrs.get("work_state", "queued"),
+            "report_id": attrs.get("report_id"), "report_version": attrs.get("report_version"),
+            "audit_event_id": attrs.get("audit_event_id")})
+    pending = [date.fromisoformat(item["trade_date"]) for item in items
+               if item["status"] != "PASSED" and (verified is None or date.fromisoformat(item["trade_date"]) > verified)]
+    target = min(pending) if pending else portfolio.last_decision_trade_date
+    return {"portfolio_id": portfolio_id, "coverage_start": None,
+        "verified_through": verified.isoformat() if verified else None,
+        "target_trade_date": target.isoformat() if target else None,
+        "calendar_status": calendar_status, "days": items,
+        "calendar_version": calendar.get("version"), "calendar_reason": calendar.get("reason"),
+        "limitations": limitations, "coverage_source": "legacy_checkpoint" if verified else "unknown",
+        **_reconciliation_queue_capabilities(db, portfolio_id)}
+
+
+def _reconciliation_queue_capabilities(db: Session, portfolio_id: int) -> dict[str, bool]:
+    from sqlalchemy import inspect
+    from app.models.scheduled_task import ScheduledTask
+    inspector = inspect(db.connection())
+    tables = set(inspector.get_table_names())
+    registered = False
+    schedule_columns = {col['name'] for col in inspector.get_columns('scheduled_tasks')} if 'scheduled_tasks' in tables else set()
+    if {"task_type", "enabled", "payload_json"} <= schedule_columns:
+        for payload_json in db.scalars(select(ScheduledTask.payload_json).where(
+                ScheduledTask.task_type == "portfolio_reconciliation", ScheduledTask.enabled == 1)):
+            try:
+                payload = json.loads(payload_json or "{}")
+            except (TypeError, ValueError):
+                continue
+            if isinstance(payload, dict) and (payload.get("portfolio_id") is None or payload.get("portfolio_id") == portfolio_id):
+                registered = True
+                break
+    return {"baseline_creation_available": {"portfolio_account_baselines", "portfolio_reconciliation_cursors",
+                "portfolio_reconciliation_days", "portfolio_reconciliation_reports"} <= tables,
+            "automatic_job_registered": registered}
+
+
+def _coverage_reconciliation_queue(db: Session, portfolio_id: int, active: dict, today: date) -> dict[str, Any]:
+    from app.models.market_data import MarketCalendar
+    from app.models.portfolio_reconciliation_coverage import PortfolioReconciliationDay, PortfolioReconciliationReport
+    start = active["coverage_start_trade_date"]
+    verified = active["verified_through_trade_date"]
+    from app.services.portfolio_inspection_diagnostics import resolve_inspection_calendar
+    calendar = resolve_inspection_calendar(db)
+    known = calendar["status"] == "PASSED" and calendar.get("version") == active["calendar_version"]
+    end = min(today, calendar["expected_trade_date"]) if known and calendar["expected_trade_date"] else None
+    calendar_dates = {day for day in calendar["trading_dates"] if end and start <= day <= end} if known else set()
+    days = {row.target_trade_date: row for row in db.scalars(select(PortfolioReconciliationDay).where(
+        PortfolioReconciliationDay.cursor_id == active["cursor_id"],
+        PortfolioReconciliationDay.generation == active["generation"]))}
+    dates = sorted(calendar_dates | set(days))
+    items = []
+    for day in dates:
+        record = days.get(day)
+        report = db.get(PortfolioReconciliationReport, record.current_report_id) if record and record.current_report_id else None
+        checks = json.loads(report.checks_json) if report else {}
+        if not isinstance(checks, dict):
+            checks = {}
+        items.append({"trade_date": day.isoformat(), "status": record.verdict if record else "NOT_CHECKED",
+            "reason": "本日已完成当前代核对" if record and record.verdict == "PASSED" else
+                      "等待合法执行结果" if record and record.work_state == "waiting_execution" else
+                      "本日尚待基于已接受账户基线核对",
+            "work_state": record.work_state if record else "queued",
+            "report_id": checks.get("source_report_id") or (report.id if report else None),
+            "report_version": checks.get("source_report_version") or (str(report.report_version) if report else None),
+            "persistent_report_id": report.id if report else None,
+            "persistent_report_version": report.report_version if report else None,
+            "next_check_at": record.next_check_at.replace(tzinfo=timezone.utc).isoformat() if record and record.next_check_at else checks.get("next_check_at"),
+            "audit_event_id": report.audit_event_id if report else None})
+    # The oldest open day remains the target even when later reports exist.
+    pending = [date.fromisoformat(item["trade_date"]) for item in items
+        if item["status"] != "PASSED" and (verified is None or date.fromisoformat(item["trade_date"]) > verified)]
+    target = min(pending) if pending else next((day for day in calendar["trading_dates"] if day > verified), None) if verified and known else start if known else None
+    return {"portfolio_id": portfolio_id, "coverage_start": start.isoformat(),
+        "verified_through": verified.isoformat() if verified else None,
+        "target_trade_date": target.isoformat() if target else None,
+        "calendar_status": "KNOWN" if known else "UNKNOWN", "days": items,
+        "coverage_source": "accepted_account_baseline", "baseline_id": active["baseline_id"],
+        "generation": active["generation"], "cursor_row_version": active["row_version"],
+        "calendar_version": active["calendar_version"],
+        "observed_calendar_version": calendar.get("version"), "calendar_reason": calendar.get("reason"),
+        "limitations": (["HISTORICAL_EVIDENCE_REMAINS_UNKNOWN"] if active.get("history_gaps") else []) + ([] if known else ["CALENDAR_UNKNOWN"]),
+        **_reconciliation_queue_capabilities(db, portfolio_id)}
+
+
+def review_resume_execution_date(db: Session, portfolio_id: int, trade_date: date,
+                                 *, strategy_snapshot_id: str | None = None, current_read: bool = False) -> dict[str, Any]:
+    """Historical gaps are diagnostic. Only a real plan due today can resume.
+
+    A previous signal date is allowed solely for a frozen, unfinished order
+    plan whose original execution date is today. No current configuration or
+    freshly backfilled bar authorizes creating a missing historical decision.
+    """
+    from app.services.decision_schedule_gate import as_shanghai, shanghai_now
+    from app.models.decision_engine import DecisionOrderPlanRecord, DecisionEvidence
+    from app.models.sim_account import SimOrder
+    current_time = as_shanghai(shanghai_now())
+    today = current_time.date()
+    statement = select(DecisionOrderPlanRecord, DecisionRun, DecisionEvidence).join(
+        DecisionRun, DecisionRun.id == DecisionOrderPlanRecord.decision_run_id).join(
+        DecisionEvidence, DecisionEvidence.id == DecisionOrderPlanRecord.evidence_id).where(
+        DecisionOrderPlanRecord.portfolio_id == portfolio_id,
+        DecisionOrderPlanRecord.signal_date == trade_date,
+        DecisionOrderPlanRecord.execution_date == today,
+        DecisionOrderPlanRecord.action.in_(["BUY", "SELL"]),
+        DecisionRun.portfolio_id == portfolio_id, DecisionRun.trade_date == trade_date,
+        DecisionRun.run_type == "auto_simulation", DecisionRun.status == "SUCCEEDED",
+        DecisionEvidence.portfolio_id == portfolio_id, DecisionEvidence.decision_run_id == DecisionRun.id,
+        DecisionEvidence.symbol_id == DecisionOrderPlanRecord.symbol_id, DecisionEvidence.action == DecisionOrderPlanRecord.action,
+    ).order_by(DecisionOrderPlanRecord.order_plan_id)
+    plans = list(db.execute(statement.with_for_update().execution_options(populate_existing=True) if current_read else statement).all()) if trade_date < today else []
+    valid = []
+    for plan, run, evidence in plans:
+        if strategy_snapshot_id and run.strategy_snapshot_id != strategy_snapshot_id:
+            continue
+        if evidence.execution_at is None or evidence.execution_at.replace(tzinfo=timezone.utc).astimezone(current_time.tzinfo).date() != today:
+            continue
+        order_statement = select(SimOrder).where(SimOrder.portfolio_id == portfolio_id,
+            SimOrder.decision_evidence_id == plan.evidence_id).order_by(SimOrder.id)
+        orders = list(db.scalars(order_statement.with_for_update().execution_options(populate_existing=True) if current_read else order_statement))
+        if any(order.status not in {"pending", "partial"} or order.symbol_id != plan.symbol_id or
+               order.side.lower() != plan.action.lower() or float(order.quantity) != float(plan.target_quantity) for order in orders):
+            continue
+        if sum(float(order.filled_quantity or 0) for order in orders) < float(plan.target_quantity):
+            valid.append({"source_code": "decision_order_plans", "source_record_ref": f"decision_order_plan:{plan.order_plan_id}",
+                "decision_run_id": run.id, "strategy_snapshot_id": run.strategy_snapshot_id,
+                "execution_date": plan.execution_date.isoformat()})
+    if trade_date == today or valid:
+        from app.services.portfolio_inspection_diagnostics import resolve_inspection_calendar
+        calendar = resolve_inspection_calendar(db, at=current_time, current_read=current_read)
+        if calendar["status"] != "PASSED" or trade_date not in calendar["trading_dates"] or today not in calendar["trading_dates"]:
+            return {"enabled": False, "mode": "DIAGNOSTIC_ONLY", "disabled_code": "RESUME_CALENDAR_UNKNOWN",
+                "reason": "原业务日或当前执行日缺少可信交易所日历，不能按工作日近似派发", "source_refs": valid,
+                "next_action": {"action_id": "inspect_calendar", "label": "核查交易日历来源", "kind": "inspect", "enabled": True,
+                                "target": "settings:data-center"}}
+        if len({ref["strategy_snapshot_id"] for ref in valid}) > 1:
+            return {"enabled": False, "mode": "DIAGNOSTIC_ONLY", "disabled_code": "RESUME_PLAN_SCOPE_AMBIGUOUS",
+                "reason": "原日期有多份不同冻结策略的未完成计划，请先核查执行来源与范围", "source_refs": valid}
+        return {"enabled": True, "mode": "CURRENT_ORIGINAL_PLAN" if valid else "CURRENT_DECISION", "disabled_code": None,
+                "reason": "仅继续原定今日执行且尚未完成的冻结计划，不补造历史决策" if valid else "仅可在现有执行门禁和调度窗口内处理当前业务日",
+                "source_refs": valid}
+    return {"enabled": False, "mode": "DIAGNOSTIC_ONLY", "disabled_code": "HISTORICAL_EXECUTION_NOT_AUTHORIZED",
+        "reason": "历史缺口没有仍在当前执行日有效的冻结计划；不能为消除提示补下历史交易",
+        "source_refs": [], "next_action": {"action_id": "inspect_historical_execution", "kind": "inspect",
+            "label": "核查历史证据与未执行事实", "enabled": True, "target": "governance:reconciliation",
+            "portfolio_id": portfolio_id, "trade_date": trade_date.isoformat()}}
 
 
 def _is_trade_date(db: Session, d: date) -> bool:
@@ -249,7 +430,8 @@ def plan_portfolio_resume(db: Session, portfolio_id: int, *,
         idem = resume_idempotency_key(portfolio.id, d, cid)
         dec_done = decision_already_succeeded(db, portfolio.id, d, idem) is not None
         task_ex = async_task_already_exists_for_resume(db, portfolio.id, d, idem) is not None
-        will_skip_ = dec_done or task_ex
+        review = review_resume_execution_date(db, portfolio.id, d)
+        will_skip_ = dec_done or task_ex or not review["enabled"]
         if will_skip_:
             will_skip += 1
         else:
@@ -260,6 +442,7 @@ def plan_portfolio_resume(db: Session, portfolio_id: int, *,
             "task_exists": task_ex,
             "will_skip": will_skip_,
             "idempotency_key": idem,
+            "execution_review": review, "executable": review["enabled"],
         })
     return {
         "portfolio_id": portfolio.id,
@@ -271,6 +454,7 @@ def plan_portfolio_resume(db: Session, portfolio_id: int, *,
         "will_skip_days": will_skip,
         "max_days": max_days,
         "operator_id": operator_id,
+        "historical_execution_policy": "current_frozen_plan_only_v1",
     }
 
 
@@ -294,6 +478,9 @@ def create_resume_tasks_from_plan(db: Session, plan: dict[str, Any], *,
             if item.get("decision_done"):
                 continue
             trade_date = date.fromisoformat(item["date"])
+            review = review_resume_execution_date(db, portfolio_id, trade_date)
+            if not review["enabled"]:
+                continue
             idem = item["idempotency_key"]
             task = async_task_already_exists_for_resume(db, portfolio_id, trade_date, idem)
             is_new = task is None
@@ -309,7 +496,8 @@ def create_resume_tasks_from_plan(db: Session, plan: dict[str, Any], *,
                     "trade_date": trade_date.isoformat(), "resumption_correlation_id": cid,
                     "idempotency_key": idem, "operator_id": plan.get("operator_id", "system:resume"),
                     "phase": "daily_fill_gap",
-                    "strategy_snapshot_id": previous_payload.get("strategy_snapshot_id") or snapshot_for_trade_date(db, portfolio_id, trade_date),
+                    "strategy_snapshot_id": previous_payload.get("strategy_snapshot_id") or
+                        (review["source_refs"][0]["strategy_snapshot_id"] if review["source_refs"] else snapshot_for_trade_date(db, portfolio_id, trade_date)),
                 }
                 if payload_builder is not None:
                     payload.update(payload_builder(portfolio_id, trade_date, idem, cid))

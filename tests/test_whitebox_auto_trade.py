@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -578,47 +578,18 @@ class TestAutoTradeEndpoint:
             body = response.json()
             assert body["can_switch"] is False
             assert body["required"]["minimum_valid_trade_days"] == 10
-            assert "缺少" in body["reason"]
+            assert "G5_NEW_ADMISSION_FROZEN" in body["reason"]
         finally:
             app.dependency_overrides.pop(get_db, None)
 
-    def test_switch_readiness_uses_a_persisted_clean_g5_report(self, db_session):
+    def test_switch_readiness_rejects_summary_without_formal_capture_contracts(self, db_session):
+        """历史汇总缺少完整执行证明时，即使统计通过也不得开放切换。"""
         from app.main import app
         from app.services.g5_dual_run_audit import persist_g5_summary
 
         p = _make_portfolio(db_session, name="QA-API-G5-Ready", auto_trade_enabled=True)
-        dates = [f"2026-08-{day:02d}" for day in range(3, 13)]
-        persist_g5_summary(db_session, {
-            "portfolio_id": p.id,
-            "start_date": "2026-08-03",
-            "end_date": "2026-08-14",
-            "total_days": 10,
-            "days_replayed": 10,
-            "skipped_days": [],
-            "total_p0_unexplained": 0,
-            "total_p1_hold_noaction_flip": 0,
-            "g5_eligible_for_g6": True,
-            "daily_reports": [{
-                "trade_date": trade_date,
-                "chain_a_meta": {
-                    "capture_mode": "legacy_dry_run",
-                    "source_run_id": f"scan-{trade_date}",
-                    "data_cutoff_at": f"{trade_date}T15:00:00+08:00",
-                },
-                "chain_b_meta": {
-                    "capture_mode": "unified_dry_run",
-                    "source_run_id": f"decision-{trade_date}",
-                    "data_cutoff_at": f"{trade_date}T15:00:00+08:00",
-                },
-            } for trade_date in dates],
-            "provenance": {
-                "capture_mode": "real_dry_run_export",
-                "exported_at": "2026-08-22T10:00:00+08:00",
-                "trading_calendar": "SSE",
-                "source_manifest_sha256": "c" * 64,
-                "expected_trade_dates": dates,
-            },
-        })
+        from tests.g5_report_fixtures import passing_g5
+        persist_g5_summary(db_session, passing_g5(db_session, p.id))
         db_session.commit()
 
         def override_get_db():
@@ -632,8 +603,9 @@ class TestAutoTradeEndpoint:
             )
             assert response.status_code == 200
             body = response.json()
-            assert body["can_switch"] is True
-            assert "G5 通过" in body["reason"]
+            assert body["can_switch"] is False
+            assert "G5 汇总未达到正式准入条件" in body["reason"]
+            assert "隔离订单计划" in body["reason"]
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -770,7 +742,7 @@ class TestCreateAutoTradeTask:
 
         assert result is new_task
         mock_create.assert_called_once_with(
-            TASK_TYPE, {"dry_run": False, "buy_candidate_limit": 15}
+            TASK_TYPE, {"dry_run": False, "buy_candidate_limit": 15, "dispatch_date": ANY}
         )
         mock_start.assert_called_once()
 

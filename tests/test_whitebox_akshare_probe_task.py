@@ -153,6 +153,22 @@ def test_successful_probe_lands_terminal_state_and_updates_config(db_session, mo
     assert cfg is not None and cfg.last_probe_success is True
 
 
+def test_registered_etf_backup_probe_uses_the_real_adapter_instead_of_a_missing_sdk_attribute(monkeypatch):
+    from app.services.market_data_sources.sources import tencent_etf_history
+    called = []
+
+    def adapter(**kwargs):
+        called.append(kwargs)
+        return pd.DataFrame([{'close': 4.2}])
+
+    monkeypatch.setattr(tencent_etf_history, 'probe_tencent_etf_history', adapter)
+    monkeypatch.setattr(m, '_run_probe', lambda func, args, key: func(**args))
+    accepted = m.submit_probe('fund_etf_hist_tx')
+    status = m.get_probe_status(accepted.task_id)
+    assert status.status == 'done' and status.result.success is True
+    assert called == [{'symbol': '510300', 'market': 'sh'}]
+
+
 def test_empty_result_counts_as_failure_with_reason(db_session, monkeypatch):
     """上游返回空表：不是异常，但结论必须是 success=False 且带可读原因。"""
     _fake_run_probe(monkeypatch, value=pd.DataFrame())

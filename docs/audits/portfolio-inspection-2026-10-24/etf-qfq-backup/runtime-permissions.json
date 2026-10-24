@@ -1,0 +1,6 @@
+{
+  "allow_new_buys": false,
+  "allow_risk_exits": true,
+  "allow_auto_recovery": false,
+  "requires_manual_ack": true
+}

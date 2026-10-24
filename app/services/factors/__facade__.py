@@ -28,6 +28,18 @@ from datetime import date
 from typing import Any, Literal
 
 
+def read_inspection_factor_dependencies(db, factor_set_id, *, current_read=False):
+    """Read the exact frozen dependency DTOs for portfolio inspection."""
+    from app.services.factors.inspection_read_model import read_inspection_factor_dependencies as read
+    return read(db, factor_set_id, current_read=current_read)
+
+
+def read_inspection_factor_value(db, symbol_id, factor_id, *, current_read=False):
+    """Read scalar factor-value evidence without exposing an ORM object."""
+    from app.services.factors.inspection_read_model import read_inspection_factor_value as read
+    return read(db, symbol_id, factor_id, current_read=current_read)
+
+
 def list_verified_input_bundles():
     from app.services.factors.input_replay import list_input_bundles
     return list_input_bundles()

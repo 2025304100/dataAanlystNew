@@ -1,0 +1,629 @@
+{
+  "revision": "wps_0023_076_inspection_workflow",
+  "tables": {
+    "ai_action_audits": {
+      "rows": 3,
+      "checksum": 1817952981
+    },
+    "ai_deprecation_logs": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "ai_drafts": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "ai_messages": {
+      "rows": 43,
+      "checksum": 4152807032
+    },
+    "ai_profiles": {
+      "rows": 3,
+      "checksum": 3947094372
+    },
+    "ai_sessions": {
+      "rows": 14,
+      "checksum": 3723646065
+    },
+    "akshare_api_config": {
+      "rows": 30,
+      "checksum": 2425033532
+    },
+    "alert_events": {
+      "rows": 240,
+      "checksum": 3678008670
+    },
+    "alert_rules": {
+      "rows": 3,
+      "checksum": 2051949439
+    },
+    "api_deprecation_logs": {
+      "rows": 1,
+      "checksum": 2906362336
+    },
+    "app_settings": {
+      "rows": 2,
+      "checksum": 2390545480
+    },
+    "async_tasks": {
+      "rows": 1444,
+      "checksum": 3614861476
+    },
+    "auto_trade_strategies": {
+      "rows": 16,
+      "checksum": 3023135375
+    },
+    "backtest_execution_fills": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "backtest_filter_events": {
+      "rows": 360,
+      "checksum": 2658846348
+    },
+    "backtest_rule_templates": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "backtest_runs": {
+      "rows": 24,
+      "checksum": 886612877
+    },
+    "backtest_trades": {
+      "rows": 1,
+      "checksum": 42878917
+    },
+    "backtest_valuation_snapshots": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "capital_flows": {
+      "rows": 69322,
+      "checksum": 828682075
+    },
+    "cash_ledger": {
+      "rows": 16,
+      "checksum": 1760032250
+    },
+    "custom_indicator_versions": {
+      "rows": 2,
+      "checksum": 1952062322
+    },
+    "custom_indicators": {
+      "rows": 25,
+      "checksum": 1887900236
+    },
+    "daily_bars": {
+      "rows": 1426750,
+      "checksum": 2340527658
+    },
+    "data_governance_audit_events": {
+      "rows": 3796,
+      "checksum": 3691246977
+    },
+    "data_quality_quarantines": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "data_quality_snapshots": {
+      "rows": 1265,
+      "checksum": 1991570946
+    },
+    "data_sync_coverage": {
+      "rows": 37834,
+      "checksum": 854794479
+    },
+    "data_sync_partitions": {
+      "rows": 414251,
+      "checksum": 409054538
+    },
+    "data_sync_plan_executions": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "data_sync_plans": {
+      "rows": 141,
+      "checksum": 3222969713
+    },
+    "decision_evidence": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "decision_order_plans": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "decision_runs": {
+      "rows": 77,
+      "checksum": 1338122222
+    },
+    "discovery_candidates": {
+      "rows": 2,
+      "checksum": 981550548
+    },
+    "discovery_plans": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "discovery_result_states": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "discovery_score_snapshot_items": {
+      "rows": 5534,
+      "checksum": 2408707046
+    },
+    "discovery_score_snapshots": {
+      "rows": 2,
+      "checksum": 2834583265
+    },
+    "discovery_tasks": {
+      "rows": 188,
+      "checksum": 4190063919
+    },
+    "etf_indicators": {
+      "rows": 239,
+      "checksum": 1508238428
+    },
+    "external_endpoint_runtime": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_audit_logs": {
+      "rows": 642,
+      "checksum": 1960554145
+    },
+    "factor_data_validation_runs": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_drafts": {
+      "rows": 34,
+      "checksum": 1144807351
+    },
+    "factor_evaluation_runs": {
+      "rows": 16,
+      "checksum": 2364493450
+    },
+    "factor_experience": {
+      "rows": 7,
+      "checksum": 4079536689
+    },
+    "factor_experience_field_deps": {
+      "rows": 7,
+      "checksum": 4271269127
+    },
+    "factor_experience_metrics": {
+      "rows": 7,
+      "checksum": 92592327
+    },
+    "factor_experience_tags": {
+      "rows": 26,
+      "checksum": 4176617740
+    },
+    "factor_formula_templates": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_grade_history": {
+      "rows": 4,
+      "checksum": 2549181106
+    },
+    "factor_mining_candidates": {
+      "rows": 1172,
+      "checksum": 1253466265
+    },
+    "factor_mining_drafts": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_mining_generations": {
+      "rows": 43,
+      "checksum": 311349340
+    },
+    "factor_mining_prescreen_fingerprints": {
+      "rows": 1172,
+      "checksum": 2170545231
+    },
+    "factor_mining_runs": {
+      "rows": 69,
+      "checksum": 1152127798
+    },
+    "factor_mining_template_versions": {
+      "rows": 25,
+      "checksum": 2985844719
+    },
+    "factor_mining_templates": {
+      "rows": 25,
+      "checksum": 744643418
+    },
+    "factor_model_audit_logs": {
+      "rows": 15,
+      "checksum": 3916738520
+    },
+    "factor_model_members": {
+      "rows": 7,
+      "checksum": 3289594165
+    },
+    "factor_model_runs": {
+      "rows": 11,
+      "checksum": 1085361790
+    },
+    "factor_quality_daily": {
+      "rows": 1,
+      "checksum": 4257495827
+    },
+    "factor_runtime_state": {
+      "rows": 1,
+      "checksum": 3464916149
+    },
+    "factor_set_members": {
+      "rows": 16,
+      "checksum": 3612578642
+    },
+    "factor_set_snapshots": {
+      "rows": 5,
+      "checksum": 3608058815
+    },
+    "factor_sets": {
+      "rows": 5,
+      "checksum": 314037321
+    },
+    "factor_shadow_observations": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_system_config": {
+      "rows": 1,
+      "checksum": 454250155
+    },
+    "factor_training_checkpoints": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_transition_audits": {
+      "rows": 15,
+      "checksum": 913500584
+    },
+    "factor_values": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "factor_versions": {
+      "rows": 88,
+      "checksum": 1663047689
+    },
+    "factor_weight_snapshots": {
+      "rows": 1,
+      "checksum": 3765785526
+    },
+    "factors": {
+      "rows": 68,
+      "checksum": 4269100852
+    },
+    "financial_reports": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "g5_admission_controls": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "g5_admission_events": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "g5_dual_run_reports": {
+      "rows": 10,
+      "checksum": 3542936627
+    },
+    "governance_events_outbox": {
+      "rows": 1,
+      "checksum": 3843490178
+    },
+    "hot_rank_snapshots": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "idempotency_records": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "index_prices": {
+      "rows": 12086,
+      "checksum": 4095239269
+    },
+    "inspection_evidence_decisions": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "inspection_evidence_requests": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "investment_themes": {
+      "rows": 1,
+      "checksum": 2859929701
+    },
+    "journal_entries": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "lhb_institution_trades": {
+      "rows": 3558,
+      "checksum": 3223109050
+    },
+    "macro_data": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "macro_indicator_values": {
+      "rows": 1468,
+      "checksum": 4132847771
+    },
+    "macro_snapshots": {
+      "rows": 370,
+      "checksum": 449230634
+    },
+    "manual_price_overrides": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "market_events": {
+      "rows": 2034,
+      "checksum": 1847439093
+    },
+    "news_events": {
+      "rows": 29070,
+      "checksum": 1220121264
+    },
+    "news_snapshots": {
+      "rows": 3352,
+      "checksum": 418395689
+    },
+    "northbound_flows": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "notification_channels": {
+      "rows": 2,
+      "checksum": 647962818
+    },
+    "notification_deliveries": {
+      "rows": 58,
+      "checksum": 3748536732
+    },
+    "notification_outbox": {
+      "rows": 44,
+      "checksum": 3314264961
+    },
+    "notification_policies": {
+      "rows": 1,
+      "checksum": 3048750630
+    },
+    "notification_policy_channels": {
+      "rows": 2,
+      "checksum": 1104414630
+    },
+    "notification_templates": {
+      "rows": 1,
+      "checksum": 1454374528
+    },
+    "opportunity_observation_notes": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "opportunity_transition_events": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "outbox_events": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_account_baselines": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_candidates": {
+      "rows": 2,
+      "checksum": 4133803566
+    },
+    "portfolio_cron_schedules": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_equity_snapshots": {
+      "rows": 416,
+      "checksum": 3036131054
+    },
+    "portfolio_factor_usage": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_factor_usages": {
+      "rows": 4,
+      "checksum": 2698151069
+    },
+    "portfolio_members": {
+      "rows": 6,
+      "checksum": 1101274748
+    },
+    "portfolio_reconciliation_cursors": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_reconciliation_days": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_reconciliation_reports": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_reviews": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "portfolio_rules": {
+      "rows": 12,
+      "checksum": 4073673589
+    },
+    "portfolios": {
+      "rows": 12,
+      "checksum": 4014972336
+    },
+    "positions": {
+      "rows": 2,
+      "checksum": 1380276209
+    },
+    "reconciliation_source_events": {
+      "rows": 26,
+      "checksum": 4267656663
+    },
+    "reviews": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "scan_presets": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "scan_results": {
+      "rows": 18800,
+      "checksum": 21146871
+    },
+    "scan_runs": {
+      "rows": 170,
+      "checksum": 4108285820
+    },
+    "scheduled_task_runs": {
+      "rows": 859,
+      "checksum": 3168501793
+    },
+    "scheduled_task_seed_state": {
+      "rows": 8,
+      "checksum": 1784184826
+    },
+    "scheduled_tasks": {
+      "rows": 16,
+      "checksum": 1139078017
+    },
+    "scores": {
+      "rows": 23760,
+      "checksum": 3805060835
+    },
+    "scoring_configs": {
+      "rows": 10,
+      "checksum": 2365563122
+    },
+    "scoring_lineage": {
+      "rows": 5,
+      "checksum": 2943481421
+    },
+    "security_status_daily": {
+      "rows": 4132,
+      "checksum": 3106303923
+    },
+    "signal_rules": {
+      "rows": 3,
+      "checksum": 1131501634
+    },
+    "sim_accounts": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "sim_orders": {
+      "rows": 10,
+      "checksum": 2929326615
+    },
+    "sim_orders_attribution": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "sim_trades": {
+      "rows": 10,
+      "checksum": 1823673864
+    },
+    "stock_financial_reports": {
+      "rows": 55940,
+      "checksum": 3469497951
+    },
+    "stock_hot_rank_snapshots": {
+      "rows": 7136,
+      "checksum": 3660888502
+    },
+    "stock_valuations": {
+      "rows": 9448424,
+      "checksum": 1496783307
+    },
+    "strategy_execution_snapshots": {
+      "rows": 4,
+      "checksum": 187239689
+    },
+    "symbol_theme_mappings": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "symbols": {
+      "rows": 7639,
+      "checksum": 4025398437
+    },
+    "tail_accumulation_snapshots": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "task_idempotencies": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "task_locks": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "theme_catalysts": {
+      "rows": 1,
+      "checksum": 8767249
+    },
+    "trade_calendar": {
+      "rows": 1999,
+      "checksum": 1274195480
+    },
+    "trade_setups": {
+      "rows": 8023,
+      "checksum": 1071449295
+    },
+    "trade_signals": {
+      "rows": 0,
+      "checksum": 0
+    },
+    "training_candidate_pool_members": {
+      "rows": 10371,
+      "checksum": 2480521481
+    },
+    "training_candidate_pool_snapshots": {
+      "rows": 4,
+      "checksum": 1125716506
+    },
+    "training_candidate_pools": {
+      "rows": 7,
+      "checksum": 2247427554
+    },
+    "universe_daily_bars": {
+      "rows": 11729045,
+      "checksum": 3130769461
+    },
+    "universe_symbols": {
+      "rows": 7272,
+      "checksum": 1647114257
+    },
+    "watchlist_items": {
+      "rows": 7,
+      "checksum": 2056996882
+    },
+    "watchlists": {
+      "rows": 4,
+      "checksum": 2217749407
+    }
+  }
+}

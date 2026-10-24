@@ -1,7 +1,13 @@
+import type { CoverageState, CoverageProposal, CoveragePreview, CoverageAcceptRequest, CoverageAccepted } from "../components/portfolio-trading/inspection/coverageTypes";
+import type { HistoryQuery, HistoryPage, HistorySecurityPage, HistoryDetail, HistoryReference, HistoryMaterial, HistoryEvidencePackage } from "../components/portfolio-trading/inspection/historyTypes";
+import type { InspectionMaterialKind, MaterialInvestigationRequest, MaterialInvestigation, MaterialInvestigationPage } from "../types/portfolioInspection";
 import { t } from "../i18n";
+import { inspectionMutationScope, observeInspectionTask, publishInspectionChange } from "../utils/inspectionFreshness";
+import {acceptanceMutationReason,observeAcceptanceReadOnly,getAcceptanceMode} from '../utils/acceptanceMode';
 import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskCancelRequest, AsyncTaskCancelResponse, AsyncTaskRead, AutoSimulationPreflightRequest, AutoSimulationPreflightResponse, AppSettingRead, BacktestPosition, BacktestRun, BacktestTrade, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, PortfolioBacktestResult, PortfolioResumeExecuteRequest, PortfolioResumeExecuteResponse, PortfolioResumePlanRequest, PortfolioResumePlanResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
 import type { ActionItemsResponse, AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
+import type { PortfolioInspectionDiagnostics, InspectionRepairPlan, InspectionRepairSubmit, InspectionRepairTask, InspectionRuntime, InspectionReconciliationQueue, InspectionJob, CoverageActivationReview, CoverageActivationRequest, EvidenceSupplementPage } from "../types/portfolioInspection";
 import type {
   AISession,
   AIMessage,
@@ -272,9 +278,17 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
       headers: rawHeaders,
       signal: (requestOptions as RequestInit).signal ?? controller.signal,
     };
+    if(navigator.onLine===false&&!['GET','HEAD','OPTIONS'].includes((requestOptions.method??'GET').toUpperCase()))throw new ApiError('网络已断开，本次操作未发送。请恢复连接后重新核实；系统不会自动重提任务。',{status_code:0,error_code:'OFFLINE_NOT_SENT',retryable:false});
+    if(!['GET','HEAD','OPTIONS'].includes((requestOptions.method??'GET').toUpperCase())){
+      const reason=acceptanceMutationReason();
+      if(reason)throw new ApiError(reason,{status_code:0,error_code:getAcceptanceMode().readOnly?'LOCAL_INSPECTION_READ_ONLY':'SERVICE_MODE_UNVERIFIED',retryable:false});
+    }
+    const mutationScope = inspectionMutationScope(url, requestOptions.method ?? 'GET');
+    if (mutationScope !== undefined) publishInspectionChange(mutationScope);
     const response = await fetch(url, mergedOptions);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if(response.status===423&&(payload.error_code==='LOCAL_INSPECTION_READ_ONLY'||payload.detail?.error_code==='LOCAL_INSPECTION_READ_ONLY'))observeAcceptanceReadOnly();
       // 优先识别 WP-S.6 统一错误协议
       if (isUnifiedErrorPayload(payload)) {
         const techMsg = payload.technical_details?.error_message?.trim();
@@ -311,6 +325,8 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
         detail: detail || response.statusText,
       });
     }
+    if (mutationScope !== undefined) publishInspectionChange(mutationScope);
+    observeInspectionTask(url, requestOptions.method ?? 'GET', payload);
     return payload as T;
   } catch (error: unknown) {
     // 收窄 unknown 类型，仅对 Error 实例判断 name 属性
@@ -546,6 +562,10 @@ export interface ExternalDataSyncPlan {
   requested_end_date: string;
   requested_span_days: number;
   provider_history_limit_days: number | null;
+  chunk_days?: number | null;
+  chunk_count?: number;
+  partial_history_fields?: string[] | null;
+  unavailable_history_fields?: string[] | null;
   provider_reason: string;
   partition_strategy: string;
   symbol_batch_size: number;
@@ -554,6 +574,9 @@ export interface ExternalDataSyncPlan {
 export type ExternalDataSyncCapabilities = Record<ExternalSyncDataset, {
   modes: Array<"incremental" | "backfill">;
   history_limit_days: number | null;
+  chunk_days?: number | null;
+  partial_history_fields?: string[] | null;
+  unavailable_history_fields?: string[] | null;
   reason: string;
   northbound?: { available: boolean; reason: string; api_key: string };
 }>;
@@ -1600,7 +1623,7 @@ export const api = {
     const qs = params.toString();
     return requestJson<ActionItemsResponse>(
       `${API}/portfolios/${portfolioId}/auto-trade/action-items?${qs}`,
-      { timeoutMs: 30000 },
+      { timeoutMs: 30000, dedupe: false },
     );
   },
   // WP6.6 双跑观测面（dry-run-diff / member-source-status / rollback-to-old-source）
@@ -2193,6 +2216,7 @@ export const api = {
       executionStatus?: "filled" | "open" | "rejected";
       sortBy?: "signal_at" | "execution_at" | "symbol_id" | "price" | "quantity" | "cost";
       sortDir?: "asc" | "desc";
+      dedupe?: boolean;
     } = {},
   ) => {
     const q = new URLSearchParams();
@@ -2205,7 +2229,7 @@ export const api = {
     if (options.executionStatus) q.set("execution_status", options.executionStatus);
     if (options.sortBy) q.set("sort_by", options.sortBy);
     if (options.sortDir) q.set("sort_dir", options.sortDir);
-    return requestJson<PaginatedBacktestTrades>(`${API}/backtest/runs/${runId}/trades${q.size ? `?${q}` : ""}`);
+    return requestJson<PaginatedBacktestTrades>(`${API}/backtest/runs/${runId}/trades${q.size ? `?${q}` : ""}`, { dedupe: options.dedupe });
   },
   getBacktestEvidence: (
     runId: number,
@@ -2816,10 +2840,108 @@ export const api = {
 
   /** 1. GET /portfolios/{pid}/status：9 状态机当前态 + 出边矩阵 allowed_transitions */
   getPortfolioStatus: (portfolioId: number) =>
-    requestJson<PortfolioStatusResponse>(`${API}/portfolios/${portfolioId}/status`),
+    requestJson<PortfolioStatusResponse>(`${API}/portfolios/${portfolioId}/status`, { dedupe: false }),
 
-  previewPortfolioReconciliation: (portfolioId: number) =>
-    requestJson<ReconciliationResponse>(`${API}/portfolios/${portfolioId}/reconciliation-preview`),
+  getPortfolioInspectionHistory: (portfolioId: number, query: HistoryQuery) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value == null || value === "") return;
+      (Array.isArray(value) ? value : [value]).forEach(item => params.append(key, String(item)));
+    });
+    return requestJson<HistoryPage>(`${API}/portfolios/${portfolioId}/inspection/history?${params}`, { dedupe: false });
+  },
+  getPortfolioInspectionHistorySecurities: (portfolioId: number, q?: string) =>
+    requestJson<HistorySecurityPage>(`${API}/portfolios/${portfolioId}/inspection/history/securities?${new URLSearchParams(q ? { q } : {})}`, { dedupe: false }),
+  getPortfolioInspectionHistoryMaterial: (portfolioId: number, reference: HistoryReference, snapshotEventId?: number) => {
+    const params = new URLSearchParams({ source_event_id: String(reference.source_event_id), kind: reference.kind, ref: reference.ref });
+    if (reference.version != null) params.set("version", String(reference.version));
+    if (snapshotEventId != null) params.set("snapshot_event_id", String(snapshotEventId));
+    return requestJson<HistoryMaterial>(`${API}/portfolios/${portfolioId}/inspection/history/material?${params}`, { dedupe: false });
+  },
+  exportPortfolioInspectionHistory: (portfolioId: number, query: HistoryQuery) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => { if (value != null && value !== "") (Array.isArray(value) ? value : [value]).forEach(v => params.append(key, String(v))); });
+    return requestJson<HistoryEvidencePackage>(`${API}/portfolios/${portfolioId}/inspection/history/export?${params}`);
+  },
+  getPortfolioInspectionHistoryDetail: (portfolioId: number, batchId: string, query: HistoryQuery = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value == null || value === "") return;
+      (Array.isArray(value) ? value : [value]).forEach(item => params.append(key, String(item)));
+    });
+    return requestJson<HistoryDetail>(`${API}/portfolios/${portfolioId}/inspection/history/${encodeURIComponent(batchId)}?${params}`, { dedupe: false });
+  },
+
+  getPortfolioInspectionRuntime: (portfolioId: number) =>
+    requestJson<InspectionRuntime>(`${API}/portfolios/${portfolioId}/inspection/runtime`, { dedupe: false }),
+
+  analysePortfolioInspection: (portfolioId: number, payload: { symbol_ids?: number[]; trade_date?: string; step?: string }) =>
+    requestJson<{ response: AIResponse }>(`${API}/portfolios/${portfolioId}/inspection/analysis`, { method: "POST", body: JSON.stringify(payload) }),
+
+  getPortfolioInspectionRepairTasks: (portfolioId: number, cursor?: string) =>
+    requestJson<{ portfolio_id: number; items: InspectionRepairTask[]; next_cursor: string | null }>(`${API}/portfolios/${portfolioId}/inspection/repairs?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
+  cancelPortfolioInspectionRepair: (portfolioId: number, taskId: string) =>
+    requestJson<InspectionRepairTask>(`${API}/portfolios/${portfolioId}/inspection/repairs/${encodeURIComponent(taskId)}/cancel`, { method: "POST" }),
+
+  getPortfolioInspectionDiagnostics: (portfolioId: number) =>
+    requestJson<PortfolioInspectionDiagnostics>(`${API}/portfolios/${portfolioId}/inspection/data-diagnostics`, { dedupe: false }),
+
+  getPortfolioInspectionRepairPlan: (portfolioId: number) =>
+    requestJson<InspectionRepairPlan>(`${API}/portfolios/${portfolioId}/inspection/repair-plan`),
+
+  submitPortfolioInspectionRepair: (portfolioId: number, payload: InspectionRepairSubmit) =>
+    requestJson<InspectionRepairTask>(`${API}/portfolios/${portfolioId}/inspection/repairs`, {
+      method: "POST", body: JSON.stringify(payload),
+    }),
+
+  getPortfolioInspectionRepairTask: (portfolioId: number, taskId: string) =>
+    requestJson<InspectionRepairTask>(`${API}/portfolios/${portfolioId}/inspection/repairs/${encodeURIComponent(taskId)}`,{dedupe:false}),
+
+  retryPortfolioInspectionRepair: (portfolioId: number, taskId: string, idempotencyKey: string) =>
+    requestJson<InspectionRepairTask>(`${API}/portfolios/${portfolioId}/inspection/repairs/${encodeURIComponent(taskId)}/retry`, {
+      method: "POST", body: JSON.stringify({ confirmed: true, idempotency_key: idempotencyKey }),
+    }),
+
+  getPortfolioCoverageActivationReview: (portfolioId: number) =>
+    requestJson<CoverageActivationReview>(`${API}/portfolios/${portfolioId}/inspection/coverage/activation-review`, { dedupe: false }),
+  activatePortfolioCoverage: (portfolioId: number, payload: CoverageActivationRequest) =>
+    requestJson<{ portfolio_id: number; current_state: string; reconciliation_passed: false; historical_coverage_unknown: true }>(`${API}/portfolios/${portfolioId}/inspection/coverage/activate`, { method: "POST", body: JSON.stringify(payload) }),
+
+  getPortfolioInspectionCoverage: (portfolioId: number) =>
+    requestJson<CoverageState>(`${API}/portfolios/${portfolioId}/inspection/coverage`, { dedupe: false }),
+  previewPortfolioInspectionCoverage: (portfolioId: number, payload: CoverageProposal) =>
+    requestJson<CoveragePreview>(`${API}/portfolios/${portfolioId}/inspection/coverage/preview`, { method: "POST", body: JSON.stringify(payload) }),
+  acceptPortfolioInspectionCoverage: (portfolioId: number, payload: CoverageAcceptRequest) =>
+    requestJson<CoverageAccepted>(`${API}/portfolios/${portfolioId}/inspection/coverage/accept`, { method: "POST", body: JSON.stringify(payload) }),
+
+  getPortfolioInspectionQueue: (portfolioId: number) =>
+    requestJson<InspectionReconciliationQueue>(`${API}/portfolios/${portfolioId}/inspection/reconciliation-queue`, { dedupe: false }),
+
+  getPortfolioInspectionJob: (portfolioId: number) =>
+    requestJson<InspectionJob>(`${API}/portfolios/${portfolioId}/inspection/reconciliation-job`, { dedupe: false }),
+
+  recheckPortfolioSources: (portfolioId: number, tradeDate?: string, requestKey?: string) =>
+    requestJson<import('../components/portfolio-trading/inspection/recheckSubmissionJournal').RecheckReceipt>(`${API}/portfolios/${portfolioId}/inspection/reconciliation-job/recheck`, {method:"POST", body:JSON.stringify({trade_date:tradeDate,request_key:requestKey})}),
+  getPortfolioRecheckRequest: (portfolioId:number,requestKey:string) =>
+    requestJson<import('../components/portfolio-trading/inspection/recheckSubmissionJournal').RecheckReceipt>(`${API}/portfolios/${portfolioId}/inspection/reconciliation-job/requests/${encodeURIComponent(requestKey)}`,{dedupe:false}),
+  getPortfolioEvidenceSupplements: (portfolioId: number, tradeDate: string) =>
+    requestJson<EvidenceSupplementPage>(`${API}/portfolios/${portfolioId}/inspection/evidence-supplements?trade_date=${encodeURIComponent(tradeDate)}`, { dedupe: false }),
+  getPortfolioMaterialInvestigations: (portfolioId: number, tradeDate: string, material: InspectionMaterialKind) =>
+    requestJson<MaterialInvestigationPage>(`${API}/portfolios/${portfolioId}/inspection/material-investigations?trade_date=${encodeURIComponent(tradeDate)}&material=${material}`),
+  recordPortfolioMaterialInvestigation: (portfolioId: number, payload: MaterialInvestigationRequest) =>
+    requestJson<{portfolio_id: number; item: MaterialInvestigation; replayed: boolean}>(`${API}/portfolios/${portfolioId}/inspection/material-investigations`, {method:"POST",body:JSON.stringify(payload)}),
+  submitPortfolioEvidenceSupplement: (portfolioId: number, payload: {trade_date:string;candidate_id:string;expected_source_hash:string;request_key:string;note:string}) =>
+    requestJson<{request_id:string;status:string}>(`${API}/portfolios/${portfolioId}/inspection/evidence-supplements`, {method:"POST",body:JSON.stringify(payload)}),
+  submitPortfolioEvidenceBatch: (portfolioId: number, payload: {trade_date:string;items:Array<{candidate_id:string;expected_source_hash:string}>;request_key:string;note:string}) =>
+    requestJson<{portfolio_id:number;items:Array<{request_id:string;status:string}>}>(`${API}/portfolios/${portfolioId}/inspection/evidence-supplements/batch`, {method:"POST",body:JSON.stringify(payload)}),
+  reviewPortfolioEvidenceSupplement: (portfolioId: number, requestId: string, payload: {decision:"approve"|"reject";expected_source_hash:string;decision_key:string;review_note:string;acknowledge_scope:true}) =>
+    requestJson<{request_id:string;recheck_required:boolean;trading_resumed:false}>(`${API}/portfolios/${portfolioId}/inspection/evidence-supplements/${encodeURIComponent(requestId)}/review`,{method:"POST",body:JSON.stringify(payload)}),
+  confirmPortfolioInspectionGuide: (portfolioId: number, payload: {expected_snapshot_id:string;expected_action:string;idempotency_key:string;review_note:string;acknowledge_current_proofs:true}) =>
+    requestJson<{portfolio_id:number;current_state:string;trading_resumed:boolean;audit_event_id:number}>(`${API}/portfolios/${portfolioId}/inspection/guide/review`,{method:"POST",body:JSON.stringify(payload)}),
+
+  previewPortfolioReconciliation: (portfolioId: number, tradeDate?: string) =>
+    // Returning to the same date is a new read; the view guards out-of-order results.
+    requestJson<ReconciliationResponse>(`${API}/portfolios/${portfolioId}/reconciliation-preview${tradeDate ? `?trade_date=${encodeURIComponent(tradeDate)}` : ""}`, { dedupe: false }),
 
   /** 2. POST /portfolios/{pid}/reconcile：执行一次对账，返回 10 字段守恒明细 */
   triggerPortfolioReconcile: (portfolioId: number, payload?: { as_of_trade_date?: string | null; trade_date?: string | null; correlation_id?: string | null } | undefined) =>
@@ -2867,6 +2989,8 @@ export const api = {
           trade_date: payload.trade_date,
           acknowledge_all_diffs_cleared: payload.ack,
           review_note: payload.review_note.trim(),
+          report_id: payload.report_id,
+          report_version: payload.report_version,
           force_skip_re_reconcile: payload.force_skip ?? false,
           operator_id: payload.operator_id == null ? undefined : String(payload.operator_id),
         }),
@@ -2874,7 +2998,7 @@ export const api = {
     ),
 
   getPortfolioModelBindingReview: (portfolioId: number) =>
-    requestJson<ModelBindingReviewResponse>(`${API}/portfolios/${portfolioId}/model-binding-review`),
+    requestJson<ModelBindingReviewResponse>(`${API}/portfolios/${portfolioId}/model-binding-review`, { dedupe: false }),
 
   confirmPortfolioModelBinding: (portfolioId: number, payload: ConfirmModelBindingRequest) =>
     requestJson<ConfirmModelBindingResponse>(`${API}/portfolios/${portfolioId}/confirm-model-binding`, {
@@ -2890,7 +3014,7 @@ export const api = {
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User": "local_user" },
-        body: JSON.stringify({ to_state: payload.target_state, reason: payload.trigger_reason }),
+        body: JSON.stringify({ to_state: payload.target_state, reason: payload.trigger_reason, review_note: payload.review_note }),
       },
     ).then((raw: any) => ({
       ...raw,
@@ -2934,15 +3058,20 @@ export const api = {
       `${API}/portfolios/${portfolioId}/g5-dual-run/${encodeURIComponent(replayId)}`,
       { timeoutMs: 60000 },
     ),
+  getG5DualRunCapabilities: (portfolioId: number) => requestJson<{ real_runner_available: boolean; message: string; old_chain?: { id: string; label: string; engine_version: string } | null; candidate_chains?: Array<{ id: string; label: string; engine_version: string }> }>(
+    `${API}/portfolios/${portfolioId}/g5-dual-run/capabilities`,
+  ),
 
   /** 8. GET /portfolios/{pid}/auto-trade/g7-operational-status：G7 运维状态聚合 */
   getG7OperationalStatus: (portfolioId: number) =>
     requestJson<G7OperationalStatus>(
-      `${API}/portfolios/${portfolioId}/auto-trade/g7-operational-status`,
+      `${API}/portfolios/${portfolioId}/auto-trade/g7-operational-status`, { dedupe: false },
     ),
 
   /** G6 单组合灰度控制：启动/回滚均由服务端准入门禁和事务审计保护。 */
-  startG6Rollout: (portfolioId: number, payload: { operator_id?: string; correlation_id?: string }) =>
+  getG5DualRunReports: (portfolioId: number) => requestJson<{ portfolio_id: number; reports: Array<{ report_id: number; replay_id: string; start_date: string; end_date: string; verdict: string; evidence_verified: boolean; g5_eligible_for_g6: boolean }> }>(`${API}/portfolios/${portfolioId}/g5-dual-run/reports`),
+  getG6Readiness: (portfolioId: number) => requestJson<{ eligible: boolean; g5_report_id: number | null; g5_report_hash: string | null; current_source_mode: string | null; blockers?: string[] }>(`${API}/portfolios/${portfolioId}/auto-trade/g6-readiness`),
+  startG6Rollout: (portfolioId: number, payload: { operator_id?: string; correlation_id?: string; expected_g5_report_id?: number; expected_g5_report_hash?: string; expected_source_mode?: string; review_note?: string }) =>
     requestJson<G6RolloutResult>(`${API}/portfolios/${portfolioId}/auto-trade/g6-start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

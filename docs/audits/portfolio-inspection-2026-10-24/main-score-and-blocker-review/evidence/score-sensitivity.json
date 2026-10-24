@@ -1,0 +1,194 @@
+[
+  {
+    "symbol": "000001",
+    "name": "平安银行",
+    "trade_date": "2026-10-23",
+    "config_name": "趋势成长",
+    "live_writes": false,
+    "network_access": false,
+    "scenarios": {
+      "stored_prices": {
+        "quality_score": 56.9,
+        "timing_score": 65.34,
+        "priority_score": 60.85,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 47.24,
+          "momentum": 44.54,
+          "volatility": 63.53,
+          "liquidity": 71.34,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": 0.0,
+          "timing_score": 0.0,
+          "priority_score": 0.0
+        }
+      },
+      "sina_last50_qfq_prices": {
+        "quality_score": 56.91,
+        "timing_score": 65.34,
+        "priority_score": 60.86,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 47.25,
+          "momentum": 44.54,
+          "volatility": 63.53,
+          "liquidity": 71.34,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": 0.01,
+          "timing_score": 0.0,
+          "priority_score": 0.01
+        }
+      },
+      "tencent_last50_qfq_prices": {
+        "quality_score": 56.92,
+        "timing_score": 65.34,
+        "priority_score": 60.86,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 47.27,
+          "momentum": 44.54,
+          "volatility": 63.53,
+          "liquidity": 71.34,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": 0.02,
+          "timing_score": 0.0,
+          "priority_score": 0.01
+        }
+      }
+    }
+  },
+  {
+    "symbol": "510300",
+    "name": "沪深300ETF华泰柏瑞",
+    "trade_date": "2026-10-23",
+    "config_name": "ETF均衡机会",
+    "live_writes": false,
+    "network_access": false,
+    "scenarios": {
+      "stored_prices": {
+        "quality_score": 54.62,
+        "timing_score": 57.17,
+        "priority_score": 55.56,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 35.57,
+          "momentum": 27.96,
+          "liquidity": 73.99,
+          "drawdown_risk": 64.35,
+          "activity": 100.0
+        },
+        "reference_only": true
+      }
+    }
+  },
+  {
+    "symbol": "600428",
+    "name": "中远海特",
+    "trade_date": "2026-10-23",
+    "config_name": "趋势成长",
+    "live_writes": false,
+    "network_access": false,
+    "scenarios": {
+      "stored_prices": {
+        "quality_score": 49.29,
+        "timing_score": 55.46,
+        "priority_score": 52.75,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 35.03,
+          "momentum": 28.74,
+          "volatility": 54.85,
+          "liquidity": 68.99,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": 0.0,
+          "timing_score": 0.0,
+          "priority_score": 0.0
+        }
+      },
+      "sina_last50_qfq_prices": {
+        "quality_score": 48.75,
+        "timing_score": 55.46,
+        "priority_score": 52.57,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 33.89,
+          "momentum": 28.74,
+          "volatility": 54.85,
+          "liquidity": 68.99,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": -0.54,
+          "timing_score": 0.0,
+          "priority_score": -0.18
+        }
+      },
+      "tencent_last50_qfq_prices": {
+        "quality_score": 48.75,
+        "timing_score": 55.46,
+        "priority_score": 52.57,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 33.89,
+          "momentum": 28.74,
+          "volatility": 54.85,
+          "liquidity": 68.99,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": -0.54,
+          "timing_score": 0.0,
+          "priority_score": -0.18
+        }
+      },
+      "single_day_aug07_correction_proposal": {
+        "quality_score": 48.75,
+        "timing_score": 55.46,
+        "priority_score": 52.57,
+        "stage": "cooldown",
+        "action": "hold",
+        "dimensions": {
+          "trend": 33.89,
+          "momentum": 28.74,
+          "volatility": 54.85,
+          "liquidity": 68.99,
+          "activity": 100.0,
+          "breadth": 60.0
+        },
+        "reference_only": true,
+        "change_from_stored": {
+          "quality_score": -0.54,
+          "timing_score": 0.0,
+          "priority_score": -0.18
+        }
+      }
+    }
+  }
+]

@@ -37,6 +37,7 @@ function CoverageDiagnostics() {
   const [historyField, setHistoryField] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [failureDetail, setFailureDetail] = useState<{ title: string; capturedAt: string | null; reason: string } | null>(null);
   const historyRequest = useRef(0);
 
   const mounted = useRef(true);
@@ -115,18 +116,21 @@ function CoverageDiagnostics() {
     },
     { title: "能否用于因子评价", width: 150, render: (_, row) => row.evaluation_enabled ? "可以" : "暂不可以" },
     {
-      title: "最近检查", width: 230,
+      title: "最近检查", width: 205,
       render: (_, row) => {
         const snapshot = snapshots[row.field];
         if (!snapshot) return "尚未采集";
+        const reason = snapshot.failure_reason;
         return <Space direction="vertical" size={0}>
           <span>{snapshot.captured_at ? new Date(snapshot.captured_at).toLocaleString() : "-"}</span>
-          {snapshot.failure_reason && <Typography.Text type="danger" ellipsis={{ tooltip: snapshot.failure_reason }}>最近失败：{snapshot.failure_reason}</Typography.Text>}
-          <Button type="link" size="small" style={{ padding: 0, textAlign: "left" }} onClick={() => void openHistory(row.field)}>查看趋势</Button>
+          <Space size={4} wrap>
+            {reason && <Button type="link" size="small" danger style={{ padding: 0 }} onClick={() => setFailureDetail({ title: FIELD_LABELS[row.field] || row.field, capturedAt: snapshot.captured_at, reason })}>最近失败 · 查看原因</Button>}
+            <Button type="link" size="small" style={{ padding: 0 }} onClick={() => void openHistory(row.field)}>查看趋势</Button>
+          </Space>
         </Space>;
       },
     },
-    { title: "原因", dataIndex: "reason", ellipsis: true },
+    { title: "原因", dataIndex: "reason", width: 220, ellipsis: { showTitle: true } },
   ];
   if (loading && !coverage) return <Spin />;
   if (error && !coverage) return <Alert type="error" showIcon message="数据检查结果读取失败" description={error} action={<Button loading={loading} onClick={() => void retryRead()}>重试读取</Button>} />;
@@ -138,7 +142,7 @@ function CoverageDiagnostics() {
       </Typography.Paragraph>
       <Button onClick={() => void refreshQuality()} loading={loading}>重新检查本地数据</Button>
     </Space>
-    <Table<CoverageRow> rowKey={(row) => `${row.dataset}:${row.field}`} columns={columns} dataSource={rows} pagination={false} size="middle" scroll={{ x: 1400 }} locale={{ emptyText: "还没有检查结果。先到“其他数据”更新需要的数据，再回这里检查。" }} />
+    <Table<CoverageRow> rowKey={(row) => `${row.dataset}:${row.field}`} columns={columns} dataSource={rows} pagination={false} size="middle" scroll={{ x: 1455 }} locale={{ emptyText: "还没有检查结果。先到“其他数据”更新需要的数据，再回这里检查。" }} />
     <Modal title={`历次检查：${FIELD_LABELS[historyField || ""] || historyField || ""}`} open={historyField !== null} footer={null} onCancel={() => { ++historyRequest.current; setHistoryField(null); setQualityHistory(null); }} width={760}>
       {historyError && <Alert type="error" message={historyError} action={<Button onClick={() => historyField && void openHistory(historyField)}>重试读取</Button>} />}
       <Table<DataQualitySnapshot>
@@ -152,9 +156,22 @@ function CoverageDiagnostics() {
           { title: "状态", dataIndex: "readiness", render: (value: string) => STATUS_LABELS[value] || value },
           { title: "有数值的记录占比", render: (_, item) => item.row_count ? `${((item.nonnull_rows / item.row_count) * 100).toFixed(1)}%` : "-" },
           { title: "覆盖日期", render: (_, item) => `${item.first_date || "-"} ~ ${item.latest_date || "-"}` },
-          { title: "最近失败", dataIndex: "failure_reason", ellipsis: true },
+          {
+            title: "最近失败", dataIndex: "failure_reason", width: 140,
+            render: (value: string | null, item) => value
+              ? <Button type="link" size="small" danger style={{ padding: 0 }} onClick={() => setFailureDetail({ title: FIELD_LABELS[item.field] || item.field, capturedAt: item.captured_at, reason: value })}>查看原因</Button>
+              : "-",
+          },
         ]}
       />
+    </Modal>
+    <Modal title={`最近失败原因：${failureDetail?.title || ""}`} open={failureDetail !== null} footer={null} onCancel={() => setFailureDetail(null)} width={640} zIndex={1100}>
+      {failureDetail && <>
+        <Typography.Text type="secondary">采集时间：{failureDetail.capturedAt ? new Date(failureDetail.capturedAt).toLocaleString() : "-"}</Typography.Text>
+        <Typography.Paragraph copyable={{ text: failureDetail.reason }} style={{ margin: "12px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {failureDetail.reason}
+        </Typography.Paragraph>
+      </>}
     </Modal>
   </div>;
 }

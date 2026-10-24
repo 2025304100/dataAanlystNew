@@ -1,0 +1,17 @@
+{
+  "phase": "after-restart",
+  "checks": [
+    "服务端和隔离浏览器均重启后，原键保留、只读恢复，不自动提交。",
+    "重启后再次明确点击也仍由真实服务423拒绝，无法因进程重启解除只读。"
+  ],
+  "posts": [
+    {
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck",
+      "status": 423
+    }
+  ],
+  "pageErrors": [],
+  "getErrors": [],
+  "boundary": "All APIs go directly to the real read-only acceptance server. No API interception and no proxy. Only local production HTML/assets pinned.",
+  "passed": true
+}

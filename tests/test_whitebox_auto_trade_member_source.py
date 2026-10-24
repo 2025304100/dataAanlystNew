@@ -261,30 +261,27 @@ class TestGetBuyCandidates:
 
     def test_basic_flow_returns_one_candidate(self, db_session):
         """【WP6.2】active+auto 成员 + Score(action=open) + 无持仓 → 返回 1 个候选。"""
-        p = _make_portfolio(db_session, name="QA-Buy-Basic")
-        sym = _make_symbol(db_session, symbol="600001")
-        _make_daily_bar(db_session, sym.id)
-        _make_score(db_session, sym.id, action="open")
-        _make_member(
-            db_session,
-            portfolio_id=p.id,
-            symbol_id=sym.id,
-            status=STATUS_ACTIVE,
-            execution_mode=EXECUTION_AUTO,
-        )
-
-        candidates = get_buy_candidates(db_session, portfolio_id=p.id)
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        p, config, symbols = _seed(db_session, count=1)
+        sym = symbols[0]
+        _bar(db_session, sym, date(2026, 10, 22))
+        _score(db_session, sym, config, date(2026, 10, 22)).action = "open"
+        _make_member(db_session, portfolio_id=p.id, symbol_id=sym.id,
+            status=STATUS_ACTIVE, execution_mode=EXECUTION_AUTO)
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            candidates = get_buy_candidates(db_session, portfolio_id=p.id)
 
         assert len(candidates) == 1
         cand = candidates[0]
         assert cand.member is not None
         assert cand.member.execution_mode == EXECUTION_AUTO
         assert cand.symbol_id == sym.id
-        assert cand.symbol == "600001"
+        assert cand.symbol == sym.symbol
         assert cand.action == "open"
         assert cand.signal_id is not None
         assert cand.signal_snapshot is not None
-        # WP6.2 占位：data_health_ok / risk_check_ok 默认 True
+        # 实际业务日、日历与规则评分配置已通过检查
         assert cand.data_health_ok is True
         assert cand.risk_check_ok is True
         assert cand.rejection_code is None

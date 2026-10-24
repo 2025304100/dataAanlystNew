@@ -26,6 +26,7 @@ from sqlalchemy import and_, desc, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.api.routes.portfolio_governance import _require_actor
 from app.models.portfolio import Portfolio, Position
 from app.models.portfolio_member import PortfolioMember
 from app.models.sim_account import SimOrder
@@ -57,6 +58,10 @@ class G6RolloutRequest(BaseModel):
     operator_id: str = Field(default="api:g6", min_length=1, max_length=128)
     correlation_id: str | None = Field(default=None, max_length=128)
     reason: str | None = Field(default=None, max_length=500)
+    expected_g5_report_id: int | None = None
+    expected_g5_report_hash: str | None = None
+    expected_source_mode: str | None = None
+    review_note: str | None = Field(default=None, max_length=2000)
 
 
 # ----------------------------------------------------------------------------
@@ -220,21 +225,32 @@ def start_g6_rollout_route(
     portfolio_id: int,
     payload: G6RolloutRequest,
     db: Session = Depends(get_db),
+    actor: str = Depends(_require_actor),
 ):
     """启动单组合 G6 灰度；来源切换与审计事件同事务提交。"""
     portfolio = _get_portfolio_or_404(db, portfolio_id)
     _ensure_simulated(portfolio)
+    from app.api.routes.portfolio_governance import _ensure_portfolio_access
+    _ensure_portfolio_access(db, portfolio_id, actor)
     from app.services.g6_graduated_rollout import start_g6_rollout
+    from app.services.g5_admission_governance import G5GovernanceError
 
     try:
         result = start_g6_rollout(
             db,
             portfolio_id=portfolio_id,
-            operator_id=payload.operator_id,
+            operator_id=actor,
             correlation_id=payload.correlation_id,
+            expected_g5_report_id=payload.expected_g5_report_id,
+            expected_g5_report_hash=payload.expected_g5_report_hash,
+            expected_source_mode=payload.expected_source_mode,
+            review_note=payload.review_note,
         )
         db.commit()
         return result.as_dict()
+    except G5GovernanceError as exc:
+        db.rollback()
+        raise HTTPException(exc.status_code, detail={"error_code": exc.code, "message": str(exc), "blockers": exc.details}) from exc
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -252,17 +268,20 @@ def rollback_g6_rollout_route(
     portfolio_id: int,
     payload: G6RolloutRequest,
     db: Session = Depends(get_db),
+    actor: str = Depends(_require_actor),
 ):
     """回滚单组合 G6 灰度；持久化旧来源并写入回滚审计。"""
     portfolio = _get_portfolio_or_404(db, portfolio_id)
     _ensure_simulated(portfolio)
+    from app.api.routes.portfolio_governance import _ensure_portfolio_access
+    _ensure_portfolio_access(db, portfolio_id, actor)
     from app.services.g6_graduated_rollout import rollback_g6_rollout
 
     try:
         result = rollback_g6_rollout(
             db,
             portfolio_id=portfolio_id,
-            operator_id=payload.operator_id,
+            operator_id=actor,
             correlation_id=payload.correlation_id,
             reason=payload.reason,
         )
@@ -538,7 +557,7 @@ def get_member_status(
         rule_version_id = member.entry_rule_version_id
         try:
             health = check_data_health(
-                db, symbol_id=member.symbol_id, rule_version_id=rule_version_id
+                db, symbol_id=member.symbol_id, rule_version_id=rule_version_id, portfolio_id=portfolio_id
             )
             data_health = {
                 "healthy": health.healthy,

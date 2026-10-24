@@ -1,0 +1,38 @@
+{
+  "phase": "before-restart",
+  "checks": [
+    "页面明确显示只读验收模式，服务状态来自真实后端。",
+    "原请求重试已禁用并说明原因，原请求只读重读保持可用，不发POST。",
+    "快捷核对的重检按钮禁用，查看处理历史仍能打开抽屉。",
+    "独立数据修复工作区的修复入口也禁用，数据诊断读取和查看入口继续可用。",
+    "切换到GET模拟的第二组合后共享只读状态，不串入main的原请求；没有创建真实组合。",
+    "切回main并刷新后，原请求及只读禁用状态一致。",
+    "模式GET失败时继续禁用，恢复后只读状态保持，不自动执行任何任务。"
+  ],
+  "writes": [],
+  "errors": [],
+  "httpErrors": [],
+  "fixtures": [
+    "/api/v1/portfolios/2/performance",
+    "/api/v1/portfolios/2/positions",
+    "/api/v1/portfolios/2/status",
+    "/api/v1/portfolios/2/auto-trade/action-items",
+    "/api/v1/portfolios/2/auto-trade/action-items",
+    "/api/v1/portfolios/2/status",
+    "/api/v1/portfolios/2/inspection/runtime",
+    "/api/v1/portfolios/2/inspection/data-diagnostics",
+    "/api/v1/portfolios/2/model-binding-review",
+    "/api/v1/portfolios/2/reconciliation-preview",
+    "/api/v1/portfolios/2/inspection/reconciliation-job",
+    "/api/v1/dashboard/workbench?portfolio_id=2",
+    "/api/v1/news/latest?portfolio_id=2",
+    "/api/v1/portfolios/2/inspection/reconciliation-queue",
+    "/api/v1/portfolios/2/inspection/reconciliation-job",
+    "/api/v1/portfolios/2/reconciliation-preview",
+    "/api/v1/portfolios/2/performance",
+    "/api/v1/portfolios/2/positions",
+    "mode503"
+  ],
+  "boundary": "Actual main reads and actual server mode. GET-only virtual portfolio 2 for switching; GET-only mode 503 injection. No mutation interception, no proxy, no database writes.",
+  "passed": true
+}

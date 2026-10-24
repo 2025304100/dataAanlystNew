@@ -5,10 +5,10 @@ import {
   Checkbox,
   Collapse,
   DatePicker,
+  Modal,
   Progress,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Tooltip,
@@ -337,6 +337,12 @@ function syncScopeDescription(source: SyncSource, watchlistName?: string | null,
   return "全市场范围：已同步且处于启用状态的标的";
 }
 
+function syncScopeSummary(source: SyncSource, watchlistName?: string | null, portfolioId?: number | null): string {
+  if (source === "watchlist") return `${watchlistName || "主观察池"} · 有效观察项`;
+  if (source === "positions") return portfolioId ? `组合 #${portfolioId} · 持仓` : "持仓标的";
+  return "全市场已同步标的";
+}
+
 function scoringOutcome(task: FactorPipelineTask): { label: string; type: "success" | "warning" | "error" | "info"; detail?: string } {
   if (task.status === "cancelled") return { label: "已取消", type: "info" };
   if (task.status === "failed") return { label: "失败", type: "error" };
@@ -415,6 +421,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
   const [syncMode, setSyncMode] = useState<"incremental" | "backfill">(initialInputDraft?.syncMode ?? "incremental");
   const [syncPolicy, setSyncPolicy] = useState<ExternalSyncPolicy>(initialInputDraft?.syncPolicy ?? "normal");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [coverageDetailOpen, setCoverageDetailOpen] = useState(false);
+  const [syncErrorDetailOpen, setSyncErrorDetailOpen] = useState(false);
   const [datePreset, setDatePreset] = useState<HistoryPreset>(initialInputDraft?.datePreset ?? "60d");
   const [dateRange, setDateRange] = useState<HistoryDateRange>(initialInputDraft?.dateRange ?? [null, null]);
   const [capabilities, setCapabilities] = useState<ExternalDataSyncCapabilities | null>(null);
@@ -708,6 +716,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       start_date: string;
       end_date: string;
     }> = {},
+    options: { confirmed?: boolean } = {},
   ) => {
     // Inventory is advisory for starting a sync. During the initial request it
     // may still be null, but the selected scope and date parameters are valid.
@@ -716,8 +725,58 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
     if (dashboardUnavailable) return;
     const effectiveSource = overrides.source ?? source;
     const effectiveMode = overrides.mode ?? syncMode;
-    if (effectiveMode === "backfill" && (!capabilities || capabilitiesLoading || capabilitiesError || !capabilities[dataset]?.modes.includes("backfill"))) {
-      message.warning("历史同步能力尚未确认或数据源不支持，请重试读取同步能力");
+    const datasetCapability = capabilities?.[dataset];
+    if (effectiveMode === "backfill" && (!capabilities || capabilitiesLoading || capabilitiesError || !datasetCapability)) {
+      message.warning("历史同步能力尚未确认，请重试读取同步能力");
+      return;
+    }
+    const snapshotFallback = effectiveMode === "backfill" && Boolean(datasetCapability) && !datasetCapability!.modes.includes("backfill");
+    const confirmedOverrides = snapshotFallback
+      ? { ...overrides, mode: "incremental" as const, start_date: undefined, end_date: undefined }
+      : overrides;
+    if (!options.confirmed) {
+      const actualMode = confirmedOverrides.mode ?? syncMode;
+      const selectedRange = `${overrides.start_date ?? dateRange[0]?.format("YYYY-MM-DD") ?? "未选开始日期"} 至 ${overrides.end_date ?? dateRange[1]?.format("YYYY-MM-DD") ?? "未选结束日期"}`;
+      const rangeStartDay = overrides.start_date ? dayjs(overrides.start_date) : dateRange[0];
+      const rangeEndDay = overrides.end_date ? dayjs(overrides.end_date) : dateRange[1];
+      const plannedSpan = actualMode === "backfill" && rangeStartDay?.isValid() && rangeEndDay?.isValid()
+        ? rangeEndDay.startOf("day").diff(rangeStartDay.startOf("day"), "day") + 1
+        : null;
+      const chunkDays = datasetCapability?.chunk_days ?? null;
+      const chunkCount = chunkDays && chunkDays > 0 && plannedSpan && plannedSpan > chunkDays
+        ? Math.ceil(plannedSpan / chunkDays)
+        : 0;
+      const partialHistory = Boolean(datasetCapability?.partial_history_fields?.length);
+      const snapshotReason = dataset === "etf"
+        ? "ETF 指标的溢折价、规模和份额只能可靠获取最新记录。"
+        : dataset === "hot_rank"
+          ? "人气榜接口只提供当前榜单快照。"
+          : "该数据源只提供最近快照。";
+      const snapshotTitle = dataset === "etf"
+        ? "ETF 指标只同步最近数据"
+        : dataset === "hot_rank"
+          ? "今日人气榜只同步最近数据"
+          : "该数据只同步最近数据";
+      Modal.confirm({
+        title: snapshotFallback ? snapshotTitle : `确认同步：${configs[dataset].title.replace(/^同步\s*/, "")}`,
+        content: (
+          <div style={{ lineHeight: 1.7 }}>
+            <div>{syncScopeDescription(effectiveSource, primaryWatchlistName, app?.portfolioId)}</div>
+            <div>实际更新范围：{actualMode === "backfill" ? selectedRange : "最近数据（今天）"}</div>
+            <div>更新方式：{SYNC_POLICY_LABELS[confirmedOverrides.sync_policy ?? syncPolicy]}</div>
+            {actualMode === "backfill" && chunkCount > 0 && (
+              <div>分段执行：本次范围共 {plannedSpan} 天，将按每段不超过 {chunkDays} 天自动拆分，共 {chunkCount} 段。</div>
+            )}
+            {actualMode === "backfill" && partialHistory && (
+              <div>历史回填仅补净值、收盘价、溢折价和评分；份额、规模、跟踪误差只有当天快照。</div>
+            )}
+            {snapshotFallback && <div style={{ marginTop: 8 }}>{snapshotReason}所选历史日期（{selectedRange}）不会生效，继续后将按最近数据同步今天的最新快照。</div>}
+          </div>
+        ),
+        okText: snapshotFallback ? "继续同步最近数据" : "开始同步",
+        cancelText: "取消",
+        onOk: () => runSync(dataset, confirmedOverrides, { confirmed: true }),
+      });
       return;
     }
     setStartingDataset(dataset);
@@ -769,7 +828,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         range: `${configs[dataset].title} · ${syncScopeDescription(effectiveSource, primaryWatchlistName, app?.portfolioId)} · ${effectiveMode === "backfill" ? `${overrides.start_date ?? dateRange[0]?.format("YYYY-MM-DD") ?? "未选开始日期"} 至 ${overrides.end_date ?? dateRange[1]?.format("YYYY-MM-DD") ?? "未选结束日期"}` : "最近数据"} · ${SYNC_POLICY_LABELS[overrides.sync_policy ?? syncPolicy]}`,
         // Keep this attempt's captured form values. A later draft must not
         // silently change the source or dates when the failed attempt is retried.
-        retry: () => void runSync(dataset, overrides),
+        retry: () => void runSync(dataset, overrides, { confirmed: true }),
       });
       message.error(template("extSyncFailed", { message: error?.message || String(error) }));
     } finally {
@@ -1092,17 +1151,26 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
       render: (_, row) => {
         const repairable = row.dataset === "fundamental" || row.dataset === "financial" || row.dataset === "capital_flow";
         const resumableTask = Boolean(row.latest_task && taskCanResume(row.latest_task) && row.latest_task.batch_recovery);
-        const historyUnsupported = syncMode === "backfill" && (!historyCapabilitiesReady || !capabilities?.[row.dataset]?.modes.includes("backfill"));
-        const historyLimit = capabilities?.[row.dataset]?.history_limit_days;
-        const spanExceedsLimit = syncMode === "backfill" && historySpan !== null && historyLimit != null && historyLimit > 0 && historySpan > historyLimit;
+        const datasetCapability = capabilities?.[row.dataset];
+        const historyCapabilityPending = syncMode === "backfill" && (!historyCapabilitiesReady || !datasetCapability);
+        const snapshotOnly = syncMode === "backfill" && historyCapabilitiesReady && Boolean(datasetCapability) && !datasetCapability!.modes.includes("backfill");
+        const historyLimit = datasetCapability?.history_limit_days;
+        const chunkDays = datasetCapability?.chunk_days ?? null;
+        const autoChunked = syncMode === "backfill" && !snapshotOnly && Boolean(chunkDays) && chunkDays! > 0;
+        const spanExceedsLimit = syncMode === "backfill" && !snapshotOnly && !autoChunked && historySpan !== null && historyLimit != null && historyLimit > 0 && historySpan > historyLimit;
         let disabledReason: string | null = null;
-        if (historyUnsupported && !historyCapabilitiesReady) disabledReason = "历史同步能力尚未确认，请等待加载或重试读取同步能力";
-        else if (historyUnsupported) disabledReason = row.dataset === "etf"
-          ? "ETF 的溢折价、规模和份额目前只能可靠地获取最近记录，请选择“最近数据”"
-          : "这类数据只能更新最近记录，请在“日期和更新设置”中选择“最近数据”";
-        else if (historyRangeIssue) disabledReason = historyRangeIssue;
+        if (historyCapabilityPending) disabledReason = "历史同步能力尚未确认，请等待加载或重试读取同步能力";
+        else if (!snapshotOnly && historyRangeIssue) disabledReason = historyRangeIssue;
         else if (spanExceedsLimit) disabledReason = `所选范围为 ${historySpan} 日，超过该数据源 ${historyLimit} 日的历史上限，请缩短日期范围`;
         else if (taskForDataset(row.dataset)) disabledReason = "该数据集正在同步，请等待当前任务完成";
+        const snapshotHint = snapshotOnly ? "该数据只提供最近快照；点击同步会先确认，并按最近数据执行" : null;
+        const chunkHint = autoChunked && historySpan !== null && chunkDays && historySpan > chunkDays
+          ? `所选范围共 ${historySpan} 日，将按每段不超过 ${chunkDays} 日自动分段执行`
+          : null;
+        const partialHistoryHint = syncMode === "backfill" && Boolean(datasetCapability?.partial_history_fields?.length) && !disabledReason
+          ? "历史回填只补净值、收盘价、溢折价和评分"
+          : null;
+        const actionHint = snapshotHint || chunkHint || partialHistoryHint;
         return (
           <Space direction="vertical" size={6}>
             <Tooltip title={disabledReason || undefined}>
@@ -1116,11 +1184,11 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                 >
                   {taskForDataset(row.dataset) ? t("extSyncing") : configs[row.dataset].title}
                 </Button>
-                {disabledReason ? (
-                  <Tooltip title={disabledReason}>
+                {disabledReason || actionHint ? (
+                  <Tooltip title={disabledReason || actionHint}>
                     <QuestionCircleOutlined
-                      aria-label="查看不可同步原因"
-                      style={{ color: "#98a2b3", cursor: "help", fontSize: 15 }}
+                      aria-label={disabledReason ? "查看不可同步原因" : chunkHint ? "查看分段同步说明" : snapshotHint ? "查看快照同步说明" : "查看部分历史字段说明"}
+                      style={{ color: disabledReason ? "#98a2b3" : "#d48806", cursor: "help", fontSize: 15 }}
                     />
                   </Tooltip>
                 ) : null}
@@ -1130,7 +1198,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
               <Button
                 size="small"
                 loading={repairingDataset === row.dataset}
-                disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || historyUnsupported || Boolean(historyRangeIssue) || spanExceedsLimit || ((syncMode !== "backfill" || !dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
+                disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || historyCapabilityPending || Boolean(historyRangeIssue) || spanExceedsLimit || ((syncMode !== "backfill" || !dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
                 onClick={() => void repairDetectedGaps(row.dataset as "fundamental" | "financial" | "capital_flow")}
               >
                 检查缺失数据
@@ -1196,23 +1264,29 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
 
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "6px 28px",
+          alignItems: "baseline",
+          padding: "9px 14px",
           border: "1px solid var(--border-color, #eaecf0)",
           borderRadius: 6,
-          marginBottom: 18,
-          overflow: "hidden",
+          marginBottom: 14,
+          background: "var(--fill-quaternary, #fafafa)",
         }}
       >
-        {[
+        {([
           [t("extDashboardRecords"), overview?.total_records ?? "-"],
           [t("extDashboardCoverage"), overview?.covered_symbols ?? "-"],
           [t("extDashboardAvailable"), overview ? `${overview.available_datasets}/${DATASET_ORDER.length}` : "-"],
           [t("extDashboardRunning"), overview?.running_tasks ?? "-"],
-        ].map(([label, value], index) => (
-          <div key={String(label)} style={{ padding: "14px 18px", borderRight: index < 3 ? "1px solid var(--border-color, #eaecf0)" : undefined }}>
-            <Statistic title={label} value={value} valueStyle={{ fontSize: 22 }} />
-          </div>
+        ] as Array<[string, string | number]>).map(([label, value]) => (
+          <span key={label} style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{label}</Typography.Text>
+            <Typography.Text strong style={{ fontSize: 16 }}>
+              {typeof value === "number" ? formatCount(value) : value}
+            </Typography.Text>
+          </span>
         ))}
       </div>
 
@@ -1247,8 +1321,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         );
       })}
 
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
-        <Space wrap>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <Space size={6} wrap align="center">
           <Typography.Text strong>{t("extScopeLabel")}:</Typography.Text>
           <Select
             value={source}
@@ -1262,26 +1336,14 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             ]}
           />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {syncScopeDescription(source, primaryWatchlistName, app?.portfolioId)}
+            {syncScopeSummary(source, primaryWatchlistName, app?.portfolioId)}
           </Typography.Text>
         </Space>
-      </div>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-        {syncMode === "incremental" ? "更新最近数据" : historyRangeIssue ? "历史日期未选完整" : `历史日期：${dateRange[0]!.format("YYYY-MM-DD")} 至 ${dateRange[1]!.format("YYYY-MM-DD")}`} · {SYNC_POLICY_LABELS[syncPolicy]}
-      </Typography.Paragraph>
-      <Collapse
-        size="small"
-        style={{ marginBottom: 14 }}
-        activeKey={settingsOpen ? ["settings"] : []}
-        onChange={(keys) => setSettingsOpen(keys.includes("settings"))}
-        items={[{ key: "settings", label: "日期和更新设置", children: <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <Checkbox checked={includeNorthbound && northboundReady} disabled={controlsDisabled || !northboundReady} onChange={(event) => setIncludeNorthbound(event.target.checked)}>
-          {t("extIncludeNorthbound")}
-        </Checkbox>
-        {!northboundReady && <Typography.Text type="warning">{capabilitiesLoading ? "北向资金能力正在确认，仅同步个股资金流" : northboundCapability?.available === false ? `北向资金不可用：${northboundCapability.reason}` : "北向资金能力未知，仅同步个股资金流；请重试读取同步能力"}</Typography.Text>}
-        <Space wrap>
+
+        <Space size={6} wrap align="center">
           <Typography.Text strong>{t("extSyncModeLabel")}:</Typography.Text>
           <Select
+            aria-label="更新日期"
             value={syncMode}
             onChange={changeSyncMode}
             disabled={controlsDisabled}
@@ -1298,7 +1360,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                 value={datePreset}
                 onChange={changeDatePreset}
                 disabled={controlsDisabled}
-                style={{ width: 140 }}
+                style={{ width: 120 }}
                 options={HISTORY_DATE_PRESETS}
               />
               <DatePicker.RangePicker
@@ -1312,7 +1374,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             </>
           ) : null}
         </Space>
-        <Space wrap>
+
+        <Space size={6} wrap align="center">
           <Typography.Text strong>更新方式:</Typography.Text>
           <Select
             aria-label="更新方式"
@@ -1323,40 +1386,55 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             options={Object.entries(SYNC_POLICY_LABELS).map(([value, label]) => ({ value, label }))}
           />
         </Space>
-        <Typography.Text type="secondary" style={{ display: "block", width: "100%" }}>
-          {SYNC_POLICY_HINTS[syncPolicy]}{syncMode === "incremental" ? " 需要过去的数据时，选择“指定历史日期”。" : " ETF 指标和人气榜仅提供最近数据，不能补过去的记录。"}
-        </Typography.Text>
-        </div> }]}
-      />
-      <div style={{ marginBottom: 12 }}>
-        {showScoringRefresh && <Tooltip title={`当前评分仅支持 A 股股票。${scoringScopeIssue ?? `仅同步外部数据不会自动刷新评分；此操作会计算输入，在真实模型已启用且数据齐全时生成模型评分，并保留任务证据。${syncMode === "backfill" ? "按右侧所选日期范围重算。" : "默认重算最近约 11 天。"}为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。未启用模型或输入不足时会明确说明未生成或仅部分生成评分。`}`}>
-          <Button
-            aria-label="刷新评分"
-            type="primary"
-            ghost
-            icon={<SyncOutlined />}
-            loading={pipelineStarting}
-            disabled={controlsDisabled || Boolean(historyRangeIssue) || Boolean(scoringScopeIssue) || taskRunning || Boolean(pipelineTask && ["queued", "running"].includes(pipelineTask.status))}
-            onClick={() => void refreshFactorScores()}
-          >
-            刷新评分
-          </Button>
-        </Tooltip>}
+
+        {showScoringRefresh && <Space size={8} wrap align="center" style={{ marginLeft: "auto" }}>
+          <Tooltip title={`当前评分仅支持 A 股股票。${scoringScopeIssue ?? `仅同步外部数据不会自动刷新评分；此操作会计算输入，在真实模型已启用且数据齐全时生成模型评分，并保留任务证据。${syncMode === "backfill" ? "按右侧所选日期范围重算。" : "默认重算最近约 11 天。"}为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。未启用模型或输入不足时会明确说明未生成或仅部分生成评分。`}`}>
+            <Button
+              aria-label="刷新评分"
+              type="primary"
+              ghost
+              icon={<SyncOutlined />}
+              loading={pipelineStarting}
+              disabled={controlsDisabled || Boolean(historyRangeIssue) || Boolean(scoringScopeIssue) || taskRunning || Boolean(pipelineTask && ["queued", "running"].includes(pipelineTask.status))}
+              onClick={() => void refreshFactorScores()}
+            >
+              刷新评分
+            </Button>
+          </Tooltip>
+          <Typography.Text type={scoringScopeIssue ? "warning" : "secondary"} style={{ fontSize: 12 }}>
+            {scoringScopeIssue ?? "仅 A 股股票；评分计算参照全市场数据"}
+          </Typography.Text>
+        </Space>}
       </div>
 
-      {showScoringRefresh && <Typography.Text type={scoringScopeIssue ? "warning" : "secondary"} style={{ display: "block", marginBottom: 12 }}>
-        {scoringScopeIssue ?? "当前评分仅支持 A 股股票。为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。"}
-      </Typography.Text>}
+      <Collapse
+        size="small"
+        style={{ marginBottom: 12 }}
+        activeKey={settingsOpen ? ["settings"] : []}
+        onChange={(keys) => setSettingsOpen(keys.includes("settings"))}
+        items={[{ key: "settings", label: "日期和更新设置", children: (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+              <Checkbox checked={includeNorthbound && northboundReady} disabled={controlsDisabled || !northboundReady} onChange={(event) => setIncludeNorthbound(event.target.checked)}>
+                {t("extIncludeNorthbound")}
+              </Checkbox>
+              {!northboundReady && <Typography.Text type="warning">{capabilitiesLoading ? "北向资金能力正在确认，仅同步个股资金流" : northboundCapability?.available === false ? `北向资金不可用：${northboundCapability.reason}` : "北向资金能力未知，仅同步个股资金流；请重试读取同步能力"}</Typography.Text>}
+            </div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {SYNC_POLICY_HINTS[syncPolicy]}{syncMode === "incremental" ? " 需要过去的数据时，选择“指定历史日期”。" : " ETF 指标和人气榜仅提供最近数据，选择历史日期后同步会先确认，并按最近数据执行。"}
+            </Typography.Text>
+            {syncMode === "backfill" && <Typography.Text type={historyRangeIssue ? "warning" : "secondary"} style={{ fontSize: 12 }}>
+              {historyRangeIssue ?? `${dateRange[0]!.format("YYYY-MM-DD")} → ${dateRange[1]!.format("YYYY-MM-DD")} · ${historySpan} 个自然日（含首尾）`}
+            </Typography.Text>}
+          </div>
+        ) }]}
+      />
       {source === "watchlist" && !contextWatchlistsAvailable && watchlistsError && <Button
         size="small"
         loading={watchlistsLoading}
         onClick={() => void refreshStandaloneWatchlists()}
         style={{ marginBottom: 12 }}
       >重试读取观察池</Button>}
-
-      {syncMode === "backfill" && <Typography.Text type={historyRangeIssue ? "warning" : "secondary"} style={{ display: "block", marginBottom: 12 }}>
-        {historyRangeIssue ?? `${dateRange[0]!.format("YYYY-MM-DD")} → ${dateRange[1]!.format("YYYY-MM-DD")} · ${historySpan} 个自然日（含首尾）。选择日/年跨度会保留结束日期；本月至今、今年至今截至今天。`}
-      </Typography.Text>}
 
       {coverageError && <Alert type="error" showIcon message="数据检查结果读取失败" description={coverageError} action={<Button size="small" loading={coverageLoading} onClick={() => void refreshCoverage()}>重试读取检查结果</Button>} style={{ marginBottom: 14 }} />}
       {syncCoverageError && <Alert type="warning" showIcon message="更新记录暂时读不到，仍可更新数据，开始前会检查所选范围" action={<Button size="small" onClick={() => void refreshSyncCoverage()}>重试读取更新记录</Button>} style={{ marginBottom: 14 }} />}
@@ -1409,8 +1487,34 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           type="warning"
           showIcon
           style={{ marginBottom: 14 }}
-          message={t("extCoverageActionTitle")}
-          description={(
+          message={(
+            <Space size={8} wrap>
+              <span>{t("extCoverageActionTitle")}</span>
+              <Tag
+                color={coverageActions.some((item) => item.readiness === "blocked") ? "error" : "warning"}
+                style={{ marginInlineEnd: 0 }}
+              >
+                {coverageActions.length} 项
+              </Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                数据不足会降低因子覆盖率
+              </Typography.Text>
+            </Space>
+          )}
+          action={(
+            <Space size={4} wrap>
+              {showScoringRefresh && <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>
+                {t("extCoverageActionModel")}
+              </Button>}
+              <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "api-management" }))}>
+                {t("extCoverageActionApi")}
+              </Button>
+              <Button type="link" size="small" onClick={() => setCoverageDetailOpen((open) => !open)}>
+                {coverageDetailOpen ? "收起详情" : "查看详情"}
+              </Button>
+            </Space>
+          )}
+          description={coverageDetailOpen ? (
             <div>
               <div style={{ marginBottom: 8 }}>{t("extCoverageActionDescription")}</div>
               <Space wrap>
@@ -1419,15 +1523,9 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                     {configs[item.dataset].title}：{datasetCoverageReason(item)}
                   </Tag>
                 ))}
-                {showScoringRefresh && <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>
-                  {t("extCoverageActionModel")}
-                </Button>}
-                <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "api-management" }))}>
-                  {t("extCoverageActionApi")}
-                </Button>
               </Space>
             </div>
-          )}
+          ) : undefined}
         />
       ) : null}
 
@@ -1447,13 +1545,40 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         type="error"
         showIcon
         style={{ marginBottom: 14 }}
-        message="这次更新遇到问题"
-        description={<Space direction="vertical" size={4}>
-          <span>{syncError.detail}</span>
-          <Typography.Text type="secondary">{syncError.range}</Typography.Text>
-          <span>重试会沿用这次失败时的范围和日期，当前设置保留。</span>
-        </Space>}
-        action={<Button loading={startingDataset === syncError.dataset} disabled={controlsDisabled || Boolean(taskForDataset(syncError.dataset))} onClick={syncError.retry}>重试这次更新</Button>}
+        message={(
+          <Space size={8} wrap>
+            <span>这次更新遇到问题</span>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{configs[syncError.dataset].title}</Typography.Text>
+            {!syncErrorDetailOpen && <span
+              title={syncError.detail}
+              style={{
+                display: "inline-block",
+                maxWidth: "min(620px, 50vw)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
+            >
+              {syncError.detail}
+            </span>}
+          </Space>
+        )}
+        description={syncErrorDetailOpen ? (
+          <Space direction="vertical" size={4}>
+            <span>{syncError.detail}</span>
+            <Typography.Text type="secondary">{syncError.range}</Typography.Text>
+            <span>重试会沿用这次失败时的范围和日期，当前设置保留。</span>
+          </Space>
+        ) : undefined}
+        action={(
+          <Space size={4} wrap>
+            <Button loading={startingDataset === syncError.dataset} disabled={controlsDisabled || Boolean(taskForDataset(syncError.dataset))} onClick={syncError.retry}>重试这次更新</Button>
+            <Button type="link" size="small" onClick={() => setSyncErrorDetailOpen((open) => !open)}>
+              {syncErrorDetailOpen ? "收起详情" : "查看详情"}
+            </Button>
+          </Space>
+        )}
       />}
 
       <Table<ExternalDatasetOverview>

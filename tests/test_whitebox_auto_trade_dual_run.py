@@ -424,9 +424,21 @@ class TestRollbackToOldSource:
 class TestCanSwitchToMemberSource:
     """守护切换检查逻辑。"""
 
+    @staticmethod
+    def _review_empty_inventory(db):
+        """Open only the isolated empty inventory, then exercise report gates."""
+        from app.services.g5_admission_governance import get_g5_admission_state, set_g5_admission_freeze
+        from app.services.g5_legacy_inventory import build_g5_legacy_inventory
+        inventory = build_g5_legacy_inventory(db)
+        assert inventory["reports"] == [] and inventory["affected_portfolios"] == []
+        set_g5_admission_freeze(db, frozen=False, expected_version=get_g5_admission_state(db)["version"],
+            inventory_snapshot_id=inventory["snapshot_id"], review_note="单测明确审核空库存，以独立验证后续报告门禁",
+            request_key="unit-source-reviewed-empty-inventory", operator_id="unit-reviewer", acknowledge_only_new_admission=True)
+
     def test_blocks_without_a_g5_summary(self, db_session):
         """没有真实 G5 汇总不得用旧的占位语义放行。"""
         p = _make_portfolio(db_session, name="QA-Switch-Check")
+        self._review_empty_inventory(db_session)
         can_switch, reason = can_switch_to_member_source(
             db_session, portfolio_id=p.id
         )
@@ -435,6 +447,7 @@ class TestCanSwitchToMemberSource:
 
     def test_rejects_unproven_external_g5_summary(self, db_session):
         p = _make_portfolio(db_session, name="QA-Switch-G5")
+        self._review_empty_inventory(db_session)
         can_switch, reason = can_switch_to_member_source(
             db_session,
             portfolio_id=p.id,
@@ -451,6 +464,7 @@ class TestCanSwitchToMemberSource:
 
     def test_blocks_a_g5_summary_with_a_failed_day(self, db_session):
         p = _make_portfolio(db_session, name="QA-Switch-G5-Failed")
+        self._review_empty_inventory(db_session)
         can_switch, reason = can_switch_to_member_source(
             db_session,
             portfolio_id=p.id,

@@ -1,0 +1,32 @@
+[
+  {
+    "path": "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx",
+    "bytes": 68738,
+    "sha256": "04b963f0ec9749a15c0e7fa7fc918e07aa8c1e5243daffc7afd0f0bc5b51f62b"
+  },
+  {
+    "path": "frontend/src/components/portfolio-trading/inspection/InspectionReconciliationSummary.tsx",
+    "bytes": 2959,
+    "sha256": "b48d742b0a94b1b914faa149a6347e17431e6bf5a28635959953f357ac156896"
+  },
+  {
+    "path": "frontend/src/components/portfolio-trading/inspection/InspectionHistoryGapPanel.tsx",
+    "bytes": 3990,
+    "sha256": "2a8a4aa85d965a5641782552973ada8c9ddfa258fefca702473bfdbc18d691c8"
+  },
+  {
+    "path": "frontend/src/components/portfolio-trading/inspection/InspectionExecutionToolbar.tsx",
+    "bytes": 1150,
+    "sha256": "f9d92d503b12eeba1286b15c29ab35a784bc5b90d5ac1c9cb3e3add4fc074ccc"
+  },
+  {
+    "path": "frontend/src/api/client.ts",
+    "bytes": 230303,
+    "sha256": "912afcfdf8ef3f2cd1ded1657bb6a3456afb5641c0d3df4b2b045c9a3bc67109"
+  },
+  {
+    "path": "scripts/serve_inspection_acceptance.py",
+    "bytes": 3612,
+    "sha256": "f2c3fd8613901b9c88b3079ce967b3b346767ac2a36fc7b35322fa3419041575"
+  }
+]

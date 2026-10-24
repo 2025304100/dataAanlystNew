@@ -25,6 +25,9 @@ import FactorBasicSettings from "./settings/FactorBasicSettings";
 import AppSettingsSection from "./settings/AppSettingsSection";
 import MessageCenter from "./messageCenter/MessageCenter";
 import { backtestMissingLabels, clearBacktestRepair, readBacktestRepair } from "../utils/backtestDraft";
+import InspectionReturnLink from "./portfolio-trading/inspection/InspectionReturnLink";
+import InspectionRepairWorkspace from "./portfolio-trading/inspection/InspectionRepairWorkspace";
+import { readInspectionReturn } from "./portfolio-trading/inspection/inspectionNavigation";
 
 export default function Settings() {
   const ctx = useApp();
@@ -237,6 +240,7 @@ export default function Settings() {
       <div className="settings-layout">
         <SettingsNav active={activeSection} onSelect={setActiveSection} />
         <div className="settings-content">
+          <InspectionReturnLink />
           <UnsupportedFeaturesToggle />
           {backtestRepair && (activeSection === "history" || activeSection === "data-center") && <section
             className="panel" role="region" aria-label="本次回测需要的资料" style={{ marginBottom: 16 }}
@@ -504,7 +508,9 @@ export default function Settings() {
           {activeSection === "data-center" && (
             <div className="settings-tab-container" data-settings-content="settings-data-center">
               <section className="band">
-                <DataCenter backtestRepair={backtestRepair} />
+                {ctx.portfolioId && readInspectionReturn(ctx.portfolioId)?.destination==="settings:data-center:inspection-repair"
+                  ? <InspectionRepairWorkspace portfolioId={ctx.portfolioId}/>
+                  : <DataCenter backtestRepair={backtestRepair} />}
               </section>
             </div>
           )}

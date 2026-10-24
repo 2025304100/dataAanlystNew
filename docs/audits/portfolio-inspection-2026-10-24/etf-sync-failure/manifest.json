@@ -1,0 +1,146 @@
+{
+  "outcome": "Source/error reporting and task-history bugs fixed; only failed ETF retried. External ETF qfq source remains unavailable and target bars are not repaired.",
+  "files": [
+    {
+      "path": "probe.py",
+      "bytes": 1250,
+      "sha256": "d30c433b01428c08c15b91fdd6833d16b90030761e1c4048c1d315cc83f95469"
+    },
+    {
+      "path": "probe.json",
+      "bytes": 504,
+      "sha256": "78805c8f8b6e25b99082bac737246c7ed9714a1cf23c21f739bd815144d71a00"
+    },
+    {
+      "path": "safe_restart.ps1",
+      "bytes": 3221,
+      "sha256": "c8062034e466e8fb15f0211aff1ab02ba075a4a5444cac76fb646f7a5f92efd3"
+    },
+    {
+      "path": "safe-restart.json",
+      "bytes": 355,
+      "sha256": "78127c8f31c04f9c58ff50c6f57193f4d073e61e1753c9c345002312866acfa3"
+    },
+    {
+      "path": "check_idle.py",
+      "bytes": 872,
+      "sha256": "ea248a5011096f63d31e4529de0eb15703902e0008359d509ae3aa66f3f49185"
+    },
+    {
+      "path": "retry_failed.py",
+      "bytes": 2780,
+      "sha256": "b6a3a39cad1980a99a89e92ca5aba26d56b2c076d70db166fe9a8a81a24f12b1"
+    },
+    {
+      "path": "retry-request.json",
+      "bytes": 106,
+      "sha256": "072cb3774ab2f0627290033c17f70f3b9bc4b3b79b4df9a965467278941eb018"
+    },
+    {
+      "path": "retry-result.json",
+      "bytes": 9317,
+      "sha256": "5addfc1d6287ad5d5036c868a2b3313d6e69144a4d7bd28c5fa65bd284e7db9d"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 6200,
+      "sha256": "d5470ec3ed515c509ca5867eaf6f3010555803de14ba49a8df32343aa4d30639"
+    },
+    {
+      "path": "browser-result.json",
+      "bytes": 588,
+      "sha256": "d4aa7d98708e7eb47ffc84c3fe0de0cd5c7fe01e4a33122fccf33d18e20b8d9d"
+    },
+    {
+      "path": "failure-detail.png",
+      "bytes": 165292,
+      "sha256": "983cb74b9d6d9d08e588866da49200ba69adaab831e32f4b722a6255038e9e2a"
+    },
+    {
+      "path": "failure-detail-390.png",
+      "bytes": 66999,
+      "sha256": "6dbe09d9711b36f1ba74254d6ab0919fb45eba5b5fed5764d195b9a3c86c56f0"
+    },
+    {
+      "path": "retry-result.png",
+      "bytes": 127059,
+      "sha256": "8b7c72ed828d6e8d03fff7501ad4546d04d979b8fb0611b23aee9a6cbbe67a02"
+    },
+    {
+      "path": "original-partial-result.png",
+      "bytes": 126943,
+      "sha256": "a5c64a1028735b67000177f289d96b9ee64f30b6b9946156ba699de90cfd8a99"
+    },
+    {
+      "path": "backend-tests.log",
+      "bytes": 420,
+      "sha256": "c1c05b3eca405cd80f10b0163cfe728d0f30985001c7599f87bfee54e77e062f"
+    },
+    {
+      "path": "frontend-tests.log",
+      "bytes": 3399,
+      "sha256": "1b5b55db225ce1ddfdb4d953546c60020d74fb64eaf15214820675efb03873d4"
+    },
+    {
+      "path": "frontend-build.log",
+      "bytes": 3280,
+      "sha256": "8093692a9a8fb47ac174119fa7d7fb290a6fc16dcde705a58990fb69a5ded6b4"
+    },
+    {
+      "path": "safety.json",
+      "bytes": 1312,
+      "sha256": "6082855ac6559fe62389924625179caa95a0fccbcc0b5fbff1d5406882f24c0c"
+    },
+    {
+      "path": "schedule-after.json",
+      "bytes": 4632,
+      "sha256": "d14e642483eb340b5138e20b3a7ac492eed8001d766b1ba1e4e6b68efc99872b"
+    },
+    {
+      "path": "schedule-runs.json",
+      "bytes": 924,
+      "sha256": "cb24a698d690fe832a7921b9e5e19799639d3d6989f93edb90f2bbc2dc51d30d"
+    },
+    {
+      "path": "protected-state-before.json",
+      "bytes": 30004,
+      "sha256": "8e6ec4b09bb3a789253bd3b79714fa12025bd5b9e81dbcdc83215a448f873141"
+    },
+    {
+      "path": "protected-state-after.json",
+      "bytes": 30004,
+      "sha256": "1f8fd7091cd9cce798c1e56454c876bb8892d0826e06efc0ecfb43505d03fc5c"
+    },
+    {
+      "path": "protected-state-final.json",
+      "bytes": 30004,
+      "sha256": "1f8fd7091cd9cce798c1e56454c876bb8892d0826e06efc0ecfb43505d03fc5c"
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "app/services/market_data.py",
+      "sha256": "00d0996713b2b14a382b26c3110fd5766cd9aa42a5d69b3a40e5ae47853e6a89"
+    },
+    {
+      "path": "app/services/market_data_errors.py",
+      "sha256": "89f03df75099cd5c0c5656ed3bea655ea8e6023fd81950f256cf6ca86b3d79f3"
+    },
+    {
+      "path": "app/services/portfolio_inspection_repair.py",
+      "sha256": "dcc4aa0f7bf1d17c5442b3546a9e65132ffdc84349aef751235eabbf340184e8"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionDataPanel.tsx",
+      "sha256": "e93cdc7eb9e13491ffa40aed5ec9161b7ba73cbf42e31f58200c41fd7e4df65a"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/inspectionRepairPresentation.ts",
+      "sha256": "ba08b37a0efd0171b7c04e3b7fd9931557e105ee8de32a1bb4f1cbf743c5eaa7"
+    },
+    {
+      "path": "scripts/serve_inspection_acceptance.py",
+      "sha256": "f2c3fd8613901b9c88b3079ce967b3b346767ac2a36fc7b35322fa3419041575"
+    }
+  ]
+}

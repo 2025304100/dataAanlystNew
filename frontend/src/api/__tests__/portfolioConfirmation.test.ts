@@ -14,13 +14,16 @@ describe("portfolio confirmation request contract", () => {
     expect(body.trade_date).toBe("2026-09-30");
     expect(body.review_note).toBe("已核对所有差异并确认修复完成");
     expect(body.acknowledge_all_diffs_cleared).toBe(true);
+    expect(body.force_skip_re_reconcile).toBe(false);
   });
 
   it("leaves an unspecified date to the backend's trading calendar", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
-    await api.confirmPortfolioReconciliation(7, { ack: true, review_note: "已核对所有差异并确认修复完成" });
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("trade_date");
+    await api.confirmPortfolioReconciliation(7, { ack: true, review_note: "已核对所有差异并确认修复完成", force_skip: false });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty("trade_date");
+    expect(body.force_skip_re_reconcile).toBe(false);
   });
 
   it("confirms only the snapshot and model the user reviewed", async () => {

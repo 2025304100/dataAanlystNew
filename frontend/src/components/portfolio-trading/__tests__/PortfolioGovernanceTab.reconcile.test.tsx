@@ -25,24 +25,7 @@ vi.mock("../../../api/client", () => ({ api: mockApi }));
 vi.mock("../../../context/AppContext", () => ({
   useApp: () => ({ showToast: mockToast }),
 }));
-vi.mock("antd", () => ({
-  ConfigProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Button: ({ children, onClick, loading: _l, danger: _d, icon: _i, size: _s, block: _b, type: _t, ...rest }: any) => (
-    <button type="button" onClick={onClick} {...rest}>{children}</button>
-  ),
-  Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
-  Checkbox: ({ checked, onChange, children }: { checked?: boolean; onChange?: (v: boolean) => void; children?: ReactNode }) => (
-    <label><input type="checkbox" checked={!!checked} onChange={(e) => onChange?.(e.target.checked)} />{children}</label>
-  ),
-  Input: Object.assign(
-    (props: Record<string, unknown>) => <input {...(props as object)} />,
-    { TextArea: (props: Record<string, unknown>) => <textarea {...(props as object)} /> },
-  ),
-  Select: () => <select />,
-  DatePicker: () => <input readOnly />,
-  Tag: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
-}));
+
 
 import { setLocale } from "../../../i18n";
 import PortfolioGovernanceTab from "../PortfolioGovernanceTab";
@@ -109,7 +92,7 @@ describe("对账守恒子 Tab", () => {
     const card = await screen.findByTestId("recon-verdict");
     expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledWith(1);
     expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
-    expect(card).toHaveTextContent("当日没有决策，无账可对");
+    expect(card).toHaveTextContent("核对证据尚不完整");
 
     // 走查里最刺眼的那一行（「自定义维度 (DECISION_RUN_NOT_FOUND)」）必须说人话
     expect(panelText()).toContain("当日无决策运行");
@@ -118,22 +101,17 @@ describe("对账守恒子 Tab", () => {
     // 告警文案不得再把「缺基准」说成「算出来不等于零」
     expect(panelText()).not.toContain("加减和");
 
-    // toast 与结论卡必须说同一句话，不能一个说「无账可对」、另一个说「账实不符」
-    const toastMsgs = mockToast.mock.calls.map((call) => String(call[1])).join(" | ");
-    expect(toastMsgs).toContain("当日没有决策，无账可对");
-    expect(toastMsgs).not.toContain("加减和");
+    expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
   });
 
-  it("人工解锁区默认收起，点开后才出现勾选框（避免一进来就被推着点确认）", async () => {
+  it("证据缺失时不提供跳过校验或确认通过", async () => {
     mockApi.previewPortfolioReconciliation.mockResolvedValue(NO_DECISION_RESP);
-
     render(<PortfolioGovernanceTab portfolioId={1} />);
     openReconcileTab();
     await screen.findByTestId("recon-verdict");
-
-    expect(screen.queryByText("确认对账修复完成")).toBeNull();
-    fireEvent.click(screen.getByTestId("recon-manual-toggle"));
-    expect(await screen.findByText("确认对账修复完成")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "审核本次对账结果" })).toBeNull();
+    expect(screen.queryByText(/强制跳过/)).toBeNull();
+    expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
   });
 
   it("对账通过时给正向结论，且不出现人工解锁入口", async () => {

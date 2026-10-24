@@ -1,0 +1,12 @@
+{
+  "frontend/src/utils/inspectionEvidenceMonitor.ts": "a527adc9061bda3b9d39a9afb8bb52091b818b856c6e3f95a35baac4e8f8fba3",
+  "frontend/src/utils/__tests__/inspectionEvidenceMonitor.test.ts": "f624d86fed56b2781aa30c63eee0b26c0a6b5c9c57a3927e52a9e857fff447b0",
+  "frontend/src/utils/inspectionFreshness.ts": "5b26ec12e4f30499f903dcdc431059b983d150204ee8ced750ec141c630e1efd",
+  "frontend/src/utils/__tests__/inspectionFreshness.test.ts": "51f01e357d0eb7de4ed17744b57403785503ac42a90b155c988810f515a1c1df",
+  "frontend/src/api/client.ts": "838fcd219fd66cefeb7beea98b281dfbfae2682845376d84dfefd927311e922c",
+  "frontend/src/components/portfolio-trading/inspection/useInspectionEvidenceMonitor.ts": "4962fc050504f3c03ad3946591d2ff7859a2c9e8523996919ab425e0283e4ee8",
+  "frontend/src/components/portfolio-trading/inspection/useInspectionFreshness.tsx": "bf33c57d3e12cb3269d53d4095f7695a629f41e792767a00fa19273bfab3959a",
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": "b59af93fe0c78c8bee6d9b586874b328962d521dd64ed8edff8c9614db902ab8",
+  "frontend/src/components/portfolio-trading/inspection/InspectionDataPanel.tsx": "c48db0bd782ea99f1d7537214f88ee7b9434a22e956f2deb4208bf40c7ef6fde",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx": "fa9f323cc35b2f7cb272c0cf5397ad784a8aee9af7a4b9696310499ef7e0c7c5"
+}

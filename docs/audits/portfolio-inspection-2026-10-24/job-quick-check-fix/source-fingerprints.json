@@ -1,0 +1,5 @@
+{
+  "frontend/src/components/portfolio-trading/inspection/InspectionDrawer.tsx": "2052a1997c371aa10ff1a54ac0ea887e6c4ec2ac30b9cafff033d5088264b4df",
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": "3bf9ac9dc8977ebef797bebd2099c4c5419e02c0baa3c79cc0147d47724d242b",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx": "f41d4c9febc85f175917f0f425e70fe8bde6d73726d7a582546f74de6c7e3abb"
+}

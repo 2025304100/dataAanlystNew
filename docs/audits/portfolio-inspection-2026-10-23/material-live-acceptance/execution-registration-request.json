@@ -1,0 +1,16 @@
+{
+  "trade_date": "2026-09-29",
+  "material": "execution",
+  "report_ref": "reconciliation::1::2026-09-29",
+  "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+  "conclusion": "NOT_FOUND",
+  "attempted_sources": [
+    "本日自动运行结果与决策明细",
+    "本日原订单、成交与资金流水"
+  ],
+  "evidence_refs": [
+    "检查与对账 → 2026-09-29 → 当天的自动运行记录与决策明细 → 本日检查与来源明细；本次安全验收留存来源报告与只读页面证据。"
+  ],
+  "note": "本次验收已查看本日运行检查、原订单候选、成交与流水，尚未找到九月二十九日可核验的自动运行与决策明细。调度关联不作为执行证明，保留材料缺口。",
+  "request_key": "d48296d8-532f-4d74-af25-d32580ff289b"
+}

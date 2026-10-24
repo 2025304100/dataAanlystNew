@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
@@ -11,6 +11,12 @@ const { mockApi, app } = vi.hoisted(() => ({
     listPortfolioAuditEvents: vi.fn(),
     getPortfolioModelBindingReview: vi.fn(),
     confirmPortfolioModelBinding: vi.fn(),
+    getPortfolioInspectionRuntime: vi.fn(),
+    getPortfolioInspectionJob: vi.fn(),
+    getPortfolioInspectionDiagnostics: vi.fn(),
+    previewPortfolioReconciliation: vi.fn(),
+    getPortfolioInspectionHistory: vi.fn(),
+    getPortfolioInspectionHistorySecurities: vi.fn(),
   },
   app: {
     portfolios: [{ id: 1, name: "组合一", account_type: "simulated", auto_trade_enabled: 1, portfolio_status: "READY" }],
@@ -33,7 +39,6 @@ vi.mock("antd", async () => ({
   Button: ({ children, onClick, disabled, loading: _l, danger: _d, icon: _i, size: _s, block: _b, type: _t, ...rest }: any) => (
     <button type="button" onClick={onClick} disabled={disabled} {...rest}>{children}</button>
   ),
-  Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => open ? <div>{children}</div> : null,
 }));
 vi.mock("../PortfolioOverview", () => ({ default: () => <div data-testid="portfolio-overview">组合总览</div> }));
 vi.mock("../PortfolioMembersTable", () => ({ default: () => <div>持仓成员</div> }));
@@ -68,6 +73,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   vi.clearAllMocks();
   setLocale("zh-CN");
   app.portfolioId = 1;
@@ -76,44 +82,78 @@ beforeEach(() => {
   app.loadWorkbench.mockResolvedValue(undefined);
   mockApi.getPortfolioStatus.mockImplementation(async (id: number) => ({ portfolio_id: id, current_state: "READY", allowed_transitions: ["ADMIN_PAUSED"] }));
   mockApi.getPortfolioActionItems.mockResolvedValue(readyItems);
+  mockApi.getPortfolioInspectionJob.mockImplementation(async (id:number)=>({portfolio_id:id,enabled:false,status:"idle",task_id:null,queue:{portfolio_id:id,days:[],limitations:[]}}));
   mockApi.getG7OperationalStatus.mockResolvedValue({ operational_blockers: [], resume_blockers: [], pending_orders_by_status: {} });
   mockApi.triggerPortfolioReconcile.mockResolvedValue({ items: [], differences_found: false, zero_sum_check_passed: true });
   mockApi.listPortfolioAuditEvents.mockResolvedValue({ items: [], total: 0 });
+  mockApi.getPortfolioInspectionRuntime.mockImplementation(async (id: number) => ({
+    portfolio_id: id, generated_at: "2026-10-22T09:00:00+08:00", current_state: "READY",
+    permissions: { allow_new_buys: true, allow_risk_exits: true, allow_auto_recovery: true, requires_manual_ack: false },
+    capability_reasons: {}, dimensions: {},
+    recovery_summary: { can_confirm: false, blockers: [], review_required: false, checks: [
+      { key: "reconciliation", passed: true, reason: "当前对账已核实" },
+      { key: "data", passed: true, reason: "数据已核实" },
+      { key: "binding", passed: true, reason: "当前绑定已核实" },
+    ] },
+  }));
+  mockApi.getPortfolioInspectionDiagnostics.mockImplementation(async (id: number) => ({
+    portfolio_id: id, snapshot_id: `diagnostics-${id}`, version: 1, generated_at: "2026-10-22T09:00:00+08:00",
+    policy_version: "test-1", read_only: true, usable_for_admission: false, summary: {}, binding: {}, calendars: [],
+    symbols: [], evidence: [], limitations: [],
+    repair_plan: { portfolio_id: id, plan_id: `plan-${id}`, snapshot_id: `diagnostics-${id}`, version: 1,
+      generated_at: "2026-10-22T09:00:00+08:00", expires_at: "2026-10-22T10:00:00+08:00",
+      executable_count: 0, disabled_count: 0, operations: [], confirmation_required: true,
+      completion_criteria: [], limitations: [] },
+  }));
+  mockApi.previewPortfolioReconciliation.mockImplementation(async (id: number) => ({
+    portfolio_id: id, trade_date: "2026-10-21", read_only: true, items: [],
+    differences_found: false, zero_sum_check_passed: true,
+  }));
+  mockApi.getPortfolioModelBindingReview.mockResolvedValue({
+    can_confirm: false, requires_confirmation: false, before: null, after: null, blockers: [], change_summary: "当前没有待审核的绑定变更",
+  });
+  mockApi.getPortfolioInspectionHistory.mockResolvedValue({
+    items: [], total: 0, page: 1, page_size: 20, page_count: 0, has_more: false,
+    snapshot_event_id: 0, filters: {}, relation_status: "not_requested", read_only: true,
+  });
+  mockApi.getPortfolioInspectionHistorySecurities.mockResolvedValue({ items: [], total: 0 });
 });
 afterEach(cleanup);
 
 describe("组合主壳与治理子页的真实导航", () => {
   it.each([
-    ["去每日对账", "reconcile-panel"],
-    ["调整运行状态", "g7-ops-disclosure"],
-  ])("点击 %s 后渲染治理目标页", async (label, testId) => {
+    ["每日对账", "执行与对账"],
+    ["运行状态审核", "运行状态审核"],
+  ])("点击 %s 后渲染治理目标页", async (label, heading) => {
     render(<PortfolioTradingShell />);
     fireEvent.click(await screen.findByRole("button", { name: label }));
-    expect(await screen.findByTestId(testId)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: heading, level: 2 })).toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
   });
 
-  it("点击查看操作记录后渲染审计表", async () => {
+  it("点击审计记录后读取并显示当前组合的处理历史", async () => {
     render(<PortfolioTradingShell />);
-    fireEvent.click(await screen.findByRole("button", { name: "查看操作记录" }));
-    expect(await screen.findByRole("heading", { name: "治理审计事件" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "审计记录" }));
+    expect(await screen.findByRole("heading", { name: "处理记录与审核历史" })).toBeInTheDocument();
+    await waitFor(() => expect(mockApi.getPortfolioInspectionHistory).toHaveBeenCalledWith(1, expect.any(Object)));
     expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
   });
 
-  it("从组合总览首次进入时，治理深链直接落到运行状态", async () => {
+  it("从组合总览首次进入时，治理深链直接落到运行状态审核引导", async () => {
     app.activeSubTab = "overview";
     render(<PortfolioTradingShell />);
     expect(screen.getByTestId("portfolio-overview")).toBeInTheDocument();
     act(() => requestPortfolioSubtab("governance:state"));
-    expect(await screen.findByTestId("g7-ops-disclosure")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "去每日对账" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "运行状态审核", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "恢复运行步骤" })).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
   });
 
   it("治理已挂载时，后续深链仍能切到每日对账", async () => {
     render(<PortfolioTradingShell />);
-    await screen.findByRole("button", { name: "调整运行状态" });
+    await screen.findByRole("button", { name: "运行状态审核" });
     act(() => requestPortfolioSubtab("governance:state"));
-    await screen.findByTestId("g7-ops-disclosure");
+    await screen.findByRole("heading", { name: "运行状态审核", level: 2 });
     act(() => requestPortfolioSubtab("governance:reconciliation"));
     expect(await screen.findByTestId("reconcile-panel")).toBeInTheDocument();
   });
@@ -151,13 +191,19 @@ describe("修复后的状态同步", () => {
     await screen.findByText("模型绑定等待本人核验");
     expect(screen.getByRole("button", { name: "添加候选标的" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /1 项待处理/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "查看并确认变更" }));
-    fireEvent.click(await screen.findByLabelText("我已查看变更，确认接受本组合的新绑定"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "本人已核验策略快照和模型变更" } });
-    fireEvent.click(screen.getByRole("button", { name: "确认接受变更" }));
+    fireEvent.click(screen.getByRole("button", { name: "审核策略绑定" }));
+    fireEvent.click(await screen.findByRole("button", { name: "审核并确认当前绑定" }));
+    const confirmation = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(confirmation).getByText("确认本次实际运行绑定")).toBeVisible());
+    fireEvent.click(within(confirmation).getByRole("checkbox", { name: "我已核对当前范围、报告与版本，确认本次处理。材料变化后需重新审核。" }));
+    fireEvent.change(within(confirmation).getByRole("textbox", { name: "审核理由（至少 10 个字）" }), { target: { value: "本人已核验策略快照和模型变更" } });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "确认本次审核" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "添加候选标的" })).toBeEnabled());
     expect(screen.getByRole("button", { name: /已就绪，等待调度/ })).toBeInTheDocument();
     expect(app.loadWorkbench).toHaveBeenCalledTimes(1);
+    expect(mockApi.confirmPortfolioModelBinding).toHaveBeenCalledWith(1, {
+      snapshot_id: "snapshot-new", model_run_id: "model-new", ack: true, review_note: "本人已核验策略快照和模型变更",
+    });
   });
 
   it("修复完成刷新行动项、HG1权限和组合列表", async () => {

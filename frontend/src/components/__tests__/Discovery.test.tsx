@@ -400,7 +400,7 @@ describe("Discovery 交互测试", () => {
     mockApi.getDiscoveryScopeStats.mockImplementation(async (scope: string) => ({ scope, total_symbols: 0, cached_symbols: 0, active_symbols: 0 }));
   });
 
-  it("简洁入口只常显范围，展开更多设置后才显示旧扫描操作和进度", async () => {
+  it("简洁入口始终显示扫描操作和进度，仅采集参数默认收起", async () => {
     mockContext.discoveryTask = {
       id: 41, scope: "cn-stock", status: "failed", stage: "scan", percent: 100,
       processed: 12, total: 12, message: "Earlier task failed", can_retry: true,
@@ -409,17 +409,15 @@ describe("Discovery 交互测试", () => {
     render(<Discovery simpleMode onScopeChange={onScopeChange} />);
     await screen.findByText("noDiscoveryResults");
 
-    expect(screen.getByRole("button", { name: "startDiscovery" })).not.toBeVisible();
-    expect(screen.getByText("Earlier task failed")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "startDiscovery" })).toBeVisible();
+    expect(screen.getByText("Earlier task failed")).toBeVisible();
+    expect(screen.queryByText("discoveryMoreOptions")).not.toBeInTheDocument();
+    expect(screen.getByText("discoveryAdvancedSettings")).toBeVisible();
     const scopeControl = screen.getAllByText("discoveryScope").find(item => item.closest("label"))!.closest("label")!;
     expect(scopeControl).toBeVisible();
     fireEvent.mouseDown(scopeControl.querySelector(".ant-select-selector")!);
     fireEvent.click(await screen.findByText("discoveryScopeCnEtf"));
     await waitFor(() => expect(onScopeChange).toHaveBeenLastCalledWith("cn-etf"));
-
-    await userEvent.click(screen.getByText("discoveryMoreOptions"));
-    expect(screen.getByRole("button", { name: "startDiscovery" })).toBeVisible();
-    expect(screen.getByText("Earlier task failed")).toBeVisible();
   });
 
   it("条件筛掉全部候选时可暂时查看全部并恢复筛选，原条件和草稿不变", async () => {

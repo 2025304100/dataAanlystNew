@@ -1,0 +1,169 @@
+{
+  "items": [
+    {
+      "batch_id": "audit-3745",
+      "portfolio_id": 1,
+      "title": "每日核对结果",
+      "occurred_at": "2026-10-23T14:09:37+08:00",
+      "occurred_from": "2026-10-23T14:09:37+08:00",
+      "display_timezone": "Asia/Shanghai",
+      "trade_date_index_status": "known",
+      "operators": [
+        "codex-local-evidence-review"
+      ],
+      "actions": [
+        "RECONCILIATION_RESULT"
+      ],
+      "review_decision": "unknown",
+      "execution_result": "unknown",
+      "event_count": 1,
+      "total_object_count": 1,
+      "matched_object_count": 1,
+      "matched_security_count": 0,
+      "objects": [
+        {
+          "object_id": "unknown-3745-0",
+          "security_id": null,
+          "symbol_id": null,
+          "market": null,
+          "code": null,
+          "name": null,
+          "name_source": "unknown",
+          "trade_date": "2026-09-29",
+          "trade_date_to": null,
+          "security_index_status": "unknown",
+          "trade_date_index_status": "known",
+          "result": "dependency_blocked",
+          "result_basis": "unknown",
+          "source_event_ids": [
+            3745
+          ],
+          "references": []
+        }
+      ],
+      "matched_objects": [
+        {
+          "object_id": "unknown-3745-0",
+          "security_id": null,
+          "symbol_id": null,
+          "market": null,
+          "code": null,
+          "name": null,
+          "name_source": "unknown",
+          "trade_date": "2026-09-29",
+          "trade_date_to": null,
+          "security_index_status": "unknown",
+          "trade_date_index_status": "known",
+          "result": "dependency_blocked",
+          "result_basis": "unknown",
+          "source_event_ids": [
+            3745
+          ],
+          "references": []
+        }
+      ],
+      "references": [
+        {
+          "kind": "evidence",
+          "ref": "activity:1:2026-09-29:sim_orders",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "evidence",
+          "ref": "activity:1:2026-09-29:sim_trades",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "evidence",
+          "ref": "activity:1:2026-09-29:cash_ledger",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "evidence",
+          "ref": "activity:1:2026-09-29:positions",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "evidence",
+          "ref": "execution-dispatch:1:2026-09-29",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "task",
+          "ref": "e55ff07040ab479cb4065d42e43f36b8",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "report",
+          "ref": "reconciliation::1::2026-09-29",
+          "version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        },
+        {
+          "kind": "correlation",
+          "ref": "c_api_9f70428f8e7d",
+          "version": null,
+          "retention_status": "unknown",
+          "source_event_id": 3745,
+          "read_only": true
+        }
+      ],
+      "index_warnings": [
+        "旧报告仅保留差异对象索引，整批对象范围未知",
+        "部分对象的证券市场身份缺失，不能参与标的筛选",
+        "报告 reconciliation::1::2026-09-29 的材料保留状态：unknown；保留原始引用与当时结论"
+      ],
+      "read_only": true
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20,
+  "page_count": 1,
+  "has_more": false,
+  "snapshot_event_id": 3745,
+  "filters": {
+    "occurred_from": "2026-09-23T14:09:37.103543+08:00",
+    "occurred_to": "2026-10-23T14:09:37.103543+08:00",
+    "trade_date_from": "2026-09-29",
+    "trade_date_to": "2026-09-29",
+    "security_ids": [],
+    "actions": [],
+    "review_decision": null,
+    "execution_result": null,
+    "operator": null,
+    "actor_type": null,
+    "failure_code": null,
+    "ai_assisted": null,
+    "since_last_reconciliation": false,
+    "q": null,
+    "issue_id": null,
+    "correlation_id": null,
+    "report_ref": "reconciliation::1::2026-09-29",
+    "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b"
+  },
+  "relation_status": "matched",
+  "empty_reason": null,
+  "source": "data_governance_audit_events",
+  "read_only": true
+}

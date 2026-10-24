@@ -86,6 +86,61 @@ def test_failed_bulk_partition_is_retryable(db_session, monkeypatch):
     assert retried.status == "queued"
 
 
+def test_lhb_long_backfill_is_split_into_bounded_windows(db_session, monkeypatch):
+    task, payload = _task(db_session, "lhb", {
+        "mode": "backfill",
+        "start_date": "2026-01-01",
+        "end_date": "2026-03-31",
+        "sync_policy": "force",
+    }, monkeypatch)
+    _no_final_network(monkeypatch)
+    calls: list[tuple[date, date]] = []
+
+    def fake_sync(_db, *, start_date, end_date, **_kwargs):
+        calls.append((start_date, end_date))
+        return lhb_data.LhbInstitutionSyncResult(
+            start_date, end_date, received=1, written=1, unmatched=0, written_dates=(start_date,)
+        )
+
+    monkeypatch.setattr(lhb_data, "sync_lhb_institution_trades", fake_sync)
+    service._run_external_sync_task(task.id, "lhb", payload)
+
+    assert [start for start, _ in calls] == [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 4)]
+    assert [end for _, end in calls] == [date(2026, 1, 31), date(2026, 3, 3), date(2026, 3, 31)]
+    assert all((end - start).days + 1 <= 31 for start, end in calls)
+    final = service.get_external_sync_task(task.id)
+    assert final is not None and final.status == "done"
+
+
+def test_lhb_long_backfill_continues_after_a_failed_window(db_session, monkeypatch):
+    task, payload = _task(db_session, "lhb", {
+        "mode": "backfill",
+        "start_date": "2026-01-01",
+        "end_date": "2026-03-31",
+        "sync_policy": "force",
+    }, monkeypatch)
+    _no_final_network(monkeypatch)
+    calls: list[tuple[date, date]] = []
+
+    def fake_sync(_db, *, start_date, end_date, **_kwargs):
+        calls.append((start_date, end_date))
+        if len(calls) == 2:
+            raise ConnectionError("provider unavailable")
+        return lhb_data.LhbInstitutionSyncResult(
+            start_date, end_date, received=1, written=1, unmatched=0, written_dates=(start_date,)
+        )
+
+    monkeypatch.setattr(lhb_data, "sync_lhb_institution_trades", fake_sync)
+    service._run_external_sync_task(task.id, "lhb", payload)
+
+    assert len(calls) == 3
+    final = service.get_external_sync_task(task.id)
+    assert final is not None and final.status == "failed"
+    assert final.result["failed"] == 1
+    assert final.result["records"] == 2
+    assert any("provider unavailable" in error for error in final.result["errors"])
+
+
 def test_public_all_capital_flow_refuses_per_symbol_fallback(db_session, monkeypatch):
     _symbols(db_session)
     task, payload = _task(db_session, "capital_flow", {"source": "all", "include_northbound": False, "max_workers": 1}, monkeypatch)
@@ -223,10 +278,22 @@ def test_sync_plan_rejects_inverted_dates(dataset):
         service.build_external_sync_plan(dataset, {"start_date": "2026-10-14", "end_date": "2026-10-13"})
 
 
-@pytest.mark.parametrize("dataset", ["hot_rank", "etf"])
-def test_snapshot_datasets_reject_backfill(dataset):
+def test_snapshot_datasets_reject_backfill():
     with pytest.raises(ValueError, match="does not support backfill"):
-        service.build_external_sync_plan(dataset, {"mode": "backfill"})
+        service.build_external_sync_plan("hot_rank", {"mode": "backfill"})
+
+
+def test_etf_backfill_plan_exposes_partial_history_fields():
+    plan = service.build_external_sync_plan(
+        "etf", {"mode": "backfill", "lookback_days": 60}, today=date(2026, 10, 24)
+    )
+    assert plan["partial_history_fields"] == [
+        "nav", "close", "premium_discount", "premium_discount_score",
+    ]
+    assert plan["unavailable_history_fields"] == [
+        "total_shares", "fund_size", "tracking_error",
+    ]
+    assert plan["provider_history_limit_days"] is None
 
 
 def test_selected_watchlist_filters_active_status_and_asset(db_session):

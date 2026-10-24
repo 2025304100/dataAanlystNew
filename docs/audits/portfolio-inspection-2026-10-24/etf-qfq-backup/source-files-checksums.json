@@ -1,0 +1,16 @@
+{
+  "app/services/market_data_sources/sources/tencent_etf_history.py": "664df8f3c98698d455ec124a19b7456c8dba6b0d62a8a17a2c1c98746ffe5940",
+  "app/services/etf_sync_validation.py": "cafd7eb9d091af0a87cde1110142fa48e08c9464407c57c237c701e1ccc3fa96",
+  "app/services/market_data.py": "6aeeac84f49fafd8d11c70659feac107d060f9f11fdedd5a3890366f3addda57",
+  "app/services/universe_sync.py": "bda4f22329c2f5cd4e0a61557c2bcc05ec74a5de67a38a5a1cc7459dbb38ff33",
+  "app/services/market_history_contract.py": "592b1e2e2c502db0f12bfd2c3a6977b68caacc2886714dd1eddb2a0cfb16a12d",
+  "app/services/market_data_errors.py": "fed68bdaddacfed98da02b3112884ddf9f7a919f8b4fd782f0da58b3d814153d",
+  "app/services/market_data_sources/registry.py": "9cd3dbfcdbef343fef8802845aa709c7c28c5238d62978624f139e169bef1e32",
+  "app/services/market_data_sources/sources/akshare_source.py": "7fda3b57ea853b6f6d2cb065ef18f24a63701cc2ea0e5e754137513c0e07d453",
+  "app/services/akshare_registry.py": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d",
+  "app/api/routes/akshare_apis.py": "be0e5df5ac0718df80b2bcd207bb319d9e2287afa5cd24268955c862ce12d72e",
+  "app/services/portfolio_inspection_repair.py": "d504d7822d72d040a5139dcfc673ffc7a4b25f04134d8f5006388f563dec3106",
+  "tests/test_tencent_etf_fallback.py": "287caf648137eb19269ac768ec8261041d83986b604c33ec48ea6dc84b61be49",
+  "tests/test_etf_market_history_sync.py": "ec6cf59e83302a5ce226e75d14b451354401cde01521be9b4a6bb1978c512428",
+  "tests/test_whitebox_akshare_probe_task.py": "1555a0f6ffa8b91b5fec2416bf0ee284d6f8e8419a41607df67b78147d7f2f1e"
+}

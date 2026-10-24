@@ -1,0 +1,101 @@
+{
+  "records": [
+    {
+      "name": "job-main-entry",
+      "metrics": {
+        "header": {
+          "top": 0,
+          "bottom": 87.296875,
+          "left": 680,
+          "right": 1440,
+          "scrollTop": 0,
+          "position": "relative",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        },
+        "title": {
+          "top": 21,
+          "bottom": 65.296875,
+          "left": 704,
+          "right": 1380,
+          "scrollTop": 0,
+          "position": "static",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        },
+        "close": {
+          "top": 24,
+          "bottom": 52,
+          "left": 1386,
+          "right": 1414,
+          "scrollTop": 0,
+          "position": "absolute",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        },
+        "extra": null
+      }
+    },
+    {
+      "name": "job-from-execution",
+      "metrics": {
+        "header": {
+          "top": 0,
+          "bottom": 87.296875,
+          "left": 680,
+          "right": 1440,
+          "scrollTop": 0,
+          "position": "relative",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        },
+        "title": {
+          "top": 21,
+          "bottom": 65.296875,
+          "left": 704,
+          "right": 1246,
+          "scrollTop": 0,
+          "position": "static",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        },
+        "close": {
+          "top": 24,
+          "bottom": 52,
+          "left": 1386,
+          "right": 1414,
+          "scrollTop": 0,
+          "position": "absolute",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        },
+        "extra": {
+          "top": 27.140625,
+          "bottom": 59.140625,
+          "left": 1260,
+          "right": 1380,
+          "scrollTop": 0,
+          "position": "static",
+          "overflow": "visible",
+          "visibility": "visible",
+          "opacity": "1",
+          "transform": "none"
+        }
+      }
+    }
+  ],
+  "writes": [],
+  "passed": true
+}

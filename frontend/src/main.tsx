@@ -23,6 +23,9 @@ import WorkbenchApp from "./App";
 import { AppProvider, useApp } from "./context/AppContext";
 import "./styles/workbench.css";
 import "./styles/mining.css";
+import {startAcceptanceMonitor} from './utils/acceptanceMode';
+
+startAcceptanceMonitor();
 
 function Root() {
   const { locale, setAntdMessageApi } = useApp();

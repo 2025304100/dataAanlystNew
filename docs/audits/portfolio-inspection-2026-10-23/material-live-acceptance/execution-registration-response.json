@@ -1,0 +1,29 @@
+{
+  "portfolio_id": 1,
+  "item": {
+    "attempted_sources": [
+      "本日自动运行结果与决策明细",
+      "本日原订单、成交与资金流水"
+    ],
+    "baseline_accepted": false,
+    "conclusion": "NOT_FOUND",
+    "conclusion_label": "已查找，材料仍缺失",
+    "evidence_refs": [
+      "检查与对账 → 2026-09-29 → 当天的自动运行记录与决策明细 → 本日检查与来源明细；本次安全验收留存来源报告与只读页面证据。"
+    ],
+    "material": "execution",
+    "material_label": "自动运行记录与决策明细",
+    "note": "本次验收已查看本日运行检查、原订单候选、成交与流水，尚未找到九月二十九日可核验的自动运行与决策明细。调度关联不作为执行证明，保留材料缺口。",
+    "proves_execution": false,
+    "reconciliation_passed": false,
+    "report_ref": "reconciliation::1::2026-09-29",
+    "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+    "requires_source_validation": true,
+    "trade_date": "2026-09-29",
+    "trading_resumed": false,
+    "id": 3762,
+    "created_at": "2026-10-23T13:04:09",
+    "created_by": "local_user"
+  },
+  "replayed": false
+}

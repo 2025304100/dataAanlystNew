@@ -6,6 +6,7 @@ import logging
 import operator
 from collections import Counter
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from math import floor, isfinite, sqrt
 from typing import Any
 
@@ -3098,21 +3099,37 @@ def run_backtest(
             return historical_order_rejection(historical, side, price, float(bar.volume or 0),
                 high=float(bar.high), low=float(bar.low)) is None
 
-        def _compute_entry_quantity(symbol_id: int, entry_price: float, trade_date: date) -> tuple[float, float, float] | None:
-            if entry_price <= 0:
+        def _compute_entry_quantity(symbol_id: int, entry_price: float, trade_date: date,
+                                    available_cash: float) -> tuple[float, float, float] | None:
+            if not isfinite(entry_price) or entry_price <= 0 or not isfinite(available_cash) or available_cash <= 0:
                 return None
             if position_type == "fixed_pct":
                 position_amount = effective_initial_capital * position_value
             else:
                 position_amount = position_value
-            symbol = db.get(Symbol, symbol_id)
-            lot_size = 100 if symbol and symbol.market in {"SH", "SZ", "BJ"} else 1
-            quantity = floor(position_amount / entry_price / lot_size) * lot_size
-            if quantity <= 0:
+            if not isfinite(position_amount) or position_amount <= 0:
                 return None
-            entry_cost = _execution_cost(symbol_id, entry_price, quantity, "buy", trade_date)
-            total_cost = entry_price * quantity + entry_cost
-            return quantity, entry_cost, total_cost
+            from app.services.market_rules import lot_size_for_symbol
+            lot_size = lot_size_for_symbol(cost_symbols[symbol_id])
+            # Preserve the original securities-value target. Fees constrain cash,
+            # rather than shrinking a small position whose fees are already funded.
+            price_amount = Decimal(str(entry_price))
+            cash_amount = Decimal(str(available_cash))
+            target_amount = Decimal(str(position_amount))
+            high = int(min(target_amount, cash_amount) // (price_amount * lot_size))
+            low = 1
+            affordable = None
+            while low <= high:
+                lots = (low + high) // 2
+                quantity = lots * lot_size
+                entry_cost = _execution_cost(symbol_id, entry_price, quantity, "buy", trade_date)
+                total_cost = price_amount * quantity + Decimal(str(entry_cost))
+                if total_cost <= cash_amount:
+                    affordable = (quantity, entry_cost, float(total_cost))
+                    low = lots + 1
+                else:
+                    high = lots - 1
+            return affordable
 
         for current_date in date_bars:
             for symbol_id, pending in list(pending_exits.items()):
@@ -3163,7 +3180,7 @@ def run_backtest(
                 if not _can_fill(symbol_id, bar, entry_price, "BUY"):
                     del pending_entries[symbol_id]
                     continue
-                entry_plan = _compute_entry_quantity(symbol_id, entry_price, current_date)
+                entry_plan = _compute_entry_quantity(symbol_id, entry_price, current_date, cash)
                 if entry_plan is None:
                     del pending_entries[symbol_id]
                     continue
@@ -3183,7 +3200,7 @@ def run_backtest(
                 db.add(trade)
                 db.flush()
 
-                cash -= total_cost
+                cash = float(Decimal(str(cash)) - Decimal(str(total_cost)))
                 open_trades[symbol_id] = trade
                 peak_prices[symbol_id] = float(bar.high)
                 del pending_entries[symbol_id]
@@ -3288,7 +3305,7 @@ def run_backtest(
                 entry_price = _bar_price(bar, entry_price_field)
                 if not _can_fill(symbol_id, bar, entry_price, "BUY"):
                     continue
-                entry_plan = _compute_entry_quantity(symbol_id, entry_price, current_date)
+                entry_plan = _compute_entry_quantity(symbol_id, entry_price, current_date, cash)
                 if entry_plan is None:
                     continue
                 quantity, entry_cost, total_cost = entry_plan
@@ -3306,7 +3323,7 @@ def run_backtest(
                 db.add(trade)
                 db.flush()
 
-                cash -= total_cost
+                cash = float(Decimal(str(cash)) - Decimal(str(total_cost)))
                 open_trades[symbol_id] = trade
                 peak_prices[symbol_id] = float(bar.high)
 

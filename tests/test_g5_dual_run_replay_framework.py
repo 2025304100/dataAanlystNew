@@ -103,8 +103,9 @@ def test_g5_03_always_pass_20_days_eligible_for_g6():
     # always_pass 下 universe Jaccard 都为 1.0，动作匹配率 1.0
     assert abs(s.avg_universe_jaccard - 1.0) < 1e-9
     assert abs(s.avg_action_match_rate - 1.0) < 1e-9
-    assert s.g5_eligible_for_g6 is True
-    assert any("G5 通过" in n for n in s.summary_notes)
+    assert s.comparison_passed is True
+    assert s.g5_eligible_for_g6 is False  # Offline arithmetic cannot certify provenance.
+    assert any("来源及方案尚未核验" in n for n in s.summary_notes)
 
 
 # ============================================================================
@@ -341,3 +342,31 @@ def test_g5_11_failed_day_cannot_unlock_g6():
     assert summary.days_replayed >= 10
     assert summary.skipped_days == [failed_date]
     assert summary.g5_eligible_for_g6 is False
+
+
+def test_empty_denominators_are_not_applicable_and_never_a_passing_sample():
+    day = date(2026, 8, 3)
+    result = compare_one_day(DailyChainResult(chain="A", trade_date=day), DailyChainResult(chain="B", trade_date=day))
+    assert result.universe_jaccard is None
+    assert result.action_match_rate is None
+    assert result.action_denominator == result.valid_symbol_days == 0
+    assert result.metric_status == "NOT_APPLICABLE"
+    assert result.sample_status == "INSUFFICIENT"
+    summary = run_g5_dual_run_replay(portfolio_id=1, explicit_dates=[day],
+        chain_runner=lambda td, chain: DailyChainResult(chain=chain, trade_date=td))
+    assert summary.avg_action_match_rate is None
+    assert summary.avg_universe_jaccard is None
+    assert summary.comparison_passed is False
+    assert summary.g5_eligible_for_g6 is False
+
+
+def test_hold_only_counts_when_both_sides_actually_checked_the_symbol():
+    day = date(2026, 8, 3)
+    a = DailyChainResult(chain="A", trade_date=day, universe_symbol_ids=[1], coverage_pct=100,
+                         decisions={1: SecurityDecision(symbol_id=1, action="HOLD")})
+    b = DailyChainResult(chain="B", trade_date=day, universe_symbol_ids=[1], coverage_pct=100)
+    assert compare_one_day(a, b).valid_symbol_days == 0
+    b.decisions[1] = SecurityDecision(symbol_id=1, action="HOLD")
+    report = compare_one_day(a, b)
+    assert report.valid_symbol_days == 1
+    assert report.chain_a_checked_count == report.chain_b_checked_count == 1

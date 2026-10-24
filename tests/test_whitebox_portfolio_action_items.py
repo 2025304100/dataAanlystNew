@@ -56,10 +56,27 @@ def _agg(**kw):
 def test_healthy_produces_no_items():
     out = _agg()
     assert out["items"] == []
-    assert out["summary"] == {
+    assert {key: out["summary"][key] for key in ("blockers", "warnings", "info", "ready", "waiting_for_signal", "execution_state")} == {
         "blockers": 0, "warnings": 0, "info": 0, "ready": True,
         "waiting_for_signal": False, "execution_state": "ready",
     }
+
+
+def test_engine_admission_blocker_does_not_become_daily_execution_blocker():
+    out = _agg(g7_structured=[{"code": "G5_NOT_PASSED", "severity": "blocker", "title": "候选链尚未验收"}])
+    assert out["summary"]["blockers"] == 1  # compatibility total
+    assert out["summary"]["daily_blocked"] is False
+    assert out["summary"]["engine_admission_blocked"] is True
+    assert out["summary"]["daily_blocker_count"] == 0
+    assert out["summary"]["engine_admission_blocker_count"] == 1
+    assert out["summary"]["ready"] is True
+    item = out["items"][0]
+    assert item["affected_capabilities"] == ["engine_switch", "scope_expansion"]
+    assert item["scope"]["kind"] == "engine_admission"
+    assert item["bypassable"] is False
+    assert item["item_id"] and item["root_cause_id"]
+    assert item["evidence"][0]["source_label"]
+    assert item["completion_criteria"] and item["detected_at"]
 
 
 def test_data_staleness_merges_readiness_and_hg1_into_one_blocker():

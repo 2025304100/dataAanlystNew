@@ -1,0 +1,93 @@
+"""Freeze final execution-drawer presentation acceptance separately."""
+from pathlib import Path
+import hashlib
+import json
+import shutil
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+repo=Path.cwd()
+source=repo/"tmp/inspection-execution-style-2026-10-24"
+target=repo/"docs/audits/portfolio-inspection-2026-10-24/execution-drawer-style"
+assert not target.exists(),"Refuse to replace frozen evidence"
+result=json.loads((source/"browser-result.json").read_text(encoding="utf-8"))
+assert result["passed"] and result["before"]==result["after"]
+assert not result["errors"] and not result["httpErrors"] and not result["writeAttempts"]
+assert result["after"]["audit_watermark"]==3800 and result["after"]["can_confirm"] is False
+assert "63 passed (63)" in (source/"frontend-tests.log").read_text(encoding="utf-8")
+assert "built in 38.90s" in (source/"frontend-build-final.log").read_text(encoding="utf-8")
+assert json.loads((source/"source-safety.json").read_text(encoding="utf-8"))["passed"]
+assert json.loads((source/"header-check.json").read_text(encoding="utf-8"))["passed"]
+
+# Recheck the protected source sections at freeze time, preserving unrelated edits.
+name="frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx"
+before=(source/"before-sources"/name).read_text(encoding="utf-8")
+after=(repo/name).read_text(encoding="utf-8")
+start,end="function checkedResponse","  const comparisonItems ="
+assert before[before.index(start):before.index(end)]==after[after.index(start):after.index(end)]
+gate='report.zero_sum_check_passed && runtime?.recovery_summary.confirmation_action === "RECONCILIATION_CONFIRM" && runtime.recovery_summary.review_required'
+assert before.count(gate)==after.count(gate)==1
+client="frontend/src/api/client.ts"
+old_api=(source/"before-sources"/client).read_text(encoding="utf-8")
+new_api=(repo/client).read_text(encoding="utf-8")
+marker="  getPortfolioStatus:"
+assert old_api[old_api.index(marker):]==new_api[new_api.index(marker):]
+server="scripts/serve_inspection_acceptance.py"
+assert (source/"before-sources"/server).read_bytes()==(repo/server).read_bytes()
+
+target.mkdir(parents=True)
+names=["frontend-tests.log","frontend-build-final.log","browser-result.json","browser-run.log","verify.mjs","source-safety.json","before-sources.json","unrelated-client-type-delta.diff","backend-start.json","backend-health.json","check-header.mjs","header-check.json","header-check.log","freeze.py"]
+for name in names:
+    shutil.copy2(source/name,target/name)
+for path in source.glob("*.png"):
+    if path.name not in {"failure.png","job-main-entry.png","job-from-execution.png"}:
+        shutil.copy2(path,target/path.name)
+shutil.copytree(source/"before-sources",target/"before-sources")
+(target/"README.md").write_text("""# 执行相关三类抽屉统一界面验收
+
+2026-10-24。范围为“组合交易 → 检查与对账”的执行与对账、历史缺口、自动对账作业，沿用已确认的快捷核对和统一抽屉风格。生产前端已更新。
+
+## 交付效果
+
+- [执行与对账](execution-1440.png)：所选交易日、结论、缺口处理及本日历史入口在前；资金核验、逐项比较及说明按需展开，缺证不展示空账实表。既有审核资格及报告身份条件原样保留。
+- [历史缺口](history-gap-1440.png)：先查看可关联原订单、刷新来源、定位相关历史；三类依据用编号行集中呈现，来源和要求按需展开，保留无法恢复时的明确出口，不重新引入逐项登记。
+- [自动作业](job-1440.png)：先显示待核对数量、优先核查日期及连续核验进度；逐日记录、来源事件、工作单及覆盖说明按需展开。扫描结束、计划启用与核对通过分别表达。
+- 详情仍为独立浮层，关闭及返回保留选定日期、原作业与展开状态；[主页面作业入口](job-main-entry-page.png)和[从执行核对进入作业](job-from-execution-page.png)均检查了完整标题和关闭位置。
+
+手机效果：[执行核对](execution-320.png) · [历史缺口](history-gap-320.png) · [作业概览](job-320.png) · [逐日展开](job-days-320.png)。另保留390px及1024px截图。
+
+## 实测与边界
+
+[5组既有前端回归](frontend-tests.log)共63项通过，51.56秒，覆盖缺证、正常等待、来源冲突、正式确认要求、日期与原作业返回。[TypeScript及Vite生产构建](frontend-build-final.log)通过，38.90秒。
+
+[真实main只读走查](browser-result.json)通过：切换09-29/09-30取得同日报告，三类依据和查找方法可展开，相关历史带同日及确切报告版本，返回保留展开；无原订单时有缺口出口；自动作业顶部及逐日入口均核查正确日期，关闭回到原作业。1440/1024/390/320px均无文档或正文横向溢出，窄屏逐日展开也通过。[标题位置核查](header-check.json)验证两个作业入口的标题、返回及关闭控件可见。
+
+本次main未返回工作单记录，脚本通用检查摘要中的“工作单”不代表该分支已用真实记录验收；此处仅保留有记录时的原展示与回调。实际来源事件和逐日记录已打开验证，未消费事件或提交重检。
+
+浏览器异常、接口错误、写入请求均0。验收前后审计水位3800、旧版连续核验标记09-28、覆盖起点及逐日状态完全一致。仍有14个当前日期待核对，13个更早日期仅供历史追溯；恢复资格为false，新买入及自动恢复仍不允许，风险退出原权限保持。没有恢复交易、补单、接受新基线或解冻准入。
+
+## 服务与源码保护
+
+验收开始时原8000后端已经停止。使用原有scripts/serve_inspection_acceptance.py及--no-background-jobs参数启动服务，未执行数据库迁移，未改变守卫；[状态核验](backend-health.json)确认后台作业、自动交易、交易写入及最终审核关闭。[启动记录](backend-start.json)仅记录本地进程与日志路径，不包含业务设置变更。未保存原始服务日志，避免混入无关连接参数。
+
+[源码保护核对](source-safety.json)及before-sources保留修改前的工作台、相关展示组件、客户端与安全入口，确认状态/请求处理及校验区间、对账审核门禁表达式、检查与对账客户端方法及安全入口一致。本轮没有编辑client.ts；期间其外部数据同步类型新增4个可选字段，已保留并单独记录在unrelated-client-type-delta.diff，未覆盖无关修改。
+
+本目录为独立冻结，先前证据保持原样。manifest.json记录本目录其他文件的SHA-256及字节数，并记录交付源文件和设计文档当时的指纹。脚本原执行位置为仓库tmp/inspection-execution-style-2026-10-24，不应在冻结目录运行或覆盖证据。
+""",encoding="utf-8")
+
+def fingerprint(path,base):
+    data=path.read_bytes()
+    return {"path":path.relative_to(base).as_posix(),"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+
+paths=[repo/"frontend/src/components/portfolio-trading/inspection"/name for name in ["PortfolioInspectionWorkbench.tsx","InspectionReconciliationSummary.tsx","InspectionHistoryGapPanel.tsx","InspectionExecutionToolbar.tsx","InspectionJobPanel.tsx","inspectionExecution.css","__tests__/PortfolioInspectionWorkbench.test.tsx"]]
+paths += [repo/"docs/组合交易检查与对账-功能闭环与交互重构设计-2026-10-21.md",repo/"docs/组合交易检查与对账-设计与v10逐项核查及补齐记录-2026-10-23.md"]
+manifest={"date":"2026-10-24","scope":"execution reconciliation, history gaps and automatic reconciliation job drawer presentation",
+          "files":[fingerprint(path,target) for path in sorted(target.rglob("*")) if path.is_file()],
+          "source_files":[fingerprint(path,repo) for path in paths]}
+(target/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+for item in manifest["files"]:
+    assert fingerprint(target/item["path"],target)==item
+for path in paths[:7]:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        assert line==line.rstrip(),path
+print(json.dumps({"frozen_files":len(manifest["files"]),"source_fingerprints":len(paths),"verified":True,"target":str(target)},ensure_ascii=False))

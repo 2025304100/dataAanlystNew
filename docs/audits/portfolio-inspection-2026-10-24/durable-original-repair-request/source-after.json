@@ -1,0 +1,10 @@
+{
+  "frontend/src/components/portfolio-trading/inspection/repairSubmissionJournal.ts": "d008298b3bbfd9ffa782d16241d8afa46a686495723d2e5d30ce1927e58c48be",
+  "frontend/src/components/portfolio-trading/inspection/InspectionDataPanel.tsx": "6c96b8fcbc9065ee82bf7d2f52008d4c2e0b06b48e23c3c28e8cd4105ea2fb82",
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": "3420cb64e7fc04e3f7821a8e3f71f044ee6ebc317a32f3e6f20e26bb9f31a415",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/repairSubmissionJournal.test.ts": "e5ebc8e1d8501a89b87f0ed4916857f717ae770b458382b41430fa2502981871",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx": "306bf38e4b86640b6300cf96a84d85186bf5a390f1b4fa32ebc38f3ac565daa6",
+  "frontend/src/test/inspectionSubmissionRuntime.ts": "919613fd3e750502d6cdbe67ea3b0a81035ec1bea0946a3ae0833bf95b1d4bb0",
+  "frontend/src/api/client.ts": "40e5719ce67fb66b4db5a853122d2070dc1ae02ae685ac9208de18b8b4ab6f6d",
+  "tests/test_inspection_repair_identity_contract.py": "3c7183537d82831c0ce2b4a8804619093756023d47c1c6308fa66676880f23d8"
+}

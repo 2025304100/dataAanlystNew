@@ -1,0 +1,236 @@
+[
+  {
+    "trade_date": "2026-09-29",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-09-29",
+    "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3745,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-09-30",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-09-30",
+    "report_version": "19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3746,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-08",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-08",
+    "report_version": "eb82126a2f3c4996da66502a34161add11243ee4fd6571532f239e168f61e8d0",
+    "dispatch_count": 0,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 0,
+    "audit_event_id": 3747,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-09",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-09",
+    "report_version": "b619dae986e9ab6ca9db114190b9eb1e22dab9fb71f8bfbd0654b503ad243263",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3748,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-12",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-12",
+    "report_version": "3c0561f143dbf788be7b5d33fc93a48b58f3773d9b60e6450c9ebb17e3971421",
+    "dispatch_count": 0,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 0,
+    "audit_event_id": 3749,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-13",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-13",
+    "report_version": "e139442b79067c07a8dfb4b5c7a4b5e80a59a7170151616c44d31676e5254b07",
+    "dispatch_count": 2,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 2,
+    "audit_event_id": 3750,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-14",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-14",
+    "report_version": "755aa925cbc35557d017968ad069c3ae55f39ab4645aa4188bf87518cc13089a",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3751,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-15",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-15",
+    "report_version": "52c64566b2618c708ed575c73fcd01f4364543b2fa4687db19f3ae8d5aa94915",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3752,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-16",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-16",
+    "report_version": "d0210859abd15d5e7e174fa2e36c8f00641d0030a5b1e263f52b94626b00916d",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3753,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-19",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-19",
+    "report_version": "15c6c55f8bea2abc4da8938904cace0fbbfec9891448cd18227fa58aeb5c7669",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3754,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-20",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-20",
+    "report_version": "1eb903c9184bec00f4c7c3dc6244e301fe7047c9db17feffb6c9201e6dd8e099",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3755,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-21",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-21",
+    "report_version": "331081ad7cc35b45fa3374e37a521fd8c95b89925a1eec1a3fdc9c1657795a25",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3756,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  },
+  {
+    "trade_date": "2026-10-22",
+    "verdict": "EVIDENCE_INCOMPLETE",
+    "reason_codes": [
+      "DECISION_RUN_NOT_FOUND"
+    ],
+    "report_id": "reconciliation::1::2026-10-22",
+    "report_version": "264bf696af8379f2fa95bc0b566be53de5a47b34e827ee14c397791ae75b5a9a",
+    "dispatch_count": 1,
+    "stale_dispatch_count": 0,
+    "cross_day_dispatch_count": 1,
+    "audit_event_id": 3757,
+    "supplement_candidates": 0,
+    "history_count": 1,
+    "history_relation": "matched",
+    "can_confirm": false,
+    "verified_through": "2026-09-28"
+  }
+]

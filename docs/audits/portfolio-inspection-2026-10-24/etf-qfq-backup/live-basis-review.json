@@ -1,0 +1,72 @@
+{
+  "database_writes": false,
+  "symbol": "510300",
+  "comparison": {
+    "status": "PASSED",
+    "reference_trade_dates": [
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-19",
+      "2026-10-20"
+    ],
+    "reference_count": 7,
+    "max_absolute_differences": {
+      "price": 0.0,
+      "volume_fund_units": 36.0,
+      "amount_CNY": 0.0
+    },
+    "volume_unit": "fund_unit",
+    "amount_unit": "CNY",
+    "price_basis": "qfq",
+    "point_in_time_certified": false
+  },
+  "response": {
+    "provider": "tencent_etf",
+    "endpoint": "https://proxy.finance.qq.com/cgi/cgi-bin/stockinfoquery/kline/app/get",
+    "symbol": "sh510300",
+    "requested_adjustment": "qfq",
+    "actual_adjustment": "qfq",
+    "adjustment_evidence": "returned_fqtype_and_raw_quantity_pair",
+    "receipt_id": "5bc336788fff4157aed8fcd01c775a16",
+    "response_sha256": "a61090fa1bdb0cd6ecbf96365fcbc6b44210496df09ef653b9c4c71e6177f293",
+    "raw_response_sha256": "139144cdc76bf615d531b229c855d1464ef3385509e5b0e9a88353424f7b4d97",
+    "fetched_at": "2026-10-24T00:26:43.593315+00:00",
+    "raw_response_archived": true,
+    "point_in_time_certified": false
+  },
+  "target_rows": [
+    {
+      "trade_date": "2026-10-21",
+      "open": 4.234,
+      "high": 4.237,
+      "low": 4.17,
+      "close": 4.185,
+      "volume": 1415339300.0,
+      "amount": 5943185942.0,
+      "turnover_rate": 4.69
+    },
+    {
+      "trade_date": "2026-10-22",
+      "open": 4.185,
+      "high": 4.189,
+      "low": 4.097,
+      "close": 4.107,
+      "volume": 3541978000.0,
+      "amount": 14627094353.0,
+      "turnover_rate": 10.82
+    },
+    {
+      "trade_date": "2026-10-23",
+      "open": 4.08,
+      "high": 4.186,
+      "low": 4.031,
+      "close": 4.178,
+      "volume": 3755608200.0,
+      "amount": 15423238067.0,
+      "turnover_rate": 10.66
+    }
+  ]
+}

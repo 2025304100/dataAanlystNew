@@ -131,6 +131,7 @@ class BacktestRunRequest(BaseModel):
     symbol_ids: list[int] = Field(min_length=1)
     start_date: date
     end_date: date
+    initial_capital: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     rule_config: Union[BacktestRuleConfigV2, BacktestRuleConfig]
     cost_config: BacktestCostConfig | None = None
     run_name: str | None = None

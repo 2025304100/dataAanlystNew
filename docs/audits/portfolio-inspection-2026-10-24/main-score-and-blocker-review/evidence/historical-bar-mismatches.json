@@ -1,0 +1,452 @@
+[
+  {
+    "symbol": "000001",
+    "name": "平安银行",
+    "verified_dates": 50,
+    "mismatch_dates": 24,
+    "affecting_dates": 4,
+    "rows": [
+      {
+        "trade_date": "2026-08-07",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 88297704.0,
+            "reference": 88297701.0,
+            "difference": -3.0
+          },
+          "amount": {
+            "stored": 986373760.0,
+            "reference": 986373743.0,
+            "difference": -17.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-10",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 88906016.0,
+            "reference": 88906014.0,
+            "difference": -2.0
+          },
+          "amount": {
+            "stored": 1005591360.0,
+            "reference": 1005591373.0,
+            "difference": 13.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-11",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 66336052.0,
+            "reference": 66336053.0,
+            "difference": 1.0
+          },
+          "amount": {
+            "stored": 749686464.0,
+            "reference": 749686462.0,
+            "difference": -2.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-12",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 63295024.0,
+            "reference": 63295026.0,
+            "difference": 2.0
+          },
+          "amount": {
+            "stored": 711612864.0,
+            "reference": 711612878.0,
+            "difference": 14.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-13",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 75598080.0,
+            "reference": 75598076.0,
+            "difference": -4.0
+          },
+          "amount": {
+            "stored": 848358784.0,
+            "reference": 848358766.0,
+            "difference": -18.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-14",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 83234376.0,
+            "reference": 83234379.0,
+            "difference": 3.0
+          },
+          "amount": {
+            "stored": 929098432.0,
+            "reference": 929098438.0,
+            "difference": 6.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-17",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "amount": {
+            "stored": 1031951488.0,
+            "reference": 1031951474.0,
+            "difference": -14.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-18",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 80892968.0,
+            "reference": 80892971.0,
+            "difference": 3.0
+          },
+          "amount": {
+            "stored": 896326720.0,
+            "reference": 896326749.0,
+            "difference": 29.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-19",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 142649552.0,
+            "reference": 142649557.0,
+            "difference": 5.0
+          },
+          "amount": {
+            "stored": 1596598784.0,
+            "reference": 1596598790.0,
+            "difference": 6.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-20",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 118357824.0,
+            "reference": 118357823.0,
+            "difference": -1.0
+          },
+          "amount": {
+            "stored": 1338932736.0,
+            "reference": 1338932697.0,
+            "difference": -39.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-21",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 86912760.0,
+            "reference": 86912763.0,
+            "difference": 3.0
+          },
+          "amount": {
+            "stored": 990112064.0,
+            "reference": 990112066.0,
+            "difference": 2.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-24",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 119902496.0,
+            "reference": 119902495.0,
+            "difference": -1.0
+          },
+          "amount": {
+            "stored": 1383379968.0,
+            "reference": 1383380014.0,
+            "difference": 46.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-25",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 99488112.0,
+            "reference": 99488115.0,
+            "difference": 3.0
+          },
+          "amount": {
+            "stored": 1152242432.0,
+            "reference": 1152242457.0,
+            "difference": 25.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-26",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 116728880.0,
+            "reference": 116728878.0,
+            "difference": -2.0
+          },
+          "amount": {
+            "stored": 1363009792.0,
+            "reference": 1363009730.0,
+            "difference": -62.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-27",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 97570168.0,
+            "reference": 97570170.0,
+            "difference": 2.0
+          },
+          "amount": {
+            "stored": 1131000064.0,
+            "reference": 1131000126.0,
+            "difference": 62.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-28",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "amount": {
+            "stored": 973220480.0,
+            "reference": 973220512.0,
+            "difference": 32.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-08-31",
+        "source": "akshare",
+        "affects_current_rule_score": false,
+        "differences": {
+          "volume": {
+            "stored": 90885656.0,
+            "reference": 90885655.0,
+            "difference": -1.0
+          },
+          "amount": {
+            "stored": 1063281408.0,
+            "reference": 1063281431.0,
+            "difference": 23.0
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-01",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": true,
+        "differences": {
+          "high": {
+            "stored": 11.71,
+            "reference": 11.7,
+            "difference": -0.010000000000001563
+          },
+          "close": {
+            "stored": 11.67,
+            "reference": 11.66,
+            "difference": -0.009999999999999787
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-02",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": true,
+        "differences": {
+          "open": {
+            "stored": 11.67,
+            "reference": 11.66,
+            "difference": -0.009999999999999787
+          },
+          "high": {
+            "stored": 11.74,
+            "reference": 11.73,
+            "difference": -0.009999999999999787
+          },
+          "close": {
+            "stored": 11.66,
+            "reference": 11.65,
+            "difference": -0.009999999999999787
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-03",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": true,
+        "differences": {
+          "open": {
+            "stored": 11.63,
+            "reference": 11.62,
+            "difference": -0.010000000000001563
+          },
+          "high": {
+            "stored": 11.83,
+            "reference": 11.82,
+            "difference": -0.009999999999999787
+          },
+          "close": {
+            "stored": 11.63,
+            "reference": 11.62,
+            "difference": -0.010000000000001563
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-04",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": true,
+        "differences": {
+          "high": {
+            "stored": 11.75,
+            "reference": 11.74,
+            "difference": -0.009999999999999787
+          },
+          "close": {
+            "stored": 11.64,
+            "reference": 11.63,
+            "difference": -0.009999999999999787
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-07",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": false,
+        "differences": {
+          "high": {
+            "stored": 11.63,
+            "reference": 11.62,
+            "difference": -0.010000000000001563
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-14",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": false,
+        "differences": {
+          "high": {
+            "stored": 11.65,
+            "reference": 11.64,
+            "difference": -0.009999999999999787
+          }
+        }
+      },
+      {
+        "trade_date": "2026-09-15",
+        "source": "verified:fixed129-v1:qfq",
+        "affects_current_rule_score": false,
+        "differences": {
+          "high": {
+            "stored": 11.63,
+            "reference": 11.62,
+            "difference": -0.010000000000001563
+          }
+        }
+      }
+    ],
+    "stored_history_modified": false
+  },
+  {
+    "symbol": "600428",
+    "name": "中远海特",
+    "verified_dates": 50,
+    "mismatch_dates": 1,
+    "affecting_dates": 1,
+    "rows": [
+      {
+        "trade_date": "2026-08-07",
+        "source": "akshare",
+        "affects_current_rule_score": true,
+        "differences": {
+          "open": {
+            "stored": 8.130000114440918,
+            "reference": 11.98,
+            "difference": 3.8499998855590825
+          },
+          "high": {
+            "stored": 8.25,
+            "reference": 12.13,
+            "difference": 3.880000000000001
+          },
+          "low": {
+            "stored": 8.0,
+            "reference": 11.77,
+            "difference": 3.7699999999999996
+          },
+          "close": {
+            "stored": 8.09000015258789,
+            "reference": 11.95,
+            "difference": 3.8599998474121087
+          },
+          "volume": {
+            "stored": 319711.0,
+            "reference": 66880281.0,
+            "difference": 66560570.0
+          },
+          "amount": {
+            "stored": 260480608.0,
+            "reference": 798051001.0,
+            "difference": 537570393.0
+          }
+        }
+      }
+    ],
+    "stored_history_modified": false
+  }
+]

@@ -14,7 +14,9 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import hashlib
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -370,14 +372,16 @@ def aggregate_action_items(
     )
 
     blocker_count = sum(1 for m in items if m["severity"] == "blocker")
+    daily_blocker_count = sum(1 for m in items if m["severity"] == "blocker" and m["source"] != "g7_ops")
+    engine_blocker_count = sum(1 for m in items if m["source"] == "g7_ops")
     ready = bool(
         governance_ready
-        and not blocker_count
+        and not daily_blocker_count
         and (readiness.ready if readiness is not None else True)
     )
     if readiness is not None and not readiness.enabled:
         execution_state = "disabled"
-    elif blocker_count or not governance_ready:
+    elif daily_blocker_count or not governance_ready:
         execution_state = "blocked"
     elif hg1_state == "RUNNING_AUTO_SIMULATION":
         execution_state = "running"
@@ -394,6 +398,10 @@ def aggregate_action_items(
         "ready": ready,
         "waiting_for_signal": waiting_for_signal,
         "execution_state": execution_state,
+        "daily_blocked": bool(daily_blocker_count or not governance_ready),
+        "daily_blocker_count": daily_blocker_count,
+        "engine_admission_blocked": bool(engine_blocker_count),
+        "engine_admission_blocker_count": engine_blocker_count,
     }
     # 五维指示灯只做展示；非模拟账户不跑就绪检查，给 null。
     checks = (
@@ -412,10 +420,131 @@ def aggregate_action_items(
         if readiness is not None
         else None
     )
+    for item in items:
+        _add_action_contract(item, detected_at=generated_at)
     return {
         "items": items, "summary": summary, "checks": checks,
         "generated_at": generated_at, "binding_review": binding_review,
     }
+
+
+def _add_action_contract(item: dict, *, detected_at: str, portfolio_id: int | None = None) -> None:
+    """Add controlled navigation and evidence without inventing a write API."""
+    engine_only = item["source"] == "g7_ops"
+    item.setdefault("item_id", item["id"])
+    item.setdefault("root_cause_id", item.get("family") or item["id"])
+    item.setdefault("reason_code", item["code"])
+    item.setdefault("verdict", "BLOCKED" if item["severity"] == "blocker" else "REVIEW_REQUIRED")
+    item.setdefault("trade_date", None)
+    item.setdefault("scope", {"kind": "engine_admission" if engine_only else "portfolio", "portfolio_id": portfolio_id})
+    item.setdefault("affected_capabilities", ["engine_switch", "scope_expansion"] if engine_only else
+        ["new_buy", "automatic_recovery"] if item["severity"] == "blocker" else [])
+    item.setdefault("portfolio_wide", not engine_only and item["severity"] == "blocker")
+    item.setdefault("bypassable", False)
+    item.setdefault("preconditions", [])
+    item.setdefault("audit_refs", [])
+    item.setdefault("report_refs", [])
+    item.setdefault("task_refs", [])
+    item.setdefault("issue_ids", [])
+    item.setdefault("depends_on", [])
+    item.setdefault("related_item_ids", [])
+    item.setdefault("resolution_status", "unresolved")
+    item.setdefault("completion_criteria", ["实际来源证据满足当前门禁后重新检查；点击或备注不视为完成"])
+    item.setdefault("detected_at", detected_at)
+    item.setdefault("version", 1)
+    label = {"g7_ops": "新方案运行条件", "hg1_status": "组合运行状态", "readiness": "自动接管就绪检查"}.get(item["source"], "未登记来源")
+    item.setdefault("evidence", [{"evidence_id": item["id"], "check_code": item["code"], "label": item["title"],
+        "value": item.get("detail"), "expected": "对应门禁条件满足", "status": item["verdict"],
+        "reason": item.get("detail") or item["impact"], "source_code": item["source"], "source_label": label,
+        "observed_at": detected_at}])
+    primary = item.get("primary_action")
+    item.setdefault("actions", [{"action_id": f"inspect:{item['id']}", "label": "查看证据并处理", "kind": "inspect",
+        "is_primary": True, "enabled": bool(primary and primary.get("target")),
+        "disabled_reason": None if primary and primary.get("target") else "此来源暂无可自动执行的处理器，请核查所列证据与来源",
+        "target": primary.get("target") if primary else None, "required_role": None,
+        "expected_effect": "打开真实处理入口并在完成后重新检查", "confirmation_required": False,
+        "idempotency_scope": None, "preconditions": []}])
+    item.setdefault("snapshot_id", hashlib.sha256(json.dumps({key: item.get(key) for key in (
+        "id", "code", "verdict", "scope", "issue_ids", "report_refs")}, sort_keys=True, default=str).encode()).hexdigest())
+
+
+def _enrich_inspection_items(db: Session, portfolio_id: int, payload: dict) -> dict:
+    from app.services.portfolio_inspection_diagnostics import BAD_STATUSES, build_portfolio_inspection
+    from app.services.portfolio_inspection_runtime import get_portfolio_runtime_inspection
+    from app.services.portfolio_inspection_repair import list_inspection_repair_tasks
+    from app.services.portfolio_resume_service import get_reconciliation_queue
+    inspection = build_portfolio_inspection(db, portfolio_id)
+    runtime = get_portfolio_runtime_inspection(db, portfolio_id)
+    queue = get_reconciliation_queue(db, portfolio_id)
+    tasks = list_inspection_repair_tasks(db, portfolio_id, limit=20)["items"]
+    all_evidence = [ev for ev in inspection["evidence"] + [ev for row in inspection["symbols"] for ev in row["evidence"]]
+                    if ev["check_code"] not in {"STRATEGY_BINDING", "RULE_BINDING", "MEMBER_RULE_VERSION"}]
+    bad = [ev for ev in all_evidence if ev["status"] in BAD_STATUSES]
+    data_checks = next(check for check in runtime["recovery_summary"]["checks"] if check["key"] == "data")
+    data_item = next((item for item in payload["items"] if item.get("family") == FAMILY_DATA_FRESHNESS), None)
+    if bad and data_item is None:
+        data_item = {"id": FAMILY_DATA_FRESHNESS, "family": FAMILY_DATA_FRESHNESS, "source": "readiness",
+            "sources": ["data_diagnostics"], "code": "DATA_DIAGNOSTIC_GAPS", "title": "当前依赖的数据仍有缺口",
+            "impact": data_checks["reason"], "detail": data_checks["reason"],
+            "severity": "blocker" if data_checks["passed"] is not True else "warning",
+            "primary_action": {"action_type": "guided", "target": "governance:data"}}
+        payload["items"].append(data_item)
+    if data_item:
+        ids = {ev["evidence_id"] for ev in bad}
+        related_tasks = [task for task in tasks if ids.intersection(task["issue_ids"])]
+        data_item.update(evidence=all_evidence, issue_ids=sorted(ids), snapshot_id=inspection["snapshot_id"],
+            verdict="UNKNOWN" if data_checks["passed"] is None else "BLOCKED" if data_checks["passed"] is False else "SYMBOL_RESTRICTED",
+            scope={"kind": "portfolio" if data_checks["passed"] is not True else "symbols", "portfolio_id": portfolio_id,
+                   "symbol_ids": sorted({ev["symbol_id"] for ev in bad if ev.get("symbol_id") is not None})},
+            portfolio_wide=data_checks["passed"] is not True,
+            affected_capabilities=sorted({cap for ev in bad for cap in ev.get("affected_capabilities", [])}),
+            task_refs=[f"async_task:{task['task_id']}" for task in related_tasks],
+            audit_refs=sorted({ref for task in related_tasks for ref in task["audit_refs"]}),
+            report_refs=sorted({ref for task in related_tasks for ref in task["report_refs"]}),
+            resolution_status="in_progress" if any(task["status"] not in {"done", "failed", "cancelled", "partial"} for task in related_tasks) else "unresolved",
+            depends_on=[], repair_dependencies=[{"operation_id": op["operation_id"], "depends_on": op["depends_on"]}
+                for op in inspection["repair_plan"]["operations"]],
+            completion_criteria=inspection["repair_plan"]["completion_criteria"],
+            actions=[{"action_id": "inspect_data_repair_plan", "label": "查看缺口并确认修复范围", "kind": "inspect", "is_primary": True,
+                "enabled": True, "disabled_reason": None, "target": "governance:data", "required_role": None,
+                "expected_effect": "查看当前组合的逐对象修复预览，确认后提交真实作业并重检", "confirmation_required": False,
+                "idempotency_scope": None, "preconditions": []}],
+            coverage=data_checks.get("coverage"), restricted_symbol_ids=data_checks.get("restricted_symbol_ids", []))
+    pending = [day for day in queue["days"] if day["status"] != "PASSED" and not day.get("history_only")
+               and day.get("work_state") != "waiting_execution"]
+    if pending:
+        payload["items"] = [item for item in payload["items"] if item.get("family") != "reconciliation"]
+        for day in pending:
+            item_id = f"recon:{portfolio_id}:{queue.get('baseline_id', 'legacy')}:{queue.get('generation', 0)}:{day['trade_date']}"
+            payload["items"].append({"id": item_id, "family": item_id, "source": "reconciliation", "sources": ["reconciliation"],
+                "code": day["status"], "title": f"{day['trade_date']} 对账尚未完成", "impact": day["reason"], "detail": day["reason"],
+                "severity": "blocker", "verdict": day["status"], "trade_date": day["trade_date"],
+                "scope": {"kind": "account_date", "portfolio_id": portfolio_id, "baseline_id": queue.get("baseline_id"),
+                          "generation": queue.get("generation"), "trade_date": day["trade_date"]},
+                "affected_capabilities": ["reconciliation_progression", "new_buy", "automatic_recovery"],
+                "audit_refs": [f"data_governance_audit_event:{day['audit_event_id']}"] if day.get("audit_event_id") else [],
+                "report_refs": [day["report_id"]] if day.get("report_id") else [],
+                "snapshot_id": day.get("report_version"), "primary_action": {"action_type": "guided", "target": "governance:reconciliation"}})
+    for item in payload["items"]:
+        if item.get("code") == "RECONCILIATION_BLOCKED":
+            item["title"], item["impact"] = "对账尚未完成，需核查证据", "缺证据与真实差异分别核实；当前状态本身不能证明账差"
+        _add_action_contract(item, detected_at=payload["generated_at"], portfolio_id=portfolio_id)
+        item["scope"]["portfolio_id"] = portfolio_id
+    payload["items"].sort(key=lambda item: (SEVERITY_ORDER[item["severity"]], 0 if item.get("depends_on") else 1,
+                                           item.get("trade_date") or "", item["id"]))
+    summary = payload["summary"]
+    summary.update(blockers=sum(item["severity"] == "blocker" for item in payload["items"]),
+        warnings=sum(item["severity"] == "warning" for item in payload["items"]), info=sum(item["severity"] == "info" for item in payload["items"]),
+        daily_blocked=runtime["permissions"]["allow_new_buys"] is not True,
+        daily_blocker_count=sum(item["severity"] == "blocker" and item.get("portfolio_wide", True) and item["source"] != "g7_ops" for item in payload["items"]),
+        engine_admission_blocked=any(item["source"] == "g7_ops" for item in payload["items"]),
+        engine_admission_blocker_count=sum(item["source"] == "g7_ops" for item in payload["items"]),
+        symbol_restriction_count=len(data_checks.get("restricted_symbol_ids", [])))
+    payload.update(inspection_snapshot_id=inspection["snapshot_id"], runtime=runtime,
+        reconciliation_queue=queue, repair_tasks=tasks,
+        snapshot_id=hashlib.sha256(json.dumps({"diagnostics": inspection["snapshot_id"], "dimensions": runtime["dimensions"],
+            "state": runtime["current_state"], "reports": [(day["trade_date"], day.get("report_version")) for day in queue["days"]]}, sort_keys=True).encode()).hexdigest())
+    return payload
 
 
 def build_portfolio_action_items(
@@ -503,4 +632,4 @@ def _build_portfolio_action_items(
         for_schedule=for_schedule,
         generated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     )
-    return payload
+    return _enrich_inspection_items(db, portfolio_id, payload)

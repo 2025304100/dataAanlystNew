@@ -3,12 +3,13 @@
 每个 adapter 包装一个 akshare 接口,实现 HistorySource Protocol。
 失败时抛 SourceUnavailable 触发降级链 next。
 
-6 个 adapter:
+7 个 adapter:
 - EMStockSource: 东财 A 股(stock_zh_a_hist)
 - EMETFSource:   东财 ETF(fund_etf_hist_em)
 - SinaStockSource: 新浪 A 股(stock_zh_a_daily)
 - SinaETFSource:   新浪 ETF(fund_etf_hist_sina)
 - TxStockSource: 腾讯 A 股(stock_zh_a_hist_tx)
+- TxETFSource: 腾讯 ETF 具名前复权接口（核验原始成交数据）
 - USStockSource: 东财美股(stock_us_daily)
 
 设计要点:
@@ -37,6 +38,7 @@ from app.services.market_data_sources.sources._normalize import (
 from app.services.market_data_sources.sources.base import HistorySource, SourceUnavailable
 from app.services.market_data_sources.sources.tencent_history import fetch_tencent_history_raw
 from app.services.market_data_sources.sources.sina_history_http import fetch_sina_history_raw
+from app.services.market_data_sources.sources.tencent_etf_history import fetch_tencent_etf_history
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +102,10 @@ class EMETFSource:
                 api_key="fund_etf_hist_em",
                 max_attempts=2,
             )
-            return normalize_cn_etf_em_history(frame)
+            normalized = normalize_cn_etf_em_history(frame)
+            if normalized.empty:
+                raise SourceUnavailable('em_etf returned no usable daily bars')
+            return normalized
         except Exception as e:
             raise SourceUnavailable(f"em_etf failed for {symbol.symbol}: {e}") from e
 
@@ -164,6 +169,27 @@ class SinaETFSource:
             return normalize_cn_etf_sina_history(frame, start_date=start_date, end_date=end_date)
         except Exception as e:
             raise SourceUnavailable(f"sina_etf failed for {symbol.symbol}: {e}") from e
+
+
+class TxETFSource:
+    """Tencent named ETF endpoint; verifies returned qfq and raw quantity pair."""
+    name = 'tx_etf'
+    region = 'cn'
+    asset_types = ['etf']
+
+    def available(self) -> bool:
+        return True
+
+    def supports(self, symbol) -> bool:
+        return symbol.asset_type == 'etf' and (symbol.market or '').lower() in {'sh', 'sz', 'cn'}
+
+    def fetch(self, symbol, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
+        try:
+            return call_akshare_with_retry(fetch_tencent_etf_history, symbol=symbol,
+                start_date=start_date, end_date=end_date, adjust=adjust,
+                api_key='fund_etf_hist_tx', max_attempts=1)
+        except Exception as error:
+            raise SourceUnavailable(f'tx_etf qfq unavailable for {symbol.symbol}') from error
 
 
 class TxStockSource:

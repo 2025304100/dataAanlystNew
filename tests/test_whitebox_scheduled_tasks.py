@@ -37,11 +37,11 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    assert scheduled_tasks.seed_default_schedules(db_session) == 15
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 14
+    assert len(rows) == 15
     enabled = [item for item in rows if item.enabled]
     # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步 + 因子输入日更 + 告警评估
     # （自动交易默认关闭，需用户主动开启）
@@ -51,6 +51,7 @@ def test_seed_default_schedules_is_idempotent(db_session):
         "index_daily_sync",
         "external_data_sync",
         "alert_evaluation",
+        "portfolio_reconciliation",
     }
     assert all(item.next_run_at is not None for item in enabled)
     # P2-3：portfolio_auto_trade 应在默认调度中且默认关闭
@@ -61,13 +62,42 @@ def test_seed_default_schedules_is_idempotent(db_session):
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    assert scheduled_tasks.seed_default_schedules(db_session) == 15
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
 
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     assert db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").count() == 0
+
+
+def test_reconciliation_seed_upgrades_an_existing_database_and_respects_user_changes(db_session):
+    from app.models.scheduled_task import ScheduledTaskSeedState
+    db_session.add(ScheduledTaskSeedState(key=scheduled_tasks.DEFAULT_SCHEDULE_SEED_KEY))
+    db_session.commit()
+    assert scheduled_tasks.seed_default_schedules(db_session) == 1
+    db_session.commit()
+    item = db_session.query(ScheduledTask).filter_by(task_type="portfolio_reconciliation").one()
+    assert item.frequency == "interval" and item.interval_minutes == 5
+    assert json.loads(item.payload_json) == {}
+    item.name = "本人已调整的核对作业"
+    item.enabled = 0
+    item.next_run_at = None
+    db_session.commit()
+    assert scheduled_tasks.seed_default_schedules(db_session) == 0
+    db_session.refresh(item)
+    assert item.name == "本人已调整的核对作业" and item.enabled == 0 and item.next_run_at is None
+    db_session.delete(item)
+    db_session.commit()
+    assert scheduled_tasks.seed_default_schedules(db_session) == 0
+    assert db_session.query(ScheduledTask).filter_by(task_type="portfolio_reconciliation").count() == 0
+
+
+def test_reconciliation_schedule_rejects_trading_payloads():
+    with pytest.raises(ValueError, match="不能附带执行交易参数"):
+        scheduled_tasks.validate_task_payload("portfolio_reconciliation", {"dry_run": False})
+    assert scheduled_tasks.validate_task_payload("portfolio_reconciliation", {"portfolio_id": 3, "trade_date": "2026-10-21"}) == {
+        "portfolio_id": 3, "trade_date": "2026-10-21"}
 
 
 def _seed_legacy_defaults_only(db_session) -> None:
@@ -96,7 +126,7 @@ def _seed_legacy_defaults_only(db_session) -> None:
 
 
 def test_capital_flow_daily_schedule_is_seeded_once(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    assert scheduled_tasks.seed_default_schedules(db_session) == 15
     db_session.commit()
 
     item = db_session.query(ScheduledTask).filter_by(name="每日因子资金流增量同步").one()
@@ -126,14 +156,14 @@ def test_seed_key_bump_adds_capital_flow_to_a_legacy_seeded_db(db_session):
     created = scheduled_tasks.seed_default_schedules(db_session)
     db_session.commit()
 
-    assert created == 2
+    assert created == 3
     assert db_session.query(ScheduledTask).filter_by(
         name="每日因子资金流增量同步"
     ).count() == 1
     assert db_session.query(ScheduledTask).filter_by(
         name="每日告警规则评估"
     ).count() == 1
-    assert db_session.query(ScheduledTask).count() == 14
+    assert db_session.query(ScheduledTask).count() == 15
 
 
 def test_capital_flow_schedule_validates_and_dispatches(monkeypatch):
@@ -426,6 +456,29 @@ def test_due_schedule_is_claimed_once(db_session, monkeypatch):
     assert scheduled_tasks.run_due_schedules() == 1
     assert scheduled_tasks.run_due_schedules() == 0
     assert calls == [(item.id, "scheduled")]
+
+
+def test_due_schedule_allowlist_does_not_claim_trading_or_empty_scope(db_session, monkeypatch):
+    rows = []
+    for name, task_type, payload in [
+        ('Inspection', 'portfolio_reconciliation', {'portfolio_id': 1}),
+        ('Trading', 'portfolio_auto_trade', {'dry_run': False, 'buy_candidate_limit': 10}),
+    ]:
+        row = scheduled_tasks.create_schedule(db_session, ScheduledTaskCreate(
+            name=name, task_type=task_type, frequency='interval', time_of_day=None,
+            interval_minutes=5, payload=payload))
+        row.next_run_at = datetime(2020, 1, 1)
+        rows.append(row)
+    db_session.commit()
+    calls = []
+    monkeypatch.setattr(scheduled_tasks, 'execute_schedule',
+        lambda db, schedule_id, trigger_source: calls.append(schedule_id))
+    assert scheduled_tasks.run_due_schedules(task_types=frozenset()) == 0
+    assert scheduled_tasks.run_due_schedules(task_types=frozenset({'portfolio_reconciliation'})) == 1
+    assert calls == [rows[0].id]
+    db_session.expire_all()
+    assert rows[1].next_run_at == datetime(2020, 1, 1)
+    assert rows[1].enabled == 1
 
 
 def test_invalid_task_payload_is_rejected_when_schedule_is_saved(db_session):

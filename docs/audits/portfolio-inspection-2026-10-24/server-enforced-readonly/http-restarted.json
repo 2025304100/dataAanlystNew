@@ -1,0 +1,136 @@
+{
+  "mode": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "read_only": true,
+    "mutation_requests_allowed": false,
+    "task_registration_allowed": false,
+    "task_dispatch_allowed": false,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "rejected_mutations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck/",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/2/inspection/reconciliation-job/recheck",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/evidence-supplements",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/material-investigations",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/reconcile",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/guide/review",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/coverage/accept",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/coverage/activate",
+      "status": 423
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/async-tasks",
+      "status": 423
+    },
+    {
+      "method": "PUT",
+      "status": 423
+    },
+    {
+      "method": "PATCH",
+      "status": 423
+    },
+    {
+      "method": "DELETE",
+      "status": 423
+    }
+  ],
+  "reads": [
+    {
+      "path": "/api/v1/portfolios",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/history?page_size=1",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/45fd110f-7cc0-4111-b0e2-4df89a42e1c6",
+      "status": 200
+    }
+  ],
+  "safety": {
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null
+  }
+}

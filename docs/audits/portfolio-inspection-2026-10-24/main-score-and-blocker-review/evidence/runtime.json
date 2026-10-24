@@ -1,0 +1,957 @@
+{
+  "portfolio_id": 1,
+  "generated_at": "2026-10-24T00:50:51.158225+00:00",
+  "guide": {
+    "schema_version": "inspection-guide-v1",
+    "steps": [
+      {
+        "key": "reconciliation",
+        "label": "核实执行",
+        "status": "INCOMPLETE",
+        "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+        "proof_hash": "1776f8bf1757bd61f3f153290528f0cbfc12a9394579b29bbe14002433f959ac",
+        "proof": {
+          "check": {
+            "key": "reconciliation",
+            "passed": false,
+            "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+            "not_applicable": false,
+            "trade_date": "2026-09-29",
+            "report_id": "reconciliation::1::2026-09-29",
+            "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b"
+          },
+          "scope": null,
+          "report_id": "reconciliation::1::2026-09-29",
+          "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+          "reports": [
+            {
+              "trade_date": "2026-08-20",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-21",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-22",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-26",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-03",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-04",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-24",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-29",
+              "report_id": "reconciliation::1::2026-09-29",
+              "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-09-30",
+              "report_id": "reconciliation::1::2026-09-30",
+              "report_version": "19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-08",
+              "report_id": "reconciliation::1::2026-10-08",
+              "report_version": "eb82126a2f3c4996da66502a34161add11243ee4fd6571532f239e168f61e8d0",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-09",
+              "report_id": "reconciliation::1::2026-10-09",
+              "report_version": "b619dae986e9ab6ca9db114190b9eb1e22dab9fb71f8bfbd0654b503ad243263",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-12",
+              "report_id": "reconciliation::1::2026-10-12",
+              "report_version": "3c0561f143dbf788be7b5d33fc93a48b58f3773d9b60e6450c9ebb17e3971421",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-13",
+              "report_id": "reconciliation::1::2026-10-13",
+              "report_version": "e139442b79067c07a8dfb4b5c7a4b5e80a59a7170151616c44d31676e5254b07",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-14",
+              "report_id": "reconciliation::1::2026-10-14",
+              "report_version": "755aa925cbc35557d017968ad069c3ae55f39ab4645aa4188bf87518cc13089a",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-15",
+              "report_id": "reconciliation::1::2026-10-15",
+              "report_version": "52c64566b2618c708ed575c73fcd01f4364543b2fa4687db19f3ae8d5aa94915",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-16",
+              "report_id": "reconciliation::1::2026-10-16",
+              "report_version": "d0210859abd15d5e7e174fa2e36c8f00641d0030a5b1e263f52b94626b00916d",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-19",
+              "report_id": "reconciliation::1::2026-10-19",
+              "report_version": "15c6c55f8bea2abc4da8938904cace0fbbfec9891448cd18227fa58aeb5c7669",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-20",
+              "report_id": "reconciliation::1::2026-10-20",
+              "report_version": "1eb903c9184bec00f4c7c3dc6244e301fe7047c9db17feffb6c9201e6dd8e099",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-21",
+              "report_id": "reconciliation::1::2026-10-21",
+              "report_version": "331081ad7cc35b45fa3374e37a521fd8c95b89925a1eec1a3fdc9c1657795a25",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-22",
+              "report_id": "reconciliation::1::2026-10-22",
+              "report_version": "264bf696af8379f2fa95bc0b566be53de5a47b34e827ee14c397791ae75b5a9a",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            }
+          ],
+          "verified_through_trade_date": null,
+          "pending_days": [],
+          "source_event_ids": [
+            "source-7500070e095c4370989248c487282ff3",
+            "source-b97a0dfadfb543869a67b33aeb0ee019",
+            "source-d5a5ed8c2a6f46dd9711565ae0038e50",
+            "source-001f224ed8b84496bc7564e3fed38090",
+            "source-1baf4c5cdd3448ff85a9667e4e7a298e",
+            "source-bc108210745a4464ac350e302a6ff840",
+            "source-65fafa527eb14dc79e9213576b2d2ddc",
+            "source-387d0fb8c8664de29285ac632fe6d815",
+            "source-c6c5e0e0ca024d0895b67d99485800c1",
+            "source-d6e2a1c4c2a84d2ab1a8b2953ef3a4aa",
+            "source-3f1925e32e5c432594f7259036f76c25",
+            "source-761366b60bb34fc4a4aec38a1e7d3e0b",
+            "source-e84fd70781aa4a05b2b2e8fa0ebfc2c9",
+            "source-566e25b5ab2d4e9683e25edf293072f4",
+            "source-e0323f40e59a40d8b421ff58017c4945",
+            "source-19ef286efe634304b0b92102b409dae6",
+            "source-4aec5a0b9f924390b10e6140d9de330b",
+            "source-3c7956f1e68e42ff945bfe49299c6622",
+            "source-56aed9dd4988480589b36d6305daedcb",
+            "source-f1d61dd7a91646a1818b8ce5da5f6624"
+          ],
+          "source_event_fingerprint": "aea288580733c52b820c828380971363def746cec9e03d3d1883378f8d95b4b4"
+        },
+        "tasks": [],
+        "next_action": "OPEN_STEP"
+      },
+      {
+        "key": "data",
+        "label": "批量修复数据",
+        "status": "NOT_APPLICABLE",
+        "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+        "proof_hash": "c33c007a2beabdf661fdf61ad86345febd070b438a6e989186efb2be8f441da8",
+        "proof": {
+          "check": {
+            "key": "data",
+            "passed": true,
+            "not_applicable": true,
+            "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+            "snapshot_id": "477549d3325392d49da2836705802544149f31423d270a8c0a975f7e5041ed0d",
+            "reason_codes": [],
+            "evidence": [],
+            "coverage": {
+              "entry_symbols": 0,
+              "healthy_symbols": 0,
+              "restricted_symbols": 0
+            },
+            "restricted_symbol_ids": [],
+            "aggregation_policy": "existing_any_healthy_symbol_v1"
+          },
+          "scope": null
+        },
+        "tasks": [],
+        "next_action": "OPEN_STEP"
+      },
+      {
+        "key": "binding",
+        "label": "确认运行绑定",
+        "status": "INCOMPLETE",
+        "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+        "proof_hash": "078b538b26649096dfd16e14f6508dc060275a934a072b92c3f91ded8a2d7db6",
+        "proof": {
+          "check": {
+            "key": "binding",
+            "passed": false,
+            "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+            "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+            "not_applicable": false
+          },
+          "scope": null
+        },
+        "tasks": [],
+        "next_action": "OPEN_STEP"
+      },
+      {
+        "key": "runtime",
+        "label": "本人审核恢复",
+        "status": "INCOMPLETE",
+        "reason": "当前状态允许在核实全部材料后提交本人审核",
+        "proof_hash": "7dfceef020705f478820d813cc7518f84754bfc9f458da8c0fa9e38347481b33",
+        "proof": {
+          "check": {
+            "key": "runtime",
+            "passed": true,
+            "reason": "当前状态允许在核实全部材料后提交本人审核"
+          },
+          "scope": null,
+          "permissions": {
+            "allow_new_buys": false,
+            "allow_risk_exits": true,
+            "allow_auto_recovery": false
+          },
+          "can_confirm": false,
+          "activation": null
+        },
+        "tasks": [],
+        "next_action": "REVIEW_CURRENT_SCOPE"
+      }
+    ],
+    "snapshot_id": "bab3f9d2b0aeaea075c6c36b19fd37f9203cec11bc0cc3f118d1ae073573438a",
+    "can_confirm": false,
+    "completion_proofs": [
+      {
+        "key": "reconciliation",
+        "status": "INCOMPLETE",
+        "proof_hash": "1776f8bf1757bd61f3f153290528f0cbfc12a9394579b29bbe14002433f959ac",
+        "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+        "proof": {
+          "check": {
+            "key": "reconciliation",
+            "passed": false,
+            "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+            "not_applicable": false,
+            "trade_date": "2026-09-29",
+            "report_id": "reconciliation::1::2026-09-29",
+            "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b"
+          },
+          "scope": null,
+          "report_id": "reconciliation::1::2026-09-29",
+          "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+          "reports": [
+            {
+              "trade_date": "2026-08-20",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-21",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-22",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-26",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-08-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-03",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-04",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-24",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-25",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-27",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-28",
+              "report_id": null,
+              "report_version": null,
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": null,
+              "work_state": null
+            },
+            {
+              "trade_date": "2026-09-29",
+              "report_id": "reconciliation::1::2026-09-29",
+              "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-09-30",
+              "report_id": "reconciliation::1::2026-09-30",
+              "report_version": "19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-08",
+              "report_id": "reconciliation::1::2026-10-08",
+              "report_version": "eb82126a2f3c4996da66502a34161add11243ee4fd6571532f239e168f61e8d0",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-09",
+              "report_id": "reconciliation::1::2026-10-09",
+              "report_version": "b619dae986e9ab6ca9db114190b9eb1e22dab9fb71f8bfbd0654b503ad243263",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-12",
+              "report_id": "reconciliation::1::2026-10-12",
+              "report_version": "3c0561f143dbf788be7b5d33fc93a48b58f3773d9b60e6450c9ebb17e3971421",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-13",
+              "report_id": "reconciliation::1::2026-10-13",
+              "report_version": "e139442b79067c07a8dfb4b5c7a4b5e80a59a7170151616c44d31676e5254b07",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-14",
+              "report_id": "reconciliation::1::2026-10-14",
+              "report_version": "755aa925cbc35557d017968ad069c3ae55f39ab4645aa4188bf87518cc13089a",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-15",
+              "report_id": "reconciliation::1::2026-10-15",
+              "report_version": "52c64566b2618c708ed575c73fcd01f4364543b2fa4687db19f3ae8d5aa94915",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-16",
+              "report_id": "reconciliation::1::2026-10-16",
+              "report_version": "d0210859abd15d5e7e174fa2e36c8f00641d0030a5b1e263f52b94626b00916d",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-19",
+              "report_id": "reconciliation::1::2026-10-19",
+              "report_version": "15c6c55f8bea2abc4da8938904cace0fbbfec9891448cd18227fa58aeb5c7669",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-20",
+              "report_id": "reconciliation::1::2026-10-20",
+              "report_version": "1eb903c9184bec00f4c7c3dc6244e301fe7047c9db17feffb6c9201e6dd8e099",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-21",
+              "report_id": "reconciliation::1::2026-10-21",
+              "report_version": "331081ad7cc35b45fa3374e37a521fd8c95b89925a1eec1a3fdc9c1657795a25",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            },
+            {
+              "trade_date": "2026-10-22",
+              "report_id": "reconciliation::1::2026-10-22",
+              "report_version": "264bf696af8379f2fa95bc0b566be53de5a47b34e827ee14c397791ae75b5a9a",
+              "persistent_report_id": null,
+              "persistent_report_version": null,
+              "status": "BLOCKED",
+              "work_state": "needs_review"
+            }
+          ],
+          "verified_through_trade_date": null,
+          "pending_days": [],
+          "source_event_ids": [
+            "source-7500070e095c4370989248c487282ff3",
+            "source-b97a0dfadfb543869a67b33aeb0ee019",
+            "source-d5a5ed8c2a6f46dd9711565ae0038e50",
+            "source-001f224ed8b84496bc7564e3fed38090",
+            "source-1baf4c5cdd3448ff85a9667e4e7a298e",
+            "source-bc108210745a4464ac350e302a6ff840",
+            "source-65fafa527eb14dc79e9213576b2d2ddc",
+            "source-387d0fb8c8664de29285ac632fe6d815",
+            "source-c6c5e0e0ca024d0895b67d99485800c1",
+            "source-d6e2a1c4c2a84d2ab1a8b2953ef3a4aa",
+            "source-3f1925e32e5c432594f7259036f76c25",
+            "source-761366b60bb34fc4a4aec38a1e7d3e0b",
+            "source-e84fd70781aa4a05b2b2e8fa0ebfc2c9",
+            "source-566e25b5ab2d4e9683e25edf293072f4",
+            "source-e0323f40e59a40d8b421ff58017c4945",
+            "source-19ef286efe634304b0b92102b409dae6",
+            "source-4aec5a0b9f924390b10e6140d9de330b",
+            "source-3c7956f1e68e42ff945bfe49299c6622",
+            "source-56aed9dd4988480589b36d6305daedcb",
+            "source-f1d61dd7a91646a1818b8ce5da5f6624"
+          ],
+          "source_event_fingerprint": "aea288580733c52b820c828380971363def746cec9e03d3d1883378f8d95b4b4"
+        }
+      },
+      {
+        "key": "data",
+        "status": "NOT_APPLICABLE",
+        "proof_hash": "c33c007a2beabdf661fdf61ad86345febd070b438a6e989186efb2be8f441da8",
+        "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+        "proof": {
+          "check": {
+            "key": "data",
+            "passed": true,
+            "not_applicable": true,
+            "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+            "snapshot_id": "477549d3325392d49da2836705802544149f31423d270a8c0a975f7e5041ed0d",
+            "reason_codes": [],
+            "evidence": [],
+            "coverage": {
+              "entry_symbols": 0,
+              "healthy_symbols": 0,
+              "restricted_symbols": 0
+            },
+            "restricted_symbol_ids": [],
+            "aggregation_policy": "existing_any_healthy_symbol_v1"
+          },
+          "scope": null
+        }
+      },
+      {
+        "key": "binding",
+        "status": "INCOMPLETE",
+        "proof_hash": "078b538b26649096dfd16e14f6508dc060275a934a072b92c3f91ded8a2d7db6",
+        "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+        "proof": {
+          "check": {
+            "key": "binding",
+            "passed": false,
+            "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+            "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+            "not_applicable": false
+          },
+          "scope": null
+        }
+      }
+    ],
+    "effects": {
+      "target_state": "READY",
+      "current_permissions": {
+        "allow_new_buys": false,
+        "allow_risk_exits": true,
+        "allow_auto_recovery": false
+      },
+      "historical_unknown_retained": false,
+      "force_recovery_enabled": false
+    }
+  },
+  "source_events": {
+    "count": 20,
+    "blocking_count": 4,
+    "material_count": 0,
+    "fingerprint": "aea288580733c52b820c828380971363def746cec9e03d3d1883378f8d95b4b4",
+    "status": "NEEDS_RECHECK",
+    "events": [
+      {
+        "id": "source-7500070e095c4370989248c487282ff3",
+        "source_table": "async_tasks",
+        "source_key": "8605258645b04ea094c41c1809ac6839",
+        "operation": "insert",
+        "status": "pending",
+        "created_at": "2026-10-23T11:51:48"
+      },
+      {
+        "id": "source-b97a0dfadfb543869a67b33aeb0ee019",
+        "source_table": "async_tasks",
+        "source_key": "8605258645b04ea094c41c1809ac6839",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T11:51:48"
+      },
+      {
+        "id": "source-d5a5ed8c2a6f46dd9711565ae0038e50",
+        "source_table": "async_tasks",
+        "source_key": "8605258645b04ea094c41c1809ac6839",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T11:51:48"
+      },
+      {
+        "id": "source-001f224ed8b84496bc7564e3fed38090",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:33"
+      },
+      {
+        "id": "source-1baf4c5cdd3448ff85a9667e4e7a298e",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "insert",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:33"
+      },
+      {
+        "id": "source-bc108210745a4464ac350e302a6ff840",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:33"
+      },
+      {
+        "id": "source-65fafa527eb14dc79e9213576b2d2ddc",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:37"
+      },
+      {
+        "id": "source-387d0fb8c8664de29285ac632fe6d815",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:39"
+      },
+      {
+        "id": "source-c6c5e0e0ca024d0895b67d99485800c1",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:42"
+      },
+      {
+        "id": "source-d6e2a1c4c2a84d2ab1a8b2953ef3a4aa",
+        "source_table": "async_tasks",
+        "source_key": "ea20e274a59a5dfd8e6544c8739fd38b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-23T23:52:42"
+      },
+      {
+        "id": "source-3f1925e32e5c432594f7259036f76c25",
+        "source_table": "async_tasks",
+        "source_key": "cdeb2a1d202db141c32f83febfd0fe08",
+        "operation": "insert",
+        "status": "pending",
+        "created_at": "2026-10-24T00:06:01"
+      },
+      {
+        "id": "source-761366b60bb34fc4a4aec38a1e7d3e0b",
+        "source_table": "async_tasks",
+        "source_key": "cdeb2a1d202db141c32f83febfd0fe08",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:06:01"
+      },
+      {
+        "id": "source-e84fd70781aa4a05b2b2e8fa0ebfc2c9",
+        "source_table": "async_tasks",
+        "source_key": "cdeb2a1d202db141c32f83febfd0fe08",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:06:01"
+      },
+      {
+        "id": "source-566e25b5ab2d4e9683e25edf293072f4",
+        "source_table": "async_tasks",
+        "source_key": "cdeb2a1d202db141c32f83febfd0fe08",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:06:03"
+      },
+      {
+        "id": "source-e0323f40e59a40d8b421ff58017c4945",
+        "source_table": "async_tasks",
+        "source_key": "cdeb2a1d202db141c32f83febfd0fe08",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:06:03"
+      },
+      {
+        "id": "source-19ef286efe634304b0b92102b409dae6",
+        "source_table": "async_tasks",
+        "source_key": "ec41b004c15161f5b43d03a7ceb0717b",
+        "operation": "insert",
+        "status": "pending",
+        "created_at": "2026-10-24T00:31:36"
+      },
+      {
+        "id": "source-4aec5a0b9f924390b10e6140d9de330b",
+        "source_table": "async_tasks",
+        "source_key": "ec41b004c15161f5b43d03a7ceb0717b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:31:36"
+      },
+      {
+        "id": "source-3c7956f1e68e42ff945bfe49299c6622",
+        "source_table": "async_tasks",
+        "source_key": "ec41b004c15161f5b43d03a7ceb0717b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:31:37"
+      },
+      {
+        "id": "source-56aed9dd4988480589b36d6305daedcb",
+        "source_table": "async_tasks",
+        "source_key": "ec41b004c15161f5b43d03a7ceb0717b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:31:41"
+      },
+      {
+        "id": "source-f1d61dd7a91646a1818b8ce5da5f6624",
+        "source_table": "async_tasks",
+        "source_key": "ec41b004c15161f5b43d03a7ceb0717b",
+        "operation": "update",
+        "status": "pending",
+        "created_at": "2026-10-24T00:31:41"
+      }
+    ]
+  },
+  "current_state": "RECONCILIATION_BLOCKED",
+  "dimensions": {
+    "status_score": "READY",
+    "status_data": "READY",
+    "status_model": "READY",
+    "status_reconciliation": "RECONCILIATION_BLOCKED"
+  },
+  "permissions": {
+    "allow_new_buys": false,
+    "allow_risk_exits": true,
+    "allow_auto_recovery": false,
+    "requires_manual_ack": true
+  },
+  "capability_reasons": {
+    "allow_new_buys": [
+      "对账异常暂停尚待证据重检和本人确认",
+      "对账审核尚未通过（RECONCILIATION_BLOCKED）",
+      "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验"
+    ],
+    "allow_risk_exits": [
+      "当前状态门禁允许风险退出；成交仍需持仓与订单条件满足"
+    ],
+    "allow_auto_recovery": [
+      "对账异常暂停尚待证据重检和本人确认",
+      "对账审核尚未通过（RECONCILIATION_BLOCKED）",
+      "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验"
+    ]
+  },
+  "recovery_summary": {
+    "can_confirm": false,
+    "blockers": [
+      "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+      "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验"
+    ],
+    "checks": [
+      {
+        "key": "reconciliation",
+        "passed": false,
+        "reason": "缺少当前日期的有效通过报告，或仍有其他日期未完成",
+        "not_applicable": false,
+        "trade_date": "2026-09-29",
+        "report_id": "reconciliation::1::2026-09-29",
+        "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b"
+      },
+      {
+        "key": "data",
+        "passed": true,
+        "not_applicable": true,
+        "reason": "当前无授权新买入标的，本步不适用；持仓和候选数据问题仍可查看",
+        "snapshot_id": "477549d3325392d49da2836705802544149f31423d270a8c0a975f7e5041ed0d",
+        "reason_codes": [],
+        "evidence": [],
+        "coverage": {
+          "entry_symbols": 0,
+          "healthy_symbols": 0,
+          "restricted_symbols": 0
+        },
+        "restricted_symbol_ids": [],
+        "aggregation_policy": "existing_any_healthy_symbol_v1"
+      },
+      {
+        "key": "binding",
+        "passed": false,
+        "reason": "当前策略为研究模式，请保存应用正式执行策略；绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练；快照关联的策略已失效，请重新保存应用；策略已失效或规则版本无法核验",
+        "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+        "not_applicable": false
+      },
+      {
+        "key": "runtime",
+        "passed": true,
+        "reason": "当前状态允许在核实全部材料后提交本人审核"
+      }
+    ],
+    "review_required": true,
+    "confirmation_action": "RECONCILIATION_CONFIRM",
+    "phase": "BLOCKED",
+    "recommended_action": "VIEW_BLOCKERS",
+    "waiting_reason": null,
+    "next_check_at": null,
+    "coverage_activation_review": null,
+    "target_state": "READY",
+    "force_recovery_enabled": false
+  },
+  "coverage": null,
+  "limitations": [
+    "NO_ACCEPTED_ACCOUNT_BASELINE",
+    "LEGACY_REPORT_AUDIT_ADAPTER"
+  ]
+}

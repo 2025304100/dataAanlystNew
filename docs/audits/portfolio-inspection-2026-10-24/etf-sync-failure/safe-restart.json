@@ -1,0 +1,15 @@
+{
+  "old_backend_pid": 46832,
+  "new_backend_pid": 47840,
+  "status": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "frontend_unchanged": 32096
+}
+

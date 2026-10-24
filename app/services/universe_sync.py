@@ -539,6 +539,11 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
     """
     from app.services.market_history_contract import production_history_source_tag
 
+    if frame.attrs.get('history_response', {}).get('provider') == 'tencent_etf':
+        from app.services.etf_sync_validation import validate_etf_backup_write
+        instrument = db.get(UniverseSymbol, universe_symbol_id)
+        validate_etf_backup_write(db, instrument, frame,
+            bar_model=UniverseDailyBar, symbol_key=UniverseDailyBar.universe_symbol_id)
     source = production_history_source_tag(frame)
     rows = _dedupe_history_rows(frame)
     if not rows:

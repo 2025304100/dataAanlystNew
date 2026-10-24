@@ -118,6 +118,76 @@ it("keeps the same request when recovery finds no task and the user explicitly r
   expect(writes[1].body).toEqual(writes[0].body);
 });
 
+it("fills the allowed download dates without changing the original backtest range or starting a download", async () => {
+  const requested = { start: "2023-01-01", end: "2026-10-22" };
+  render(<SecurityStatusDownloadPanel portfolioId={1} requestedRange={requested} />);
+  await screen.findByText("本次日期超出了来源可提供的范围");
+  expect(screen.getByLabelText("历史资料开始日期")).toHaveValue("2023-01-01");
+  expect(screen.getByLabelText("历史资料结束日期")).toHaveValue("2026-10-22");
+  fireEvent.click(screen.getByRole("button", { name: "按可下载日期填写" }));
+  expect(screen.getByLabelText("历史资料开始日期")).toHaveValue("2025-10-19");
+  expect(screen.getByLabelText("历史资料结束日期")).toHaveValue("2026-10-19");
+  expect(screen.getByLabelText("历史资料开始日期").closest("details")).toHaveAttribute("open");
+  expect(screen.getByText(/原回测日期：2023-01-01 至 2026-10-22/)).toBeVisible();
+  expect(screen.getByText(/2023-01-01 至 2025-10-18/)).toBeVisible();
+  expect(screen.getByText(/2026-10-20 至 2026-10-22/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "下载当前组合资料" })).toBeEnabled();
+  expect(requests.every(request => request.method === "GET")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "下载当前组合资料" }));
+  await waitFor(() => expect(requests.find(request => request.method === "POST")?.body).toMatchObject({ portfolio_id: 1, start_date: "2025-10-19", end_date: "2026-10-19" }));
+});
+
+it.each([
+  ["2026-10-01", "2026-10-22", "2026-10-01", "2026-10-19"],
+  ["2023-01-01", "2024-03-01", "2023-03-02", "2024-03-01"],
+])("clips only the requested download interval %s to %s, including leap-day limits", async (start, end, filledStart, filledEnd) => {
+  render(<SecurityStatusDownloadPanel portfolioId={1} requestedRange={{ start, end }} />);
+  await screen.findByText("本次日期超出了来源可提供的范围");
+  fireEvent.click(screen.getByRole("button", { name: "按可下载日期填写" }));
+  expect(screen.getByLabelText("历史资料开始日期")).toHaveValue(filledStart);
+  expect(screen.getByLabelText("历史资料结束日期")).toHaveValue(filledEnd);
+  expect(screen.getByText(new RegExp(`原回测日期：${start} 至 ${end}`))).toBeVisible();
+  expect(requests.every(request => request.method === "GET")).toBe(true);
+});
+
+it("keeps future-only dates when there is no overlap with the source range", async () => {
+  render(<SecurityStatusDownloadPanel portfolioId={1} requestedRange={{ start: "2027-01-01", end: "2027-02-01" }} />);
+  await screen.findByText("本次日期超出了来源可提供的范围");
+  expect(screen.getByRole("button", { name: "按可下载日期填写" })).toBeDisabled();
+  expect(screen.getByText(/所选日期目前没有可填写的下载范围/)).toBeVisible();
+  expect(screen.getByLabelText("历史资料开始日期")).toHaveValue("2027-01-01");
+  expect(screen.getByLabelText("历史资料结束日期")).toHaveValue("2027-02-01");
+  expect(screen.getByRole("button", { name: "下载当前组合资料" })).toBeDisabled();
+  expect(requests.every(request => request.method === "GET")).toBe(true);
+});
+
+it.each(["active", "unconfirmed"])("does not replace dates belonging to an %s download request", async state => {
+  if (state === "unconfirmed") localStorage.setItem("security-status-download-request:1", JSON.stringify({
+    portfolio_id: 1, request_id: "old-download", expected_scope_sha256: "1".repeat(64), start_date: "2025-10-20", end_date: "2026-10-19",
+  }));
+  handle = async url => {
+    if (url.includes("/download-scope")) return { ...scope(), latest_task: state === "active" ? task("running") : null };
+    if (state === "unconfirmed") throw new Error("unconfirmed request read failed");
+    return { task: task("running"), report: null };
+  };
+  render(<SecurityStatusDownloadPanel portfolioId={1} requestedRange={{ start: "2023-01-01", end: "2026-10-22" }} />);
+  await screen.findByText(state === "active" ? "正在下载历史股票状态…" : "下载范围或已有记录读取失败，请重新读取。");
+  const fill = screen.getByRole("button", { name: "按可下载日期填写" });
+  expect(fill).toBeDisabled(); fireEvent.click(fill);
+  expect(screen.getByLabelText("历史资料开始日期")).toHaveValue("2023-01-01");
+  expect(screen.getByLabelText("历史资料结束日期")).toHaveValue("2026-10-22");
+  expect(requests.every(request => request.method === "GET")).toBe(true);
+});
+
+it("preserves an already valid requested download range without offering a replacement", async () => {
+  render(<SecurityStatusDownloadPanel portfolioId={1} requestedRange={{ start: "2026-10-01", end: "2026-10-15" }} />);
+  await screen.findByText(/长期组合.*2026-10-01 至 2026-10-15/);
+  expect(screen.queryByRole("button", { name: "按可下载日期填写" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("历史资料开始日期")).toHaveValue("2026-10-01");
+  expect(screen.getByLabelText("历史资料结束日期")).toHaveValue("2026-10-15");
+  expect(requests.every(request => request.method === "GET")).toBe(true);
+});
+
 it("displays a scope failure and retries only the read", async () => {
   handle = async () => { throw new Error("read failed"); };
   render(<SecurityStatusDownloadPanel portfolioId={1} />);

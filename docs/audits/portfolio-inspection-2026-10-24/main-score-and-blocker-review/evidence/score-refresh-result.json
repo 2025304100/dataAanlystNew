@@ -1,0 +1,76 @@
+{
+  "completed": [
+    {
+      "symbol": "510300",
+      "name": "沪深300ETF华泰柏瑞",
+      "score_id": 79581,
+      "trade_date": "2026-10-23",
+      "config_id": 5,
+      "config_name": "ETF均衡机会",
+      "config_version": 1,
+      "quality_score": 54.62,
+      "timing_score": 57.17,
+      "priority_score": 55.56,
+      "data_credibility": 1.0,
+      "published_at": "2026-10-24T01:00:01.392029+00:00",
+      "factor_scores": {
+        "trend_score": {
+          "normalized_value": 35.57,
+          "weight": 1.0,
+          "contribution": 35.57
+        },
+        "momentum_score": {
+          "normalized_value": 27.96,
+          "weight": 1.0,
+          "contribution": 27.96
+        },
+        "liquidity_score": {
+          "normalized_value": 73.99,
+          "weight": 1.0,
+          "contribution": 73.99
+        },
+        "volatility_score": {
+          "normalized_value": 64.35,
+          "weight": 1.0,
+          "contribution": 64.35
+        },
+        "amount_activity": {
+          "normalized_value": 100.0,
+          "weight": 1.0,
+          "contribution": 100.0
+        },
+        "_data_freshness": {
+          "latest_bar_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23"
+        }
+      },
+      "dimension_scores": {
+        "trend": 35.57,
+        "momentum": 27.96,
+        "liquidity": 73.99,
+        "drawdown_risk": 64.35,
+        "activity": 100.0
+      },
+      "weight_mode": "manual",
+      "production_model_score": false,
+      "pit_safety": "NOT_PIT_SAFE",
+      "input_bars_sha256": "edbb66befeff7878a5b0fedb26bc1d6e0eb6d300d3526122077c88ee18e9026c",
+      "configuration_sha256": "acd31d91c05180d0ddb2bb6c1d53d91c4e2c6d0ecc09259c97bab7d1d3941dc5",
+      "runtime_state_changed": false,
+      "formal_binding_remains_blocked": true,
+      "audit_event_id": 3779
+    }
+  ],
+  "skipped": [
+    "000001",
+    "600428"
+  ],
+  "allowed_write_tables": [
+    "data_governance_audit_events",
+    "scores"
+  ],
+  "runtime_state_changed": false,
+  "market_bars_changed": false,
+  "original_score_rows_overwritten": false,
+  "model_or_strategy_changed": false
+}

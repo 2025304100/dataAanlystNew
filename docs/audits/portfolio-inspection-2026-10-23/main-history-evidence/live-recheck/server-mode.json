@@ -1,0 +1,9 @@
+{
+  "mode": "inspection_acceptance",
+  "portfolio_id": 1,
+  "scheduled_task_types": [
+    "portfolio_reconciliation"
+  ],
+  "trading_mutations_allowed": false,
+  "final_reviews_allowed": false
+}

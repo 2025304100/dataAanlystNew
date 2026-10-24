@@ -1,0 +1,81 @@
+{
+  "errors": [],
+  "httpErrors": [],
+  "writeAttempts": [],
+  "checks": [
+    "760px居中；结论和主入口前置；鼠标操作无白色焦点框，键盘Tab/Enter保留可见焦点与折叠操作",
+    "1024/390/320px折叠与展开均无横向溢出，关闭和底部重检入口在视口内",
+    "历史和原订单独立浮层可返回；Tab焦点不逃逸，Escape仅关闭快捷弹窗，父列表滚动保留"
+  ],
+  "beforeMode": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "desktop": {
+    "width": 1440,
+    "height": 1000,
+    "doc": 1440,
+    "x": 340,
+    "right": 1100,
+    "top": 222.75,
+    "bottom": 777.25,
+    "bodyWidth": 758,
+    "bodyScrollWidth": 758,
+    "footerTop": 711.25,
+    "footerBottom": 776.25
+  },
+  "layout-1024": {
+    "width": 1024,
+    "height": 700,
+    "doc": 1024,
+    "x": 132,
+    "right": 892,
+    "top": 72.75,
+    "bottom": 627.25,
+    "bodyWidth": 758,
+    "bodyScrollWidth": 758,
+    "footerTop": 561.25,
+    "footerBottom": 626.25
+  },
+  "layout-390": {
+    "width": 390,
+    "height": 844,
+    "doc": 390,
+    "x": 8,
+    "right": 382,
+    "top": 60.09375,
+    "bottom": 783.890625,
+    "bodyWidth": 372,
+    "bodyScrollWidth": 372,
+    "footerTop": 694.125,
+    "footerBottom": 782.890625
+  },
+  "layout-320": {
+    "width": 320,
+    "height": 740,
+    "doc": 320,
+    "x": 8,
+    "right": 312,
+    "top": 39.375,
+    "bottom": 700.625,
+    "bodyWidth": 302,
+    "bodyScrollWidth": 302,
+    "footerTop": 610.859375,
+    "footerBottom": 699.625
+  },
+  "afterMode": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "passed": true
+}

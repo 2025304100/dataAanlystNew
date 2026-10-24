@@ -1,0 +1,8 @@
+{
+  "id": "3e3299676fab772b237367ded4349bebbb96e6f3f17bb75484a42d02084c8b45",
+  "source_code": "ACCEPTANCE_ROUTE_TEARDOWN_LEAK",
+  "note": "该关联产生于本地界面验收：关闭发起页时浏览器拦截撤销，一次来源重检登记意外到达后端。关联的是已有对账任务；本记录保留用于追溯，不代表正式业务发起、核对通过或交易授权。",
+  "evidence_ref": "docs/audits/portfolio-inspection-2026-10-24/recheck-request-association/README.md",
+  "request_unchanged": true,
+  "existing_tables_unchanged": 157
+}

@@ -1,0 +1,12 @@
+{
+  "phase": "after-restart",
+  "checks": [
+    "后端与隔离浏览器重启后，页面仍明确只读，修改按钮禁用，原请求与历史读取入口可用。"
+  ],
+  "writes": [],
+  "errors": [],
+  "httpErrors": [],
+  "fixtures": [],
+  "boundary": "Actual main reads and actual server mode. GET-only virtual portfolio 2 for switching; GET-only mode 503 injection. No mutation interception, no proxy, no database writes.",
+  "passed": true
+}

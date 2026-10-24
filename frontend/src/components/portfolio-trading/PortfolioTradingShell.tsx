@@ -17,6 +17,7 @@ import PortfolioReviewDrawer from "./PortfolioReviewDrawer";
 import PortfolioSelectorDropdown from "./PortfolioSelectorDropdown";
 import ReadinessRepairDrawer from "./ReadinessRepairDrawer";
 import { resolvePortfolioNavigation, type GovernanceTabTarget } from "../../utils/actionItemRegistry";
+import InspectionReturnLink from "./inspection/InspectionReturnLink";
 
 /**
  * PortfolioTradingShell — 组合交易主壳
@@ -413,6 +414,7 @@ const PortfolioTradingShell: React.FC = () => {
   const handleSelectPortfolio = useCallback(
     async (id: number) => {
       setSelectorDropdownOpen(false);
+      setGovernanceNavigation(previous=>({tab:"overview",requestId:previous.requestId+1}));
       try {
         await switchPortfolio(id);
       } catch {
@@ -520,6 +522,7 @@ const PortfolioTradingShell: React.FC = () => {
       <SubTabNav active={localSubTab} onChange={handleSubTabChange} />
 
       {/* ========== 子 Tab 内容路由 ========== */}
+      {localSubTab !== "governance" && <InspectionReturnLink />}
       <SubTabContent
         active={localSubTab}
         portfolioId={effectivePortfolioId}

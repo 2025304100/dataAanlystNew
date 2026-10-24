@@ -1,0 +1,210 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit_watermark": 3800
+  },
+  "writeAttempts": [],
+  "errors": [],
+  "httpErrors": [],
+  "checks": [
+    "运行审核直接展示结论、剩余问题和确认影响；历史缺口可独立查看并返回；恢复按钮保持禁用",
+    "历史列表、批次详情及原材料使用独立抽屉；真实双标的和交易日筛选成功，返回保留筛选",
+    "原订单关联先显示空来源结论和查找出口，无手工补单表；相关历史按当日和报告定位，逐层返回快捷核对，焦点与Escape正常"
+  ],
+  "layouts": {
+    "runtime-1440": {
+      "viewport": 1440,
+      "height": 1000,
+      "doc": 1440,
+      "left": 680,
+      "right": 1440,
+      "bodyWidth": 760,
+      "bodyScroll": 760,
+      "closeRight": 1414,
+      "closeTop": 24,
+      "footerBottom": 1000
+    },
+    "runtime-1024": {
+      "viewport": 1024,
+      "height": 768,
+      "doc": 1024,
+      "left": 264,
+      "right": 1024,
+      "bodyWidth": 760,
+      "bodyScroll": 760,
+      "closeRight": 998,
+      "closeTop": 24,
+      "footerBottom": 768
+    },
+    "runtime-390": {
+      "viewport": 390,
+      "height": 844,
+      "doc": 390,
+      "left": 0,
+      "right": 390,
+      "bodyWidth": 390,
+      "bodyScroll": 390,
+      "closeRight": 365.078125,
+      "closeTop": 23.109375,
+      "footerBottom": 844
+    },
+    "runtime-320": {
+      "viewport": 320,
+      "height": 740,
+      "doc": 320,
+      "left": 0,
+      "right": 320,
+      "bodyWidth": 320,
+      "bodyScroll": 320,
+      "closeRight": 300,
+      "closeTop": 19,
+      "footerBottom": 740
+    },
+    "history-1440": {
+      "viewport": 1440,
+      "height": 1000,
+      "doc": 1440,
+      "left": 680,
+      "right": 1440,
+      "bodyWidth": 760,
+      "bodyScroll": 760,
+      "closeRight": 1414,
+      "closeTop": 24,
+      "footerBottom": 1000
+    },
+    "history-1024": {
+      "viewport": 1024,
+      "height": 768,
+      "doc": 1024,
+      "left": 264,
+      "right": 1024,
+      "bodyWidth": 760,
+      "bodyScroll": 760,
+      "closeRight": 998,
+      "closeTop": 24,
+      "footerBottom": 768
+    },
+    "history-390": {
+      "viewport": 390,
+      "height": 844,
+      "doc": 390,
+      "left": 0,
+      "right": 390,
+      "bodyWidth": 390,
+      "bodyScroll": 390,
+      "closeRight": 368.40625,
+      "closeTop": 20.328125,
+      "footerBottom": 844
+    },
+    "history-320": {
+      "viewport": 320,
+      "height": 740,
+      "doc": 320,
+      "left": 0,
+      "right": 320,
+      "bodyWidth": 320,
+      "bodyScroll": 320,
+      "closeRight": 300,
+      "closeTop": 19,
+      "footerBottom": 740
+    },
+    "evidence-1440": {
+      "viewport": 1440,
+      "height": 1000,
+      "doc": 1440,
+      "left": 680,
+      "right": 1440,
+      "bodyWidth": 760,
+      "bodyScroll": 760,
+      "closeRight": 1414,
+      "closeTop": 24
+    },
+    "evidence-1024": {
+      "viewport": 1024,
+      "height": 768,
+      "doc": 1024,
+      "left": 264,
+      "right": 1024,
+      "bodyWidth": 760,
+      "bodyScroll": 760,
+      "closeRight": 998,
+      "closeTop": 24
+    },
+    "evidence-390": {
+      "viewport": 390,
+      "height": 844,
+      "doc": 390,
+      "left": 0,
+      "right": 390,
+      "bodyWidth": 390,
+      "bodyScroll": 390,
+      "closeRight": 367.671875,
+      "closeTop": 20.9375
+    },
+    "evidence-320": {
+      "viewport": 320,
+      "height": 740,
+      "doc": 320,
+      "left": 0,
+      "right": 320,
+      "bodyWidth": 320,
+      "bodyScroll": 320,
+      "closeRight": 300,
+      "closeTop": 19
+    }
+  },
+  "historyQueries": [
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?occurred_from=2026-09-24T10%3A55%3A00%2B08%3A00&occurred_to=2026-10-24T10%3A55%3A59%2B08%3A00&page_size=20",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?security_id=SH%3A510300&security_id=SH%3A600428&trade_date_from=2026-09-30&trade_date_to=2026-10-23&occurred_from=2026-09-24T10%3A55%3A00%2B08%3A00&occurred_to=2026-10-24T10%3A55%3A59%2B08%3A00&page_size=20",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-09-30&trade_date_to=2026-09-30&occurred_from=2026-09-24T10%3A55%3A00%2B08%3A00&occurred_to=2026-10-24T10%3A55%3A59%2B08%3A00&report_ref=reconciliation%3A%3A1%3A%3A2026-09-30&report_version=19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9&page_size=20"
+  ],
+  "selectedSecurities": [
+    {
+      "security_id": "SH:510300",
+      "market": "sh",
+      "code": "510300",
+      "name": "沪深300ETF华泰柏瑞"
+    },
+    {
+      "security_id": "SH:600428",
+      "market": "sh",
+      "code": "600428",
+      "name": "中远海特"
+    }
+  ],
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit_watermark": 3800
+  },
+  "passed": true
+}

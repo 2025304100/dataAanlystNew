@@ -1,0 +1,268 @@
+{
+  "date": "2026-10-24",
+  "scope": "execution reconciliation, history gaps and automatic reconciliation job drawer presentation",
+  "files": [
+    {
+      "path": "backend-health.json",
+      "bytes": 244,
+      "sha256": "0b08da6a9d7d14007315800fdba4bc99be9a590daf870e327c5c2acd48c0d6ab"
+    },
+    {
+      "path": "backend-start.json",
+      "bytes": 509,
+      "sha256": "f79d90ace22928e403b01dd8834bf331446dafec68bf53d5bbc30262fbdca1ca"
+    },
+    {
+      "path": "before-sources/frontend/src/api/client.ts",
+      "bytes": 230303,
+      "sha256": "912afcfdf8ef3f2cd1ded1657bb6a3456afb5641c0d3df4b2b045c9a3bc67109"
+    },
+    {
+      "path": "before-sources/frontend/src/components/portfolio-trading/inspection/InspectionExecutionToolbar.tsx",
+      "bytes": 1150,
+      "sha256": "f9d92d503b12eeba1286b15c29ab35a784bc5b90d5ac1c9cb3e3add4fc074ccc"
+    },
+    {
+      "path": "before-sources/frontend/src/components/portfolio-trading/inspection/InspectionHistoryGapPanel.tsx",
+      "bytes": 3990,
+      "sha256": "2a8a4aa85d965a5641782552973ada8c9ddfa258fefca702473bfdbc18d691c8"
+    },
+    {
+      "path": "before-sources/frontend/src/components/portfolio-trading/inspection/InspectionReconciliationSummary.tsx",
+      "bytes": 2959,
+      "sha256": "b48d742b0a94b1b914faa149a6347e17431e6bf5a28635959953f357ac156896"
+    },
+    {
+      "path": "before-sources/frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx",
+      "bytes": 68738,
+      "sha256": "04b963f0ec9749a15c0e7fa7fc918e07aa8c1e5243daffc7afd0f0bc5b51f62b"
+    },
+    {
+      "path": "before-sources/scripts/serve_inspection_acceptance.py",
+      "bytes": 3612,
+      "sha256": "f2c3fd8613901b9c88b3079ce967b3b346767ac2a36fc7b35322fa3419041575"
+    },
+    {
+      "path": "before-sources.json",
+      "bytes": 1188,
+      "sha256": "9fb6f9beef9413a754c1e5d132a77561f858ddb05c15baa4db56120abf623c1c"
+    },
+    {
+      "path": "browser-result.json",
+      "bytes": 14896,
+      "sha256": "f301c0d492fbde891e9cb05666c7e795da2370c0fac890db57cdc92a7bd64dd2"
+    },
+    {
+      "path": "browser-run.log",
+      "bytes": 637,
+      "sha256": "adf5b712f9ab4cc08f6c5e8a2a9c67c3a572cf4dfd5a65e504097e6901a37b39"
+    },
+    {
+      "path": "check-header.mjs",
+      "bytes": 3074,
+      "sha256": "a7b24e0f48c985754a5432ba185cafad5a6238a1653c3471f13a749ff37e5d7b"
+    },
+    {
+      "path": "execution-1024.png",
+      "bytes": 69978,
+      "sha256": "08fdfa85c71c42a492a86a6f437fb7f5632183c59c09a6ac250e89421df7e4a2"
+    },
+    {
+      "path": "execution-1440.png",
+      "bytes": 71488,
+      "sha256": "520416fdd73169e6e3207c49eabc975979c544e6c09a85c4a3b8924af751be02"
+    },
+    {
+      "path": "execution-320.png",
+      "bytes": 54303,
+      "sha256": "5163706c1f8d4f882a18f63e99c6c5f236b919d0ee082ddfd1fb3e190ac4a1e1"
+    },
+    {
+      "path": "execution-390.png",
+      "bytes": 65126,
+      "sha256": "ec544cb6508adf9e24c7b070a1ba28899ee5d26a541408bb5f4a83e3571a7bad"
+    },
+    {
+      "path": "execution-evidence.png",
+      "bytes": 102353,
+      "sha256": "d34aca4db12665b6c110dfaf01a17809b87936f91632fac0f31ef8906c233bc6"
+    },
+    {
+      "path": "freeze.py",
+      "bytes": 8316,
+      "sha256": "0fa287b30111c224fffcfbf106c77f83b016458c7bf0f05cc3f24c5e1f6abf21"
+    },
+    {
+      "path": "frontend-build-final.log",
+      "bytes": 3351,
+      "sha256": "05ef71ec6df4c13b23c8f40b44fd48ee58bc6564dcbb704d429f70e7a9acc4f2"
+    },
+    {
+      "path": "frontend-tests.log",
+      "bytes": 5497,
+      "sha256": "668017a66fc8ad1f47e525f8b13e29d27152709d9479ee38799b4d373201df62"
+    },
+    {
+      "path": "header-check.json",
+      "bytes": 2412,
+      "sha256": "974511af67b3f90633b06a6f5d6d2537a262e9000b8f64bffeae09cb76aa04df"
+    },
+    {
+      "path": "header-check.log",
+      "bytes": 2514,
+      "sha256": "a50e2f798582b4251402c9c563510a4b54783f6f3fb4bb1cfd4dc5a6e87a9032"
+    },
+    {
+      "path": "history-gap-1024.png",
+      "bytes": 92489,
+      "sha256": "1b1ee27077854c69fbe1da7ef42e980f8dc8b10773807f3a96ed3574e05c9280"
+    },
+    {
+      "path": "history-gap-1440.png",
+      "bytes": 117322,
+      "sha256": "b3fa7aceb523159a500604c2bf98936bbdb9d6b9e0a2b7d44be5e818ab3eb5f0"
+    },
+    {
+      "path": "history-gap-320.png",
+      "bytes": 62176,
+      "sha256": "3599f5a86b06906766b26e4999a677a3fcc9d234eaca8458aec5b3279c318cb5"
+    },
+    {
+      "path": "history-gap-390.png",
+      "bytes": 81599,
+      "sha256": "218f0fef118b4ee1666a63959a05978f9ffe1b73e600b1bb732afeadab4fa687"
+    },
+    {
+      "path": "history-gap-exit.png",
+      "bytes": 134540,
+      "sha256": "e5358f55f07eefb0556160532660a421384ccccc1444d9cd80293d09bac206bc"
+    },
+    {
+      "path": "history-gap-method.png",
+      "bytes": 127693,
+      "sha256": "287a35f1e3a2f16be743860f6a37e1d73667d73cdaa4d30a1cf89b1cc3c6fe50"
+    },
+    {
+      "path": "job-1024.png",
+      "bytes": 78910,
+      "sha256": "6b9c78f63f47f3649ab8dca99a2bc7064e3a57ea80b5df0ecd41fdb1d52f5668"
+    },
+    {
+      "path": "job-1440.png",
+      "bytes": 80575,
+      "sha256": "1a3b458a542f46c8a7c38b9ecf427c91ef84172d4f8cf6b200bac919836c2660"
+    },
+    {
+      "path": "job-320.png",
+      "bytes": 54346,
+      "sha256": "89ef76b41848c9a1f6ae3e670b2c59efdfa63ea26ffcc5c52ba0279ba7873db7"
+    },
+    {
+      "path": "job-390.png",
+      "bytes": 69508,
+      "sha256": "32692883cdd280f4d8fdfef37ef2b187d985eee62a6bfaef6fbdc44beeb8c510"
+    },
+    {
+      "path": "job-days-320.png",
+      "bytes": 59177,
+      "sha256": "caeda844054908169f5bb914d0662edeadf7977dd1b1aa0b314ffc9477e997f3"
+    },
+    {
+      "path": "job-days-390.png",
+      "bytes": 70643,
+      "sha256": "9be8dc32790dddcf943d98e75d8f0debe12d432b03935767cf6dcf462ee75598"
+    },
+    {
+      "path": "job-days.png",
+      "bytes": 92594,
+      "sha256": "bf0514a778551b771deb6f4fc2ffbc88d9dad0895111f483e27d46ae363b8f3b"
+    },
+    {
+      "path": "job-from-execution-page.png",
+      "bytes": 210748,
+      "sha256": "2bc52bb5a915b932f1bfced17f27d4cdbc53475bf2390c244fd9e52d8c55d739"
+    },
+    {
+      "path": "job-main-entry-page.png",
+      "bytes": 208762,
+      "sha256": "be6612b38d168fbc41b6744c7ea00ae63cfee61a3b5e72a6dce6c97e1fb9055c"
+    },
+    {
+      "path": "job-scope.png",
+      "bytes": 101999,
+      "sha256": "ced0b6d18ca96491508190f25fd69fb2d9fed866d1149c030989693cc57b47b2"
+    },
+    {
+      "path": "job-sources.png",
+      "bytes": 91957,
+      "sha256": "d70dcf26d0a8668011fde4d67640032f448648ececc18234c020283d2ede3dab"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4083,
+      "sha256": "2bfc7605d0b5ec48cffbea0531544fe8a0fd539ee855c4a03d2f05f5a3004461"
+    },
+    {
+      "path": "source-safety.json",
+      "bytes": 296,
+      "sha256": "db4cc4e6dcddd1dc9da4483e45a59ec2d3c6e0410f7f52e5f28b810b229f952c"
+    },
+    {
+      "path": "unrelated-client-type-delta.diff",
+      "bytes": 694,
+      "sha256": "8e798260d9a918f166298d16db94a86ad37e41c5b1103e63a4be88e7497d34d9"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 13467,
+      "sha256": "45caf474048e3ac665a5dd3ff595b9d080074ae8d845c490af3acdb72f950777"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx",
+      "bytes": 67274,
+      "sha256": "f6124a693ba7c29033bb2641a4f9ddc34288b603eb6e6495bae6e60e2e42b722"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionReconciliationSummary.tsx",
+      "bytes": 4202,
+      "sha256": "ece18d1ff60222a78a8d424653066bf39e982debfbc170c264eeb3bc574d79cd"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionHistoryGapPanel.tsx",
+      "bytes": 5067,
+      "sha256": "9d7df62b00e07213c5fb7f01e0851e68c30ea92e56ef00017ed464492e3ed30f"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionExecutionToolbar.tsx",
+      "bytes": 1242,
+      "sha256": "8e0165cfb2650a0c05ddb9ea925ef3fd8de43b3c8fc11c31f347b3b48296bce3"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionJobPanel.tsx",
+      "bytes": 9640,
+      "sha256": "14e588b75229c06d738cfd42cdcc265af427b725cc71938a352d69ae20ec2be2"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/inspectionExecution.css",
+      "bytes": 7334,
+      "sha256": "e1e30f0736924f34c60c94300e47c6f1400a0082906123187f7dfd4528141074"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx",
+      "bytes": 46939,
+      "sha256": "d54a9355f9a552893fb5ef56300b3854875271fbe66b3a9171c8f019b709edd3"
+    },
+    {
+      "path": "docs/组合交易检查与对账-功能闭环与交互重构设计-2026-10-21.md",
+      "bytes": 153608,
+      "sha256": "44cbd019aae61337c908c199aa29d7df997d9ca1fb59d36d4e2d2d320e056e04"
+    },
+    {
+      "path": "docs/组合交易检查与对账-设计与v10逐项核查及补齐记录-2026-10-23.md",
+      "bytes": 79615,
+      "sha256": "b2816961c3882ecff760680f96c9e81350db1a17cfe79490b1d522304aa9f8f6"
+    }
+  ]
+}

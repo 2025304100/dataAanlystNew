@@ -123,57 +123,54 @@ def seed_historical_resume(db_session, monkeypatch, *, end_day=4):
         # original order is partially filled, rather than relying on HOLD input.
         score = _make_score(db_session, symbol.id, trade_date=date(2026, 9, day), priority_score=90)
         score.factor_model_run_id, score.factor_set_id = snapshot.factor_model_run_id, snapshot.factor_set_id
-    db_session.add_all([MarketCalendar(trade_date=date(2026, 9, d), is_trading_day=1) for d in (2, 3, 4)])
+    from tests.test_portfolio_inspection import _calendar
+    _calendar(db_session)
+    db_session.flush()
+    from app.models.app_setting import AppSetting
+    provenance = db_session.get(AppSetting, "market.cn_trade_calendar")
+    calendar = json.loads(provenance.value_json)
+    calendar["refreshed_at"] = "2026-09-01T00:00:00"
+    provenance.value_json = json.dumps(calendar)
     db_session.commit()
     return portfolio, symbol, snapshot
 
 
-def test_public_resume_completes_partial_in_daily_order_with_different_prices(db_session, monkeypatch):
-    from sqlalchemy import select
+
+def _account_facts(db, portfolio_id):
+    from sqlalchemy import text
+    tables = ("sim_orders", "sim_trades", "cash_ledger", "positions", "decision_runs", "decision_evidence", "decision_order_plans")
+    return {table: [tuple(row) for row in db.execute(text(
+        f"SELECT * FROM {table} WHERE portfolio_id=:pid ORDER BY 1"), {"pid": portfolio_id})] for table in tables}
+
+
+def _historical_resume(db, portfolio_id, *, through=date(2026, 9, 3)):
     from app.api.routes import portfolios as api
-    from app.models.decision_engine import DecisionEvidence, DecisionOrderPlanRecord, DecisionRun
-    from app.models.sim_account import SimOrder, SimTrade
-    from app.services.sim_accounts import cash_balance
-    from tests.test_execution_lifecycle_public import wait_task
-    portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
-    result = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    tasks = [wait_task(item["task_id"]) for item in result["created_tasks"]]
-    assert [item["status"] for item in tasks] == ["done", "done", "done"]
-    assert tasks[1]["message"] == "当天处理完成，仍有订单待成交"
-    db_session.expire_all()
-    assert portfolio.last_decision_trade_date == date(2026, 9, 4)
-    assert portfolio.last_reconciled_trade_date == date(2026, 9, 1)
-    orders = list(db_session.scalars(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id)))
-    assert len(orders) == 1 and orders[0].quantity == orders[0].filled_quantity == 500
-    trades = list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id).order_by(SimTrade.id)))
-    assert [(row.quantity, row.price, row.created_at.date()) for row in trades] == [
-        (100, 10.2, date(2026, 9, 3)), (400, 10.5, date(2026, 9, 4))]
-    assert cash_balance(db_session, portfolio.id) == pytest.approx(94778.43)
-    runs = list(db_session.scalars(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id).order_by(DecisionRun.trade_date)))
-    assert [row.trade_date for row in runs] == [date(2026, 9, day) for day in (2, 3, 4)]
-    mid = db_session.scalar(select(DecisionEvidence).where(DecisionEvidence.decision_run_id == runs[1].id))
-    assert mid.action == "HOLD" and mid.target_quantity == 100
-    assert "WAITING_EXISTING_ORDER" in json.loads(mid.reason_codes_json)
-    plans = list(db_session.scalars(select(DecisionOrderPlanRecord).where(DecisionOrderPlanRecord.decision_run_id.in_([r.id for r in runs]),
-        DecisionOrderPlanRecord.action == "BUY")))
-    assert len(plans) == 1 and plans[0].target_quantity == 500
-    again = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    assert again["created_count"] == 0
-    assert cash_balance(db_session, portfolio.id) == pytest.approx(94778.43)
+    result = api.portfolio_resume_execute(portfolio_id,
+        api.PortfolioResumeExecuteRequest(today=through, dry_run=False), db)
+    assert result["created_count"] == result["dispatched_count"] == 0
+    assert result["created_tasks"] == []
+    assert result["pending_days"]
+    assert all(row["execution_review"]["disabled_code"] == "HISTORICAL_EXECUTION_NOT_AUTHORIZED"
+               for row in result["pending_days"])
+    assert all(row["execution_review"]["next_action"]["target"] == "governance:reconciliation"
+               for row in result["pending_days"])
+    return result
+
+
+def test_public_resume_does_not_create_missing_historical_decisions_or_trade_at_backfilled_prices(db_session, monkeypatch):
+    portfolio, _, _ = seed_historical_resume(db_session, monkeypatch)
+    before = _account_facts(db_session, portfolio.id)
+    result = _historical_resume(db_session, portfolio.id)
+    assert [row["date"] for row in result["pending_days"]] == ["2026-09-02", "2026-09-03"]
+    _historical_resume(db_session, portfolio.id)
+    assert _account_facts(db_session, portfolio.id) == before
+    assert portfolio.last_decision_trade_date == portfolio.last_reconciled_trade_date == date(2026, 9, 1)
 
 
 @pytest.mark.parametrize("late_partial", [False, True], ids=["filled", "still_partial"])
-def test_public_resume_refuses_later_existing_fill_before_missing_decision(db_session, monkeypatch, late_partial):
+def test_public_resume_preserves_later_existing_fill_and_never_fills_an_earlier_missing_decision(db_session, monkeypatch, late_partial):
     from sqlalchemy import select
-    from app.api.routes import portfolios as api
-    from app.models.decision_engine import DecisionRun
     from app.models.daily_bar import DailyBar
-    from app.models.sim_account import SimTrade
-    from app.services.async_tasks import get_async_task
-    from app.services.sim_accounts import cash_balance
-    from tests.test_execution_lifecycle_public import wait_task
     portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch, end_day=5)
     if late_partial:
         db_session.scalar(select(DailyBar).where(DailyBar.symbol_id == symbol.id,
@@ -182,196 +179,110 @@ def test_public_resume_refuses_later_existing_fill_before_missing_decision(db_se
     first = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
         strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
     assert first["pending_orders"][0]["remaining_quantity"] == 400
-    # Produce a genuine old fill on Sep 4, without a Sep 3 decision. Its
-    # durable retry trace is evidence even for pre-fix wall-clock timestamps.
     run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
         strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 5))
-    before = [(row.id, row.created_at, row.price, row.quantity) for row in db_session.scalars(
-        select(SimTrade).where(SimTrade.portfolio_id == portfolio.id).order_by(SimTrade.id))]
-    cash = cash_balance(db_session, portfolio.id)
-    result = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    tasks = [wait_task(item["task_id"]) for item in result["created_tasks"]]
-    assert tasks[1]["status"] == "failed"
-    failed = get_async_task(result["created_tasks"][1]["task_id"])
-    assert "2026-09-04" in str(failed.errors) and "2026-09-03" in str(failed.errors)
-    db_session.expire_all()
-    assert db_session.scalar(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id,
-        DecisionRun.trade_date == date(2026, 9, 3))) is None
-    assert [(row.id, row.created_at, row.price, row.quantity) for row in db_session.scalars(
-        select(SimTrade).where(SimTrade.portfolio_id == portfolio.id).order_by(SimTrade.id))] == before
-    assert cash_balance(db_session, portfolio.id) == cash
+    before = _account_facts(db_session, portfolio.id)
+    _historical_resume(db_session, portfolio.id, through=date(2026, 9, 4))
+    assert _account_facts(db_session, portfolio.id) == before
+    assert not any(row["trade_date"] == date(2026, 9, 3) for row in _runs(db_session, portfolio.id))
 
 
-def test_public_resume_cancel_after_partial_then_retry_keeps_original_fills(db_session, monkeypatch):
-    import threading
-    from sqlalchemy import event, select
-    from app.api.routes import portfolios as api
-    from app.models.sim_account import SimOrder, SimTrade
-    from app.services.async_tasks import cancel_async_task, get_async_task
-    from app.services.sim_accounts import cash_balance
-    from tests.test_execution_lifecycle_public import wait_task
-    portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
-    request_returned, fired = threading.Event(), []
-    task_ids = []
-    def cancel_after_real_partial(_conn, _cursor, statement, parameters, _context, _many):
-        if statement.startswith("INSERT INTO decision_runs") and "2026-09-03" in parameters and not fired:
-            fired.append(True)
-            assert request_returned.wait(timeout=3)
-            cancel_async_task(task_ids[1])
-    engine = db_session.get_bind()
-    event.listen(engine, "before_cursor_execute", cancel_after_real_partial)
-    request = api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False)
-    try:
-        started = api.portfolio_resume_execute(portfolio.id, request, db_session)
-        task_ids.extend(item["task_id"] for item in started["created_tasks"])
-        request_returned.set()
-        assert [wait_task(tid)["status"] for tid in task_ids] == ["done", "cancelled", "failed"]
-    finally:
-        request_returned.set()
-        event.remove(engine, "before_cursor_execute", cancel_after_real_partial)
-    db_session.expire_all()
-    original = db_session.scalar(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id))
-    assert original.status == "partial" and original.filled_quantity == 100
-    assert cash_balance(db_session, portfolio.id) == pytest.approx(98979.69)
-    assert portfolio.last_decision_trade_date == date(2026, 9, 2)
-    original_id = original.id
-    first_trade = db_session.scalar(select(SimTrade).where(SimTrade.order_id == original_id))
-    first_record = (first_trade.id, first_trade.price, first_trade.quantity, first_trade.created_at)
-    retry = api.portfolio_resume_execute(portfolio.id, request, db_session)
-    assert [wait_task(item["task_id"])["status"] for item in retry["created_tasks"]] == ["done", "done"]
-    assert get_async_task(task_ids[1]).status == "cancelled"
-    db_session.expire_all()
-    db_session.refresh(original)
-    assert original.id == original_id and original.filled_quantity == 500
-    trades = list(db_session.scalars(select(SimTrade).where(SimTrade.order_id == original_id).order_by(SimTrade.id)))
-    assert (trades[0].id, trades[0].price, trades[0].quantity, trades[0].created_at) == first_record
-    assert len(trades) == 2
-    assert cash_balance(db_session, portfolio.id) == pytest.approx(94778.43)
-    assert api.portfolio_resume_execute(portfolio.id, request, db_session)["created_count"] == 0
-    assert portfolio.last_decision_trade_date == date(2026, 9, 4)
+def _runs(db, portfolio_id):
+    from sqlalchemy import select
+    from app.models.decision_engine import DecisionRun
+    return [{"id": row.id, "trade_date": row.trade_date} for row in db.scalars(select(DecisionRun).where(
+        DecisionRun.portfolio_id == portfolio_id))]
+
+
+def test_public_resume_does_not_restart_cancelled_expired_work_or_repeat_original_partial_fills(db_session, monkeypatch):
+    from app.models.async_task import AsyncTaskRecord
+    from app.services.portfolio_resume_service import resume_idempotency_key
+    portfolio, _, snapshot = seed_historical_resume(db_session, monkeypatch)
+    first = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
+        strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
+    assert first["pending_orders"][0]["remaining_quantity"] == 400
+    cancelled = AsyncTaskRecord(id="cancelled-expired-resume", task_type="portfolio_resume", status="cancelled",
+        stage="cancelled", cancel_requested=1, is_terminal_locked=1,
+        idempotency_key=resume_idempotency_key(portfolio.id, date(2026, 9, 2), "original"),
+        payload_json=json.dumps({"portfolio_id": portfolio.id, "trade_date": "2026-09-02",
+            "resume_mode": True, "strategy_snapshot_id": snapshot.id}), result_json='{"retained":"original-fill"}')
+    db_session.add(cancelled)
+    db_session.commit()
+    before = _account_facts(db_session, portfolio.id)
+    for _attempt in range(2):
+        _historical_resume(db_session, portfolio.id)
+    db_session.refresh(cancelled)
+    assert cancelled.status == "cancelled" and json.loads(cancelled.result_json) == {"retained": "original-fill"}
+    assert _account_facts(db_session, portfolio.id) == before
 
 
 @pytest.mark.parametrize("forced_exit", [False, True], ids=["opposite_signal", "stop_loss"])
-def test_public_resume_preserves_exit_conflict_with_unfilled_buy(db_session, monkeypatch, forced_exit):
+def test_public_history_resume_does_not_reinterpret_old_partial_order_with_later_exit_inputs(db_session, monkeypatch, forced_exit):
     from sqlalchemy import select
-    from app.api.routes import portfolios as api
     from app.models.daily_bar import DailyBar
-    from app.models.decision_engine import DecisionEvidence, DecisionRun
     from app.models.score import Score
-    from app.models.sim_account import SimOrder, SimTrade
-    from app.services.async_tasks import get_async_task
-    from tests.test_execution_lifecycle_public import wait_task
     portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
-    score = db_session.scalar(select(Score).where(Score.symbol_id == symbol.id, Score.trade_date == date(2026, 9, 3)))
+    first = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
+        strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
+    assert first["pending_orders"][0]["remaining_quantity"] == 400
     if forced_exit:
         versions = json.loads(snapshot.versions_json or "{}")
         versions["risk_policy"] = {"stop_loss_basis": "average_cost", "stop_loss_pct": .05}
         snapshot.versions_json = json.dumps(versions)
-        bar = db_session.scalar(select(DailyBar).where(DailyBar.symbol_id == symbol.id, DailyBar.trade_date == date(2026, 9, 3)))
+        bar = db_session.scalar(select(DailyBar).where(DailyBar.symbol_id == symbol.id,
+            DailyBar.trade_date == date(2026, 9, 3)))
         bar.close, bar.low = 9.5, 9.4
     else:
+        score = db_session.scalar(select(Score).where(Score.symbol_id == symbol.id,
+            Score.trade_date == date(2026, 9, 3)))
         score.model_alpha_score = score.priority_score = 10
     db_session.commit()
-    result = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    statuses = [wait_task(item["task_id"])["status"] for item in result["created_tasks"]]
-    assert statuses == ["done", "failed", "failed"]
-    assert "原订单尚未完成" in str(get_async_task(result["created_tasks"][1]["task_id"]).errors)
-    db_session.expire_all()
-    run = db_session.scalar(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id, DecisionRun.trade_date == date(2026, 9, 3)))
-    evidence = db_session.scalar(select(DecisionEvidence).where(DecisionEvidence.decision_run_id == run.id))
-    assert evidence.action == "REJECTED" and evidence.rejection_reason == "PENDING_ORDER_CONFLICT"
-    if forced_exit:
-        assert evidence.stop_loss_triggered == 1
-    assert portfolio.last_decision_trade_date == date(2026, 9, 2)
-    order = db_session.scalar(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id))
-    assert order.status == "partial" and order.filled_quantity == 100
-    assert len(list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id)))) == 1
+    before = _account_facts(db_session, portfolio.id)
+    _historical_resume(db_session, portfolio.id)
+    assert _account_facts(db_session, portfolio.id) == before
 
 
-def test_public_resume_repeated_data_failure_does_not_repeat_partial_fill(db_session, monkeypatch):
+def test_backfilling_a_historical_score_does_not_authorize_replaying_a_partial_order(db_session, monkeypatch):
     from sqlalchemy import select
-    from app.api.routes import portfolios as api
-    from app.models.decision_engine import DecisionRun
     from app.models.score import Score
-    from app.models.sim_account import SimTrade
-    from app.services.sim_accounts import cash_balance
-    from tests.test_execution_lifecycle_public import wait_task
     portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
+    first = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
+        strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
+    assert first["pending_orders"][0]["remaining_quantity"] == 400
     score = db_session.scalar(select(Score).where(Score.symbol_id == symbol.id, Score.trade_date == date(2026, 9, 3)))
     db_session.delete(score)
     db_session.commit()
-    request = api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False)
-    old_run_ids = []
-    for _attempt in range(2):
-        result = api.portfolio_resume_execute(portfolio.id, request, db_session)
-        statuses = [wait_task(item["task_id"])["status"] for item in result["created_tasks"]]
-        assert statuses[-2:] == ["failed", "failed"]
-        db_session.expire_all()
-        assert len(list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id)))) == 1
-        assert cash_balance(db_session, portfolio.id) == pytest.approx(98979.69)
-        assert portfolio.last_decision_trade_date == date(2026, 9, 2)
-        old_run_ids = list(db_session.scalars(select(DecisionRun.id).where(DecisionRun.portfolio_id == portfolio.id,
-            DecisionRun.trade_date == date(2026, 9, 3))))
-    assert len(old_run_ids) == 2
+    before = _account_facts(db_session, portfolio.id)
+    _historical_resume(db_session, portfolio.id)
     fixed = _make_score(db_session, symbol.id, trade_date=date(2026, 9, 3), priority_score=90)
     fixed.factor_model_run_id, fixed.factor_set_id = snapshot.factor_model_run_id, snapshot.factor_set_id
     db_session.commit()
-    result = api.portfolio_resume_execute(portfolio.id, request, db_session)
-    assert [wait_task(item["task_id"])["status"] for item in result["created_tasks"]] == ["done", "done"]
-    db_session.expire_all()
-    assert all(db_session.get(DecisionRun, rid).blocking_status != "READY" for rid in old_run_ids)
-    assert len(list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id)))) == 2
-    assert cash_balance(db_session, portfolio.id) == pytest.approx(94778.43)
+    _historical_resume(db_session, portfolio.id)
+    assert _account_facts(db_session, portfolio.id) == before
 
 
-def test_public_resume_pending_buy_does_not_suppress_other_position_stop_loss(db_session, monkeypatch):
-    from sqlalchemy import select
-    from app.api.routes import portfolios as api
-    from app.models.decision_engine import DecisionEvidence, DecisionRun
-    from app.models.sim_account import SimTrade
+def test_historical_diagnostic_does_not_sell_old_positions_and_current_risk_exit_remains_available(db_session, monkeypatch):
     from app.services.sim_accounts import place_sim_order
-    from tests.test_execution_lifecycle_public import wait_task
-    portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
+    portfolio, _, _ = seed_historical_resume(db_session, monkeypatch)
     other = _make_symbol(db_session, symbol="600124")
-    _make_member(db_session, portfolio_id=portfolio.id, symbol_id=other.id)
-    members = json.loads(snapshot.member_snapshot_json)
-    members.append({**members[0], "symbol_id": other.id})
-    snapshot.member_snapshot_json = json.dumps(members)
-    versions = json.loads(snapshot.versions_json or "{}")
-    versions["risk_policy"] = {"stop_loss_basis": "average_cost", "stop_loss_pct": .05}
-    snapshot.versions_json = json.dumps(versions)
     order, trade = place_sim_order(db_session, portfolio, other, side="buy", quantity=100, price=10,
         enforce_rules=False, apply_fees=False)
     trade.created_at = order.filled_at = datetime(2026, 9, 1, 2)
-    for day, price in ((2, 10), (3, 9.4), (4, 9.5)):
-        bar = _make_daily_bar(db_session, other.id, trade_date=date(2026, 9, day), close=price)
-        bar.created_at = datetime(2026, 9, day, 2)
-        score = _make_score(db_session, other.id, trade_date=date(2026, 9, day), priority_score=50, action="hold")
-        score.factor_model_run_id, score.factor_set_id = snapshot.factor_model_run_id, snapshot.factor_set_id
     db_session.commit()
-    result = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    assert [wait_task(item["task_id"])["status"] for item in result["created_tasks"]] == ["done", "done", "done"]
-    db_session.expire_all()
-    run = db_session.scalar(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id, DecisionRun.trade_date == date(2026, 9, 3)))
-    exit_evidence = db_session.scalar(select(DecisionEvidence).where(DecisionEvidence.decision_run_id == run.id,
-        DecisionEvidence.symbol_id == other.id))
-    assert exit_evidence.action == "SELL" and exit_evidence.stop_loss_triggered == 1
-    trades = list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id,
-        SimTrade.symbol_id == other.id, SimTrade.side == "sell")))
-    assert len(trades) == 1 and trades[0].quantity == 100 and trades[0].created_at.date() == date(2026, 9, 4)
+    before = _account_facts(db_session, portfolio.id)
+    _historical_resume(db_session, portfolio.id)
+    assert _account_facts(db_session, portfolio.id) == before
+    exit_order, exit_trade = place_sim_order(db_session, portfolio, other, side="sell", quantity=100, price=9.4,
+        enforce_rules=False, apply_fees=False)
+    assert exit_order.filled_quantity == exit_trade.quantity == 100
+    assert exit_trade.side == "sell"
 
 
-def test_public_resume_same_stop_loss_keeps_original_partial_sell(db_session, monkeypatch):
+def test_public_resume_keeps_an_expired_partial_sell_immutable(db_session, monkeypatch):
     from sqlalchemy import select
-    from app.api.routes import portfolios as api
-    from app.models.decision_engine import DecisionEvidence, DecisionRun
     from app.models.score import Score
-    from app.models.sim_account import SimOrder, SimTrade
+    from app.models.sim_account import SimOrder
     from app.services.sim_accounts import place_sim_order
-    from tests.test_execution_lifecycle_public import wait_task
     portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
     for score in db_session.scalars(select(Score).where(Score.symbol_id == symbol.id)):
         score.model_alpha_score = score.priority_score = 10
@@ -383,78 +294,96 @@ def test_public_resume_same_stop_loss_keeps_original_partial_sell(db_session, mo
         enforce_rules=False, apply_fees=False)
     trade.created_at = order.filled_at = datetime(2026, 9, 1, 2)
     db_session.commit()
-    result = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    assert [wait_task(item["task_id"])["status"] for item in result["created_tasks"]] == ["done", "done", "done"]
-    db_session.expire_all()
-    run = db_session.scalar(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id, DecisionRun.trade_date == date(2026, 9, 3)))
-    evidence = db_session.scalar(select(DecisionEvidence).where(DecisionEvidence.decision_run_id == run.id))
-    assert evidence.action == "HOLD" and evidence.stop_loss_triggered == 1 and evidence.target_quantity == 400
-    sells = list(db_session.scalars(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id, SimOrder.side == "sell")))
-    assert len(sells) == 1 and sells[0].quantity == sells[0].filled_quantity == 500
-    trades = list(db_session.scalars(select(SimTrade).where(SimTrade.order_id == sells[0].id).order_by(SimTrade.id)))
-    assert [(row.quantity, row.price) for row in trades] == [(100, 10.2), (400, 10.5)]
+    first = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
+        strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
+    assert db_session.get(SimOrder, first["executed_orders"][0]["order_id"]).side == "sell"
+    assert first["pending_orders"][0]["remaining_quantity"] == 400
+    before = _account_facts(db_session, portfolio.id)
+    _historical_resume(db_session, portfolio.id)
+    assert _account_facts(db_session, portfolio.id) == before
 
 
-def test_public_resume_pending_buy_pauses_new_entries_at_total_exposure_limit(db_session, monkeypatch):
-    from sqlalchemy import select
-    from app.api.routes import portfolios as api
-    from app.models.decision_engine import DecisionEvidence, DecisionRun
-    from app.models.sim_account import SimOrder
-    from app.services.sim_accounts import cash_balance
-    from app.services.async_tasks import get_async_task
-    from tests.test_execution_lifecycle_public import wait_task
-    portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch)
-    versions = json.loads(snapshot.versions_json or "{}")
-    # Filled inventory alone is below 6%, while the old BUY's remainder plus
-    # another stock's 5% BUY would exceed it despite plenty of available cash.
-    versions["rule_constraints"] = {"total_investable_pct": .06, "min_cash_reserve_pct": .000001,
-        "max_loss_per_trade_pct": 0, "asset_limits": {"stock": .06, "etf": 0}, "sector_limit_pct": 1,
-        "single_limit_pct": .05, "stage_limits": {"stock": {"default_open_pct": .05}},
-        "open_slot_max": 20, "rule_ok": True}
-    snapshot.versions_json = json.dumps(versions)
+def test_historical_resume_does_not_create_new_entries_even_with_current_cash_and_new_scores(db_session, monkeypatch):
+    portfolio, _, snapshot = seed_historical_resume(db_session, monkeypatch)
+    first = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
+        strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
+    assert first["pending_orders"][0]["remaining_quantity"] == 400
     other = _make_symbol(db_session, symbol="600125")
     _make_member(db_session, portfolio_id=portfolio.id, symbol_id=other.id)
     members = json.loads(snapshot.member_snapshot_json)
     members.append({**members[0], "symbol_id": other.id})
     snapshot.member_snapshot_json = json.dumps(members)
-    for day in (2, 3, 4):
-        bar = _make_daily_bar(db_session, other.id, trade_date=date(2026, 9, day), close=10)
-        bar.created_at = datetime(2026, 9, day, 2)
-        score = _make_score(db_session, other.id, trade_date=date(2026, 9, day), priority_score=50 if day == 2 else 90)
+    for day in (2, 3):
+        _make_daily_bar(db_session, other.id, trade_date=date(2026, 9, day), close=10)
+        score = _make_score(db_session, other.id, trade_date=date(2026, 9, day), priority_score=90)
         score.factor_model_run_id, score.factor_set_id = snapshot.factor_model_run_id, snapshot.factor_set_id
     db_session.commit()
-    result = api.portfolio_resume_execute(portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 4), dry_run=False), db_session)
-    assert [wait_task(item["task_id"])["status"] for item in result["created_tasks"]] == ["done", "done", "done"]
-    db_session.expire_all()
-    run = db_session.scalar(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id, DecisionRun.trade_date == date(2026, 9, 3)))
-    evidence = db_session.scalar(select(DecisionEvidence).where(DecisionEvidence.decision_run_id == run.id, DecisionEvidence.symbol_id == other.id))
-    assert evidence.action != "BUY" and evidence.target_quantity == 0
-    assert "PENDING_BUY_ENTRY_PAUSED" in json.loads(evidence.reason_codes_json)
-    assert evidence.blocking_reason == "原买单尚未完成，暂缓新增买入"
-    pending = get_async_task(result["created_tasks"][1]["task_id"]).result["execution_result"]
-    assert pending["pending_order_count"] == 1 and pending["pending_orders"][0]["remaining_quantity"] == 400
-    assert pending["pending_order_plan_ids"] == [pending["pending_orders"][0]["order_plan_id"]]
-    assert db_session.scalar(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id, SimOrder.symbol_id == other.id)) is None
-    assert cash_balance(db_session, portfolio.id) == pytest.approx(94778.43)
+    before = _account_facts(db_session, portfolio.id)
+    _historical_resume(db_session, portfolio.id)
+    assert _account_facts(db_session, portfolio.id) == before
 
 
-def test_live_start_keeps_original_partial_state_until_next_actual_session(db_session, monkeypatch):
-    from sqlalchemy import select
-    from app.api.routes import portfolio_governance as api
-    from app.models.decision_engine import DecisionRun
-    from app.models.sim_account import SimTrade
+def test_public_resume_continues_only_the_real_unfinished_frozen_plan_due_today_once(db_session, monkeypatch):
+    from sqlalchemy import delete, select
+    from app.api.routes import portfolios as api
+    from app.models.daily_bar import DailyBar
+    from app.models.decision_engine import DecisionOrderPlanRecord, DecisionRun
+    from app.models.sim_account import SimOrder, SimTrade
+    from app.models.score import Score
+    from app.models.scoring_config import ScoringConfig
+    from app.services.auto_trade_safety import check_data_health
+    from app.services.portfolio_resume_service import review_resume_execution_date
+    from app.services.sim_accounts import cash_balance
+    from app.services.async_tasks import get_async_task
     from tests.test_execution_lifecycle_public import wait_task
     portfolio, symbol, snapshot = seed_historical_resume(db_session, monkeypatch, end_day=3)
+    # Original Sep-2 intent genuinely exists before Sep-3's bar arrives.
+    db_session.execute(delete(DailyBar).where(DailyBar.symbol_id == symbol.id,
+        DailyBar.trade_date > date(2026, 9, 2)))
+    db_session.execute(delete(Score).where(Score.symbol_id == symbol.id,
+        Score.trade_date > date(2026, 9, 3)))
+    db_session.commit()
     original = run_idempotent_member_source(db_session, portfolio_id=portfolio.id,
         strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 2))
-    assert original["pending_orders"][0]["remaining_quantity"] == 400
-    started = api.start_auto_simulation(portfolio.id,
-        api.AutoSimulationPreflightRequest(trade_date=date(2026, 9, 3)), db_session, "owner")
-    assert wait_task(started["task_id"])["status"] == "partial"
+    pending = original["pending_orders"][0]
+    assert pending["reason"] == "EXECUTION_BAR_MISSING"
+    plan = db_session.get(DecisionOrderPlanRecord, pending["order_plan_id"])
+    assert plan.execution_date == date(2026, 9, 3)
+    frozen = (plan.order_plan_id, plan.evidence_id, plan.decision_run_id, plan.target_quantity)
+    bar = _make_daily_bar(db_session, symbol.id, trade_date=date(2026, 9, 3), close=10.2)
+    bar.created_at = datetime(2026, 9, 3, 2)
+    # The public execution gate verifies actual publication/model lineage and
+    # the current scoring configuration, unlike the low-level engine fixtures.
+    db_session.add(ScoringConfig(asset_type="stock", preset_key="frozen-plan-test", name="实际当前配置",
+        version=1, is_active=1, config_json=json.dumps({"dimensions": [{"key": "trend", "enabled": True,
+            "factors": [{"key": "trend_score", "source": "builtin"}]}]})))
+    for score in db_session.scalars(select(Score).where(Score.symbol_id == symbol.id)):
+        score.weight_mode = "ridge"
+    db_session.commit()
+    health = check_data_health(db_session, symbol_id=symbol.id, portfolio_id=portfolio.id)
+    assert health.healthy, health.reason
+    review = review_resume_execution_date(db_session, portfolio.id, date(2026, 9, 2))
+    assert review["enabled"] is True and review["mode"] == "CURRENT_ORIGINAL_PLAN", review
+    assert review["source_refs"][0]["decision_run_id"] == original["decision_run_id"]
+    result = api.portfolio_resume_execute(portfolio.id,
+        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 2), dry_run=False), db_session)
+    assert result["created_count"] == 1
+    task = wait_task(result["created_tasks"][0]["task_id"])
+    assert task["status"] == "done", json.dumps(get_async_task(task["id"]).errors, ensure_ascii=False)
     db_session.expire_all()
-    assert len(list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id)))) == 1
-    assert portfolio.last_decision_trade_date == date(2026, 9, 1)
-    assert db_session.scalar(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id,
-        DecisionRun.trade_date == date(2026, 9, 3))) is None
+    plans = list(db_session.scalars(select(DecisionOrderPlanRecord).where(DecisionOrderPlanRecord.portfolio_id == portfolio.id)))
+    assert [(row.order_plan_id, row.evidence_id, row.decision_run_id, row.target_quantity) for row in plans] == [frozen]
+    orders = list(db_session.scalars(select(SimOrder).where(SimOrder.portfolio_id == portfolio.id)))
+    trades = list(db_session.scalars(select(SimTrade).where(SimTrade.portfolio_id == portfolio.id)))
+    assert len(orders) == len(trades) == 1
+    assert orders[0].decision_evidence_id == plan.evidence_id
+    assert trades[0].quantity == orders[0].quantity == orders[0].filled_quantity == plan.target_quantity
+    assert trades[0].price == 10.2 and trades[0].created_at.date() == date(2026, 9, 3)
+    assert len(list(db_session.scalars(select(DecisionRun).where(DecisionRun.portfolio_id == portfolio.id)))) == 1
+    cash = cash_balance(db_session, portfolio.id)
+    facts = _account_facts(db_session, portfolio.id)
+    again = api.portfolio_resume_execute(portfolio.id,
+        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 2), dry_run=False), db_session)
+    assert again["created_count"] == 0
+    assert cash_balance(db_session, portfolio.id) == cash
+    assert _account_facts(db_session, portfolio.id) == facts

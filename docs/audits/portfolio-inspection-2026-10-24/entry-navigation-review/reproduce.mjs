@@ -1,0 +1,12 @@
+import {chromium} from '../../frontend/node_modules/playwright/index.mjs';
+import fs from 'node:fs';
+const browser=await chromium.launch({headless:true,executablePath:'C:/Users/demo/AppData/Local/ms-playwright/chromium-1223/chrome-win64/chrome.exe'});
+const page=await browser.newPage({viewport:{width:1440,height:850}}),out={};
+await page.route('**/api/**',async r=>{if(!['GET','HEAD','OPTIONS'].includes(r.request().method()))return r.abort();return r.continue();});
+await page.goto('http://127.0.0.1:8000/');await page.getByText('组合交易',{exact:true}).first().click();await page.getByText('检查与对账',{exact:true}).first().click();await page.getByText('新买入已暂停',{exact:true}).waitFor();
+await page.getByRole('button',{name:'审计记录',exact:true}).click();let history=page.getByRole('dialog',{name:/处理记录与审核历史$/});await history.getByLabel('所属交易日起点',{exact:true}).fill('2026-09-30');await history.getByRole('button',{name:'查询',exact:true}).click();await page.waitForTimeout(400);await history.locator('.ant-drawer-close').click();await history.waitFor({state:'hidden'});
+await page.getByRole('button',{name:'打开数据修复',exact:true}).click();let data=page.getByRole('dialog',{name:/整合数据缺口与批量修复$/});await data.getByRole('button',{name:'查看标的证据',exact:true}).first().click();let detail=page.getByRole('dialog',{name:/数据检查详情$/});await detail.getByRole('button',{name:'该标的相关历史处理',exact:true}).click();await history.getByRole('region',{name:'历史查询结果'}).waitFor();await history.getByRole('button',{name:'返回当前问题',exact:true}).click();await detail.waitFor({state:'visible'});await detail.locator('.ant-drawer-close').click();await data.waitFor({state:'visible'});await data.locator('.ant-drawer-close').click();await data.waitFor({state:'hidden'});
+await page.getByRole('button',{name:'审计记录',exact:true}).click();out.history_filter_after_context_detour=await history.getByLabel('所属交易日起点',{exact:true}).inputValue();out.expected='2026-09-30';await history.locator('.ant-drawer-close').click();await history.waitFor({state:'hidden'});
+let release;const held=new Promise(r=>release=r);await page.route('**/reconciliation-preview?trade_date=2026-09-29',async r=>{await held;return r.continue();});
+await page.getByRole('button',{name:'每日对账',exact:true}).click();await page.waitForTimeout(500);out.daily_drawer_visible_while_reading=await page.getByRole('dialog',{name:/执行与对账$/}).isVisible();release();await page.waitForTimeout(600);
+fs.writeFileSync('D:/ai_project/dataAanlystNew/tmp/inspection-entry-audit-2026-10-24/reproduced.json',JSON.stringify(out,null,2));await browser.close();

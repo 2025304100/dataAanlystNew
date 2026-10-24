@@ -220,59 +220,31 @@ class TestAutoModeEdgeCases:
         assert check_task_cancelled() is False
 
     def test_data_expired_blocks_buy(self, db_session):
-        """异常 3：数据过期 → check_data_health 返回 healthy=False（fail-closed）。
-
-        验证：K 线数据超过新鲜度阈值时，fail-closed 禁止买入。
-        """
-        # Arrange
-        sym = _make_symbol(db_session, symbol="800010")
-        expired_kline = _now_naive() - timedelta(
-            hours=KLINE_FRESHNESS_HOURS + 1
-        )
-
-        # Act
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=expired_kline,
-        ):
-            result = check_data_health(db_session, symbol_id=sym.id)
-
-        # Assert: fail-closed，禁止买入
+        """Business-day staleness blocks buys despite recent ingestion."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 20))
+        _score(db_session, symbols[0], config, date(2026, 10, 22))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id)
         assert result.healthy is False
         assert "K线数据过期" in result.reason
-        assert result.kline_latest_at == expired_kline
+        assert result.kline_trade_date == date(2026, 10, 20)
 
     def test_rule_expired_blocks_buy(self, db_session):
-        """异常 4：规则失效 → check_data_health 返回 healthy=False（fail-closed）。
-
-        验证：规则版本超过 7 天新鲜度阈值时，fail-closed 禁止买入。
-        """
-        # Arrange
-        sym = _make_symbol(db_session, symbol="800020")
-        expired_rule = _now_naive() - timedelta(
-            hours=RULE_FRESHNESS_HOURS + 1
-        )
-
-        # Act
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_latest_score_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_rule_version_time",
-            return_value=expired_rule,
-        ):
-            result = check_data_health(
-                db_session, symbol_id=sym.id, rule_version_id=2001
-            )
-
-        # Assert: fail-closed
+        """Unknown rule versions fail closed; age alone is not rule validity."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 22))
+        _score(db_session, symbols[0], config, date(2026, 10, 22))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id, rule_version_id=2001)
         assert result.healthy is False
-        assert "规则版本" in result.reason
-        assert "过期" in result.reason
+        assert "UNKNOWN" in result.reason_codes
         assert result.rule_version_id == 2001
+        assert result.rule_version_at is None
 
     def test_price_limit_up_blocks_buy(self, db_session):
         """异常 5：涨停封板 → check_price_limit 禁止买入。

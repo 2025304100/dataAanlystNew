@@ -1,0 +1,46 @@
+[
+  {
+    "symbol": "000001",
+    "name": "平安银行",
+    "config_id": 3,
+    "required_window_start": "2026-08-07",
+    "target_trade_date": "2026-10-23",
+    "required_bar_count": 50,
+    "price_basis": "qfq",
+    "database_writes": false,
+    "network_is_verification_only": true,
+    "status": "NOT_SAFE_TO_RECALCULATE",
+    "reason": "qfq_closing_price_mismatch",
+    "error_type": "AssertionError"
+  },
+  {
+    "symbol": "510300",
+    "name": "沪深300ETF华泰柏瑞",
+    "config_id": 5,
+    "required_window_start": "2026-08-07",
+    "target_trade_date": "2026-10-23",
+    "required_bar_count": 50,
+    "price_basis": "qfq",
+    "database_writes": false,
+    "network_is_verification_only": true,
+    "status": "VERIFIED",
+    "basis": "retained_explicit_qfq_etf_units_and_prior_seven_day_continuity_review",
+    "input_bars_sha256": "edbb66befeff7878a5b0fedb26bc1d6e0eb6d300d3526122077c88ee18e9026c",
+    "configuration_sha256": "acd31d91c05180d0ddb2bb6c1d53d91c4e2c6d0ecc09259c97bab7d1d3941dc5",
+    "point_in_time_certified": false
+  },
+  {
+    "symbol": "600428",
+    "name": "中远海特",
+    "config_id": 3,
+    "required_window_start": "2026-08-07",
+    "target_trade_date": "2026-10-23",
+    "required_bar_count": 50,
+    "price_basis": "qfq",
+    "database_writes": false,
+    "network_is_verification_only": true,
+    "status": "NOT_SAFE_TO_RECALCULATE",
+    "reason": "qfq_closing_price_mismatch",
+    "error_type": "AssertionError"
+  }
+]

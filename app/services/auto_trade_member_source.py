@@ -410,6 +410,7 @@ def _check_data_health(
     db: Session,
     symbol_id: int,
     rule_version_id: int | None = None,
+    portfolio_id: int | None = None,
 ) -> tuple[bool, str]:
     """数据健康检查（WP6.5 fail-closed 接入安全门禁）。
 
@@ -420,7 +421,7 @@ def _check_data_health(
     from app.services.auto_trade_safety import check_data_health
 
     result = check_data_health(
-        db, symbol_id=symbol_id, rule_version_id=rule_version_id
+        db, symbol_id=symbol_id, rule_version_id=rule_version_id, portfolio_id=portfolio_id
     )
     return result.healthy, result.reason
 
@@ -429,6 +430,7 @@ def _get_data_cutoff_at(
     db: Session,
     symbol_id: int,
     rule_version_id: int | None = None,
+    portfolio_id: int | None = None,
 ) -> str | None:
     """获取数据截止时间（ISO 8601 字符串，用于决策快照追溯）。
 
@@ -439,7 +441,7 @@ def _get_data_cutoff_at(
     from app.services.auto_trade_safety import check_data_health
 
     result = check_data_health(
-        db, symbol_id=symbol_id, rule_version_id=rule_version_id
+        db, symbol_id=symbol_id, rule_version_id=rule_version_id, portfolio_id=portfolio_id
     )
     cutoff: datetime | None = None
     if result.kline_latest_at:
@@ -521,11 +523,11 @@ def get_buy_candidates(
 
         # 4. 数据健康检查（WP6.5 接入 fail-closed 检查，含规则版本新鲜度）
         data_health_ok, data_reason = _check_data_health(
-            db, member.symbol_id, rule_version_id=member.entry_rule_version_id
+            db, member.symbol_id, rule_version_id=member.entry_rule_version_id, portfolio_id=portfolio_id
         )
         # 数据截止时间（用于决策快照追溯，即使健康检查不通过也记录）
         data_cutoff_at = _get_data_cutoff_at(
-            db, member.symbol_id, rule_version_id=member.entry_rule_version_id
+            db, member.symbol_id, rule_version_id=member.entry_rule_version_id, portfolio_id=portfolio_id
         )
 
         # 5. 组合风控检查
@@ -606,7 +608,7 @@ def get_signal_candidates(
 
         # 数据截止时间（用于决策快照追溯；manual/confirm 不阻断，仅记录）
         data_cutoff_at = _get_data_cutoff_at(
-            db, member.symbol_id, rule_version_id=member.entry_rule_version_id
+            db, member.symbol_id, rule_version_id=member.entry_rule_version_id, portfolio_id=portfolio_id
         )
 
         candidates.append(

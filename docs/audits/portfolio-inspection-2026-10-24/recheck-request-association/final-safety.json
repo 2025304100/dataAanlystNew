@@ -1,0 +1,63 @@
+{
+  "state": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null
+  },
+  "actual_request_receipts": 1,
+  "revision": "wps_0024_077_recheck_requests",
+  "negative_lookup": {
+    "status": 404,
+    "response": {
+      "error_code": "RECHECK_REQUEST_NOT_FOUND",
+      "user_message": "尚未找到该原请求回执；请保留原标识重新读取，不另起请求。",
+      "impact": "本次操作未完成",
+      "retryable": true,
+      "completed": 0.0,
+      "next_actions": [
+        {
+          "label": "重试",
+          "action_type": "retry",
+          "target": null,
+          "reason": null
+        }
+      ],
+      "technical_details": {
+        "exception_type": "HTTPException",
+        "status_code": 404,
+        "error_message": "RECHECK_REQUEST_NOT_FOUND | 尚未找到该原请求回执；请保留原标识重新读取，不另起请求。",
+        "stack_summary": null,
+        "db_error_code": null,
+        "upstream_response": null,
+        "request_id": null
+      },
+      "correlation_id": "6181717795474b8d84b956c509f97b90",
+      "extras": null
+    }
+  },
+  "retained_association_readback": {
+    "portfolio_id": 1,
+    "request_key": "45fd110f-7cc0-4111-b0e2-4df89a42e1c6",
+    "task_id": "9a27ac797035cd19619f3a832c92ee00",
+    "task_status": "done",
+    "reconciliation_passed": false,
+    "trading_resumed": false
+  },
+  "changed_existing_tables_since_migration": {}
+}

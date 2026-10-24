@@ -30,8 +30,14 @@ SCHEDULER_CHECK_INTERVAL_SECONDS = 30
 DISPATCH_RETRY_DELAY_MINUTES = 15
 DISPATCH_MAX_RETRIES_PER_DAY = 6
 DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v9"
+RECONCILIATION_SEED_KEY = "portfolio_reconciliation_schedule_v1"
 
 TASK_DEFINITIONS: dict[str, dict] = {
+    "portfolio_reconciliation": {
+        "name": "组合自动对账",
+        "description": "只核对到期业务日的计划、执行与账户证据，按连续覆盖范围推进；不生成交易或补造历史记录",
+        "default_payload": {},
+    },
     "universe_incremental_sync": {
         "name": "行情增量同步",
         "description": "增量同步基础股票池中已过期的日线行情",
@@ -169,6 +175,21 @@ DEFAULT_SCHEDULES = (
             "lookback_days": 1,
         },
         "enabled": True,
+    },
+    {
+        "name": "每日 ETF 指标快照",
+        "task_type": "external_data_sync",
+        "frequency": "daily",
+        "time_of_day": "16:40",
+        "weekdays": [],
+        "payload": {
+            "dataset": "etf",
+            "source": "all",
+            "include_northbound": False,
+            "mode": "incremental",
+            "lookback_days": 1,
+        },
+        "enabled": False,
     },
     {
         "name": "每日人气榜快照",
@@ -360,10 +381,29 @@ def _next_for_model(item: ScheduledTask, *, after: datetime | None = None) -> da
     )
 
 
+def _seed_reconciliation_schedule(db: Session) -> int:
+    # Independent seed: existing user schedules and deletion choices are retained.
+    if db.get(ScheduledTaskSeedState, RECONCILIATION_SEED_KEY) is not None:
+        return 0
+    existing = db.scalar(select(ScheduledTask.id).where(ScheduledTask.task_type == "portfolio_reconciliation").limit(1))
+    created = 0
+    if existing is None:
+        item = ScheduledTask(name="组合自动对账", task_type="portfolio_reconciliation", frequency="interval",
+            time_of_day=None, weekdays_json="[]", interval_minutes=5, timezone="Asia/Shanghai",
+            payload_json="{}", enabled=1)
+        item.next_run_at = _next_for_model(item)
+        db.add(item)
+        created = 1
+    db.add(ScheduledTaskSeedState(key=RECONCILIATION_SEED_KEY))
+    db.flush()
+    return created
+
+
 def seed_default_schedules(db: Session) -> int:
+    reconciliation_created = _seed_reconciliation_schedule(db)
     disable_retired_schedules(db)
     if db.get(ScheduledTaskSeedState, DEFAULT_SCHEDULE_SEED_KEY) is not None:
-        return 0
+        return reconciliation_created
     created = 0
     existing_names = set(db.execute(select(ScheduledTask.name)).scalars().all())
     for data in DEFAULT_SCHEDULES:
@@ -390,7 +430,7 @@ def seed_default_schedules(db: Session) -> int:
         created += 1
     db.add(ScheduledTaskSeedState(key=DEFAULT_SCHEDULE_SEED_KEY))
     db.flush()
-    return created
+    return created + reconciliation_created
 
 
 def validate_definition(task_type: str) -> None:
@@ -403,6 +443,19 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
     if is_tail_proxy_schedule(task_type, payload):
         reject_tail_proxy()
     validate_definition(task_type)
+    if task_type == "portfolio_reconciliation":
+        if set(payload) - {"portfolio_id", "trade_date"}:
+            raise ValueError("自动对账仅接受组合和所属交易日，不能附带执行交易参数")
+        from datetime import date
+        result = {}
+        if payload.get("portfolio_id") is not None:
+            pid = payload["portfolio_id"]
+            if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+                raise ValueError("portfolio_id 必须为正整数")
+            result["portfolio_id"] = pid
+        if payload.get("trade_date") is not None:
+            result["trade_date"] = date.fromisoformat(str(payload["trade_date"])).isoformat()
+        return result
     if task_type == "factor_grade_review":
         from app.schemas.scheduled_task import FactorGradeReviewPayload
 
@@ -468,9 +521,9 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         return {"symbol": symbol, "lookback_days": lookback_days}
     if task_type == "external_data_sync":
         dataset = str(payload.get("dataset") or "fundamental")
-        if dataset not in {"fundamental", "capital_flow"}:
+        if dataset not in {"fundamental", "capital_flow", "etf"}:
             raise ValueError(
-                "scheduled external sync supports fundamental and capital_flow only"
+                "scheduled external sync supports fundamental, capital_flow and etf only"
             )
         source = str(payload.get("source") or "all")
         if source not in {"watchlist", "positions", "all"}:
@@ -616,6 +669,10 @@ def _dispatch_task(item: ScheduledTask):
     payload = _json(item.payload_json, {})
     if is_tail_proxy_schedule(item.task_type, payload):
         reject_tail_proxy()
+    if item.task_type == "portfolio_reconciliation":
+        from app.services.portfolio_reconciliation_job import create_portfolio_reconciliation_task
+        validated = validate_task_payload(item.task_type, payload)
+        return "async", create_portfolio_reconciliation_task(schedule_id=item.id, **validated)
     if item.task_type == "universe_incremental_sync":
         from app.services.universe_sync_task import start_universe_incremental_sync
 
@@ -937,21 +994,23 @@ def disable_retired_schedules(db: Session) -> int:
     return changed
 
 
-def run_due_schedules() -> int:
+def run_due_schedules(*, task_types: frozenset[str] | None = None) -> int:
     SessionLocal = get_session_local()
     db = SessionLocal()
     claimed: list[int] = []
     now = _now()
     try:
-        disable_retired_schedules(db)
+        if task_types is None:
+            disable_retired_schedules(db)
         db.commit()
-        candidates = db.execute(
-            select(ScheduledTask).where(
+        query = select(ScheduledTask).where(
                 ScheduledTask.enabled == 1,
                 ScheduledTask.next_run_at.is_not(None),
                 ScheduledTask.next_run_at <= now,
-            ).order_by(ScheduledTask.next_run_at, ScheduledTask.id)
-        ).scalars().all()
+            )
+        if task_types is not None:
+            query = query.where(ScheduledTask.task_type.in_(task_types))
+        candidates = db.execute(query.order_by(ScheduledTask.next_run_at, ScheduledTask.id)).scalars().all()
         for item in candidates:
             old_next = item.next_run_at
             next_run = _next_for_model(item, after=now + timedelta(seconds=1))
@@ -990,11 +1049,11 @@ def run_due_schedules() -> int:
         db.close()
 
 
-async def scheduler_loop() -> None:
+async def scheduler_loop(*, task_types: frozenset[str] | None = None) -> None:
     """Poll due schedules while the FastAPI process is alive."""
     while True:
         try:
-            await asyncio.to_thread(run_due_schedules)
+            await asyncio.to_thread(run_due_schedules, task_types=task_types)
         except asyncio.CancelledError:
             raise
         except Exception:

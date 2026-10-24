@@ -1,0 +1,137 @@
+{
+  "pageerrors": [],
+  "httpErrors": [],
+  "writes": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/material-investigations",
+      "payload": {
+        "trade_date": "2026-09-29",
+        "material": "schedule",
+        "report_ref": "reconciliation::1::2026-09-29",
+        "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+        "conclusion": "NOT_FOUND",
+        "attempted_sources": [
+          "当日调度及原任务关联记录"
+        ],
+        "evidence_refs": [
+          "检查与对账 → 2026-09-29 → 当天生效的自动接管与调度配置 → 本日检查与来源明细；本次安全验收留存来源报告与只读页面证据。"
+        ],
+        "note": "本次验收已查看当日执行义务检查及原任务调度关联，历史配置仍为未知，尚无覆盖九月二十九日的接管开关与调度生效记录，不能由当前设置倒推当日应执行情况。",
+        "request_key": "8ec8b8a8-e9b7-4b8f-ab7b-c538c5358c90"
+      }
+    },
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/material-investigations",
+      "payload": {
+        "trade_date": "2026-09-29",
+        "material": "positions",
+        "report_ref": "reconciliation::1::2026-09-29",
+        "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+        "conclusion": "NOT_FOUND",
+        "attempted_sources": [
+          "该日逐标的持仓快照或完整账本重建来源",
+          "本日原成交与资金流水"
+        ],
+        "evidence_refs": [
+          "检查与对账 → 2026-09-29 → 该交易日的持仓明细 → 本日检查与来源明细；本次安全验收留存来源报告与只读页面证据。"
+        ],
+        "note": "本次验收已查看当日历史持仓检查、原成交与流水，尚未取得九月二十九日可核验的逐标的快照或完整重建证据；当前持仓及当前资金一致不代替当日历史持仓证明。",
+        "request_key": "da3e79dc-ab60-4180-834f-d163d325190c"
+      }
+    }
+  ],
+  "guardChecks": [
+    {
+      "path": "/portfolios/1/auto-trade/execute",
+      "status": 423
+    },
+    {
+      "path": "/portfolios/1/sim-orders",
+      "status": 423
+    },
+    {
+      "path": "/portfolios/1/transition-state",
+      "status": 423
+    },
+    {
+      "path": "/portfolios/1/confirm-reconciliation",
+      "status": 423
+    },
+    {
+      "path": "/portfolios/1/inspection/coverage/accept",
+      "status": 423
+    },
+    {
+      "path": "/portfolios/1/inspection/coverage/activate",
+      "status": 423
+    },
+    {
+      "path": "/g5-admission/control",
+      "status": 423
+    }
+  ],
+  "materials": [
+    {
+      "kind": "execution",
+      "tradeDate": "2026-09-29",
+      "recordId": 3762,
+      "viewed": true,
+      "registered": true,
+      "historyFound": true,
+      "duplicateReplay": true,
+      "draftPreserved": true,
+      "exported": true,
+      "conclusion": "NOT_FOUND"
+    },
+    {
+      "kind": "schedule",
+      "tradeDate": "2026-09-29",
+      "recordId": 3763,
+      "viewed": true,
+      "registered": true,
+      "historyFound": true,
+      "duplicateReplay": true,
+      "draftPreserved": true,
+      "exported": true,
+      "conclusion": "NOT_FOUND"
+    },
+    {
+      "kind": "positions",
+      "tradeDate": "2026-09-29",
+      "recordId": 3764,
+      "viewed": true,
+      "registered": true,
+      "historyFound": true,
+      "duplicateReplay": true,
+      "draftPreserved": true,
+      "exported": true,
+      "conclusion": "NOT_FOUND"
+    }
+  ],
+  "widths": [
+    {
+      "viewport": 390,
+      "document": 390,
+      "drawer": 390
+    },
+    {
+      "viewport": 320,
+      "document": 320,
+      "drawer": 320
+    }
+  ],
+  "service": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "tradeDate": "2026-09-29",
+  "continueIndependentStep": true,
+  "passed": true
+}

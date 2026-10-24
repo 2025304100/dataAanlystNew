@@ -1,0 +1,1601 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "checks": [
+    "同一浏览器两个标签页：A/main与B独立恢复；B页对main草稿的修改也不影响A页，两个标签同时刷新后各自保持组合、筛选和日期",
+    "A页连续切换三天、B页同时切日期，反序返回旧成功及旧失败后，两页仍保持各自最新日期且旧失败不弹出",
+    "当前日期503后不保留旧日结论；原日期重试成功，另一标签页保持原日期",
+    "原订单来源旧请求挂起，查看历史再返回触发新读取，新结果成功后旧503不能覆盖或结束新状态",
+    "历史筛选503后保留当前条件，原地重试能继续，分页恢复失败重试由隔离回归覆盖",
+    "引擎运行状态首次503提供只读重试，重试后恢复真实状态，不触发切换或解冻"
+  ],
+  "reads": [
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/src/api/client.ts?t=1792819777734"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/notifications/inbox?limit=50"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/market-data/sync-tasks?limit=1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/tasks?limit=10&scope=cn-stock"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/allocation"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=1&market_group=all"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=1&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=2&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=3&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=4&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=5&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=6&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=7&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=8&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=9&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=10&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=11&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=12&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=13&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=14&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=15&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=16&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=17&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=18&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=19&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=20&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=21&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=22&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=23&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=24&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=25&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=26&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=27&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=28&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/news/latest?portfolio_id=1&days=7&limit=20&symbol_ids=3298&symbol_ids=3698&symbol_ids=2308&symbol_ids=4470&symbol_ids=3068&symbol_ids=844&symbol_ids=1338&symbol_ids=3390&symbol_ids=1640&symbol_ids=1928"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/src/api/client.ts?t=1792819777734"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/notifications/inbox?limit=50"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/market-data/sync-tasks?limit=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/tasks?limit=10&scope=cn-stock"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/allocation"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=1&market_group=all"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=1&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=2&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=3&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=4&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=5&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=6&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=7&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=8&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=9&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=10&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=11&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=12&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=13&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=14&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=15&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=16&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=17&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=18&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=19&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=20&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=21&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=22&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=23&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=24&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=25&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=26&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=27&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=28&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/news/latest?portfolio_id=1&days=7&limit=20&symbol_ids=3298&symbol_ids=3698&symbol_ids=2308&symbol_ids=4470&symbol_ids=3068&symbol_ids=844&symbol_ids=1338&symbol_ids=3390&symbol_ids=1640&symbol_ids=1928"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/status"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/model-binding-review"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=900001&market_group=all"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=1&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=2&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=3&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=4&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=5&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=6&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=7&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=8&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=9&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=10&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=11&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=12&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=13&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=14&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=15&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=16&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=17&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=18&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=19&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=20&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=21&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=22&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=23&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=24&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=25&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=26&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=27&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=28&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/news/latest?portfolio_id=900001&days=7&limit=20&symbol_ids=3298&symbol_ids=3698&symbol_ids=2308&symbol_ids=4470&symbol_ids=3068&symbol_ids=844&symbol_ids=1338&symbol_ids=3390&symbol_ids=1640&symbol_ids=1928"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=1&market_group=all"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/performance?snapshot_limit=1000"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/positions"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/status"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/model-binding-review"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=900001&market_group=all"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=1&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=2&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=3&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=4&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=5&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=6&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=7&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=8&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=9&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=10&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=11&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=12&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=13&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=14&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=15&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=16&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=17&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=18&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=19&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=20&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=21&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=22&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=23&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=24&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=25&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=26&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=27&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/src/api/client.ts?t=1792819777734"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/src/api/client.ts?t=1792819777734"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/notifications/inbox?limit=50"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/market-data/sync-tasks?limit=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/notifications/inbox?limit=50"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/market-data/sync-tasks?limit=1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/tasks?limit=10&scope=cn-stock"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/tasks?limit=10&scope=cn-stock"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/status"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/model-binding-review"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/runtime"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/data-diagnostics"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/inspection/reconciliation-job"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=900001&market_group=all"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/dashboard/workbench?portfolio_id=1&market_group=all"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=1&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=2&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=3&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=4&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=5&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=6&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=7&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=8&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=9&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=10&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=11&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=12&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=13&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=14&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=15&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=16&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=17&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=18&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=19&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=20&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=1&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=21&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=2&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=22&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=3&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=23&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=4&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=24&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=5&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=25&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=6&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=26&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=7&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=27&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=8&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=28&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=9&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/news/latest?portfolio_id=900001&days=7&limit=20&symbol_ids=3298&symbol_ids=3698&symbol_ids=2308&symbol_ids=4470&symbol_ids=3068&symbol_ids=844&symbol_ids=1338&symbol_ids=3390&symbol_ids=1640&symbol_ids=1928"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=10&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=11&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=12&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=13&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=14&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=15&page_size=200"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=16&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=17&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=18&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=19&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=20&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=21&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=22&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=23&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=24&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=25&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=26&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=27&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/symbols?page=28&page_size=200"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/news/latest?portfolio_id=1&days=7&limit=20&symbol_ids=3298&symbol_ids=3698&symbol_ids=2308&symbol_ids=4470&symbol_ids=3068&symbol_ids=844&symbol_ids=1338&symbol_ids=3390&symbol_ids=1640&symbol_ids=1928"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/system/capabilities"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-19"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-21"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/reconciliation-preview?trade_date=2026-10-22"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-23"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-23"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/evidence-supplements?trade_date=2026-10-23"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/evidence-supplements?trade_date=2026-10-23"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-10-23&trade_date_to=2026-10-23&occurred_from=2026-09-24T13%3A36%3A00%2B08%3A00&occurred_to=2026-10-24T13%3A36%3A59%2B08%3A00&report_ref=reconciliation%3A%3A1%3A%3A2026-10-23&report_version=2cdeda1b50a0c0c3f9387f78493d60f9947e800257e94784edf13b05cf4fb237&page=1&page_size=20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-10-23&trade_date_to=2026-10-23&occurred_from=2026-09-24T13%3A36%3A00%2B08%3A00&occurred_to=2026-10-24T13%3A36%3A59%2B08%3A00&report_ref=reconciliation%3A%3A1%3A%3A2026-10-23&report_version=2cdeda1b50a0c0c3f9387f78493d60f9947e800257e94784edf13b05cf4fb237&page=1&page_size=20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history/securities?"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/evidence-supplements?trade_date=2026-10-23"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/notifications/inbox?limit=50"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/notifications/inbox?limit=50"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/auto-trade/action-items?for_schedule=1"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?occurred_from=2026-09-24T13%3A36%3A00%2B08%3A00&occurred_to=2026-10-24T13%3A36%3A59%2B08%3A00&page=1&page_size=20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history/securities?"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-10-20&occurred_from=2026-09-24T13%3A36%3A00%2B08%3A00&occurred_to=2026-10-24T13%3A36%3A59%2B08%3A00&page_size=20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-10-20&occurred_from=2026-09-24T13%3A36%3A00%2B08%3A00&occurred_to=2026-10-24T13%3A36%3A59%2B08%3A00&page_size=20"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/g7-operational-status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/g7-operational-status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/g7-operational-status"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-23"
+    },
+    {
+      "tab": "A",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "B",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/900001/status"
+    }
+  ],
+  "writes": [],
+  "errors": [],
+  "httpErrors": [],
+  "faults": [
+    {
+      "tab": "A",
+      "label": "旧A失败",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-20",
+      "status": 503
+    },
+    {
+      "tab": "A",
+      "label": "当前日期读取",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-10-23",
+      "status": 503
+    },
+    {
+      "tab": "A",
+      "label": "旧原订单来源",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/evidence-supplements?trade_date=2026-10-23",
+      "status": 503
+    },
+    {
+      "tab": "A",
+      "label": "历史筛选读取",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-10-20&occurred_from=2026-09-24T13%3A36%3A00%2B08%3A00&occurred_to=2026-10-24T13%3A36%3A59%2B08%3A00&page_size=20",
+      "status": 503
+    },
+    {
+      "tab": "A",
+      "label": "引擎状态初始读取不可用",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/g7-operational-status",
+      "status": 503
+    },
+    {
+      "tab": "A",
+      "label": "引擎状态初始读取不可用",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/auto-trade/g7-operational-status",
+      "status": 503
+    }
+  ],
+  "releases": [
+    {
+      "tab": "B",
+      "label": "B页最新成功"
+    },
+    {
+      "tab": "A",
+      "label": "最新A成功"
+    },
+    {
+      "tab": "A",
+      "label": "旧A成功"
+    },
+    {
+      "tab": "A",
+      "label": "旧A失败"
+    },
+    {
+      "tab": "A",
+      "label": "当前日期读取"
+    },
+    {
+      "tab": "A",
+      "label": "旧原订单来源"
+    },
+    {
+      "tab": "A",
+      "label": "历史筛选读取"
+    }
+  ],
+  "fixture_note": "只有main是真实组合；B仅在同一浏览器上下文的GET响应中映射，未新建组合。两页共享cookie/localStorage，但浏览状态必须各自隔离。",
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "passed": true
+}

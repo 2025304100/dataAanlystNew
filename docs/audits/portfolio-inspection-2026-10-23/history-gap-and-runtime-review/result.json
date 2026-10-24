@@ -1,0 +1,99 @@
+{
+  "errors": [],
+  "httpErrors": [],
+  "writes": [],
+  "checks": [
+    "按日结论→统一历史缺口→按日相关历史→原缺口；原订单候选为空与无法恢复均有返回路径，无逐项登记",
+    "运行审核仅结论、剩余问题、确认影响；历史缺口按一个问题汇总，抽屉返回原步骤，审核仍禁用"
+  ],
+  "widths": [
+    {
+      "surface": "history-gap",
+      "viewport": 390,
+      "document": 390,
+      "bodies": [
+        {
+          "width": 390,
+          "scrollWidth": 390
+        }
+      ]
+    },
+    {
+      "surface": "history-gap",
+      "viewport": 320,
+      "document": 320,
+      "bodies": [
+        {
+          "width": 320,
+          "scrollWidth": 320
+        }
+      ]
+    },
+    {
+      "surface": "runtime-review",
+      "viewport": 390,
+      "document": 390,
+      "bodies": [
+        {
+          "width": 390,
+          "scrollWidth": 390
+        }
+      ]
+    },
+    {
+      "surface": "runtime-review",
+      "viewport": 320,
+      "document": 320,
+      "bodies": [
+        {
+          "width": 320,
+          "scrollWidth": 320
+        }
+      ]
+    }
+  ],
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "current_state": "RECONCILIATION_BLOCKED",
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "verified_through": "2026-09-28",
+    "pendingDays": 14
+  },
+  "tradeDate": "2026-09-29",
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "current_state": "RECONCILIATION_BLOCKED",
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "verified_through": "2026-09-28",
+    "pendingDays": 14
+  },
+  "passed": true
+}

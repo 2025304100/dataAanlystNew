@@ -572,6 +572,10 @@ export interface ActionPrimaryAction {
 export type ActionItemSource = "readiness" | "hg1_status" | "g7_ops" | string;
 
 export interface ActionItem {
+  trade_date?: string | null;
+  portfolio_wide?: boolean;
+  affected_capabilities?: string[];
+  scope?: {kind?: string; portfolio_id?: number; [key: string]: unknown};
   id: string;
   source: ActionItemSource;
   code: string;
@@ -2166,6 +2170,19 @@ export interface ReconciliationDiffItem {
   explain_note?: string | null;
 }
 export interface ReconciliationResponse {
+  execution_expected?: boolean | null;
+  execution_expected_evidence?: Array<{ status: string; reason?: string; source_label?: string }>;
+  checks?: Array<{ check_code: string; status: string; reason?: string; label?: string }>;
+  report_id?: string | null;
+  report_version?: string | null;
+  verdict?: string;
+  work_state?: string;
+  reason_codes?: string[];
+  missing_evidence?: Array<string | { code?: string; symbol_id?: number | null; detail?: string | null }>;
+  activity_evidence?: ReconciliationActivityEvidence[];
+  actions?: { code: string; label: string; enabled?: boolean; reason?: string; target?: string }[];
+  next_check_at?: string | null;
+  progression?: Record<string, unknown>;
   read_only?: boolean;
   cash_audit?: {
     status: string;
@@ -2184,11 +2201,36 @@ export interface ReconciliationResponse {
   correlation_id?: string | null;
 }
 
+export interface ReconciliationActivityEvidence {
+  evidence_id: string;
+  source_code: string;
+  source_label: string;
+  query_status: string;
+  count: number | null;
+  reason: string;
+  source_record_refs: string[];
+  records?: Array<{
+    id: number | string;
+    task_id?: string;
+    task_status?: string;
+    dispatch_created_at?: string;
+    task_created_at?: string;
+    task_finished_at?: string | null;
+    stale_terminal_task_reused?: boolean;
+    cross_day_task_reused?: boolean;
+    original_scoped_result?: {
+      portfolio_results?: Array<{ portfolio_id: number; error?: string }>;
+    };
+  }>;
+}
+
 /** POST /portfolios/{pid}/confirm-reconciliation → 单人确认 3 字段（无 second_reviewer/dual_approval） */
 export interface ConfirmReconciliationRequest {
+  report_id?: string | null;
+  report_version?: string | null;
   trade_date?: string;
   ack: boolean;                                   // 必须=true（否则 400）
-  force_skip?: boolean;                           // 高危：差异未清零就强行转 READY；true=二次确认红底
+  force_skip?: false;                             // 普通确认禁止跳过对账；例外恢复必须使用独立策略与授权。
   operator_id?: number | null;                    // 为空后端自动取当前登录用户；前端默认隐藏（单人确认）
   review_note: string;                            // 非空，<10字时 422
   force_rerun_before?: boolean;                   // 是否先重新跑一次 reconcile 再确认（默认 true）
@@ -2306,8 +2348,7 @@ export interface AuditEventFilter {
 
 /** G5 业务口径 6 动作名（6×6 混淆矩阵行列用这些字符串，不输出代码值） */
 export type G5BusinessAction =
-  | "BUY" | "SELL_LIMITED_RISK" | "HOLDS"
-  | "REJECTED_OR_BLOCKED" | "RISK_CLOSED" | "NO_ACTION_OR_ARCHIVED";
+  | "BUY" | "SELL" | "HOLD" | "NO_ACTION" | "REJECTED" | "DATA_BLOCKED";
 
 /** G5 业务口径 8 归因类目 + 3 类 P0 阻断不入 8 类统计（checklist G5-13~15） */
 export type G5AttributionCategory =
@@ -2346,6 +2387,14 @@ export interface DailyDualRunReport {
   attributions: G5AttributionItem[];                         // 单归因输出；不允许同证券同日归因双重计数
   /** 6×6 混淆矩阵：matrix[old_business_action][new_business_action] = securities_count */
   action_confusion_matrix?: Record<G5BusinessAction, Partial<Record<G5BusinessAction, number>>> | null;
+  action_denominator?: number;
+  action_match_count?: number;
+  valid_symbol_days?: number;
+  sample_status?: string;
+  metric_status?: string;
+  chain_a_meta?: Record<string, unknown>;
+  chain_b_meta?: Record<string, unknown>;
+  symbol_diffs?: Array<Record<string, unknown>>;
 }
 
 /** G5 汇总（G5ReplaySummary dataclass 契约） */
@@ -2364,6 +2413,13 @@ export interface G5DualRunSummaryResponse {
   failing_days_p0: string[];               // ISO date[]
   failing_days_p1: string[];
   g5_eligible_for_g6: boolean;             // P0+P1 双通过 → true（G6 灰度入场券）
+  evidence_verified?: boolean;
+  acceptance_policy_version?: string | null;
+  acceptance_blockers?: string[];
+  acceptance_policy?: Record<string, unknown> | null;
+  applicable_scope?: Record<string, unknown> | null;
+  valid_symbol_days?: number | null;
+  provenance?: Record<string, unknown> | null;
   correlation_id?: string | null;
   // ── 前端轮询优化：后端可选地回传内嵌异步任务元信息 ──
   is_terminal_locked?: boolean;

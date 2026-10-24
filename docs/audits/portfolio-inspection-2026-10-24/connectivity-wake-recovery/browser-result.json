@@ -1,0 +1,946 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "checks": [
+    "浏览器真实离线事件立即使旧依据失效，离线期间暂停独立检查，不等待请求超时",
+    "重连立即只读核实，断网前挂起的旧成功晚返回不能解除过期状态；手动完整读取成功后可继续查看",
+    "后端持续503及失败重读保持旧审核暂停；服务恢复后核实和重新读取成功，不自动恢复同意",
+    "CDP冻结/恢复页面并模拟五分钟时钟停顿后，旧依据必须重新读取；未改变电脑系统时间或使电脑实际休眠",
+    "任务已接收但响应丢失的浏览器模拟：重连/页面恢复未重提，确认勾选清除，通过GET原任务记录找回同一任务，提交总数始终1"
+  ],
+  "reads": [
+    {
+      "tab": "receiver",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792825617674
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792825617674
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios",
+      "at": 1792825617675
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/macro/overview",
+      "at": 1792825617779
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/market-events",
+      "at": 1792825617779
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/system/data-health",
+      "at": 1792825617779
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792825617780
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825617780
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792825618161
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792825618162
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825618195
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825618195
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825618196
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825618197
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825618197
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825618197
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825618197
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825618197
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825618197
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792825618239
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792825619121
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792825619530
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792825619993
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825619994
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620015
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620034
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620047
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620059
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620072
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620085
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620099
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620113
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620127
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620142
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620157
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620171
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620186
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620200
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620213
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620228
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620242
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620254
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620267
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620282
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620296
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620310
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620324
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620339
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620354
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620369
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols",
+      "at": 1792825620384
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/news/latest",
+      "at": 1792825620400
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825620455
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792825620464
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825620789
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825620789
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825620790
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825622675
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825622676
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825622676
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825623408
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825623408
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825623408
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825623408
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825623408
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825623409
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825623409
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825625770
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825625770
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825625770
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825625853
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825625854
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825625854
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825625854
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825625854
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825625855
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825625855
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825626374
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825626374
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825626375
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825628291
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825628292
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825628292
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825628292
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825628294
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825628294
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825628295
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825630410
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825630410
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825630411
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825630556
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825630557
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825630557
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825630558
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825630559
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825630559
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825630559
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792825633181
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792825633181
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios",
+      "at": 1792825633181
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792825633244
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792825633245
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/macro/overview",
+      "at": 1792825633305
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/market-events",
+      "at": 1792825633305
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/system/data-health",
+      "at": 1792825633306
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792825633306
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825633306
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792825633430
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios",
+      "at": 1792825633532
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/performance",
+      "at": 1792825633533
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/allocation",
+      "at": 1792825633534
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/positions",
+      "at": 1792825633534
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792825633534
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1",
+      "at": 1792825633534
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825633534
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825633534
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825633632
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825633632
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825633633
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825633633
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825633633
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825633633
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825633634
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792825634106
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792825635146
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792825635742
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635743
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635775
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635796
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635814
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635832
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635847
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635863
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635880
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635900
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635919
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635943
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635960
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825635978
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636001
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636019
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636038
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636056
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636075
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636094
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636114
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636131
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636157
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636176
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636196
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636225
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636249
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636271
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/symbols",
+      "at": 1792825636290
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/news/latest",
+      "at": 1792825636309
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792825636360
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792825638025
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825638025
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825638821
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825638821
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825638821
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792825640064
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/repairs/browser-only-accepted-repair",
+      "at": 1792825641079
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792825641493
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792825641493
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792825641493
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792825641493
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792825641493
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792825641494
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792825641494
+    },
+    {
+      "tab": "repair-origin",
+      "path": "/api/v1/portfolios/1/inspection/repairs/browser-only-accepted-repair",
+      "at": 1792825643091
+    }
+  ],
+  "simulatedWrites": [
+    {
+      "method": "POST",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/repairs",
+      "forwarded": false,
+      "idempotency_key": "inspection-54247689-fbc5-4d88-b7c9-1cc8654ee947"
+    }
+  ],
+  "blockedWrites": [],
+  "errors": [],
+  "httpErrors": [],
+  "faults": [
+    {
+      "tab": "receiver",
+      "status": 503,
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "receiver",
+      "status": 503,
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    }
+  ],
+  "networkFailures": [
+    {
+      "tab": "repair-origin",
+      "url": "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/repairs",
+      "reason": "net::ERR_FAILED"
+    }
+  ],
+  "boundary": "Real main GETs; browser-only offline mode, CDP page freeze plus five-minute browser clock offset, and synthetic lost repair response. Host network/clock/sleep and backend services are unchanged. All actual business writes are blocked.",
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "passed": true
+}

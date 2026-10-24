@@ -1,0 +1,66 @@
+{
+  "passed": true,
+  "unchanged_protected_tables": 25,
+  "main_unchanged": true,
+  "successful_symbols_unchanged": [
+    "000001",
+    "600428"
+  ],
+  "historical_etf_rows_unchanged": 1277,
+  "universe_etf_unchanged": true,
+  "added_etf_rows": [
+    {
+      "id": 1568303,
+      "symbol_id": 2,
+      "trade_date": "2026-10-21",
+      "open": 4.234,
+      "high": 4.237,
+      "low": 4.17,
+      "close": 4.185,
+      "volume": 1415339300.0,
+      "amount": 5943185942.0,
+      "turnover_rate": 4.69,
+      "source": "tencent:cn-etf:v1:qfq",
+      "created_at": "2026-10-24 00:31:41"
+    },
+    {
+      "id": 1568304,
+      "symbol_id": 2,
+      "trade_date": "2026-10-22",
+      "open": 4.185,
+      "high": 4.189,
+      "low": 4.097,
+      "close": 4.107,
+      "volume": 3541978000.0,
+      "amount": 14627094353.0,
+      "turnover_rate": 10.82,
+      "source": "tencent:cn-etf:v1:qfq",
+      "created_at": "2026-10-24 00:31:41"
+    },
+    {
+      "id": 1568305,
+      "symbol_id": 2,
+      "trade_date": "2026-10-23",
+      "open": 4.08,
+      "high": 4.186,
+      "low": 4.031,
+      "close": 4.178,
+      "volume": 3755608200.0,
+      "amount": 15423238067.0,
+      "turnover_rate": 10.66,
+      "source": "tencent:cn-etf:v1:qfq",
+      "created_at": "2026-10-24 00:31:41"
+    }
+  ],
+  "automatic_trade_task_count": 16,
+  "automatic_trade_dispatch_count": 66,
+  "active_tasks": [],
+  "audit_watermark": [
+    3775,
+    3778
+  ],
+  "runtime_state_changed": false,
+  "orders_placed": false,
+  "baseline_accepted": false,
+  "admission_unfrozen": false
+}

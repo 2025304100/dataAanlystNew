@@ -1,0 +1,107 @@
+{
+  "checks": [
+    "模拟所选交易日503，抽屉保留明确错误与原日期重试入口，真实GET重试后恢复结果",
+    "模拟作业逐日记录503，错误可见、旧记录保留、重读可恢复",
+    "模拟原订单来源503，有可见错误和刷新入口；来源为空也能回历史缺口，不形成死结"
+  ],
+  "injected": [
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/reconciliation-queue",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/evidence-supplements?trade_date=2026-09-29"
+  ],
+  "writes": [],
+  "errors": [],
+  "layouts": [
+    {
+      "title": "整合数据缺口与批量修复",
+      "width": 390,
+      "document": 390,
+      "body": 390,
+      "content": 390,
+      "closeRight": 38,
+      "closeTop": 26.5625
+    },
+    {
+      "title": "运行状态审核",
+      "width": 390,
+      "document": 390,
+      "body": 390,
+      "content": 390,
+      "closeRight": 370,
+      "closeTop": 19
+    },
+    {
+      "title": "执行与对账",
+      "width": 390,
+      "document": 390,
+      "body": 390,
+      "content": 390,
+      "closeRight": 370,
+      "closeTop": 19
+    },
+    {
+      "title": "自动对账作业与逐日记录",
+      "width": 390,
+      "document": 390,
+      "body": 390,
+      "content": 390,
+      "closeRight": 370,
+      "closeTop": 19
+    },
+    {
+      "title": "处理记录与审核历史",
+      "width": 390,
+      "document": 390,
+      "body": 390,
+      "content": 390,
+      "closeRight": 370,
+      "closeTop": 19
+    },
+    {
+      "title": "整合数据缺口与批量修复",
+      "width": 320,
+      "document": 320,
+      "body": 320,
+      "content": 320,
+      "closeRight": 38,
+      "closeTop": 26.5625
+    },
+    {
+      "title": "运行状态审核",
+      "width": 320,
+      "document": 320,
+      "body": 320,
+      "content": 320,
+      "closeRight": 300,
+      "closeTop": 19
+    },
+    {
+      "title": "执行与对账",
+      "width": 320,
+      "document": 320,
+      "body": 320,
+      "content": 320,
+      "closeRight": 300,
+      "closeTop": 19
+    },
+    {
+      "title": "自动对账作业与逐日记录",
+      "width": 320,
+      "document": 320,
+      "body": 320,
+      "content": 320,
+      "closeRight": 300,
+      "closeTop": 19
+    },
+    {
+      "title": "处理记录与审核历史",
+      "width": 320,
+      "document": 320,
+      "body": 320,
+      "content": 320,
+      "closeRight": 300,
+      "closeTop": 19
+    }
+  ],
+  "passed": true
+}

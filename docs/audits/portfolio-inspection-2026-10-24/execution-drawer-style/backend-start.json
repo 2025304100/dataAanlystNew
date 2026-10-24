@@ -1,0 +1,14 @@
+{
+  "pid": 65664,
+  "port": 8000,
+  "mode": "inspection_acceptance",
+  "background_jobs": false,
+  "command": [
+    "C:\\Python312\\python.exe",
+    "scripts/serve_inspection_acceptance.py",
+    "--no-background-jobs"
+  ],
+  "started_at": "2026-10-24 11:33:36",
+  "stdout_log": "D:\\ai_project\\dataAanlystNew\\tmp\\inspection-execution-style-2026-10-24\\backend-safe.out.log",
+  "stderr_log": "D:\\ai_project\\dataAanlystNew\\tmp\\inspection-execution-style-2026-10-24\\backend-safe.err.log"
+}

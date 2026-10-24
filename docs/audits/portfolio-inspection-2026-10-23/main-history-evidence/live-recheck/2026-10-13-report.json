@@ -1,0 +1,300 @@
+{
+  "portfolio_id": 1,
+  "trade_date": "2026-10-13",
+  "decision_run_id": null,
+  "status": "BLOCKED",
+  "expected_position_count": null,
+  "actual_position_count": null,
+  "expected_cash": 434752.27,
+  "actual_cash": 434752.27,
+  "differences": [
+    {
+      "symbol_id": null,
+      "kind": "DECISION_RUN_NOT_FOUND",
+      "expected": null,
+      "actual": null,
+      "detail": "portfolio_id=1 trade_date=2026-10-13 未找到可核验的当日自动运行及决策明细；历史接管和调度配置未知，不能据此判断当时是否应执行或已执行，请核查原始来源"
+    }
+  ],
+  "audit_event_id": 3750,
+  "last_reconciled_trade_date": "2026-09-28",
+  "as_of_at": "2026-10-23T14:09:38.898121",
+  "differences_found": true,
+  "zero_sum_check_passed": false,
+  "items": [
+    {
+      "dimension": "DECISION_RUN_NOT_FOUND",
+      "expected_value": null,
+      "actual_value": null,
+      "diff_value": null,
+      "explain_note": "portfolio_id=1 trade_date=2026-10-13 未找到可核验的当日自动运行及决策明细；历史接管和调度配置未知，不能据此判断当时是否应执行或已执行，请核查原始来源"
+    }
+  ],
+  "correlation_id": "c_api_fd0e2e565ec4",
+  "read_only": false,
+  "cash_audit": {
+    "status": "CONSISTENT",
+    "opening_verified": true,
+    "scope": "current_full_cash_ledger",
+    "entry_count": 11,
+    "expected_cash": 434752.27,
+    "actual_cash": 434752.27,
+    "delta": 0.0,
+    "tolerance": 0.01,
+    "differences": [],
+    "execution_differences": [],
+    "trade_derived_cash": 434752.27,
+    "repair_requires_confirmation": true,
+    "historical_asof_certified": false
+  },
+  "report_id": "reconciliation::1::2026-10-13",
+  "report_version": "e139442b79067c07a8dfb4b5c7a4b5e80a59a7170151616c44d31676e5254b07",
+  "verdict": "EVIDENCE_INCOMPLETE",
+  "work_state": "needs_review",
+  "reason_codes": [
+    "DECISION_RUN_NOT_FOUND"
+  ],
+  "missing_evidence": [
+    {
+      "code": "DECISION_RUN_NOT_FOUND",
+      "symbol_id": null,
+      "detail": "portfolio_id=1 trade_date=2026-10-13 未找到可核验的当日自动运行及决策明细；历史接管和调度配置未知，不能据此判断当时是否应执行或已执行，请核查原始来源"
+    }
+  ],
+  "actions": [
+    {
+      "code": "INSPECT_EXECUTION",
+      "label": "核查执行证据",
+      "enabled": true,
+      "portfolio_id": 1,
+      "trade_date": "2026-10-13",
+      "requires_confirmation": false
+    }
+  ],
+  "next_check_at": null,
+  "progression": {},
+  "activity_evidence": [
+    {
+      "evidence_id": "activity:1:2026-10-13:sim_orders",
+      "source_code": "sim_orders",
+      "source_label": "模拟订单",
+      "query_status": "QUERIED",
+      "count": 0,
+      "trade_date": "2026-10-13",
+      "source_record_refs": [],
+      "records": [],
+      "reason": "已读取本组合该业务日的真实记录，数量为零代表查询成功且无记录"
+    },
+    {
+      "evidence_id": "activity:1:2026-10-13:sim_trades",
+      "source_code": "sim_trades",
+      "source_label": "模拟成交",
+      "query_status": "QUERIED",
+      "count": 0,
+      "trade_date": "2026-10-13",
+      "source_record_refs": [],
+      "records": [],
+      "reason": "已读取本组合该业务日的真实记录，数量为零代表查询成功且无记录"
+    },
+    {
+      "evidence_id": "activity:1:2026-10-13:cash_ledger",
+      "source_code": "cash_ledger",
+      "source_label": "现金流水账",
+      "query_status": "QUERIED",
+      "count": 0,
+      "trade_date": "2026-10-13",
+      "source_record_refs": [],
+      "records": [],
+      "reason": "已读取本组合该业务日的真实记录，数量为零代表查询成功且无记录"
+    },
+    {
+      "evidence_id": "activity:1:2026-10-13:positions",
+      "source_code": "positions",
+      "source_label": "当前持仓记录",
+      "query_status": "CURRENT_ONLY",
+      "count": 2,
+      "trade_date": "2026-10-13",
+      "source_record_refs": [
+        "position:2",
+        "position:3"
+      ],
+      "records": [
+        {
+          "id": 2,
+          "symbol_id": 2,
+          "quantity": 10000.0
+        },
+        {
+          "id": 3,
+          "symbol_id": 1,
+          "quantity": 1500.0
+        }
+      ],
+      "reason": "仅当前持仓观察，不作为历史收盘持仓证明"
+    },
+    {
+      "evidence_id": "execution-dispatch:1:2026-10-13",
+      "source_code": "execution_dispatch_history",
+      "source_label": "自动调度与原任务历史",
+      "query_status": "CONTEXT_ONLY",
+      "count": 2,
+      "trade_date": "2026-10-13",
+      "date_basis": "observed_dispatch_date_only",
+      "source_record_refs": [
+        "scheduled_task_run:623",
+        "async_task:e55ff07040ab479cb4065d42e43f36b8",
+        "scheduled_task_run:636",
+        "async_task:e55ff07040ab479cb4065d42e43f36b8"
+      ],
+      "records": [
+        {
+          "schedule_id": 11,
+          "dispatch_status": "done",
+          "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+          "task_status": "done",
+          "id": 623,
+          "dispatch_created_at": "2026-10-13T04:49:57",
+          "task_created_at": "2026-08-18T05:59:20",
+          "task_finished_at": "2026-10-22T06:55:27",
+          "original_scoped_result": {
+            "portfolio_id": 1,
+            "portfolio_results": [
+              {
+                "portfolio_id": 1,
+                "portfolio_name": "main",
+                "error": "行情或评分数据已过期，当前组合候选均未通过新鲜度检查"
+              }
+            ],
+            "dry_run": false
+          },
+          "stale_terminal_task_reused": false,
+          "cross_day_task_reused": true,
+          "observation_code": "CROSS_DAY_TASK_REUSED",
+          "proves_execution": false,
+          "source_hash": "c0f7af55874f8296d351cac05717bf47f0659064e11252cb2664889b35ea5c3f"
+        },
+        {
+          "schedule_id": 11,
+          "dispatch_status": "done",
+          "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+          "task_status": "done",
+          "id": 636,
+          "dispatch_created_at": "2026-10-13T06:55:07",
+          "task_created_at": "2026-08-18T05:59:20",
+          "task_finished_at": "2026-10-22T06:55:27",
+          "original_scoped_result": {
+            "portfolio_id": 1,
+            "portfolio_results": [
+              {
+                "portfolio_id": 1,
+                "portfolio_name": "main",
+                "error": "行情或评分数据已过期，当前组合候选均未通过新鲜度检查"
+              }
+            ],
+            "dry_run": false
+          },
+          "stale_terminal_task_reused": false,
+          "cross_day_task_reused": true,
+          "observation_code": "CROSS_DAY_TASK_REUSED",
+          "proves_execution": false,
+          "source_hash": "34f7174d7353976b5e8df1582b22ddeacb3db49b2bf5a1d08d87cb9e9743e711"
+        }
+      ],
+      "reason": "本日 2 条调度有本组合的原任务关联，其中 2 条复用早期创建的任务（0 条可核实原终态早于本次调度）；旧任务完成不代表本日执行完成，原任务的当前起止时间和结果也不能还原每次历史执行，不能据此补造运行或消除对账缺口",
+      "proves_execution": false
+    }
+  ],
+  "execution_expected": null,
+  "execution_expected_evidence": [
+    {
+      "status": "UNKNOWN",
+      "source_label": "目标日执行义务历史",
+      "source_code": "historical_execution_configuration",
+      "reason": "缺少带生效区间的历史接管及调度开关，不能由当前开关倒推当时是否应执行"
+    }
+  ],
+  "execution_status": "UNKNOWN",
+  "execution_window": {},
+  "is_trading_day": true,
+  "checks": [
+    {
+      "check_code": "EXECUTION_CHAIN",
+      "label": "执行链完整性",
+      "status": "UNKNOWN",
+      "expected": null,
+      "actual": null,
+      "source_label": "决策运行记录",
+      "source_record_ref": null
+    },
+    {
+      "check_code": "POSITIONS",
+      "label": "历史持仓核对",
+      "status": "NOT_CHECKED",
+      "expected": null,
+      "actual": null,
+      "reason": "缺少对应执行日的可信持仓快照或完整账本重建证据"
+    },
+    {
+      "check_code": "CASH",
+      "label": "资金守恒核对",
+      "status": "CONSISTENT",
+      "expected": 434752.27,
+      "actual": 434752.27,
+      "source_label": "现金流水账",
+      "scope": "当前完整账本及已接受基线后的流水，历史时点另需快照来源"
+    }
+  ],
+  "findings": [
+    {
+      "symbol_id": null,
+      "kind": "DECISION_RUN_NOT_FOUND",
+      "expected": null,
+      "actual": null,
+      "detail": "portfolio_id=1 trade_date=2026-10-13 未找到可核验的当日自动运行及决策明细；历史接管和调度配置未知，不能据此判断当时是否应执行或已执行，请核查原始来源"
+    }
+  ],
+  "next_actions": [
+    {
+      "action_id": "inspect_execution",
+      "kind": "inspect",
+      "is_primary": true,
+      "target": "governance:reconciliation",
+      "required_role": null,
+      "expected_effect": "查看真实证据与缺失项后重新核对",
+      "confirmation_required": false,
+      "code": "INSPECT_EXECUTION",
+      "label": "核查执行证据",
+      "enabled": true,
+      "portfolio_id": 1,
+      "trade_date": "2026-10-13",
+      "requires_confirmation": false
+    },
+    {
+      "action_id": "resolve_historical_missed_execution",
+      "kind": "confirm",
+      "is_primary": false,
+      "label": "记录历史未执行并申请恢复",
+      "enabled": false,
+      "disabled_code": "MISSED_EXECUTION_POLICY_NOT_APPROVED",
+      "disabled_reason": "历史应执行依据和允许未执行处置的批准策略尚未齐全，不能凭备注推进或伪造执行",
+      "target": "governance:reconciliation",
+      "confirmation_required": true
+    },
+    {
+      "action_id": "review_current_account_coverage",
+      "kind": "inspect",
+      "is_primary": false,
+      "label": "核查当前账户与历史不可恢复出口",
+      "enabled": true,
+      "target": "governance:reconciliation",
+      "expected_effect": "通过实际账户覆盖预览核验当前资产与义务；未知历史保持原样",
+      "confirmation_required": false
+    }
+  ],
+  "can_confirm": false,
+  "confirm_blockers": [
+    "portfolio_id=1 trade_date=2026-10-13 未找到可核验的当日自动运行及决策明细；历史接管和调度配置未知，不能据此判断当时是否应执行或已执行，请核查原始来源"
+  ],
+  "generated_at": "2026-10-23T06:09:38.810693+00:00",
+  "evidence_hash": "e139442b79067c07a8dfb4b5c7a4b5e80a59a7170151616c44d31676e5254b07"
+}

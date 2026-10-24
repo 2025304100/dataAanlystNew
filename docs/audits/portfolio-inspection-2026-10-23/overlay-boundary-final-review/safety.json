@@ -1,0 +1,18 @@
+{
+  "protected_tables": 25,
+  "protected_tables_identical": true,
+  "auto_trade_tasks_identical": true,
+  "automatic_dispatches_identical": true,
+  "active_tasks_after": [],
+  "audit_before": 3765,
+  "audit_after": 3767,
+  "material_notes_before": 3,
+  "material_notes_after": 4,
+  "concurrent_audits": [
+    3766,
+    3767
+  ],
+  "script_write_requests": [],
+  "main_status": "RECONCILIATION_BLOCKED",
+  "main_verified_through": "2026-09-28"
+}

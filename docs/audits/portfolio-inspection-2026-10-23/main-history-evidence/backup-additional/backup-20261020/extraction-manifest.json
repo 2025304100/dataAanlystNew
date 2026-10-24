@@ -1,0 +1,48 @@
+{
+  "source": "D:\\ai_project\\dataAanlystNew\\backups\\p1-migration-20261020\\gpfx-before-073.sql.gz",
+  "sha256": "2c6c421ed272c0356f00dfae3acf0ad31243cf2ee46412c609db1d208e484fa9",
+  "source_hash_verified": true,
+  "gzip_crc_complete": true,
+  "created_at_utc": "2026-10-23T05:58:55.093033+00:00",
+  "uncompressed_bytes": 5379038499,
+  "dump_lines": 11407,
+  "columns": {
+    "positions": [
+      "id",
+      "portfolio_id",
+      "symbol_id",
+      "quantity",
+      "avg_cost",
+      "latest_price",
+      "market_value",
+      "position_pct",
+      "asset_type",
+      "theme",
+      "opened_at",
+      "updated_at",
+      "target_weight_pct"
+    ],
+    "signal_rules": [
+      "id",
+      "portfolio_id",
+      "rule_name",
+      "mode",
+      "quality_tolerance",
+      "timing_tolerance",
+      "min_sample_count",
+      "max_samples",
+      "same_region",
+      "same_asset_type",
+      "same_stage",
+      "same_action",
+      "is_active",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "table_rows": {
+    "positions": 2,
+    "signal_rules": 3
+  },
+  "no_sql_executed": true
+}

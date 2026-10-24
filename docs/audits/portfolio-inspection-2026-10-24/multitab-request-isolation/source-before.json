@@ -1,0 +1,7 @@
+{
+  "frontend/src/components/portfolio-trading/PortfolioGovernanceTab.tsx": "c595c43af034e2287feb9d604f866bc5d16053631abb8433da88f8c152fa89bd",
+  "frontend/src/components/portfolio-trading/inspection/InspectionEvidencePanel.tsx": "3aa35183a3bb1820e0d7c2599a426f4844217684e2a40fbd6a069c9441ef638b",
+  "frontend/src/components/portfolio-trading/inspection/InspectionHistoryPanel.tsx": "78f36b17caaf7467d94d686aaabd76d53700e7e4b3e2dd204f12155108c9c105",
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": "179e4cd9e2b77386c4460cda294b04c45829c8bd4c876e1bb8c56f7baf6fb506",
+  "frontend/src/components/portfolio-trading/inspection/inspectionBrowseState.ts": "879ea84ebc243ebbc153cf1161742647c5e948ded3e8ca85b399c2a5886f00fa"
+}

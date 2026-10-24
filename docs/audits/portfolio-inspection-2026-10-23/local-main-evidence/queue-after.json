@@ -1,0 +1,278 @@
+{
+  "portfolio_id": 1,
+  "coverage_start": null,
+  "verified_through": "2026-09-28",
+  "target_trade_date": "2026-09-29",
+  "calendar_status": "KNOWN",
+  "days": [
+    {
+      "trade_date": "2026-08-20",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 34
+    },
+    {
+      "trade_date": "2026-08-21",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 35
+    },
+    {
+      "trade_date": "2026-08-22",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 36
+    },
+    {
+      "trade_date": "2026-08-25",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 40
+    },
+    {
+      "trade_date": "2026-08-26",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 43
+    },
+    {
+      "trade_date": "2026-08-27",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 52
+    },
+    {
+      "trade_date": "2026-08-28",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 55
+    },
+    {
+      "trade_date": "2026-09-03",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 99
+    },
+    {
+      "trade_date": "2026-09-04",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 101
+    },
+    {
+      "trade_date": "2026-09-24",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 177
+    },
+    {
+      "trade_date": "2026-09-25",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 109
+    },
+    {
+      "trade_date": "2026-09-27",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 112
+    },
+    {
+      "trade_date": "2026-09-28",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 120
+    },
+    {
+      "trade_date": "2026-09-29",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-09-29",
+      "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a",
+      "audit_event_id": 3742
+    },
+    {
+      "trade_date": "2026-09-30",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 199
+    },
+    {
+      "trade_date": "2026-10-08",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-09",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-12",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 227
+    },
+    {
+      "trade_date": "2026-10-13",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-14",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 3734
+    },
+    {
+      "trade_date": "2026-10-15",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-16",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-19",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-19",
+      "report_version": "ad3fcb4dd85139814da88a451bd48ee854b9c081ea04a7a86367fee91a467c1e",
+      "audit_event_id": 3743
+    },
+    {
+      "trade_date": "2026-10-20",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-21",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    },
+    {
+      "trade_date": "2026-10-22",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    }
+  ],
+  "calendar_version": "93eba68262d6aa4995bf44508cc2cfb4ddcf736b337ba212c7e84cd40d8aa201",
+  "calendar_reason": "当日日K尚未到收盘可用时点，检查上一应到交易日",
+  "limitations": [
+    "NO_ACCEPTED_ACCOUNT_BASELINE",
+    "LEGACY_CHECKPOINT_NOT_FULL_HISTORY_PROOF"
+  ],
+  "coverage_source": "legacy_checkpoint",
+  "baseline_creation_available": true,
+  "automatic_job_registered": true
+}

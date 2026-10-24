@@ -1,0 +1,23 @@
+{
+  "receipts": [
+    {
+      "portfolio_id": 1,
+      "request_key": "45fd110f-7cc0-4111-b0e2-4df89a42e1c6",
+      "trade_date": null,
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "created_at": "2026-10-24 10:32:40"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "9a27ac797035cd19619f3a832c92ee00",
+      "task_type": "portfolio_reconciliation",
+      "status": "done",
+      "stage": "done",
+      "message": "自动核对已完成；请按逐组合结论处理差异、等待项或未知证据",
+      "created_at": "2026-10-23 04:18:07",
+      "payload_json": "{\"policy_version\": \"portfolio-reconciliation-job-v1\", \"portfolio_id\": 1, \"requested_trade_date\": null, \"generated_at\": \"2026-10-23T04:18:06.634285+00:00\", \"items\": [{\"portfolio_id\": 1, \"target_trade_date\": null, \"verdict\": \"HISTORICAL_COVERAGE_UNKNOWN\", \"work_state\": \"waiting_data\", \"reason_codes\": [\"HISTORICAL_COVERAGE_UNKNOWN\"], \"reason\": \"历史核验覆盖尚未建立或不可读取，自动作业不能沿用旧游标放行\", \"actions\": [{\"code\": \"REVIEW_COVERAGE\", \"label\": \"核实账户基线与覆盖范围\", \"enabled\": true, \"portfolio_id\": 1, \"trade_date\": null, \"requires_confirmation\": false}], \"coverage\": null, \"calendar\": null, \"report_id\": null, \"report_version\": null, \"source_fingerprint\": \"785b57ba76a10f864af89c7843844f302505806b9726296579da798d15a1c2f2\", \"can_reconcile\": false}], \"request_fingerprint\": \"505b67681861627860f2eb98470d742ae1750a0c8770a958d171a0da04345909\", \"base_fingerprint\": \"38c86d1319edfcc3426ecc8fd3b1318a6253c4294b51206dd16300b1d41da115\", \"attempt\": 1, \"schedule_id\": null}",
+      "result_json": "{\"difference_count\":0,\"error_count\":0,\"items\":[{\"actions\":[{\"code\":\"REVIEW_COVERAGE\",\"enabled\":true,\"label\":\"核实账户基线与覆盖范围\",\"portfolio_id\":1,\"requires_confirmation\":false,\"trade_date\":null}],\"calendar\":null,\"can_reconcile\":false,\"coverage\":null,\"portfolio_id\":1,\"reason\":\"历史核验覆盖尚未建立或不可读取，自动作业不能沿用旧游标放行\",\"reason_codes\":[\"HISTORICAL_COVERAGE_UNKNOWN\"],\"report_id\":null,\"report_version\":null,\"reused_report\":false,\"source_fingerprint\":\"785b57ba76a10f864af89c7843844f302505806b9726296579da798d15a1c2f2\",\"target_trade_date\":null,\"verdict\":\"HISTORICAL_COVERAGE_UNKNOWN\",\"work_state\":\"waiting_data\"}],\"passed_count\":0,\"policy_version\":\"portfolio-reconciliation-job-v1\",\"portfolio_count\":1,\"waiting_count\":1}"
+    }
+  ]
+}

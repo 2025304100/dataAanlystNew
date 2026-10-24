@@ -1,0 +1,303 @@
+{
+  "safety_comparison": {
+    "portfolios": {
+      "rows_before": 12,
+      "rows_after": 12,
+      "unchanged": false,
+      "sha256_after": "26da9fdf4ccf02b3220c697642622dc5487c3594e2a5fb68e7b5797a44b2416d"
+    },
+    "sim_accounts": {
+      "rows_before": 0,
+      "rows_after": 0,
+      "unchanged": true,
+      "sha256_after": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "sim_orders": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true,
+      "sha256_after": "75f6103b58eb358aa6a02fac524a4b1f7271649f2b9ddd878a8be7de7ea5ceb6"
+    },
+    "sim_trades": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true,
+      "sha256_after": "97c8f6b15c5dc4a1da4a0e8ea689b2b8c818b6fc4b7e43aafd6d694127115b6d"
+    },
+    "positions": {
+      "rows_before": 2,
+      "rows_after": 2,
+      "unchanged": true,
+      "sha256_after": "53b9a0c9b613d44da27aaafcda5aab6ee29cba642e6913cf34ad4a70ac742964"
+    },
+    "cash_ledger": {
+      "rows_before": 16,
+      "rows_after": 16,
+      "unchanged": true,
+      "sha256_after": "5925036de354d10971c42b86cc67eac76a6d889738b048c2ae6c7767cd7b2008"
+    },
+    "g5_dual_run_reports": {
+      "rows_before": 10,
+      "rows_after": 10,
+      "unchanged": true,
+      "sha256_after": "fc00f8ce0f89fa4c6cf4f168cfd99d7332a4da801b9960c5a610b631c129051c"
+    }
+  },
+  "portfolio_changes": {
+    "1": {
+      "updated_at": {
+        "before": "2026-09-29 07:56:13",
+        "after": "2026-10-23 04:23:46"
+      },
+      "status_reconciliation": {
+        "before": "READY",
+        "after": "RECONCILIATION_BLOCKED"
+      }
+    }
+  },
+  "revision": [
+    "wps_0023_076_inspection_workflow"
+  ],
+  "table_count": 157,
+  "main": {
+    "id": 1,
+    "name": "main",
+    "account_type": "simulated",
+    "total_capital": 500000.0,
+    "investable_ratio": 0.9,
+    "cash_reserve_ratio": 0.1,
+    "currency": "CNY",
+    "is_default": 0,
+    "created_at": "2026-06-05 06:56:54",
+    "updated_at": "2026-10-23 04:23:46",
+    "auto_trade_enabled": 1,
+    "auto_trade_last_run_at": null,
+    "buy_fee_pct": 0.0,
+    "sell_fee_pct": 0.0,
+    "benchmark_code": "",
+    "default_single_position_pct": 0.0,
+    "is_test": 0,
+    "auto_trade_source_mode": "",
+    "asset_scope": "",
+    "key_members_json": null,
+    "last_decision_trade_date": null,
+    "last_reconciled_trade_date": "2026-09-28",
+    "lease_key": null,
+    "lease_expire_at": null,
+    "effective_start_date": null,
+    "auto_schedule_hour": 0,
+    "auto_schedule_minute": 0,
+    "portfolio_status": "RECONCILIATION_BLOCKED",
+    "status_score": "READY",
+    "status_data": "READY",
+    "status_model": "READY",
+    "status_reconciliation": "RECONCILIATION_BLOCKED"
+  },
+  "workflow_counts": {
+    "portfolio_account_baselines": 0,
+    "portfolio_reconciliation_cursors": 0,
+    "portfolio_reconciliation_days": 0,
+    "portfolio_reconciliation_reports": 0,
+    "reconciliation_source_events": 0,
+    "inspection_evidence_requests": 0,
+    "inspection_evidence_decisions": 0,
+    "g5_admission_events": 0
+  },
+  "reconciliation_schedule": [
+    {
+      "id": 16,
+      "name": "main 组合自动对账（仅核对）",
+      "task_type": "portfolio_reconciliation",
+      "enabled": 1,
+      "frequency": "interval",
+      "interval_minutes": 5,
+      "timezone": "Asia/Shanghai",
+      "payload_json": "{\"portfolio_id\": 1}",
+      "next_run_at": "2026-10-23 04:44:17",
+      "last_run_at": "2026-10-23 04:39:17",
+      "last_status": "done",
+      "last_task_id": "9a27ac797035cd19619f3a832c92ee00"
+    }
+  ],
+  "scheduled_check_runs": [
+    {
+      "id": 761,
+      "schedule_id": 16,
+      "trigger_source": "scheduled",
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done",
+      "created_at": "2026-10-23 04:18:21"
+    },
+    {
+      "id": 762,
+      "schedule_id": 16,
+      "trigger_source": "scheduled",
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done",
+      "created_at": "2026-10-23 04:23:50"
+    },
+    {
+      "id": 763,
+      "schedule_id": 16,
+      "trigger_source": "scheduled",
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done",
+      "created_at": "2026-10-23 04:28:51"
+    },
+    {
+      "id": 764,
+      "schedule_id": 16,
+      "trigger_source": "scheduled",
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done",
+      "created_at": "2026-10-23 04:34:06"
+    },
+    {
+      "id": 765,
+      "schedule_id": 16,
+      "trigger_source": "scheduled",
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done",
+      "created_at": "2026-10-23 04:39:16"
+    }
+  ],
+  "new_schedule_runs": [
+    {
+      "id": 761,
+      "schedule_id": 16,
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done"
+    },
+    {
+      "id": 762,
+      "schedule_id": 16,
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done"
+    },
+    {
+      "id": 763,
+      "schedule_id": 16,
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done"
+    },
+    {
+      "id": 764,
+      "schedule_id": 16,
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done"
+    },
+    {
+      "id": 765,
+      "schedule_id": 16,
+      "task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "status": "done"
+    }
+  ],
+  "auto_run_sources": [
+    {
+      "id": "d7e6a5c16b6db712ef86d13ff6d2135bfb668504b61ba35308a54df1b3a613d2",
+      "trade_date": "2026-08-21",
+      "status": "SUCCEEDED",
+      "is_result_production_eligible": 1
+    },
+    {
+      "id": "661db071a6eea8a234d79b7248e09d18c40d1e02cc3426328358a2bb0a4b3c44",
+      "trade_date": "2026-08-22",
+      "status": "SUCCEEDED",
+      "is_result_production_eligible": 1
+    },
+    {
+      "id": "1ff72e6130eb2ad721e9a68e5e21c6f1a8c639d79f3079cc93370ed62a70e8c5",
+      "trade_date": "2026-08-23",
+      "status": "SUCCEEDED",
+      "is_result_production_eligible": 1
+    },
+    {
+      "id": "a814057f4aead03da86f6b29acafce10d7e3e0faed169e294095ff9512aaf19f",
+      "trade_date": "2026-08-24",
+      "status": "SUCCEEDED",
+      "is_result_production_eligible": 1
+    },
+    {
+      "id": "e397e54a503ab42f9451f8f8273a65d1289732640844a57e0707b75f72b95349",
+      "trade_date": "2026-08-25",
+      "status": "SUCCEEDED",
+      "is_result_production_eligible": 1
+    }
+  ],
+  "new_table_engines": [
+    {
+      "table_name": "g5_admission_controls",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "g5_admission_events",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "inspection_evidence_decisions",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "inspection_evidence_requests",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "portfolio_account_baselines",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "portfolio_reconciliation_cursors",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "portfolio_reconciliation_days",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "portfolio_reconciliation_reports",
+      "engine": "InnoDB"
+    },
+    {
+      "table_name": "reconciliation_source_events",
+      "engine": "InnoDB"
+    }
+  ],
+  "pending_column": [
+    "INTEGER:nullable=False:default='0'"
+  ],
+  "root_lock_check": {
+    "expected_mysql_error": 1205,
+    "serialized": true
+  },
+  "admission_state": {
+    "portfolio_id": 1,
+    "frozen": true,
+    "new_admission_only": true,
+    "affects_existing_runtime": false,
+    "version": 0,
+    "global_version": 0,
+    "scope_version": 0,
+    "storage_status": "available",
+    "global_control": {
+      "scope_key": "global",
+      "frozen": true,
+      "version": 0,
+      "event_id": null,
+      "reason": "尚未审核遗留报告影响并恢复新准入"
+    },
+    "portfolio_control": {
+      "scope_key": "portfolio:1",
+      "frozen": false,
+      "version": 0,
+      "event_id": null,
+      "reason": "继承全局新准入控制"
+    },
+    "reasons": [
+      "尚未审核遗留报告影响并恢复新准入"
+    ],
+    "reason_codes": [
+      "G5_NEW_ADMISSION_FROZEN"
+    ]
+  }
+}

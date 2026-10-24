@@ -228,44 +228,33 @@ class TestCheckDataHealthFresh:
     """守护数据新鲜时 check_data_health 返回 healthy=True。"""
 
     def test_data_fresh_returns_healthy(self, db_session):
-        """【WP6.5】K 线/评分均为最新时间 → healthy=True。"""
-        sym = _make_symbol(db_session, symbol="800001")
-
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_latest_score_time",
-            return_value=_now_naive(),
-        ):
-            result = check_data_health(db_session, symbol_id=sym.id)
-
+        """Real matching business dates and configuration permit the symbol."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 22))
+        _score(db_session, symbols[0], config, date(2026, 10, 22))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id)
         assert result.healthy is True
         assert result.reason == ""
+        assert result.expected_trade_date == date(2026, 10, 22)
         assert result.kline_latest_at is not None
         assert result.score_latest_at is not None
 
     def test_data_fresh_with_rule_version(self, db_session):
-        """【WP6.5】指定 rule_version_id 且版本新鲜 → healthy=True。"""
-        sym = _make_symbol(db_session, symbol="800002")
-
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_latest_score_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_rule_version_time",
-            return_value=_now_naive(),
-        ):
-            result = check_data_health(
-                db_session, symbol_id=sym.id, rule_version_id=1001
-            )
-
-        assert result.healthy is True
+        """An unimplemented rule-version registry can never be called fresh."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 22))
+        _score(db_session, symbols[0], config, date(2026, 10, 22))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id, rule_version_id=1001)
+        assert result.healthy is False
         assert result.rule_version_id == 1001
-        assert result.rule_version_at is not None
+        assert result.rule_version_at is None
+        assert "UNKNOWN" in result.reason_codes
 
 
 # ============================================================================
@@ -277,19 +266,18 @@ class TestCheckDataHealthKlineExpired:
     """守护 K 线过期时 fail-closed。"""
 
     def test_kline_expired_returns_unhealthy(self, db_session):
-        """【WP6.5】K 线时间 = 25 小时前 → healthy=False, reason 含"K线数据过期"。"""
-        sym = _make_symbol(db_session, symbol="800010")
-        expired = _now_naive() - timedelta(hours=KLINE_FRESHNESS_HOURS + 1)
-
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=expired,
-        ):
-            result = check_data_health(db_session, symbol_id=sym.id)
-
+        """Newly imported old bars remain stale by their business date."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 20))
+        _score(db_session, symbols[0], config, date(2026, 10, 22))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id)
         assert result.healthy is False
-        assert "K线数据过期" in result.reason
-        assert result.kline_latest_at == expired
+        assert "STALE" in result.reason_codes
+        assert result.kline_trade_date == date(2026, 10, 20)
+        assert result.kline_latest_at == (NOW - timedelta(hours=1)).replace(tzinfo=None)
 
 
 # ============================================================================
@@ -301,18 +289,13 @@ class TestCheckDataHealthKlineMissing:
     """守护 K 线缺失时 fail-closed。"""
 
     def test_kline_missing_returns_unhealthy(self, db_session):
-        """【WP6.5】K 线时间 = None → healthy=False, reason 含"K线数据缺失"。"""
+        """Missing bar evidence remains missing, alongside all other checks."""
         sym = _make_symbol(db_session, symbol="800020")
-
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=None,
-        ):
-            result = check_data_health(db_session, symbol_id=sym.id)
-
+        result = check_data_health(db_session, symbol_id=sym.id)
         assert result.healthy is False
-        assert "K线数据缺失" in result.reason
+        assert "MISSING" in result.reason_codes
         assert result.kline_latest_at is None
+        assert any(check["check_code"] == "SCORE_FRESHNESS" for check in result.checks)
 
 
 # ============================================================================
@@ -324,22 +307,17 @@ class TestCheckDataHealthScoreExpired:
     """守护评分过期时 fail-closed。"""
 
     def test_score_expired_returns_unhealthy(self, db_session):
-        """【WP6.5】评分时间 = 49 小时前 → healthy=False, reason 含"评分数据过期"。"""
-        sym = _make_symbol(db_session, symbol="800030")
-        score_expired = _now_naive() - timedelta(hours=SCORE_FRESHNESS_HOURS + 1)
-
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_latest_score_time",
-            return_value=score_expired,
-        ):
-            result = check_data_health(db_session, symbol_id=sym.id)
-
+        """New ingestion cannot make an old score's business date fresh."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 22))
+        _score(db_session, symbols[0], config, date(2026, 10, 20))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id)
         assert result.healthy is False
-        assert "评分数据过期" in result.reason
-        assert result.score_latest_at == score_expired
+        assert "STALE" in result.reason_codes
+        assert result.score_trade_date == date(2026, 10, 20)
 
 
 # ============================================================================
@@ -351,30 +329,18 @@ class TestCheckDataHealthRuleExpired:
     """守护规则版本过期时 fail-closed。"""
 
     def test_rule_version_expired_returns_unhealthy(self, db_session):
-        """【WP6.5】规则版本时间 = 8 天前 → healthy=False, reason 含"规则版本过期"。"""
-        sym = _make_symbol(db_session, symbol="800040")
-        rule_expired = _now_naive() - timedelta(
-            hours=RULE_FRESHNESS_HOURS + 24
-        )  # 8 天前 + 1 天
-
-        with patch(
-            "app.services.auto_trade_safety._get_latest_kline_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_latest_score_time",
-            return_value=_now_naive(),
-        ), patch(
-            "app.services.auto_trade_safety._get_rule_version_time",
-            return_value=rule_expired,
-        ):
-            result = check_data_health(
-                db_session, symbol_id=sym.id, rule_version_id=1
-            )
-
+        """Rule validity requires a real registry, not a seven-day timestamp."""
+        from tests.test_portfolio_inspection import _seed, _bar, _score, NOW
+        _, config, symbols = _seed(db_session, count=1)
+        _bar(db_session, symbols[0], date(2026, 10, 22))
+        _score(db_session, symbols[0], config, date(2026, 10, 22))
+        db_session.commit()
+        with patch("app.services.auto_trade_safety._now_utc_naive", return_value=NOW.replace(tzinfo=None)):
+            result = check_data_health(db_session, symbol_id=symbols[0].id, rule_version_id=1)
         assert result.healthy is False
-        assert "规则版本过期" in result.reason
+        assert "UNKNOWN" in result.reason_codes
         assert result.rule_version_id == 1
-        assert result.rule_version_at == rule_expired
+        assert result.rule_version_at is None
 
 
 # ============================================================================
@@ -806,7 +772,7 @@ class TestCheckDataHealthIntegration:
         cand = candidates[0]
         assert cand.rejection_code == "BLOCKED"
         assert cand.data_health_ok is False
-        assert "K线数据缺失" in cand.rejection_detail
+        assert "没有找到对应业务日期" in cand.rejection_detail
 
 
 # ============================================================================

@@ -1,0 +1,18 @@
+{
+  "history_gaps": [
+    {
+      "trade_date_from": "2026-06-05",
+      "trade_date_to": "2026-10-23",
+      "reason": "本地库未找到目标日成功自动运行及原计划，外部备份尚待核查。本次仅预览当前账户与历史未知出口，未接受或归档历史。",
+      "attempted_sources": [
+        "本地 decision_runs：目标日成功正式自动运行查询",
+        "本地 decision_evidence 与 decision_order_plans：无留存行",
+        "原 sim_orders、sim_trades 与 cash_ledger 引用核查"
+      ],
+      "evidence_refs": [
+        "audit:3742",
+        "audit:3743"
+      ]
+    }
+  ]
+}

@@ -397,7 +397,7 @@ def _symbol_eligible_buy(
     if score_dict.get("action", "hold") not in _BUY_ACTIONS:
         return False
     health = check_data_health(
-        db,
+        db, portfolio_id=portfolio_id,
         symbol_id=symbol_id,
         rule_version_id=entry_rule_version_id,
     )
@@ -552,7 +552,7 @@ def get_auto_trade_readiness(
         ):
             eligible_buy_count += 1
         # 数据新鲜度：只要任一 K线+评分 healthy 即认为该符号属于 fresh
-        health = check_data_health(db, symbol_id=symbol_id, rule_version_id=version_id)
+        health = check_data_health(db, symbol_id=symbol_id, rule_version_id=version_id, portfolio_id=portfolio_id)
         if health.healthy:
             fresh_symbol_count += 1
 

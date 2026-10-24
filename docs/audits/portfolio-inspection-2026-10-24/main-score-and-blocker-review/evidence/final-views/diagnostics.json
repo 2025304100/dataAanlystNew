@@ -1,0 +1,1530 @@
+{
+  "portfolio_id": 1,
+  "snapshot_id": "17815b4efba689bc3af5ceb8490d25654b89b84be9565dcce7ac2264bbb044d0",
+  "version": 1,
+  "generated_at": "2026-10-24T01:14:14Z",
+  "policy_version": "portfolio-inspection-v1",
+  "read_only": true,
+  "usable_for_admission": false,
+  "summary": {
+    "passed": 7,
+    "missing": 3,
+    "stale": 0,
+    "read_error": 0,
+    "version_mismatch": 4,
+    "future_data": 0,
+    "not_due": 0,
+    "calendar_unknown": 0,
+    "unknown": 0,
+    "symbol_count": 3,
+    "inspected_symbol_count": 3,
+    "admission_failure_count": 4,
+    "affected_symbol_count": 3,
+    "passed_symbol_count": 0,
+    "aggregation_rule": "逐项归集全部异常；持仓数据缺口不阻止风险退出；组合实际执行准入仍由执行门禁判断",
+    "affected_capabilities": []
+  },
+  "binding": {
+    "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+    "model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+    "factor_set_id": "fs-set-3126b70f",
+    "source": "applied_portfolio_snapshot",
+    "score_allowed_lag": 1,
+    "score_lag_basis": "portfolio_factor_usage",
+    "rule_id": 1,
+    "rule_version": 1,
+    "rule_verified": false
+  },
+  "calendars": [
+    {
+      "market": "sh",
+      "status": "PASSED",
+      "source": "https://www.sse.com.cn/disclosure/dealinstruc/closed/",
+      "version": "93eba68262d6aa4995bf44508cc2cfb4ddcf736b337ba212c7e84cd40d8aa201",
+      "synced_at": "2026-10-23T23:46:59.281819Z",
+      "expected_trade_date": "2026-10-23",
+      "not_due": false,
+      "reason": "按交易所年度日历与15:00收盘时点计算应到数据日"
+    },
+    {
+      "market": "sz",
+      "status": "PASSED",
+      "source": "https://www.sse.com.cn/disclosure/dealinstruc/closed/",
+      "version": "93eba68262d6aa4995bf44508cc2cfb4ddcf736b337ba212c7e84cd40d8aa201",
+      "synced_at": "2026-10-23T23:46:59.281819Z",
+      "expected_trade_date": "2026-10-23",
+      "not_due": false,
+      "reason": "按交易所年度日历与15:00收盘时点计算应到数据日"
+    }
+  ],
+  "symbols": [
+    {
+      "symbol_id": 1,
+      "symbol": "000001",
+      "name": "平安银行",
+      "market": "sz",
+      "asset_type": "stock",
+      "scopes": [
+        "position",
+        "candidate"
+      ],
+      "entry_authorized": false,
+      "expected_trade_date": "2026-10-23",
+      "actual_bar_trade_date": "2026-10-23",
+      "actual_score_trade_date": "2026-10-23",
+      "scoring": {
+        "expected_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+        "expected_factor_set_id": "fs-set-3126b70f",
+        "current_config_id": 3,
+        "current_config_name": "趋势成长",
+        "current_config_version": 1,
+        "current_config": {
+          "preset_key": "trend_growth",
+          "name": "趋势成长",
+          "description": "趋势跟随、强者恒强；更重视趋势、动量、突破，适合找强势票。",
+          "asset_type": "stock",
+          "final_weights": {
+            "quality": 0.35,
+            "timing": 0.55,
+            "news": 0.1
+          },
+          "dimensions": [
+            {
+              "key": "trend",
+              "name": "趋势",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.28,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "trend_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "momentum",
+              "name": "动量",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.25,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "momentum_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "volatility",
+              "name": "波动",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "volatility_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "lower_better"
+                }
+              ]
+            },
+            {
+              "key": "liquidity",
+              "name": "流动性",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.12,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "liquidity_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "activity",
+              "name": "交易活跃",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "amount_activity",
+                  "source": "daily_bar",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "breadth",
+              "name": "题材",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "breadth_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            }
+          ]
+        },
+        "configuration_source": "current_asset_scoring_runtime",
+        "current_config_valid": true,
+        "portfolio_config_frozen": false,
+        "actual_model_run_id": null,
+        "actual_factor_set_id": null,
+        "actual_weight_mode": "manual",
+        "actual_config_id": 3,
+        "actual_config_version": 1,
+        "actual_config_name": "趋势成长",
+        "actual_config_snapshot": {
+          "preset_key": "trend_growth",
+          "name": "趋势成长",
+          "description": "趋势跟随、强者恒强；更重视趋势、动量、突破，适合找强势票。",
+          "asset_type": "stock",
+          "final_weights": {
+            "quality": 0.35,
+            "timing": 0.55,
+            "news": 0.1
+          },
+          "dimensions": [
+            {
+              "key": "trend",
+              "name": "趋势",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.28,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "trend_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "momentum",
+              "name": "动量",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.25,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "momentum_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "volatility",
+              "name": "波动",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "volatility_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "lower_better"
+                }
+              ]
+            },
+            {
+              "key": "liquidity",
+              "name": "流动性",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.12,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "liquidity_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "activity",
+              "name": "交易活跃",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "amount_activity",
+                  "source": "daily_bar",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "breadth",
+              "name": "题材",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "breadth_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            }
+          ]
+        },
+        "score_record_id": 79582
+      },
+      "evidence": [
+        {
+          "evidence_id": "1:daily_bar",
+          "symbol_id": 1,
+          "symbol": "000001",
+          "check_code": "DAILY_BAR_FRESHNESS",
+          "label": "日K行情",
+          "status": "PASSED",
+          "reason": "业务日期和可用时点满足本次诊断要求",
+          "value": "2026-10-23",
+          "expected": "2026-10-23",
+          "actual_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": 0,
+          "allowed_lag": 0,
+          "available_at": "2026-10-23T23:52:37",
+          "availability_basis": "ingested_at_only",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "daily_bars",
+          "source_label": "日K行情",
+          "source_record_ref": "daily_bar:1568253",
+          "model_run_id": null,
+          "config_id": null,
+          "config_version": null,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [],
+          "metadata": {
+            "adjustment_basis": "unknown",
+            "source": "akshare:sina:cn-stock:v1:qfq",
+            "historical_publication_verified": false
+          }
+        },
+        {
+          "evidence_id": "1:config",
+          "symbol_id": 1,
+          "symbol": "000001",
+          "check_code": "SCORING_CONFIGURATION",
+          "label": "当前规则评分配置",
+          "status": "PASSED",
+          "reason": "当前资产类型已激活的规则评分配置；未冒充组合冻结配置",
+          "value": {
+            "id": 3,
+            "name": "趋势成长",
+            "version": 1
+          },
+          "expected": null,
+          "actual_trade_date": null,
+          "expected_trade_date": null,
+          "trading_day_lag": null,
+          "allowed_lag": null,
+          "available_at": null,
+          "availability_basis": null,
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "scoring_configs",
+          "source_label": "规则评分配置",
+          "source_record_ref": "scoring_config:3",
+          "model_run_id": null,
+          "config_id": 3,
+          "config_version": 1,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [],
+          "metadata": {}
+        },
+        {
+          "evidence_id": "1:score",
+          "symbol_id": 1,
+          "symbol": "000001",
+          "check_code": "SCORE_FRESHNESS",
+          "label": "适用评分",
+          "status": "VERSION_MISMATCH",
+          "reason": "存在评分，但实际模型、因子集或规则评分配置与本次检查范围不一致",
+          "value": "2026-10-23",
+          "expected": "2026-10-23",
+          "actual_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": null,
+          "allowed_lag": 1,
+          "available_at": "2026-10-24T01:13:36",
+          "availability_basis": "published_at",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "scores",
+          "source_label": "评分记录",
+          "source_record_ref": "score:79582",
+          "model_run_id": null,
+          "config_id": 3,
+          "config_version": 1,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [
+            "1:daily_bar",
+            "1:config"
+          ],
+          "metadata": {
+            "expected_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+            "pit_safety": "NOT_PIT_SAFE",
+            "factor_data_cutoff_at": null
+          }
+        },
+        {
+          "evidence_id": "1:factor:turnover_z20",
+          "symbol_id": 1,
+          "symbol": "000001",
+          "check_code": "FACTOR_INPUT",
+          "label": "20-day Turnover Z-Score",
+          "status": "MISSING",
+          "reason": "没有找到对应业务日期的数据记录",
+          "value": null,
+          "expected": {
+            "version": 2,
+            "frequency": "daily"
+          },
+          "actual_trade_date": null,
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": null,
+          "allowed_lag": 0,
+          "available_at": null,
+          "availability_basis": "ingested_at_only",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "factor_values",
+          "source_label": "指标计算记录",
+          "source_record_ref": null,
+          "model_run_id": null,
+          "config_id": null,
+          "config_version": null,
+          "affected_capabilities": [],
+          "admission_relevant": false,
+          "depends_on": [
+            "1:daily_bar"
+          ],
+          "metadata": {
+            "factor_id": 4,
+            "code": "turnover_z20",
+            "name": "20-day Turnover Z-Score",
+            "version": 2,
+            "version_id": 9,
+            "frequency": "daily",
+            "missing_policy": "exclude",
+            "version_valid": true,
+            "source_dependencies": "{\"fields\": [], \"functions\": [], \"max_lookback\": 1, \"point_in_time_fields\": [], \"source_tables\": [], \"unknown_names\": [\"mean_20d\", \"stddev_pop_20d\", \"turnover\"]}"
+          }
+        }
+      ]
+    },
+    {
+      "symbol_id": 2,
+      "symbol": "510300",
+      "name": "沪深300ETF华泰柏瑞",
+      "market": "sh",
+      "asset_type": "etf",
+      "scopes": [
+        "position"
+      ],
+      "entry_authorized": false,
+      "expected_trade_date": "2026-10-23",
+      "actual_bar_trade_date": "2026-10-23",
+      "actual_score_trade_date": "2026-10-23",
+      "scoring": {
+        "expected_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+        "expected_factor_set_id": "fs-set-3126b70f",
+        "current_config_id": 5,
+        "current_config_name": "ETF均衡机会",
+        "current_config_version": 1,
+        "current_config": {
+          "preset_key": "etf_balanced",
+          "name": "ETF均衡机会",
+          "description": "默认 ETF 机会挖掘；趋势、动量、流动性、波动较均衡。",
+          "asset_type": "etf",
+          "final_weights": {
+            "quality": 0.35,
+            "timing": 0.55,
+            "news": 0.1
+          },
+          "dimensions": [
+            {
+              "key": "trend",
+              "name": "趋势",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.28,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "trend_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "momentum",
+              "name": "动量",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.22,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "momentum_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "liquidity",
+              "name": "流动性",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.2,
+              "filter": {
+                "enabled": true,
+                "operator": "gte",
+                "value": 60
+              },
+              "factors": [
+                {
+                  "key": "liquidity_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "drawdown_risk",
+              "name": "回撤风险",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "volatility_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "lower_better"
+                }
+              ]
+            },
+            {
+              "key": "activity",
+              "name": "成交活跃",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "amount_activity",
+                  "source": "daily_bar",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            }
+          ]
+        },
+        "configuration_source": "current_asset_scoring_runtime",
+        "current_config_valid": true,
+        "portfolio_config_frozen": false,
+        "actual_model_run_id": null,
+        "actual_factor_set_id": null,
+        "actual_weight_mode": "manual",
+        "actual_config_id": 5,
+        "actual_config_version": 1,
+        "actual_config_name": "ETF均衡机会",
+        "actual_config_snapshot": {
+          "preset_key": "etf_balanced",
+          "name": "ETF均衡机会",
+          "description": "默认 ETF 机会挖掘；趋势、动量、流动性、波动较均衡。",
+          "asset_type": "etf",
+          "final_weights": {
+            "quality": 0.35,
+            "timing": 0.55,
+            "news": 0.1
+          },
+          "dimensions": [
+            {
+              "key": "trend",
+              "name": "趋势",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.28,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "trend_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "momentum",
+              "name": "动量",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.22,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "momentum_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "liquidity",
+              "name": "流动性",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.2,
+              "filter": {
+                "enabled": true,
+                "operator": "gte",
+                "value": 60
+              },
+              "factors": [
+                {
+                  "key": "liquidity_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "drawdown_risk",
+              "name": "回撤风险",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "volatility_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "lower_better"
+                }
+              ]
+            },
+            {
+              "key": "activity",
+              "name": "成交活跃",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "amount_activity",
+                  "source": "daily_bar",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            }
+          ]
+        },
+        "score_record_id": 79581
+      },
+      "evidence": [
+        {
+          "evidence_id": "2:daily_bar",
+          "symbol_id": 2,
+          "symbol": "510300",
+          "check_code": "DAILY_BAR_FRESHNESS",
+          "label": "日K行情",
+          "status": "PASSED",
+          "reason": "业务日期和可用时点满足本次诊断要求",
+          "value": "2026-10-23",
+          "expected": "2026-10-23",
+          "actual_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": 0,
+          "allowed_lag": 0,
+          "available_at": "2026-10-24T00:31:41",
+          "availability_basis": "ingested_at_only",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "daily_bars",
+          "source_label": "日K行情",
+          "source_record_ref": "daily_bar:1568305",
+          "model_run_id": null,
+          "config_id": null,
+          "config_version": null,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [],
+          "metadata": {
+            "adjustment_basis": "unknown",
+            "source": "tencent:cn-etf:v1:qfq",
+            "historical_publication_verified": false
+          }
+        },
+        {
+          "evidence_id": "2:config",
+          "symbol_id": 2,
+          "symbol": "510300",
+          "check_code": "SCORING_CONFIGURATION",
+          "label": "当前规则评分配置",
+          "status": "PASSED",
+          "reason": "当前资产类型已激活的规则评分配置；未冒充组合冻结配置",
+          "value": {
+            "id": 5,
+            "name": "ETF均衡机会",
+            "version": 1
+          },
+          "expected": null,
+          "actual_trade_date": null,
+          "expected_trade_date": null,
+          "trading_day_lag": null,
+          "allowed_lag": null,
+          "available_at": null,
+          "availability_basis": null,
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "scoring_configs",
+          "source_label": "规则评分配置",
+          "source_record_ref": "scoring_config:5",
+          "model_run_id": null,
+          "config_id": 5,
+          "config_version": 1,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [],
+          "metadata": {}
+        },
+        {
+          "evidence_id": "2:score",
+          "symbol_id": 2,
+          "symbol": "510300",
+          "check_code": "SCORE_FRESHNESS",
+          "label": "适用评分",
+          "status": "VERSION_MISMATCH",
+          "reason": "存在评分，但实际模型、因子集或规则评分配置与本次检查范围不一致",
+          "value": "2026-10-23",
+          "expected": "2026-10-23",
+          "actual_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": null,
+          "allowed_lag": 1,
+          "available_at": "2026-10-24T01:00:01",
+          "availability_basis": "published_at",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "scores",
+          "source_label": "评分记录",
+          "source_record_ref": "score:79581",
+          "model_run_id": null,
+          "config_id": 5,
+          "config_version": 1,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [
+            "2:daily_bar",
+            "2:config"
+          ],
+          "metadata": {
+            "expected_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+            "pit_safety": "NOT_PIT_SAFE",
+            "factor_data_cutoff_at": null
+          }
+        },
+        {
+          "evidence_id": "2:factor:turnover_z20",
+          "symbol_id": 2,
+          "symbol": "510300",
+          "check_code": "FACTOR_INPUT",
+          "label": "20-day Turnover Z-Score",
+          "status": "MISSING",
+          "reason": "没有找到对应业务日期的数据记录",
+          "value": null,
+          "expected": {
+            "version": 2,
+            "frequency": "daily"
+          },
+          "actual_trade_date": null,
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": null,
+          "allowed_lag": 0,
+          "available_at": null,
+          "availability_basis": "ingested_at_only",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "factor_values",
+          "source_label": "指标计算记录",
+          "source_record_ref": null,
+          "model_run_id": null,
+          "config_id": null,
+          "config_version": null,
+          "affected_capabilities": [],
+          "admission_relevant": false,
+          "depends_on": [
+            "2:daily_bar"
+          ],
+          "metadata": {
+            "factor_id": 4,
+            "code": "turnover_z20",
+            "name": "20-day Turnover Z-Score",
+            "version": 2,
+            "version_id": 9,
+            "frequency": "daily",
+            "missing_policy": "exclude",
+            "version_valid": true,
+            "source_dependencies": "{\"fields\": [], \"functions\": [], \"max_lookback\": 1, \"point_in_time_fields\": [], \"source_tables\": [], \"unknown_names\": [\"mean_20d\", \"stddev_pop_20d\", \"turnover\"]}"
+          }
+        }
+      ]
+    },
+    {
+      "symbol_id": 3215,
+      "symbol": "600428",
+      "name": "中远海特",
+      "market": "sh",
+      "asset_type": "stock",
+      "scopes": [
+        "candidate"
+      ],
+      "entry_authorized": false,
+      "expected_trade_date": "2026-10-23",
+      "actual_bar_trade_date": "2026-10-23",
+      "actual_score_trade_date": "2026-10-23",
+      "scoring": {
+        "expected_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+        "expected_factor_set_id": "fs-set-3126b70f",
+        "current_config_id": 3,
+        "current_config_name": "趋势成长",
+        "current_config_version": 1,
+        "current_config": {
+          "preset_key": "trend_growth",
+          "name": "趋势成长",
+          "description": "趋势跟随、强者恒强；更重视趋势、动量、突破，适合找强势票。",
+          "asset_type": "stock",
+          "final_weights": {
+            "quality": 0.35,
+            "timing": 0.55,
+            "news": 0.1
+          },
+          "dimensions": [
+            {
+              "key": "trend",
+              "name": "趋势",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.28,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "trend_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "momentum",
+              "name": "动量",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.25,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "momentum_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "volatility",
+              "name": "波动",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "volatility_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "lower_better"
+                }
+              ]
+            },
+            {
+              "key": "liquidity",
+              "name": "流动性",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.12,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "liquidity_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "activity",
+              "name": "交易活跃",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "amount_activity",
+                  "source": "daily_bar",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "breadth",
+              "name": "题材",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "breadth_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            }
+          ]
+        },
+        "configuration_source": "current_asset_scoring_runtime",
+        "current_config_valid": true,
+        "portfolio_config_frozen": false,
+        "actual_model_run_id": null,
+        "actual_factor_set_id": null,
+        "actual_weight_mode": "manual",
+        "actual_config_id": 3,
+        "actual_config_version": 1,
+        "actual_config_name": "趋势成长",
+        "actual_config_snapshot": {
+          "preset_key": "trend_growth",
+          "name": "趋势成长",
+          "description": "趋势跟随、强者恒强；更重视趋势、动量、突破，适合找强势票。",
+          "asset_type": "stock",
+          "final_weights": {
+            "quality": 0.35,
+            "timing": 0.55,
+            "news": 0.1
+          },
+          "dimensions": [
+            {
+              "key": "trend",
+              "name": "趋势",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.28,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "trend_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "momentum",
+              "name": "动量",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.25,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "momentum_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "volatility",
+              "name": "波动",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "volatility_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "lower_better"
+                }
+              ]
+            },
+            {
+              "key": "liquidity",
+              "name": "流动性",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.12,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "liquidity_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "activity",
+              "name": "交易活跃",
+              "enabled": true,
+              "score_bucket": "timing",
+              "weight": 0.15,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "amount_activity",
+                  "source": "daily_bar",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            },
+            {
+              "key": "breadth",
+              "name": "题材",
+              "enabled": true,
+              "score_bucket": "quality",
+              "weight": 0.1,
+              "filter": {
+                "enabled": false,
+                "operator": "gte",
+                "value": 60.0
+              },
+              "factors": [
+                {
+                  "key": "breadth_score",
+                  "source": "builtin",
+                  "weight": 1.0,
+                  "direction": "higher_better"
+                }
+              ]
+            }
+          ]
+        },
+        "score_record_id": 79583
+      },
+      "evidence": [
+        {
+          "evidence_id": "3215:daily_bar",
+          "symbol_id": 3215,
+          "symbol": "600428",
+          "check_code": "DAILY_BAR_FRESHNESS",
+          "label": "日K行情",
+          "status": "PASSED",
+          "reason": "业务日期和可用时点满足本次诊断要求",
+          "value": "2026-10-23",
+          "expected": "2026-10-23",
+          "actual_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": 0,
+          "allowed_lag": 0,
+          "available_at": "2026-10-23T23:52:42",
+          "availability_basis": "ingested_at_only",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "daily_bars",
+          "source_label": "日K行情",
+          "source_record_ref": "daily_bar:1568302",
+          "model_run_id": null,
+          "config_id": null,
+          "config_version": null,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [],
+          "metadata": {
+            "adjustment_basis": "unknown",
+            "source": "akshare:sina:cn-stock:v1:qfq",
+            "historical_publication_verified": false
+          }
+        },
+        {
+          "evidence_id": "3215:config",
+          "symbol_id": 3215,
+          "symbol": "600428",
+          "check_code": "SCORING_CONFIGURATION",
+          "label": "当前规则评分配置",
+          "status": "PASSED",
+          "reason": "当前资产类型已激活的规则评分配置；未冒充组合冻结配置",
+          "value": {
+            "id": 3,
+            "name": "趋势成长",
+            "version": 1
+          },
+          "expected": null,
+          "actual_trade_date": null,
+          "expected_trade_date": null,
+          "trading_day_lag": null,
+          "allowed_lag": null,
+          "available_at": null,
+          "availability_basis": null,
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "scoring_configs",
+          "source_label": "规则评分配置",
+          "source_record_ref": "scoring_config:3",
+          "model_run_id": null,
+          "config_id": 3,
+          "config_version": 1,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [],
+          "metadata": {}
+        },
+        {
+          "evidence_id": "3215:score",
+          "symbol_id": 3215,
+          "symbol": "600428",
+          "check_code": "SCORE_FRESHNESS",
+          "label": "适用评分",
+          "status": "VERSION_MISMATCH",
+          "reason": "存在评分，但实际模型、因子集或规则评分配置与本次检查范围不一致",
+          "value": "2026-10-23",
+          "expected": "2026-10-23",
+          "actual_trade_date": "2026-10-23",
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": null,
+          "allowed_lag": 1,
+          "available_at": "2026-10-24T01:13:36",
+          "availability_basis": "published_at",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "scores",
+          "source_label": "评分记录",
+          "source_record_ref": "score:79583",
+          "model_run_id": null,
+          "config_id": 3,
+          "config_version": 1,
+          "affected_capabilities": [],
+          "admission_relevant": true,
+          "depends_on": [
+            "3215:daily_bar",
+            "3215:config"
+          ],
+          "metadata": {
+            "expected_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+            "pit_safety": "NOT_PIT_SAFE",
+            "factor_data_cutoff_at": null
+          }
+        },
+        {
+          "evidence_id": "3215:factor:turnover_z20",
+          "symbol_id": 3215,
+          "symbol": "600428",
+          "check_code": "FACTOR_INPUT",
+          "label": "20-day Turnover Z-Score",
+          "status": "MISSING",
+          "reason": "没有找到对应业务日期的数据记录",
+          "value": null,
+          "expected": {
+            "version": 2,
+            "frequency": "daily"
+          },
+          "actual_trade_date": null,
+          "expected_trade_date": "2026-10-23",
+          "trading_day_lag": null,
+          "allowed_lag": 0,
+          "available_at": null,
+          "availability_basis": "ingested_at_only",
+          "observed_at": "2026-10-24T01:14:14Z",
+          "source_code": "factor_values",
+          "source_label": "指标计算记录",
+          "source_record_ref": null,
+          "model_run_id": null,
+          "config_id": null,
+          "config_version": null,
+          "affected_capabilities": [],
+          "admission_relevant": false,
+          "depends_on": [
+            "3215:daily_bar"
+          ],
+          "metadata": {
+            "factor_id": 4,
+            "code": "turnover_z20",
+            "name": "20-day Turnover Z-Score",
+            "version": 2,
+            "version_id": 9,
+            "frequency": "daily",
+            "missing_policy": "exclude",
+            "version_valid": true,
+            "source_dependencies": "{\"fields\": [], \"functions\": [], \"max_lookback\": 1, \"point_in_time_fields\": [], \"source_tables\": [], \"unknown_names\": [\"mean_20d\", \"stddev_pop_20d\", \"turnover\"]}"
+          }
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "binding:rule",
+      "symbol_id": null,
+      "symbol": null,
+      "check_code": "RULE_BINDING",
+      "label": "实际使用策略",
+      "status": "VERSION_MISMATCH",
+      "reason": "策略已失效或规则版本无法核验",
+      "value": {
+        "id": 1,
+        "name": "default",
+        "active": false
+      },
+      "expected": {
+        "id": 1,
+        "version": 1
+      },
+      "actual_trade_date": null,
+      "expected_trade_date": null,
+      "trading_day_lag": null,
+      "allowed_lag": null,
+      "available_at": null,
+      "availability_basis": null,
+      "observed_at": "2026-10-24T01:14:14Z",
+      "source_code": "portfolio_rules",
+      "source_label": "组合策略",
+      "source_record_ref": "portfolio_rule:1",
+      "model_run_id": null,
+      "config_id": null,
+      "config_version": null,
+      "affected_capabilities": [],
+      "admission_relevant": true,
+      "depends_on": [],
+      "metadata": {}
+    },
+    {
+      "evidence_id": "binding:factors",
+      "symbol_id": null,
+      "symbol": null,
+      "check_code": "FACTOR_DEPENDENCIES",
+      "label": "冻结指标依赖",
+      "status": "PASSED",
+      "reason": "已读取绑定因子集的冻结成员",
+      "value": 1,
+      "expected": "fs-set-3126b70f",
+      "actual_trade_date": null,
+      "expected_trade_date": null,
+      "trading_day_lag": null,
+      "allowed_lag": null,
+      "available_at": null,
+      "availability_basis": null,
+      "observed_at": "2026-10-24T01:14:14Z",
+      "source_code": "factor_sets",
+      "source_label": "冻结因子集",
+      "source_record_ref": null,
+      "model_run_id": null,
+      "config_id": null,
+      "config_version": null,
+      "affected_capabilities": [],
+      "admission_relevant": true,
+      "depends_on": [],
+      "metadata": {}
+    }
+  ],
+  "repair_plan": {
+    "plan_id": "64940e9eaf4d9b8d085db1193703cb98e08c92578b888b9ef13df5a34b1a1ed8",
+    "snapshot_id": "17815b4efba689bc3af5ceb8490d25654b89b84be9565dcce7ac2264bbb044d0",
+    "portfolio_id": 1,
+    "version": 1,
+    "generated_at": "2026-10-24T01:14:14Z",
+    "expires_at": "2026-10-24T01:29:14Z",
+    "executable_count": 0,
+    "disabled_count": 4,
+    "operations": [
+      {
+        "operation_id": "1:recalculate_score",
+        "kind": "recalculate_model_score",
+        "label": "重算 平安银行 指标与评分",
+        "symbol_id": 1,
+        "symbol": "000001",
+        "trade_date": "2026-10-23",
+        "start_date": null,
+        "end_date": "2026-10-23",
+        "config_id": 3,
+        "config_version": 1,
+        "config_fingerprint": "0c6488fc205a552ca1b98fb0a2d3cb1482fc5f21781870ac236232f9a079a0ab",
+        "enabled": false,
+        "disabled_reason": "现有模型评分任务不能安全固定本组合模型、因子版本及标的范围；请到因子模型核验并运行正式评分",
+        "disabled_code": "MODEL_SCORING_REQUIRES_FROZEN_PIPELINE",
+        "target": "scoring:models",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "1:score",
+          "1:factor:turnover_z20"
+        ],
+        "expected_effect": "使用预览中固定的规则评分配置重算指标与评分；完成不等于自动恢复交易"
+      },
+      {
+        "operation_id": "2:recalculate_score",
+        "kind": "recalculate_model_score",
+        "label": "重算 沪深300ETF华泰柏瑞 指标与评分",
+        "symbol_id": 2,
+        "symbol": "510300",
+        "trade_date": "2026-10-23",
+        "start_date": null,
+        "end_date": "2026-10-23",
+        "config_id": 5,
+        "config_version": 1,
+        "config_fingerprint": "dc36430cf1fdcdf55eb57118e10eb749401822dbc244bbd80e66df3788a39f5e",
+        "enabled": false,
+        "disabled_reason": "现有模型评分任务不能安全固定本组合模型、因子版本及标的范围；请到因子模型核验并运行正式评分",
+        "disabled_code": "MODEL_SCORING_REQUIRES_FROZEN_PIPELINE",
+        "target": "scoring:models",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "2:score",
+          "2:factor:turnover_z20"
+        ],
+        "expected_effect": "使用预览中固定的规则评分配置重算指标与评分；完成不等于自动恢复交易"
+      },
+      {
+        "operation_id": "3215:recalculate_score",
+        "kind": "recalculate_model_score",
+        "label": "重算 中远海特 指标与评分",
+        "symbol_id": 3215,
+        "symbol": "600428",
+        "trade_date": "2026-10-23",
+        "start_date": null,
+        "end_date": "2026-10-23",
+        "config_id": 3,
+        "config_version": 1,
+        "config_fingerprint": "0c6488fc205a552ca1b98fb0a2d3cb1482fc5f21781870ac236232f9a079a0ab",
+        "enabled": false,
+        "disabled_reason": "现有模型评分任务不能安全固定本组合模型、因子版本及标的范围；请到因子模型核验并运行正式评分",
+        "disabled_code": "MODEL_SCORING_REQUIRES_FROZEN_PIPELINE",
+        "target": "scoring:models",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "3215:score",
+          "3215:factor:turnover_z20"
+        ],
+        "expected_effect": "使用预览中固定的规则评分配置重算指标与评分；完成不等于自动恢复交易"
+      },
+      {
+        "operation_id": "review:evidence",
+        "kind": "review_evidence",
+        "label": "核验日历、绑定与未知来源",
+        "symbol_id": null,
+        "symbol": null,
+        "trade_date": null,
+        "start_date": null,
+        "end_date": null,
+        "config_id": null,
+        "config_version": null,
+        "config_fingerprint": null,
+        "enabled": false,
+        "disabled_reason": "来源与版本未知需要先核验，当前没有可安全自动修复的业务入口",
+        "disabled_code": "MANUAL_EVIDENCE_REVIEW_REQUIRED",
+        "target": "settings:data-center",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "binding:rule"
+        ],
+        "expected_effect": "核验来源后重新检查，不跳过或清零未知项"
+      }
+    ],
+    "confirmation_required": true,
+    "completion_criteria": [
+      "作业逐对象产物已保存",
+      "重检应到业务日与实际配置一致",
+      "未知或失败项仍保留，不能因任务完成自动放行"
+    ],
+    "limitations": [
+      "日K与指标记录缺少独立发布时间或复权口径，当前结果不能替代历史PIT准入检查",
+      "诊断不修改交易状态、对账游标、订单、成交或现金账本",
+      "未接通的外部指标与冻结模型批量评分明确保留未知，需要在原业务入口核验"
+    ]
+  },
+  "limitations": [
+    "日K与指标记录缺少独立发布时间或复权口径，当前结果不能替代历史PIT准入检查",
+    "诊断不修改交易状态、对账游标、订单、成交或现金账本",
+    "未接通的外部指标与冻结模型批量评分明确保留未知，需要在原业务入口核验"
+  ]
+}

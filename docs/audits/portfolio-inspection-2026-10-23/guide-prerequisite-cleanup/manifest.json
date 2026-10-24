@@ -1,0 +1,35 @@
+{
+  "purpose": "Remove the intermediate reconciliation prerequisite banner; retain final safety checks and independent execution review.",
+  "files": [
+    {
+      "path": "binding-step.png",
+      "bytes": 237167,
+      "sha256": "02ff19d212d3c4da05e15acd3d3ff057d1342f1a9087985e6d1598fa17d392c6"
+    },
+    {
+      "path": "final-review.png",
+      "bytes": 253291,
+      "sha256": "caa50074c52a08b9ade85819a797d08519b97133840d9eda50d713e9419e85db"
+    },
+    {
+      "path": "final-review-390.png",
+      "bytes": 91380,
+      "sha256": "59c60ed1a0a6b229ad2bdb4ce9c9dd99172a3e4edd66e65f36cb19d38eb43ca1"
+    },
+    {
+      "path": "final-review-320.png",
+      "bytes": 76630,
+      "sha256": "893da853287a7c3f3a8c336f0f78df56b4d71af2e44c277d9963ff476ad3c885"
+    },
+    {
+      "path": "result.json",
+      "bytes": 2037,
+      "sha256": "00a6eaf21ea98c4a4523f1a1e492f2920344edf950a1e18160cb99c7c6629380"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 7985,
+      "sha256": "f9bdfdd015dd7f60e45efafc6e882b2b28a0bc931fc13245ab09e611edc14359"
+    }
+  ]
+}

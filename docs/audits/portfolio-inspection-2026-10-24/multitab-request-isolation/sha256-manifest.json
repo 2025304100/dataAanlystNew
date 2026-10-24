@@ -1,0 +1,14 @@
+{
+  "browser-result.json": "787e9e8da9486f84061d948c3ed9626f3ad57acf59a4a66e3f2bf18217315242",
+  "browser-run.log": "1251bacbf782cd282050bee9aa911108540611077922300af785c82d4865a5ca",
+  "final-safety.json": "e2c1e7667f04f461b713e8c1b8b44aa9d9ef4b9b13b9fdd1ff7bce95cc2c6ea9",
+  "frontend-build.log": "2c1308a0d163be56f4c0311133612388e7bd77ca59f29a2dd910b9f98ec0a598",
+  "frontend-tests.log": "fcda4daac236cf1d61153df5bf9ee8b4eade2afcac6339589ba5ff3f5be50a94",
+  "README.md": "4a9c6a69dd394a68d4e1d79486f555296dd4a3720a2c02b2aabe42b1a38e5e1d",
+  "regression-before.log": "c5c359a75d432a6bb22cf2628ac0d747b0f749f78ab1cf41d78903676e7d4b98",
+  "source-after.json": "65cbed8e486d74017a9e0c06b6ddae1ce848cf5ea79878a98c4cb3581f927f5e",
+  "source-before.json": "dc753d3adb4d699d94336e1ae6ecbd7626332ca27ba3bd79bae53f096e6c9b48",
+  "tab-a-main.png": "45f161d330db5dde254b02f2eb455b4ab1022e8a2e8549787148307ad5db50a8",
+  "tab-b-fixture.png": "97f6781c658203d8fcff965ec780e571a4d5767ec172739fbe6aa08626ec4d72",
+  "verify.mjs": "3fbfe01c43f0d8d6f580dc6921ea9ff4ba20f0047a25cad109064ffb80b00d55"
+}

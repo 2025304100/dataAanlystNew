@@ -1373,15 +1373,25 @@ export default function Discovery({
   }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, indicatorErrors, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleRunBacktest, handleCreateJournal, handleToggleFreeze, handleUpdateRow]);
 
   const LegacyControls = simpleMode ? "details" : "div";
-  const scopeControl = <label className="inline-control">
+  const scopeControl = <label className="inline-control discovery-field">
     <span>{t("discoveryScope")}</span>
-    <Select value={scope} onChange={(value) => setScope(value)} options={[
+    <Select style={{ width: 220 }} value={scope} onChange={(value) => setScope(value)} options={[
       { value: "cn-stock", label: t("discoveryScopeCnStock") },
       { value: "cn-etf", label: t("discoveryScopeCnEtf") },
       { value: "us-stock", label: t("discoveryScopeUsStock") },
       { value: "us-etf", label: t("discoveryScopeUsEtf") },
     ]} />
   </label>;
+  const taskActions = <Space size={6} wrap className="discovery-task-actions">
+    <Button loading={pausing} onClick={handlePause} disabled={!canPause}>{t("pauseDiscovery")}</Button>
+    <Button loading={resuming} onClick={handleResume} disabled={!canResume}>{t("resumeDiscovery")}</Button>
+    <Button danger loading={cancelling} onClick={handleCancel} disabled={!canCancel}>{t("cancelDiscovery")}</Button>
+    {canRetry && (
+      <Tooltip title={t("retryDiscoveryTip")}>
+        <Button type="primary" loading={retrying} onClick={handleRetry}>{t("retryDiscovery")}</Button>
+      </Tooltip>
+    )}
+  </Space>;
 
   return (
     <div className="tab-container" data-tab-content="discovery">
@@ -1398,67 +1408,61 @@ export default function Discovery({
             </p>}
           </div>
 
-          {simpleMode && <div className="discovery-control-bar">{scopeControl}</div>}
-          <LegacyControls>
-          {simpleMode && <summary style={{ cursor: "pointer", marginTop: 12 }}>{t("discoveryMoreOptions")}</summary>}
-          <div className="discovery-control-bar">
-            {!simpleMode && scopeControl}
-            <label className="inline-control">
-              <span>{t("scDiscoveryPresetLabel")}</span>
-              <Tooltip title={t("scHistActivePresetTip")}>
-                <Tag color={scope.endsWith("etf") ? "purple" : "blue"} style={{ margin: 0 }}>
-                  {activePreset ? `${activePreset.name} v${activePreset.version}` : t("scHistPresetUnknown")}
-                </Tag>
-              </Tooltip>
-            </label>
-            <label className="inline-control">
-              <span>{t("minOpportunityScore")}</span>
-              <InputNumber min={0} max={100} value={minScore} onChange={(value) => setMinScore(value ?? 0)} />
-            </label>
-            <label className="inline-control">
-              <span>
-                {t("discoveryDataMode")}
-                <Tooltip title={t("discoveryDataModeTip")}>
-                  <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} />
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: "1 1 700px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, alignItems: "end" }}>
+              {scopeControl}
+              <label className="inline-control discovery-field">
+                <span>{t("scDiscoveryPresetLabel")}</span>
+                <Tooltip title={t("scHistActivePresetTip")}>
+                  <Tag color={scope.endsWith("etf") ? "purple" : "blue"} style={{ margin: 0, height: 32, display: "inline-flex", alignItems: "center" }}>
+                    {activePreset ? `${activePreset.name} v${activePreset.version}` : t("scHistPresetUnknown")}
+                  </Tag>
                 </Tooltip>
-              </span>
-              <Select value={dataMode} onChange={(value) => setDataMode(value)} options={[
-                { value: "cached", label: t("discoveryModeCached") },
-                { value: "sync", label: t("discoveryModeSync") },
-              ]} />
-            </label>
-            <label className="discovery-check">
-              <Checkbox checked={includeNews} onChange={(event) => setIncludeNews(event.target.checked)}>
-                {t("includeNewsScore")}
-              </Checkbox>
-            </label>
-            <div className="discovery-actions">
+              </label>
+              <label className="inline-control discovery-field">
+                <span>{t("minOpportunityScore")}</span>
+                <InputNumber style={{ width: 220 }} min={0} max={100} value={minScore} onChange={(value) => setMinScore(value ?? 0)} />
+              </label>
+              <label className="inline-control discovery-field">
+                <span>
+                  {t("discoveryDataMode")}
+                  <Tooltip title={t("discoveryDataModeTip")}>
+                    <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} />
+                  </Tooltip>
+                </span>
+                <Select style={{ width: 220 }} value={dataMode} onChange={(value) => setDataMode(value)} options={[
+                  { value: "cached", label: t("discoveryModeCached") },
+                  { value: "sync", label: t("discoveryModeSync") },
+                ]} />
+              </label>
+              <label className="discovery-check">
+                <Checkbox checked={includeNews} onChange={(event) => setIncludeNews(event.target.checked)}>
+                  {t("includeNewsScore")}
+                </Checkbox>
+              </label>
+            </div>
+            <div className="discovery-actions" style={{ marginLeft: "auto" }}>
               <CapabilityGateButton capabilityKey="discovery" id="discoveryRunButton" type="primary" loading={starting} onClick={handleStart} disabled={!canStart}>{t("startDiscovery")}</CapabilityGateButton>
-              <Button loading={pausing} onClick={handlePause} disabled={!canPause}>{t("pauseDiscovery")}</Button>
-              <Button loading={resuming} onClick={handleResume} disabled={!canResume}>{t("resumeDiscovery")}</Button>
-              <Button danger loading={cancelling} onClick={handleCancel} disabled={!canCancel}>{t("cancelDiscovery")}</Button>
-              {canRetry && (
-                <Tooltip title={t("retryDiscoveryTip")}>
-                  <Button type="primary" loading={retrying} onClick={handleRetry}>{t("retryDiscovery")}</Button>
-                </Tooltip>
-              )}
-              <Button loading={refreshing} onClick={handleRefresh}>{t("refreshResults")}</Button>
-              <Button loading={cleaning} onClick={handleCleanup}>{t("cleanupExpired")}</Button>
+              <Button type="text" loading={refreshing} onClick={handleRefresh}>{t("refreshResults")}</Button>
+              <Button type="text" loading={cleaning} onClick={handleCleanup}>{t("cleanupExpired")}</Button>
             </div>
           </div>
 
-          <Alert
-            type={dataMode === "sync" ? "warning" : "info"}
-            showIcon
-            icon={dataMode === "sync" ? <WarningOutlined /> : <QuestionCircleOutlined />}
-            message={dataMode === "sync" ? t("discoveryModeSync") : t("discoveryModeCached")}
-            description={dataMode === "sync" ? t("discoveryModeSyncAlert") : t("discoveryModeCachedAlert")}
-            style={{ marginTop: 8 }}
-          />
-
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, minWidth: 0, fontSize: 12, color: dataMode === "sync" ? "#b45309" : "var(--muted)" }}>
+            {dataMode === "sync" ? <WarningOutlined /> : <QuestionCircleOutlined />}
+            <strong style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+              {dataMode === "sync" ? t("discoveryModeSync") : t("discoveryModeCached")}
+            </strong>
+            <Tooltip title={dataMode === "sync" ? t("discoveryModeSyncAlert") : t("discoveryModeCachedAlert")}>
+              <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {dataMode === "sync" ? t("discoveryModeSyncAlert") : t("discoveryModeCachedAlert")}
+              </span>
+            </Tooltip>
+          </div>
 
           <Collapse
             ghost
+            style={{ marginTop: 4, marginBottom: 12 }}
             items={[{
               key: "advanced",
               label: t("discoveryAdvancedSettings"),
@@ -1520,7 +1524,7 @@ export default function Discovery({
 
           {preparedScanIsCurrent ? <div className="discovery-progress">
             <Alert type="success" showIcon aria-label={preparedScanCompleteLabel} message={preparedScanCompleteLabel}
-              description={`${scopeLabel(scope)}${DOT}${preparedScan.taskId}`} />
+              description={`${scopeLabel(scope)}${DOT}${preparedScan.taskId}`} action={taskActions} />
             {task && <details style={{ marginTop: 12 }}>
               <summary style={{ cursor: "pointer" }}>{ctx.locale === "en-US" ? "Previous run" : "上次运行记录"}</summary>
               <div style={{ marginTop: 8 }}>
@@ -1532,9 +1536,12 @@ export default function Discovery({
               </div>
             </details>}
           </div> : <div className="discovery-progress">
-            <div className="discovery-progress-head">
-              <strong>{progressTitle}</strong>
-              <span>{progressPct}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", paddingRight: 56 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <strong>{progressTitle}</strong>
+                <span style={{ color: "var(--muted)", fontSize: 12 }}>{progressPct}</span>
+              </div>
+              {taskActions}
             </div>
             <div className="progress-track"><div className="progress-fill" style={{ width: percentValue + "%" }} /></div>
             <div className="discovery-steps">
@@ -1550,7 +1557,6 @@ export default function Discovery({
               </div>
             )}
           </div>}
-          </LegacyControls>
         </div>
       </section>
 

@@ -1,0 +1,15 @@
+{
+  "provider": "tencent_etf",
+  "endpoint": "https://proxy.finance.qq.com/cgi/cgi-bin/stockinfoquery/kline/app/get",
+  "parameters": {
+    "code": "sh510300",
+    "fromDate": "2026-10-07",
+    "toDate": "2026-10-23",
+    "ktype": "day",
+    "fqtype": "qfq",
+    "limit": 640
+  },
+  "fetched_at": "2026-10-24T00:31:39.791636+00:00",
+  "response_sha256": "3e3d1fae6cfdf03397a1d1f5d28c06ff13b9170d0b214336be4576ed7cdaef06",
+  "raw_response": "qfq.response.json"
+}

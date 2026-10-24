@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import ReadinessRepairDrawer, {
-  ReconciliationGuide,
-} from "../ReadinessRepairDrawer";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import ReadinessRepairDrawer from "../ReadinessRepairDrawer";
 import { renderWithApp } from "../../../test/renderWithApp";
 import { api } from "../../../api/client";
 import type { ActionItem, ActionItemsResponse } from "../../../types";
@@ -10,6 +8,7 @@ import type { ActionItem, ActionItemsResponse } from "../../../types";
 vi.mock("../../../api/client", () => ({
   api: {
     updatePortfolio: vi.fn(),
+    previewPortfolioReconciliation: vi.fn(),
     triggerPortfolioReconcile: vi.fn(),
     confirmPortfolioReconciliation: vi.fn(),
   },
@@ -87,6 +86,34 @@ beforeEach(() => {
 });
 
 describe("T7 修复抽屉动作", () => {
+  it("交易日卡片打开居中快捷核对，关闭后保留原列表和展开状态", async () => {
+    const onClose = vi.fn();
+    vi.mocked(api.previewPortfolioReconciliation).mockResolvedValue({ portfolio_id: 7, trade_date: "2026-09-30",
+      items: [], zero_sum_check_passed: false, differences_found: true, as_of_at: "2026-10-24T01:00:00Z" });
+    renderDrawer({ onClose, data: response([
+      item({ id: "day-29", title: "9月29日对账尚未完成", trade_date: "2026-09-29", primary_action: { action_type: "guided", target: "governance:reconciliation" } }),
+      item({ id: "day-30", title: "9月30日对账尚未完成", trade_date: "2026-09-30", primary_action: { action_type: "guided", target: "governance:reconciliation" } }),
+    ]) });
+    fireEvent.click(screen.getByText("其他待处理事项（1）"));
+    fireEvent.click(screen.getByRole("button", { name: "9月30日对账尚未完成 快捷核对" }));
+    await waitFor(() => expect(api.previewPortfolioReconciliation).toHaveBeenCalledWith(7, "2026-09-30"));
+    // rc-util uses the same generated title ID for overlays in test mode.
+    const modalRoot = document.querySelector(".pi-quick-check-root") as HTMLElement;
+    const dialog = within(modalRoot).getByRole("dialog");
+    await waitFor(() => expect(dialog).toBeVisible());
+    expect(api.triggerPortfolioReconcile).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^关\s*闭$/ }));
+    await waitFor(() => expect(document.querySelector(".pi-quick-check-root")).toBeNull());
+    expect(screen.getByRole("button", { name: "9月30日对账尚未完成 快捷核对" })).toBeVisible();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("日期不明确的卡片禁止猜测交易日", () => {
+    renderDrawer({ data: response([item({ trade_date: "2026-09-31", primary_action: { action_type: "guided", target: "governance:reconciliation" } })]) });
+    expect(screen.getByRole("button", { name: "标题 快捷核对" })).toBeDisabled();
+    expect(api.previewPortfolioReconciliation).not.toHaveBeenCalled();
+  });
+
   it("先显示可处理的下单限制，其他事项收起，避免先让用户打开开关", () => {
     const r = renderDrawer({ data: response([
       item({ id: "disabled", code: "PORTFOLIO_DISABLED", title: "自动交易没有打开", primary_action: { action_type: "toggle" } }),
@@ -187,68 +214,5 @@ describe("T7 修复抽屉动作", () => {
     expect(screen.queryByText("暂不下单，点开查看处理项")).toBeNull();
     expect(screen.queryByRole("button", { name: "添加候选标的" })).toBeNull();
     expect(screen.queryByRole("region", { name: "先处理这一项" })).not.toBeInTheDocument();
-  });
-});
-
-describe("T8 对账三步引导", () => {
-  function renderGuide() {
-    const showToast = vi.fn();
-    const onResolved = vi.fn();
-    const utils = renderWithApp(
-      <ReconciliationGuide portfolioId={7} onResolved={onResolved} />,
-      { contextValue: { showToast } as never },
-    );
-    return { ...utils, showToast, onResolved };
-  }
-
-  it("通过 → 下一步 → 填备注 → 确认解除", async () => {
-    (api.triggerPortfolioReconcile as ReturnType<typeof vi.fn>).mockResolvedValue({
-      zero_sum_check_passed: true,
-      differences_found: false,
-      items: [],
-      trade_date: "2026-10-12",
-    });
-    (api.confirmPortfolioReconciliation as ReturnType<typeof vi.fn>).mockResolvedValue({
-      portfolio_now_ready: true,
-      to_state: "READY",
-    });
-
-    renderGuide();
-    fireEvent.click(screen.getByRole("button", { name: "重新对账" }));
-
-    await waitFor(() => expect(screen.getByText("对账守恒通过，差异为 0")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "下一步：差异确认" }));
-
-    // 备注不足 10 字时确认禁用
-    const noteInput = screen.getByPlaceholderText("请填写不少于 10 字的审查备注");
-    expect((screen.getByRole("button", { name: "确认并解除阻断" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(noteInput, { target: { value: "差异已核对无误，确认解除阻断" } });
-
-    fireEvent.click(screen.getByRole("button", { name: "确认并解除阻断" }));
-    await waitFor(() =>
-      expect(api.confirmPortfolioReconciliation).toHaveBeenCalledWith(7, {
-        ack: true,
-        review_note: "差异已核对无误，确认解除阻断",
-        trade_date: "2026-10-12",
-      }),
-    );
-    await waitFor(() => expect(screen.getByText("已确认解除，状态恢复中")).toBeTruthy());
-  });
-
-  it("存在差异时不允许进入确认", async () => {
-    (api.triggerPortfolioReconcile as ReturnType<typeof vi.fn>).mockResolvedValue({
-      zero_sum_check_passed: false,
-      differences_found: true,
-      items: [
-        { dimension: "CASH", expected_value: 100, actual_value: 90, diff_value: -10, explain_note: "现金差 10" },
-      ],
-      trade_date: "2026-10-12",
-    });
-
-    renderGuide();
-    fireEvent.click(screen.getByRole("button", { name: "重新对账" }));
-
-    await waitFor(() => expect(screen.getByText("仍存在未平差异，请先在业务上处理后再来确认")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "下一步：差异确认" })).toBeNull();
   });
 });

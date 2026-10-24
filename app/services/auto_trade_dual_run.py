@@ -453,6 +453,11 @@ def run_dual_trade(
             "Please wait for the previous run to finish."
         )
     try:
+        if not dry_run:
+            from zoneinfo import ZoneInfo
+            from app.services.portfolio_reconciliation_activation import assert_execution_within_active_coverage
+            assert_execution_within_active_coverage(db, portfolio_id,
+                trade_date or datetime.now(ZoneInfo("Asia/Shanghai")).date())
         return _run_dual_trade_inner(
             db,
             portfolio=portfolio,
@@ -812,41 +817,31 @@ def can_switch_to_member_source(
     ``min_runs`` 和 ``max_diff_ratio`` 保留用于兼容旧调用方；旧的“3 次
     运行即可切换”语义已废弃，不能绕过 G5 门禁。
     """
+    from app.services.g5_dual_run_audit import latest_g5_summary
+    from app.services.g5_admission_governance import get_g5_admission_state
+
+    control = get_g5_admission_state(db, portfolio_id)
+    if control["frozen"]:
+        return False, "G5_NEW_ADMISSION_FROZEN：" + "；".join(control["reasons"])
+
+    supplied = g5_summary
+    g5_summary = latest_g5_summary(db, portfolio_id=portfolio_id)
     if g5_summary is None:
-        from app.services.g5_dual_run_audit import latest_g5_summary
+        return False, "缺少已归档的 G5 对比报告及来源证明，禁止切换"
 
-        g5_summary = latest_g5_summary(db, portfolio_id=portfolio_id)
-    if g5_summary is None:
-        return False, "缺少可追溯的 G5 双跑汇总，禁止切换"
+    if supplied is not None:
+        supplied_id = supplied.get("audit_report_id") if isinstance(supplied, dict) else getattr(supplied, "audit_report_id", None)
+        if supplied_id != g5_summary.get("audit_report_id"):
+            return False, "传入报告不是当前组合最新的已归档报告，禁止切换"
+    if not g5_summary.get("evidence_verified"):
+        return False, "报告缺少可核验的真实执行证据，禁止切换：" + "；".join(g5_summary.get("g5_validation_errors") or [])
 
-    # 外部传入的旧/测试字典不能绕过持久化审计来源证明；正式入口应读取
-    # latest_g5_summary() 返回的不可变报告。
-    if isinstance(g5_summary, dict):
-        from app.services.g5_dual_run_audit import _g5_provenance_errors
-
-        provenance_errors = _g5_provenance_errors(g5_summary)
-        if provenance_errors:
-            return False, "G5 来源证明不完整，禁止切换"
-
-    def _value(name: str, default: Any = None) -> Any:
-        if isinstance(g5_summary, dict):
-            return g5_summary.get(name, default)
-        return getattr(g5_summary, name, default)
-
-    days_replayed = int(_value("days_replayed", 0) or 0)
-    skipped_days = list(_value("skipped_days", []) or [])
-    p0 = int(_value("total_p0_unexplained", 0) or 0)
-    p1 = int(_value("total_p1_hold_noaction_flip", 0) or 0)
-    eligible = bool(_value("g5_eligible_for_g6", False))
-    if days_replayed < 10:
-        return False, f"G5 有效交易日仅 {days_replayed} 天，至少需要 10 天"
-    if skipped_days:
-        return False, f"G5 存在 {len(skipped_days)} 个漏跑/故障日，禁止切换"
-    if p0 or p1:
-        return False, f"G5 仍有未解释差异：P0={p0}, P1={p1}"
-    if not eligible:
-        return False, "G5 汇总未达到 G6 准入条件，禁止切换"
-    return True, "G5 通过：连续交易日完整且 P0/P1 未解释差异为零，允许切换"
+    # Policy thresholds, scope and sample validity belong to the shared
+    # validator. Reimplementing them here would diverge on a policy update.
+    if not bool(g5_summary.get("g5_eligible_for_g6")):
+        reasons = g5_summary.get("acceptance_blockers") or g5_summary.get("g5_validation_errors") or []
+        return False, "G5 汇总未达到正式准入条件，禁止切换" + ("：" + "；".join(reasons) if reasons else "")
+    return True, "G5 统一校验已通过，报告适用当前来源切换；仍需本人独立审核"
 
 
 def rollback_to_old_source(portfolio_id: int | None = None) -> None:

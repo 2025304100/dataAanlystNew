@@ -1,0 +1,282 @@
+[
+  {
+    "source": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\quant_workbench_test.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "attempt to write a readonly database"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\quant_workbench_test.db": "eb3f5a4b04fade4903f14566755740010971976cf09fc8a7d96c473909159de2"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 1,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本\\quant_workbench.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "attempt to write a readonly database"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本\\quant_workbench.db": "a3a5244ef77754fcdd1aaf04b4842cb256a0c5a1580deec57a29eb47fd6873ac"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 1,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本\\quant_workbench_test.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "attempt to write a readonly database"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本\\quant_workbench_test.db": "eb3f5a4b04fade4903f14566755740010971976cf09fc8a7d96c473909159de2"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 1,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\Default\\load_statistics.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\Default\\load_statistics.db": "ee10789ab03dac3f5d920dc33c3e24360e9b869e97858f8791738d60f61c7895"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 3,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_current_20260822.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_current_20260822.db": "e1c7c8bb7e513c26d71286c93838f6d2d1384985992e3589a4c7ec49f88b28b6"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 104,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_probe_20260822.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_probe_20260822.db": "a607f028dfee202a7b0f721635ba2532c13b05dd1db2027c7b7897eadc72c546"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 101,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_probe_migrated_20260822.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_probe_migrated_20260822.db": "8f2366d05b014d4b8468d967237527f7593c34da2b1d47a9a5f89fd94444d309"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 115,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3\\ui_acceptance_20260823.sqlite",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3\\ui_acceptance_20260823.sqlite": "676bcadfed0969f913508d4195c948f129ae092dae8d8d076479dfd1e1660ea3"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 105,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_b.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_b.db": "373caa3fd14fbaac9435408cbe3f0327b334f3b3db04e4e4fc13322356b05c3b"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 103,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_c.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_c.db": "c4b0796f4702b7b235635960e7d057705b5b24a3f86b3cf93a432ff57b6191d6"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 103,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_d.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_d.db": "7540443fd188870773eb3edb6955e4d1358607e85328bdabf8f99e9c488fb846"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 103,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_e.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_e.db": "3741d6403846866ed5a45b7cc1dc10c7e85fb87010b1f60ace28821cc4d5d31d"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 103,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_report_verify_20260822.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_report_verify_20260822.db": "97dbe20d4e44b8b87f2a44059420284bc75609f832c69594bc8a5354e1a4d1f7"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 114,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  },
+  {
+    "source": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\ui_e2e_20260821_v2.db",
+    "source_modified": false,
+    "original_retry": {
+      "type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    "source_hashes": {
+      "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\ui_e2e_20260821_v2.db": "c8fb0296f93b1045736a3be9ead69a9803c82895c70793c3c5e378099482fdfa"
+    },
+    "source_unchanged_during_copy": true,
+    "quick_check": [
+      [
+        "ok"
+      ]
+    ],
+    "table_count": 101,
+    "portfolios": [],
+    "status": "COPIED_SET_READ_ONLY_INSPECTED"
+  }
+]

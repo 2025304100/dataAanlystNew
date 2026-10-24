@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { message } from "antd";
+import { message, Modal } from "antd";
 
 const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
   const datasets = ["fundamental", "financial", "lhb", "hot_rank", "tail_proxy", "capital_flow", "etf"] as const;
@@ -104,11 +104,11 @@ const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
       getExternalDataSyncCapabilities: vi.fn(async () => ({
         fundamental: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" },
         financial: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" },
-        lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, reason: "history" },
+        lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, chunk_days: 31, reason: "history" },
         hot_rank: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
         tail_proxy: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
         capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history", northbound: { available: true, reason: "available", api_key: "northbound" } },
-        etf: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
+        etf: { modes: ["incremental", "backfill"], history_limit_days: null, partial_history_fields: ["nav", "close", "premium_discount", "premium_discount_score"], unavailable_history_fields: ["total_shares", "fund_size", "tracking_error"], reason: "partial" },
       })),
       previewExternalDataSyncPlan: vi.fn(async (payload: any) => ({
         dataset: payload.dataset,
@@ -237,11 +237,17 @@ async function enterHistoricalRange(start: string, end: string) {
 }
 
 describe("ExternalDataSync dashboard", () => {
+  let confirmSpy: any;
   afterEach(() => {
+    confirmSpy?.mockRestore();
     vi.useRealTimers();
   });
 
   beforeEach(() => {
+    confirmSpy = vi.spyOn(Modal, "confirm").mockImplementation((config: any) => {
+      void Promise.resolve().then(() => config.onOk?.());
+      return { destroy: vi.fn(), update: vi.fn() } as any;
+    });
     mockApi.getWatchlists.mockReset();
     mockApi.getWatchlists.mockResolvedValue([]);
     vi.mocked(message.error).mockClear();
@@ -256,11 +262,11 @@ describe("ExternalDataSync dashboard", () => {
     mockApi.getExternalDataSyncCapabilities.mockResolvedValue({
       fundamental: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" },
       financial: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" },
-      lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, reason: "history" },
+      lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, chunk_days: 31, reason: "history" },
       hot_rank: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
       tail_proxy: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
       capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history", northbound: { available: true, reason: "available", api_key: "northbound" } },
-      etf: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
+      etf: { modes: ["incremental", "backfill"], history_limit_days: null, partial_history_fields: ["nav", "close", "premium_discount", "premium_discount_score"], unavailable_history_fields: ["total_shares", "fund_size", "tracking_error"], reason: "partial" },
     });
     mockApi.getExternalDataCoverage.mockReset();
     mockApi.getExternalDataCoverage.mockResolvedValue({
@@ -550,7 +556,7 @@ describe("ExternalDataSync dashboard", () => {
     renderWithWatchlist();
     await screen.findByText("280");
     if (option) await chooseSelect(0, option);
-    expect(screen.getByText("当前评分仅支持 A 股股票。为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。")).toBeInTheDocument();
+    expect(screen.getByText("仅 A 股股票；评分计算参照全市场数据")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "刷新评分" }));
     await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({
       start_date: undefined, end_date: undefined, full_refresh: false,
@@ -602,7 +608,7 @@ describe("ExternalDataSync dashboard", () => {
     const button = await screen.findByRole("button", { name: "刷新评分" });
     await waitFor(() => expect(button).toBeEnabled());
     expect(mockApi.getWatchlists).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/core中的有效观察项/)).toBeInTheDocument();
+    expect(screen.getByText("core · 有效观察项")).toBeInTheDocument();
     fireEvent.click(button);
     await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ universe_source: "watchlist", watchlist_id: 1 })));
   });
@@ -660,7 +666,7 @@ describe("ExternalDataSync dashboard", () => {
   it("preserves the actual selected watchlist identity in task payloads", async () => {
     render(<AppContext.Provider value={{ activeWatchlistId: 22, workbench: { watchlists: [{ id: 11, name: "core", list_type: "watch" }, { id: 22, name: "my-list", list_type: "watch" }] } } as any}><ExternalDataSync /></AppContext.Provider>);
     await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
-    expect(screen.getByText(/my-list中的有效观察项/)).toBeInTheDocument();
+    expect(screen.getByText("my-list · 有效观察项")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /extSyncFundamental/ }));
     await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ source: "watchlist", watchlist_id: 22 })));
   });
@@ -687,8 +693,8 @@ describe("ExternalDataSync dashboard", () => {
   it("lets the user update current data without first choosing dates or an update policy", async () => {
     renderWithWatchlist();
     await screen.findByText("280");
-    expect(screen.queryByRole("combobox", { name: "更新方式" })).not.toBeInTheDocument();
-    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "更新日期" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "更新方式" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /日期和更新设置/ })).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
     await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
@@ -714,7 +720,7 @@ describe("ExternalDataSync dashboard", () => {
     expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
   });
 
-  it.each([["只补缺失数据", "missing"], ["重新获取并更新已有数据", "force"]] as const)("submits %s with the chosen historical range and keeps snapshots disabled", async (label, policy) => {
+  it.each([["只补缺失数据", "missing"], ["重新获取并更新已有数据", "force"]] as const)("submits %s with the chosen historical range and keeps snapshot fallback available", async (label, policy) => {
     renderWithWatchlist();
     await screen.findByText("280");
     await chooseSelect(1, "指定历史日期");
@@ -722,8 +728,8 @@ describe("ExternalDataSync dashboard", () => {
     await chooseSyncPolicy(label);
     const start = (screen.getByPlaceholderText("开始日期") as HTMLInputElement).value;
     const end = (screen.getByPlaceholderText("结束日期") as HTMLInputElement).value;
-    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /extSyncHotRank/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /extSyncHotRank/ })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
     await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
       dataset: "financial", mode: "backfill", sync_policy: policy, start_date: start, end_date: end, lookback_days: 7,
@@ -769,14 +775,46 @@ describe("ExternalDataSync dashboard", () => {
     expect(times).toHaveTextContent(new Date(`${task.finished_at!}Z`).toLocaleString());
   });
 
-  it("disables unsupported snapshot-only datasets in historical mode", async () => {
+  it("confirms snapshot-only datasets in historical mode and runs them as recent data", async () => {
+    confirmSpy.mockImplementation(() => ({ destroy: vi.fn(), update: vi.fn() }) as any);
     render(<ExternalDataSync />);
     await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
     await chooseSelect(1, "指定历史日期");
-    expect(screen.getByRole("button", { name: /extSyncHotRank/ })).toBeDisabled();
+    const hotRankButton = screen.getByRole("button", { name: /extSyncHotRank/ });
+    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeEnabled();
+    expect(hotRankButton).toBeEnabled();
     expect(screen.queryByRole("button", { name: /extSyncTailProxy/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled();
+
+    fireEvent.click(hotRankButton);
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    const content = confirmSpy.mock.calls[0][0].content;
+    expect(JSON.stringify(content)).toContain("所选历史日期");
+    expect(JSON.stringify(content)).toContain("不会生效");
+    expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
+
+    await confirmSpy.mock.calls[0][0].onOk?.();
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "hot_rank", mode: "incremental", start_date: undefined, end_date: undefined, lookback_days: 1,
+    })));
+  });
+
+  it("explains partial ETF history fields before starting backfill", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    confirmSpy.mockImplementation(() => ({ destroy: vi.fn(), update: vi.fn() }) as any);
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "指定历史日期");
+    fireEvent.click(screen.getByRole("button", { name: /extSyncEtf/ }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    const content = JSON.stringify(confirmSpy.mock.calls[0][0].content);
+    expect(content).toContain("历史回填仅补净值、收盘价、溢折价和评分");
+    await confirmSpy.mock.calls[0][0].onOk?.();
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "etf", mode: "backfill", start_date: "2026-08-16", end_date: "2026-10-14", lookback_days: 60,
+    })));
   });
 
   it("fills the inclusive default 60-day range when historical mode is selected", async () => {
@@ -940,24 +978,48 @@ describe("ExternalDataSync dashboard", () => {
     expect(screen.getByRole("button", { name: "刷新评分" })).toBeEnabled();
   });
 
-  it("applies each provider's history limit without limiting valuation and financial-report presets", async () => {
+  it("chunks long LHB history automatically while keeping other provider limits", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
     render(<ExternalDataSync />);
     await screen.findByText("280");
     await chooseSelect(1, "指定历史日期");
 
-    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /extSyncCapitalFlow/ })).toBeEnabled();
     await chooseDatePreset("30 日");
     expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeEnabled();
     await chooseDatePreset("100 日");
-    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeEnabled();
+    expect(screen.getByLabelText("查看分段同步说明")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /extSyncCapitalFlow/ })).toBeEnabled();
     await chooseDatePreset("180 日");
     expect(screen.getByRole("button", { name: /extSyncCapitalFlow/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /extSyncFundamental/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled();
+  });
+
+  it("sends a long LHB range after confirming automatic segmentation", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    confirmSpy.mockImplementation(() => ({ destroy: vi.fn(), update: vi.fn() }) as any);
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "指定历史日期");
+    await chooseDatePreset("100 日");
+    fireEvent.click(screen.getByRole("button", { name: /extSyncLhb/ }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    const content = JSON.stringify(confirmSpy.mock.calls[0][0].content);
+    expect(content).toContain("分段执行");
+    expect(content).toContain("31");
+    expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
+
+    await confirmSpy.mock.calls[0][0].onOk?.();
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "lhb", mode: "backfill", start_date: "2026-07-07", end_date: "2026-10-14", lookback_days: 100,
+    })));
   });
 
   it("uses snapshot dates and known gap coverage instead of a retained historical draft after switching modes", async () => {
@@ -1036,7 +1098,7 @@ describe("ExternalDataSync dashboard", () => {
     await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
       dataset: "financial", source: "watchlist", watchlist_id: 22, mode: "incremental", sync_policy: "normal",
     })));
-    expect(screen.getByText(/当前组合（44）/)).toBeInTheDocument();
+    expect(screen.getByText("组合 #44 · 持仓")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("这次更新遇到问题")).not.toBeInTheDocument());
   });
 
@@ -1229,7 +1291,7 @@ describe("ExternalDataSync dashboard", () => {
     render(<AppContext.Provider value={{ portfolioId: 44, workbench: { watchlists: [] } } as any}><ExternalDataSync /></AppContext.Provider>);
     await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
     await chooseSelect(0, "extSourcePositions");
-    expect(screen.getByText(/当前组合（44）/)).toBeInTheDocument();
+    expect(screen.getByText("组合 #44 · 持仓")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
     await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "capital_flow", source: "positions", portfolio_id: 44 })));
   });
@@ -1294,6 +1356,8 @@ describe("ExternalDataSync dashboard", () => {
     expect(etfRow).not.toHaveTextContent("extCoverageReasonFieldDataUnavailableDetail");
     const notices = screen.getAllByRole("alert");
     const coverageNotice = notices.find((item) => item.textContent?.includes("extCoverageActionTitle"))!;
+    expect(coverageNotice).not.toHaveTextContent("etf_tracking_error");
+    fireEvent.click(within(coverageNotice).getByRole("button", { name: "查看详情" }));
     expect(coverageNotice).toHaveTextContent("etf_tracking_error：源表为空或字段没有非空记录。");
     expect(coverageNotice).toHaveTextContent("etf_fund_size：源表为空或字段没有非空记录。");
     expect(within(coverageNotice).queryByText(/extCoverageReasonUnknown/)).not.toBeInTheDocument();

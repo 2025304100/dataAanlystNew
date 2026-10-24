@@ -1,0 +1,11 @@
+{
+  "id": "a6cfb37f13f9a8d47c18ec0786e2d60fe5c35fd32b2dec0f033d55f995c14449",
+  "portfolio_id": 1,
+  "request_key": "45fd110f-7cc0-4111-b0e2-4df89a42e1c6",
+  "request_hash": "6e143a887359e9b3676c59498674026c41a93e25c0d273ef826d1ffb8aa90b03",
+  "trade_date": null,
+  "created_by": "local_user",
+  "result_json": "{\"portfolio_id\": 1, \"source_events\": {\"processed\": 0, \"observed\": 0, \"status\": \"SCANNED\"}, \"demand\": {\"portfolio_id\": 1, \"requested_at\": \"2026-10-24T10:32:40.681719\", \"advanced_schedule_ids\": [], \"already_due_schedule_ids\": [16], \"requested_day_ids\": [], \"scheduled\": true, \"task_created\": false, \"reason\": \"ALREADY_DUE\"}, \"reconciliation_passed\": false, \"trading_resumed\": false}",
+  "task_id": "9a27ac797035cd19619f3a832c92ee00",
+  "created_at": "2026-10-24 10:32:40"
+}

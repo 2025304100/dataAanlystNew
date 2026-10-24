@@ -1,0 +1,409 @@
+{
+  "portfolio_id": 1,
+  "schedules": [
+    {
+      "id": 16,
+      "name": "main 组合自动对账（仅核对）",
+      "enabled": true,
+      "frequency": "interval",
+      "time_of_day": null,
+      "timezone": "Asia/Shanghai",
+      "interval_minutes": 5,
+      "weekdays": [],
+      "next_run_at": "2026-10-23T04:44:17",
+      "last_run_at": "2026-10-23T04:39:17",
+      "last_status": "done",
+      "last_task_id": "9a27ac797035cd19619f3a832c92ee00",
+      "last_error": null,
+      "has_error": false
+    }
+  ],
+  "jobs": [
+    {
+      "id": "9a27ac797035cd19619f3a832c92ee00",
+      "task_type": "portfolio_reconciliation",
+      "status": "done",
+      "created_at": "2026-10-23T04:18:07+00:00",
+      "started_at": "2026-10-23T04:18:07+00:00",
+      "finished_at": "2026-10-23T04:18:07+00:00",
+      "updated_at": "2026-10-23T04:18:07+00:00",
+      "heartbeat_at": "2026-10-23T04:18:07+00:00",
+      "portfolio_id": 1,
+      "stage": "done",
+      "message": "历史核验覆盖尚未建立或不可读取，自动作业不能沿用旧游标放行",
+      "percent": 100.0,
+      "total": 1,
+      "processed": 1,
+      "ok_count": 0,
+      "failed_count": 0,
+      "items": [
+        {
+          "can_reconcile": false,
+          "portfolio_id": 1,
+          "reason": "历史核验覆盖尚未建立或不可读取，自动作业不能沿用旧游标放行",
+          "report_id": null,
+          "report_version": null,
+          "reused_report": false,
+          "source_fingerprint": "785b57ba76a10f864af89c7843844f302505806b9726296579da798d15a1c2f2",
+          "target_trade_date": null,
+          "verdict": "HISTORICAL_COVERAGE_UNKNOWN",
+          "work_state": "waiting_data",
+          "reason_codes": [
+            "HISTORICAL_COVERAGE_UNKNOWN"
+          ],
+          "actions": [
+            {
+              "code": "REVIEW_COVERAGE",
+              "enabled": true,
+              "label": "核实账户基线与覆盖范围",
+              "portfolio_id": 1,
+              "requires_confirmation": false,
+              "trade_date": null
+            }
+          ]
+        }
+      ],
+      "result": {
+        "portfolio_id": 1,
+        "items": [
+          {
+            "can_reconcile": false,
+            "portfolio_id": 1,
+            "reason": "历史核验覆盖尚未建立或不可读取，自动作业不能沿用旧游标放行",
+            "report_id": null,
+            "report_version": null,
+            "reused_report": false,
+            "source_fingerprint": "785b57ba76a10f864af89c7843844f302505806b9726296579da798d15a1c2f2",
+            "target_trade_date": null,
+            "verdict": "HISTORICAL_COVERAGE_UNKNOWN",
+            "work_state": "waiting_data",
+            "reason_codes": [
+              "HISTORICAL_COVERAGE_UNKNOWN"
+            ],
+            "actions": [
+              {
+                "code": "REVIEW_COVERAGE",
+                "enabled": true,
+                "label": "核实账户基线与覆盖范围",
+                "portfolio_id": 1,
+                "requires_confirmation": false,
+                "trade_date": null
+              }
+            ]
+          }
+        ],
+        "portfolio_count": 1,
+        "passed_count": 0,
+        "error_count": 0,
+        "waiting_count": 1,
+        "difference_count": 0
+      },
+      "errors": [],
+      "error_code": null,
+      "attempt": 1,
+      "schedule_id": null,
+      "cancel_requested": false,
+      "is_terminal_locked": true
+    }
+  ],
+  "work_items": [],
+  "source_events": {
+    "count": 0,
+    "blocking_count": 0,
+    "material_count": 0,
+    "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "status": "CURRENT",
+    "events": [],
+    "waiting_for_coverage": true
+  },
+  "check_summary": {
+    "passed_count": 0,
+    "waiting_count": 1,
+    "difference_count": 0,
+    "error_count": 0
+  },
+  "enabled": true,
+  "status": "done",
+  "last_run_at": "2026-10-23T04:18:07+00:00",
+  "next_run_at": "2026-10-23T04:44:17",
+  "task_id": "9a27ac797035cd19619f3a832c92ee00",
+  "reason": "历史核验覆盖尚未建立或不可读取，自动作业不能沿用旧游标放行",
+  "queue": {
+    "portfolio_id": 1,
+    "coverage_start": null,
+    "verified_through": "2026-09-28",
+    "target_trade_date": "2026-09-29",
+    "calendar_status": "KNOWN",
+    "days": [
+      {
+        "trade_date": "2026-08-20",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 34
+      },
+      {
+        "trade_date": "2026-08-21",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 35
+      },
+      {
+        "trade_date": "2026-08-22",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 36
+      },
+      {
+        "trade_date": "2026-08-25",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 40
+      },
+      {
+        "trade_date": "2026-08-26",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 43
+      },
+      {
+        "trade_date": "2026-08-27",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 52
+      },
+      {
+        "trade_date": "2026-08-28",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 55
+      },
+      {
+        "trade_date": "2026-09-03",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 99
+      },
+      {
+        "trade_date": "2026-09-04",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 101
+      },
+      {
+        "trade_date": "2026-09-24",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 177
+      },
+      {
+        "trade_date": "2026-09-25",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 109
+      },
+      {
+        "trade_date": "2026-09-27",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 112
+      },
+      {
+        "trade_date": "2026-09-28",
+        "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+        "history_only": true,
+        "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+        "work_state": "history_unknown",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 120
+      },
+      {
+        "trade_date": "2026-09-29",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false,
+        "reason": "DECISION_RUN_NOT_FOUND",
+        "work_state": "needs_review",
+        "report_id": "reconciliation::1::2026-09-29",
+        "report_version": "c5dd915e2c86b7bc48cd3c260cf717b4c634cd6c6422177218df7ecbd1bb821a",
+        "audit_event_id": 3742
+      },
+      {
+        "trade_date": "2026-09-30",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 199
+      },
+      {
+        "trade_date": "2026-10-08",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-09",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-12",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 227
+      },
+      {
+        "trade_date": "2026-10-13",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-14",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": 3734
+      },
+      {
+        "trade_date": "2026-10-15",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-16",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-19",
+        "status": "EVIDENCE_INCOMPLETE",
+        "history_only": false,
+        "reason": "DECISION_RUN_NOT_FOUND",
+        "work_state": "needs_review",
+        "report_id": "reconciliation::1::2026-10-19",
+        "report_version": "ad3fcb4dd85139814da88a451bd48ee854b9c081ea04a7a86367fee91a467c1e",
+        "audit_event_id": 3743
+      },
+      {
+        "trade_date": "2026-10-20",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-21",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      },
+      {
+        "trade_date": "2026-10-22",
+        "status": "NOT_CHECKED",
+        "history_only": false,
+        "reason": "等待读取本日证据并核对",
+        "work_state": "queued",
+        "report_id": null,
+        "report_version": null,
+        "audit_event_id": null
+      }
+    ],
+    "calendar_version": "93eba68262d6aa4995bf44508cc2cfb4ddcf736b337ba212c7e84cd40d8aa201",
+    "calendar_reason": "当日日K尚未到收盘可用时点，检查上一应到交易日",
+    "limitations": [
+      "NO_ACCEPTED_ACCOUNT_BASELINE",
+      "LEGACY_CHECKPOINT_NOT_FULL_HISTORY_PROOF"
+    ],
+    "coverage_source": "legacy_checkpoint",
+    "baseline_creation_available": true,
+    "automatic_job_registered": true
+  }
+}

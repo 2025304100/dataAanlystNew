@@ -21,13 +21,18 @@ def test_etf_qfq_sync_does_not_replace_prices_with_an_unadjusted_fallback(db_ses
         raise ConnectionError('Synthetic external provider unavailable')
 
     monkeypatch.setattr(market_data.ak, 'fund_etf_hist_em', unavailable)
+    monkeypatch.setattr(market_data, 'fetch_tencent_etf_history', unavailable)
     monkeypatch.setattr(market_data.ak, 'fund_etf_hist_sina', lambda **kwargs: pd.DataFrame([{
         'date': '2024-01-03', 'open': 3.9, 'high': 3.9, 'low': 3.9,
         'close': 3.9, 'volume': 1000, 'amount': 3900,
     }]))
     monkeypatch.setattr('app.services.akshare_registry.apply_delay', lambda *args: None)
-    with pytest.raises(ValueError, match='ETF前复权行情获取失败'):
+    with pytest.raises(ValueError, match='ETF前复权行情获取失败') as error:
         market_data.sync_symbol_daily_bars(db_session, symbol, date(2024, 1, 3), date(2024, 1, 3))
+    assert error.value.code == 'ETF_QFQ_SOURCE_UNAVAILABLE'
+    assert error.value.source_label == '东方财富 / 腾讯财经 · ETF前复权日K'
+    assert '连接中断' in str(error.value)
+    assert '仅重试本标的' in error.value.next_action
     assert db_session.scalars(select(DailyBar).where(DailyBar.symbol_id == symbol.id)).all() == []
 
 

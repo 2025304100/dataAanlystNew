@@ -1,0 +1,1940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>组合交易 · 检查与对账 · 交互原型</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2306b6d4'/%3E%3Cpath d='M12 5l5 2v3.5c0 3.5-2.5 5.7-5 7-2.5-1.3-5-3.5-5-7V7l5-2z' fill='none' stroke='%23041b21' stroke-width='1.6'/%3E%3C/svg%3E" />
+<style>
+:root{
+  --bg:#060a11;
+  --bg-2:#080e17;
+  --panel:rgba(14,21,33,.88);
+  --panel-2:rgba(19,28,43,.72);
+  --panel-3:rgba(9,14,23,.78);
+  --line:rgba(148,163,184,.14);
+  --line-2:rgba(148,163,184,.24);
+  --text:#e7eef9;
+  --muted:#8ea0ba;
+  --faint:#5f7089;
+  --cyan:#22d3ee;
+  --cyan-2:#0891a2;
+  --teal:#2dd4bf;
+  --green:#34d399;
+  --amber:#fbbf24;
+  --orange:#fb923c;
+  --red:#f87171;
+  --red-2:#dc2626;
+  --violet:#a78bfa;
+  --blue:#60a5fa;
+  --mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  --sans:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+  --shadow:0 20px 60px rgba(0,0,0,.38);
+  --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  min-height:100vh;
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:13px;
+  line-height:1.6;
+  background:
+    radial-gradient(900px 520px at 8% -8%, rgba(34,211,238,.10), transparent 60%),
+    radial-gradient(760px 420px at 92% 4%, rgba(167,139,250,.08), transparent 58%),
+    radial-gradient(900px 600px at 50% 110%, rgba(45,212,191,.06), transparent 60%),
+    linear-gradient(180deg,#060a11 0%,#070c15 48%,#05080e 100%);
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background-image:
+    linear-gradient(rgba(148,163,184,.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(148,163,184,.035) 1px,transparent 1px);
+  background-size:44px 44px;
+  mask-image:linear-gradient(180deg,rgba(0,0,0,.7),transparent 80%);
+  z-index:0;
+}
+body::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  opacity:.03;
+  z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--cyan);text-decoration:none}
+.svg-sprite{position:absolute;width:0;height:0;overflow:hidden}
+.icon{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.icon-sm{width:13px;height:13px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.faint{color:var(--faint)}
+.hidden{display:none!important}
+[hidden]{display:none!important}
+
+/* ---------- shell ---------- */
+.app{position:relative;z-index:1;max-width:1720px;margin:0 auto;padding:0 22px 20px}
+.topbar{
+  display:flex;align-items:center;gap:18px;
+  height:66px;padding:0 2px;
+  border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:40;
+  background:linear-gradient(180deg,rgba(6,10,17,.96),rgba(6,10,17,.82));
+  backdrop-filter:blur(14px);
+}
+.brand{display:flex;align-items:center;gap:11px;min-width:198px}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;
+  display:grid;place-items:center;
+  color:#052027;
+  background:linear-gradient(135deg,#67e8f9,#2dd4bf 55%,#a7f3d0);
+  box-shadow:0 0 0 1px rgba(34,211,238,.28),0 10px 26px rgba(34,211,238,.18);
+}
+.brand-mark .icon{width:19px;height:19px;stroke-width:2}
+.brand-title{font-weight:700;font-size:15px;letter-spacing:.08em}
+.brand-sub{font-family:var(--mono);font-size:9px;letter-spacing:.26em;color:var(--faint);margin-top:-2px}
+.portfolio-switch{display:flex;align-items:center;gap:10px;min-width:0}
+.portfolio-btn{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;border-radius:10px;
+  border:1px solid var(--line-2);
+  background:linear-gradient(180deg,rgba(23,33,50,.86),rgba(12,19,31,.86));
+  color:var(--text);font-size:12px;white-space:nowrap;
+}
+.portfolio-btn:hover{border-color:rgba(34,211,238,.45)}
+.portfolio-btn .sep{color:var(--faint)}
+.mini-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 9px;border-radius:999px;font-size:11px;
+  border:1px solid rgba(52,211,153,.32);
+  background:rgba(52,211,153,.09);color:#a7f3d0;white-space:nowrap;
+}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.proto-control{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--faint)}
+.proto-control select{
+  background:rgba(12,19,31,.9);border:1px solid var(--line-2);
+  border-radius:8px;padding:6px 8px;color:var(--muted);font-size:11px;outline:none;
+}
+.icon-btn{
+  width:32px;height:32px;border-radius:9px;border:1px solid var(--line);
+  background:rgba(12,19,31,.7);color:var(--muted);display:grid;place-items:center;
+}
+.icon-btn:hover{color:var(--text);border-color:var(--line-2)}
+.avatar{
+  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(160deg,#1e293b,#0f172a);
+  border:1px solid var(--line-2);color:#cbd5e1;font-family:var(--mono);font-size:12px;
+}
+.mainnav{display:flex;align-items:center;gap:6px;padding:14px 0 12px;position:relative}
+.nav-tab{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:9px;border:1px solid transparent;
+  background:transparent;color:var(--muted);font-size:13px;font-weight:500;
+}
+.nav-tab:hover{color:var(--text);background:rgba(148,163,184,.05)}
+.nav-tab.active{
+  color:#a5f3fc;border-color:rgba(34,211,238,.35);
+  background:linear-gradient(180deg,rgba(34,211,238,.14),rgba(34,211,238,.05));
+  box-shadow:0 0 0 1px rgba(34,211,238,.10) inset;
+}
+.nav-tab .count{
+  min-width:18px;height:18px;padding:0 5px;border-radius:999px;
+  display:inline-grid;place-items:center;
+  background:rgba(248,113,113,.2);color:#fecaca;font-family:var(--mono);font-size:10px;
+}
+.nav-spacer{flex:1}
+.context-label{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--faint)}
+
+/* ---------- generic ---------- */
+.panel{
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  background:linear-gradient(180deg,rgba(16,24,38,.92),rgba(9,14,23,.94));
+  box-shadow:var(--shadow);
+  position:relative;
+  overflow:hidden;
+}
+.panel::before{
+  content:"";position:absolute;inset:0 0 auto 0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(34,211,238,.30),transparent);
+  pointer-events:none;
+}
+.eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  height:32px;padding:0 12px;border-radius:8px;
+  border:1px solid var(--line-2);
+  background:linear-gradient(180deg,rgba(30,41,59,.72),rgba(15,23,42,.72));
+  color:var(--text);font-size:12px;font-weight:500;white-space:nowrap;
+  transition:border-color .18s,background .18s,transform .18s;
+}
+.btn:hover{border-color:rgba(34,211,238,.45);background:linear-gradient(180deg,rgba(34,211,238,.10),rgba(15,23,42,.8))}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.42;cursor:not-allowed;transform:none}
+.btn-primary{
+  border-color:rgba(34,211,238,.55);color:#041b21;font-weight:700;
+  background:linear-gradient(180deg,#67e8f9,#22d3ee 55%,#0e9fb2);
+  box-shadow:0 8px 24px rgba(34,211,238,.16);
+}
+.btn-primary:hover{background:linear-gradient(180deg,#a5f3fc,#22d3ee 60%,#0e9fb2)}
+.btn-danger{
+  border-color:rgba(248,113,113,.5);color:#fecaca;
+  background:linear-gradient(180deg,rgba(239,68,68,.18),rgba(127,29,29,.18));
+}
+.btn-danger:hover{background:linear-gradient(180deg,rgba(239,68,68,.28),rgba(127,29,29,.22))}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{color:var(--text);background:rgba(148,163,184,.06);border-color:var(--line)}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;
+  height:22px;padding:0 8px;border-radius:999px;
+  font-size:10.5px;font-weight:600;white-space:nowrap;
+  border:1px solid var(--line-2);color:var(--muted);background:rgba(148,163,184,.06);
+}
+.chip.danger{color:#fecaca;border-color:rgba(248,113,113,.4);background:rgba(239,68,68,.12)}
+.chip.warn{color:#fde68a;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.10)}
+.chip.ok{color:#a7f3d0;border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.10)}
+.chip.info{color:#bfdbfe;border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.10)}
+.chip.admit{color:#ddd6fe;border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.10)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.dot.ok{background:var(--green);box-shadow:0 0 0 3px rgba(52,211,153,.12)}
+.dot.danger{background:var(--red);box-shadow:0 0 0 3px rgba(248,113,113,.12)}
+.dot.warn{background:var(--amber);box-shadow:0 0 0 3px rgba(251,191,36,.12)}
+.dot.info{background:var(--blue);box-shadow:0 0 0 3px rgba(96,165,250,.12)}
+.dot.pulse{animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(34,211,238,.08)}50%{box-shadow:0 0 0 7px rgba(34,211,238,.02)}}
+
+/* ---------- views ---------- */
+.view{display:none}
+.view.active{display:block;animation:viewIn .28s ease both}
+@keyframes viewIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* ---------- health ---------- */
+.healthbar{padding:18px 18px 14px;margin-bottom:14px}
+.health-top{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap}
+.health-left{min-width:0;flex:1}
+.health-title{display:flex;align-items:center;gap:9px;margin-top:3px;flex-wrap:wrap}
+.health-title .status-text{font-size:19px;font-weight:700;letter-spacing:.01em}
+.enum{
+  font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--faint);
+  border:1px dashed rgba(148,163,184,.28);border-radius:5px;padding:2px 6px;
+}
+.health-reason{margin-top:6px;color:var(--muted);font-size:12px;max-width:980px}
+.health-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:18px}
+.capabilities{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.cap{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:7px;
+  font-size:11px;color:var(--muted);background:rgba(148,163,184,.05);border:1px solid var(--line);
+}
+.cap b{font-weight:600;color:var(--text)}
+.cap.danger{color:#fecaca;background:rgba(239,68,68,.08);border-color:rgba(248,113,113,.26)}
+.cap.danger b{color:#fca5a5}
+.cap.ok{color:#a7f3d0;background:rgba(52,211,153,.06);border-color:rgba(52,211,153,.24)}
+.cap.ok b{color:#6ee7b7}
+.cap.warn{color:#fde68a;background:rgba(251,191,36,.06);border-color:rgba(251,191,36,.24)}
+.cap.warn b{color:#fcd34d}
+.cap.ghost{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint);background:transparent;border-color:transparent}
+
+/* ---------- banner ---------- */
+.scenario-banner{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:11px 14px;border-radius:10px;margin-bottom:14px;font-size:12px;
+}
+.scenario-banner.danger{color:#fecaca;background:rgba(239,68,68,.08);border:1px solid rgba(248,113,113,.28)}
+.scenario-banner.warn{color:#fde68a;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.26)}
+.scenario-banner.info{color:#bfdbfe;background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.26)}
+.scenario-banner b{font-weight:700}
+
+/* ---------- kpis ---------- */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.kpi{
+  padding:12px 14px;border-radius:11px;border:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(16,24,38,.72),rgba(9,14,23,.72));
+}
+.kpi-label{font-size:11px;color:var(--muted);display:flex;align-items:center;justify-content:space-between}
+.kpi-value{font-family:var(--mono);font-size:26px;font-weight:600;margin-top:2px;letter-spacing:-.03em}
+.kpi.danger .kpi-value{color:#fca5a5}
+.kpi.admit .kpi-value{color:#c4b5fd}
+.kpi.warn .kpi-value{color:#fcd34d}
+.kpi.done .kpi-value{color:#6ee7b7}
+.kpi.unknown .kpi-value{color:var(--faint)}
+.kpi-sub{font-size:10px;color:var(--faint);margin-top:1px}
+
+/* ---------- workspace ---------- */
+.workspace{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(380px,.95fr);gap:14px;align-items:start}
+.list-pane{min-width:0}
+.list-head{
+  display:grid;grid-template-columns:minmax(190px,1.1fr) minmax(170px,1.1fr) minmax(180px,1fr) 92px;
+  gap:12px;padding:11px 14px;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;color:var(--faint);
+}
+.list-body{padding:8px}
+.row-item{
+  display:grid;grid-template-columns:minmax(190px,1.1fr) minmax(170px,1.1fr) minmax(180px,1fr) 92px;
+  gap:12px;align-items:center;
+  padding:11px 10px 11px 13px;border-radius:9px;border:1px solid transparent;
+  border-left:2px solid transparent;cursor:pointer;
+  transition:background .18s,border-color .18s;
+  animation:rowIn .38s ease both;
+}
+.row-item:hover{background:rgba(148,163,184,.045)}
+.row-item.is-active{
+  background:linear-gradient(90deg,rgba(34,211,238,.10),rgba(34,211,238,.02) 70%);
+  border-color:rgba(34,211,238,.22);border-left-color:var(--cyan);
+}
+@keyframes rowIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.row-title{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;min-width:0}
+.row-title span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-sub{font-size:10.5px;color:var(--faint);margin-top:2px;font-family:var(--mono)}
+.row-impact{font-size:11.5px;color:var(--muted);line-height:1.5}
+.row-evidence{font-size:10.5px;color:var(--faint);line-height:1.5}
+.progress{height:5px;border-radius:99px;background:rgba(148,163,184,.12);overflow:hidden;margin-top:3px}
+.progress span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#22d3ee,#2dd4bf);box-shadow:0 0 12px rgba(34,211,238,.35)}
+.row-action{display:flex;justify-content:flex-end}
+.row-action .btn{height:28px;padding:0 9px;font-size:11px}
+.empty-state{padding:46px 20px;text-align:center;color:var(--muted)}
+.empty-state .empty-icon{
+  width:44px;height:44px;border-radius:13px;margin:0 auto 12px;display:grid;place-items:center;
+  color:#6ee7b7;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.22);
+}
+.empty-state h3{margin:0 0 5px;font-size:14px;color:var(--text)}
+.empty-state p{margin:0;font-size:11.5px;color:var(--faint)}
+
+/* ---------- detail ---------- */
+.detail-pane{position:sticky;top:78px;height:calc(100vh - 96px);display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.detail-tabs{display:flex;gap:4px;padding:10px 10px 0;border-bottom:1px solid var(--line)}
+.detail-tab{
+  padding:8px 11px;border-radius:8px 8px 0 0;border:1px solid transparent;border-bottom:none;
+  background:transparent;color:var(--faint);font-size:12px;
+}
+.detail-tab:hover{color:var(--text)}
+.detail-tab.active{color:#a5f3fc;background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.22)}
+.detail-body{flex:1;min-height:0;overflow:auto;padding:0 14px 78px;scrollbar-width:thin;scrollbar-color:rgba(148,163,184,.2) transparent}
+.detail-body::-webkit-scrollbar{width:8px}
+.detail-body::-webkit-scrollbar-thumb{background:rgba(148,163,184,.18);border-radius:99px}
+.detail{display:none}
+.detail.is-active{display:block;animation:detailIn .24s ease both}
+@keyframes detailIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.detail-head{padding:14px 0 10px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.detail-head h2{margin:3px 0 2px;font-size:15px;line-height:1.35}
+.detail-head .meta{font-family:var(--mono);font-size:10px;color:var(--faint);display:flex;gap:8px;flex-wrap:wrap}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 7px;font-size:12px;font-weight:600}
+.section-title .muted{font-weight:400;font-size:10.5px}
+.note{font-size:11px;line-height:1.65;color:var(--muted);padding:9px 11px;border-radius:8px;background:rgba(148,163,184,.045);border:1px solid var(--line)}
+.note.warn{color:#fde68a;background:rgba(251,191,36,.06);border-color:rgba(251,191,36,.22)}
+.note.danger{color:#fecaca;background:rgba(239,68,68,.06);border-color:rgba(248,113,113,.22)}
+.note.ok{color:#a7f3d0;background:rgba(52,211,153,.06);border-color:rgba(52,211,153,.22)}
+.queue{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.queue-item{
+  flex:1;min-width:80px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);
+  background:rgba(148,163,184,.035);
+}
+.queue-item .q-date{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.queue-item .q-state{font-size:10px;margin-top:2px;color:var(--faint)}
+.queue-item.current{border-color:rgba(34,211,238,.34);background:rgba(34,211,238,.07)}
+.queue-item.current .q-state{color:#a5f3fc}
+.queue-item.pass{border-color:rgba(52,211,153,.22)}
+.queue-item.pass .q-state{color:#6ee7b7}
+.evidence-table{width:100%;border-collapse:collapse;font-size:11px}
+.evidence-table th{
+  text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--faint);font-weight:500;
+}
+.evidence-table td{padding:8px;border-bottom:1px solid rgba(148,163,184,.08);vertical-align:top}
+.evidence-table tr:last-child td{border-bottom:none}
+.evidence-table .num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.evidence-table .src-label{font-size:10.5px;color:var(--text);line-height:1.4}
+.evidence-table .src-raw{font-family:var(--mono);font-size:8.5px;color:var(--faint);margin-top:1px;letter-spacing:.02em}
+.source-note{font-size:9.5px;color:var(--faint);margin-top:6px;line-height:1.5}
+.tone-ok{color:#6ee7b7}
+.tone-warn{color:#fcd34d}
+.tone-danger{color:#fca5a5}
+.tone-info{color:#93c5fd}
+.tone-admit{color:#c4b5fd}
+.tone-muted{color:var(--faint)}
+.layer{
+  display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid rgba(148,163,184,.08);
+}
+.layer:last-child{border-bottom:none}
+.layer-icon{
+  width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+  background:rgba(148,163,184,.06);border:1px solid var(--line);color:var(--muted);
+}
+.layer-icon.ok{color:#6ee7b7;background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.2)}
+.layer-icon.warn{color:#fcd34d;background:rgba(251,191,36,.07);border-color:rgba(251,191,36,.2)}
+.layer-icon.danger{color:#fca5a5;background:rgba(239,68,68,.07);border-color:rgba(248,113,113,.2)}
+.layer-title{font-size:11.5px;font-weight:600}
+.layer-desc{font-size:10.5px;color:var(--faint);margin-top:1px}
+.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.action-row .btn{flex:0 0 auto}
+.sticky-actions{
+  position:sticky;bottom:-14px;margin:14px -14px -14px;padding:11px 14px 14px;
+  background:linear-gradient(180deg,rgba(9,14,23,.4),rgba(9,14,23,.97) 30%);
+  border-top:1px solid var(--line);
+}
+.sticky-actions .blocked-reason{font-size:10px;color:var(--faint);margin-top:6px;text-align:center}
+.dep-chain{display:flex;flex-direction:column;gap:0;margin-top:4px}
+.dep-step{display:flex;gap:9px;align-items:flex-start;padding:7px 0;position:relative}
+.dep-step::before{content:"";position:absolute;left:6px;top:22px;bottom:-7px;width:1px;background:rgba(148,163,184,.18)}
+.dep-step:last-child::before{display:none}
+.dep-dot{width:13px;height:13px;border-radius:50%;border:1px solid var(--line-2);background:var(--bg-2);margin-top:4px;flex:none;display:grid;place-items:center}
+.dep-dot.ok{border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.12)}
+.dep-dot.danger{border-color:rgba(248,113,113,.5);background:rgba(239,68,68,.12)}
+.dep-title{font-size:11.5px}
+.dep-desc{font-size:10.5px;color:var(--faint)}
+.perm-table{width:100%;border-collapse:collapse;font-size:11px}
+.perm-table th{text-align:left;padding:6px 7px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;color:var(--faint);font-weight:500}
+.perm-table td{padding:8px 7px;border-bottom:1px solid rgba(148,163,184,.08);vertical-align:top}
+.perm-table tr:last-child td{border-bottom:none}
+.material-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.material{
+  padding:8px 9px;border-radius:8px;border:1px solid var(--line);background:rgba(148,163,184,.035);
+}
+.material .m-top{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10.5px;font-weight:600}
+.material .m-sub{font-size:9.5px;color:var(--faint);margin-top:2px}
+.danger-zone{margin-top:16px;padding:12px;border-radius:10px;border:1px solid rgba(248,113,113,.22);background:rgba(239,68,68,.045)}
+.danger-zone .dz-title{font-size:11.5px;font-weight:700;color:#fca5a5;display:flex;align-items:center;gap:6px}
+.danger-zone p{margin:4px 0 9px;font-size:10.5px;color:var(--faint);line-height:1.6}
+.ai-block{padding-top:12px}
+.ai-hero{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:10px;border:1px solid rgba(167,139,250,.24);background:linear-gradient(180deg,rgba(167,139,250,.09),rgba(167,139,250,.03))}
+.ai-hero .ai-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#ddd6fe;background:rgba(167,139,250,.13);border:1px solid rgba(167,139,250,.3);flex:none}
+.ai-hero h3{margin:0;font-size:12.5px}
+.ai-hero p{margin:3px 0 0;font-size:10.5px;color:var(--muted);line-height:1.6}
+.ai-plan{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.ai-step{display:flex;gap:9px;padding:9px;border-radius:9px;border:1px solid var(--line);background:rgba(148,163,184,.035)}
+.ai-num{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-family:var(--mono);font-size:10px;color:#c4b5fd;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.25);flex:none}
+.ai-step .s-title{font-size:11.5px;font-weight:600}
+.ai-step .s-desc{font-size:10.5px;color:var(--faint);margin-top:1px;line-height:1.55}
+.ai-refs{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.ai-ref{font-family:var(--mono);font-size:9px;color:#93c5fd;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.2);border-radius:4px;padding:1px 5px}
+
+/* ---------- accept / audit ---------- */
+.accept-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:4px 0 14px;flex-wrap:wrap}
+.accept-head h1{margin:0;font-size:20px;letter-spacing:.01em}
+.accept-head .sub{color:var(--faint);font-size:11.5px;margin-top:3px}
+.subnav{display:flex;gap:4px;padding:3px;border-radius:9px;border:1px solid var(--line);background:rgba(148,163,184,.035)}
+.subnav button{padding:6px 12px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--faint);font-size:12px}
+.subnav button.active{color:#a5f3fc;background:rgba(34,211,238,.09);border-color:rgba(34,211,238,.24)}
+.dual-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.8fr);gap:14px;align-items:start}
+.card-pad{padding:16px}
+.card-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 4px;font-size:14px}
+.card-sub{font-size:11px;color:var(--faint);line-height:1.6;margin:0 0 12px}
+.snapshot-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.snapshot{padding:12px;border-radius:10px;border:1px solid var(--line);background:rgba(148,163,184,.03)}
+.snapshot .snap-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.snapshot .snap-name{font-size:12px;font-weight:600}
+.snapshot .snap-line{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--faint);padding-top:5px;border-top:1px solid rgba(148,163,184,.08);margin-top:7px}
+.snapshot .snap-line b{font-weight:500;color:var(--muted);font-family:var(--mono);font-size:10px}
+.preflight{margin-top:12px}
+.preflight-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(148,163,184,.08);font-size:11px}
+.preflight-row:last-child{border-bottom:none}
+.preflight-row .pr-label{color:var(--muted)}
+.preflight-row .pr-value{font-family:var(--mono);font-size:10.5px;color:var(--text);text-align:right}
+.demo-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:5px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:#fcd34d;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3)}
+.result-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.8fr);gap:14px;margin-top:14px}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{padding:10px;border-radius:9px;border:1px solid var(--line);background:rgba(148,163,184,.03)}
+.stat .sl{font-size:9.5px;color:var(--faint)}
+.stat .sv{font-family:var(--mono);font-size:18px;font-weight:600;margin-top:2px}
+.day-list{display:flex;flex-direction:column;gap:4px;max-height:320px;overflow:auto}
+.day-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:7px;border:1px solid transparent;background:rgba(148,163,184,.025);cursor:pointer;font-size:10.5px}
+.day-item:hover{background:rgba(148,163,184,.055)}
+.day-item.is-active{border-color:rgba(34,211,238,.3);background:rgba(34,211,238,.06)}
+.day-item .d-date{font-family:var(--mono);color:var(--muted)}
+.matrix{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+.matrix th,.matrix td{border:1px solid rgba(148,163,184,.10);padding:5px 3px;text-align:center;width:calc(100% / 7)}
+.matrix th{font-family:var(--mono);font-size:8.5px;color:var(--faint);font-weight:500;line-height:1.35}
+.matrix td{font-family:var(--mono);color:var(--faint)}
+.matrix td.diag{color:#6ee7b7;background:rgba(52,211,153,.06);font-weight:600}
+.matrix td.off{color:#fca5a5;background:rgba(239,68,68,.07);font-weight:600}
+.matrix td.zero{color:rgba(148,163,184,.28)}
+.attr-table{width:100%;border-collapse:collapse;font-size:10.5px}
+.attr-table th{text-align:left;padding:6px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:8.5px;color:var(--faint);font-weight:500}
+.attr-table td{padding:6px;border-bottom:1px solid rgba(148,163,184,.08);vertical-align:top}
+.attr-table tr:last-child td{border-bottom:none}
+
+/* ---------- audit ---------- */
+.audit-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;margin-bottom:12px}
+.audit-toolbar select,.audit-toolbar input{
+  height:30px;border-radius:7px;border:1px solid var(--line);background:rgba(9,14,23,.8);
+  padding:0 9px;font-size:11px;color:var(--muted);outline:none;
+}
+.audit-toolbar input{min-width:190px}
+.audit-toolbar input:focus,.audit-toolbar select:focus{border-color:rgba(34,211,238,.4);color:var(--text)}
+.switch{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);user-select:none;cursor:pointer}
+.switch input[type="checkbox"],.check-row input[type="checkbox"]{
+  appearance:none;-webkit-appearance:none;width:14px;height:14px;border-radius:4px;
+  border:1px solid var(--line-2);background:rgba(9,14,23,.82);position:relative;flex:none;cursor:pointer;
+}
+.switch input[type="checkbox"]:checked{background:rgba(34,211,238,.85);border-color:rgba(34,211,238,.9)}
+.check-row input[type="checkbox"]:checked{background:rgba(248,113,113,.85);border-color:rgba(248,113,113,.9)}
+.switch input[type="checkbox"]:checked::after,.check-row input[type="checkbox"]:checked::after{
+  content:"";position:absolute;left:3px;top:0;width:5px;height:8px;
+  border:solid #041014;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);
+}
+.timeline{padding:4px 0 4px 20px;position:relative}
+.timeline::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:1px;background:linear-gradient(180deg,rgba(34,211,238,.28),rgba(148,163,184,.12))}
+.timeline-day{position:relative;margin:0 0 16px}
+.timeline-day::before{content:"";position:absolute;left:-19px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--bg-2);border:1px solid rgba(34,211,238,.55);box-shadow:0 0 0 4px rgba(34,211,238,.05)}
+.timeline-day .td-label{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.08em;margin-bottom:7px}
+.event{
+  padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(148,163,184,.03);
+  margin-bottom:7px;cursor:pointer;transition:border-color .18s,background .18s;
+}
+.event:hover{border-color:var(--line-2);background:rgba(148,163,184,.05)}
+.event .e-top{display:flex;align-items:flex-start;gap:9px}
+.event .e-time{font-family:var(--mono);font-size:10px;color:var(--faint);width:42px;flex:none;padding-top:1px}
+.event .e-main{min-width:0;flex:1}
+.event .e-title{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.event .e-desc{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.55}
+.event .e-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;font-family:var(--mono);font-size:9px;color:var(--faint)}
+.event .e-details{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(148,163,184,.16)}
+.event.open .e-details{display:block}
+.event .e-details dl{display:grid;grid-template-columns:120px 1fr;gap:3px 10px;margin:0;font-size:10px}
+.event .e-details dt{color:var(--faint)}
+.event .e-details dd{margin:0;font-family:var(--mono);color:var(--muted);word-break:break-all}
+.event .e-actions{display:flex;gap:6px;margin-top:8px}
+.event .e-actions .btn{height:25px;padding:0 8px;font-size:10px}
+
+/* ---------- modal / toast ---------- */
+.modal-backdrop{
+  position:fixed;inset:0;z-index:80;display:none;place-items:center;
+  background:rgba(3,7,12,.72);backdrop-filter:blur(7px);padding:18px;
+}
+.modal-backdrop.open{display:grid}
+.modal{
+  width:min(580px,100%);max-height:calc(100vh - 40px);overflow:auto;
+  border-radius:14px;border:1px solid var(--line-2);
+  background:linear-gradient(180deg,rgba(19,28,43,.98),rgba(8,13,22,.99));
+  box-shadow:0 30px 90px rgba(0,0,0,.6);animation:modalIn .22s ease both;
+}
+@keyframes modalIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.modal-head h2{margin:0;font-size:15px}
+.modal-head .m-sub{font-size:10.5px;color:var(--faint);margin-top:3px}
+.modal-body{padding:16px 18px}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px 16px;border-top:1px solid var(--line)}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+.field select,.field textarea,.field input{
+  width:100%;border-radius:8px;border:1px solid var(--line-2);
+  background:rgba(6,10,17,.72);color:var(--text);padding:8px 10px;font-size:12px;outline:none;
+}
+.field textarea{min-height:84px;resize:vertical;line-height:1.6}
+.field select:focus,.field textarea:focus,.field input:focus{border-color:rgba(34,211,238,.45);box-shadow:0 0 0 3px rgba(34,211,238,.08)}
+.field .hint{font-size:10px;color:var(--faint);margin-top:4px;text-align:right}
+.check-row{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--muted);line-height:1.55}
+.check-row input{margin-top:2px;accent-color:var(--red)}
+.radio-list{display:flex;flex-direction:column;gap:7px}
+.radio-card{display:flex;gap:9px;align-items:flex-start;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(148,163,184,.03)}
+.radio-card input{margin-top:3px;accent-color:var(--cyan)}
+.radio-card .rc-title{font-size:11.5px;font-weight:600}
+.radio-card .rc-desc{font-size:10px;color:var(--faint);margin-top:1px;line-height:1.5}
+#toast-root{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;gap:7px;pointer-events:none}
+.toast{
+  min-width:260px;max-width:520px;padding:10px 13px;border-radius:9px;font-size:11.5px;
+  border:1px solid var(--line-2);background:rgba(12,19,31,.96);box-shadow:0 14px 40px rgba(0,0,0,.4);
+  display:flex;align-items:flex-start;gap:8px;animation:toastIn .24s ease both;
+}
+.toast.ok{border-color:rgba(52,211,153,.35);color:#a7f3d0}
+.toast.warn{border-color:rgba(251,191,36,.35);color:#fde68a}
+.toast.danger{border-color:rgba(248,113,113,.35);color:#fecaca}
+.toast.info{border-color:rgba(96,165,250,.35);color:#bfdbfe}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.spin{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.force-banner{margin-top:12px;padding:10px 12px;border-radius:9px;border:1px solid rgba(248,113,113,.3);background:rgba(239,68,68,.07);font-size:11px;color:#fecaca}
+.force-banner b{display:block;font-size:11.5px;margin-bottom:2px}
+
+/* ---------- footer ---------- */
+.statusbar{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin-top:16px;padding:9px 2px 0;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.03em;
+}
+.statusbar .sb-right{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap}
+
+/* ---------- responsive ---------- */
+@media (max-width:1280px){
+  .workspace{grid-template-columns:minmax(0,1.35fr) minmax(340px,.95fr)}
+}
+@media (max-width:1120px){
+  .workspace{grid-template-columns:1fr}
+  .detail-pane{position:relative;top:auto;height:auto;max-height:none}
+  .dual-grid,.result-grid{grid-template-columns:1fr}
+}
+@media (max-width:860px){
+  .app{padding:0 12px 16px}
+  .topbar{height:auto;min-height:60px;padding:9px 0;flex-wrap:wrap;gap:9px}
+  .brand{min-width:0}
+  .portfolio-switch{order:3;width:100%}
+  .topbar-right{margin-left:auto}
+  .proto-control span{display:none}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .list-head{display:none}
+  .row-item{grid-template-columns:1fr auto;gap:7px;padding:11px}
+  .row-impact,.row-evidence{grid-column:1 / -1}
+  .row-action{grid-column:2;grid-row:1}
+  .snapshot-grid,.material-grid{grid-template-columns:1fr}
+  .stat-row{grid-template-columns:repeat(2,1fr)}
+  .health-actions{padding-top:0}
+}
+@media (max-width:520px){
+  .nav-tab{padding:7px 10px;font-size:12px}
+  .health-title .status-text{font-size:16px}
+  .health-actions .btn{flex:1 1 auto}
+  .audit-toolbar input{min-width:100%}
+  .modal{width:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body data-scenario="blocked">
+
+<svg class="svg-sprite" aria-hidden="true">
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6l7-3z"/><path d="M9.5 12l1.7 1.7 3.3-3.4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3L12 4z"/><path d="M12 9v5"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12l2.3 2.3 4.7-4.8"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7V5z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 5v4h4"/><path d="M12 8v4l3 2"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.6 5.2L19 10l-5.4 1.8L12 17l-1.6-5.2L5 10l5.4-1.8L12 3z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M13 7l5 5-5 5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 17l9 5 9-5"/></symbol>
+  <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/></symbol>
+</svg>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><svg class="icon"><use href="#i-shield"/></svg></span>
+      <div>
+        <div class="brand-title">组合交易</div>
+        <div class="brand-sub">PORTFOLIO OPS</div>
+      </div>
+    </div>
+    <div class="portfolio-switch">
+      <button class="portfolio-btn">
+        <span class="dot ok"></span>
+        <span>main</span><span class="sep">/</span><span>模拟</span><span class="sep">/</span><span>混合组合 A</span>
+        <svg class="icon icon-sm"><use href="#i-chevron"/></svg>
+      </button>
+      <span class="mini-pill"><span class="dot ok"></span>自动接管已开启</span>
+    </div>
+    <div class="topbar-right">
+      <label class="proto-control">
+        <span>原型场景</span>
+        <select id="scenarioSelect" aria-label="原型场景">
+          <option value="blocked">有阻断</option>
+          <option value="healthy">全部通过</option>
+          <option value="processing">修复进行中</option>
+          <option value="permission">无审核权限</option>
+          <option value="error">检查读取失败</option>
+          <option value="holiday">休市日</option>
+        </select>
+      </label>
+      <button class="icon-btn" aria-label="帮助" onclick="showToast('info','帮助入口：原型中以右侧处理面板为准')">?</button>
+      <div class="avatar">L</div>
+    </div>
+  </header>
+
+  <nav class="mainnav" role="tablist" aria-label="主导航">
+    <button class="nav-tab active" data-view="todo" role="tab" aria-selected="true">待处理事项 <span class="count" id="navCount">2</span></button>
+    <button class="nav-tab" data-view="accept" role="tab" aria-selected="false">验收与记录</button>
+    <div class="nav-spacer"></div>
+    <div class="context-label">CHECK &amp; RECONCILE / 检查与对账</div>
+  </nav>
+
+  <!-- ===================== TODO VIEW ===================== -->
+  <section class="view active" id="view-todo">
+    <div class="healthbar panel" id="healthbar" role="status" aria-live="polite">
+      <div class="health-top">
+        <div class="health-left">
+          <div class="eyebrow">当前运行状态</div>
+          <div class="health-title">
+            <span class="status-dot dot danger pulse" id="stateDot"></span>
+            <span class="status-text" id="stateLabel">对账未完成，已暂停</span>
+            <span class="enum" id="stateEnum">RECONCILIATION_BLOCKED</span>
+          </div>
+          <div class="health-reason" id="healthReason">原因：2026-09-30 对账缺执行证据；000001 评分过期。新买入已阻断，风险退出仍允许。</div>
+        </div>
+        <div class="health-actions">
+          <button class="btn" onclick="selectItem('status')"><svg class="icon icon-sm"><use href="#i-shield"/></svg>运行状态审核</button>
+          <button class="btn" id="recheckBtn" onclick="recheck()"><svg class="icon icon-sm"><use href="#i-refresh"/></svg>重新检查</button>
+          <button class="btn btn-primary" onclick="switchPanel('ai')"><svg class="icon icon-sm"><use href="#i-spark"/></svg>AI 辅助处理</button>
+        </div>
+      </div>
+      <div class="capabilities">
+        <span class="cap danger">新买入 <b>已阻断</b></span>
+        <span class="cap">普通卖出 <b>按门禁判定</b></span>
+        <span class="cap ok">风险退出 <b>门禁允许</b></span>
+        <span class="cap warn">自动恢复 <b>需本人审核</b></span>
+        <span class="cap ghost">检查于 <b id="checkTime">10:32</b> · 快照 v17 · 数据截止 10:30</span>
+      </div>
+    </div>
+
+    <div class="scenario-banner danger" data-scenario="error">
+      <svg class="icon" style="color:#fca5a5"><use href="#i-alert"/></svg>
+      <div><b>检查服务暂不可用（readiness 503）</b><br>当前无法读取待处理事项与证据。页面不会把读取失败显示为 0；请稍后重试。</div>
+    </div>
+    <div class="scenario-banner warn" data-scenario="permission">
+      <svg class="icon" style="color:#fcd34d"><use href="#i-lock"/></svg>
+      <div><b>当前账号无审核权限</b><br>可以查看原因与证据，不能确认对账、不能提交例外恢复。请联系 admin 或 auditor。</div>
+    </div>
+    <div class="scenario-banner info" data-scenario="holiday">
+      <svg class="icon" style="color:#93c5fd"><use href="#i-clock"/></svg>
+      <div><b>当前市场休市</b><br>10-01 至 10-08 休市，对账任务自动跳过；休市期间发生的现金或账户活动仍独立核验。</div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi danger"><div class="kpi-label">阻断新买入 <span class="dot danger"></span></div><div class="kpi-value" id="kpiBlock">2</div><div class="kpi-sub">处理后自动重检</div></div>
+      <div class="kpi admit"><div class="kpi-label">准入待验收 <span class="dot info"></span></div><div class="kpi-value" id="kpiAdmit">1</div><div class="kpi-sub">只影响新方案切换</div></div>
+      <div class="kpi warn"><div class="kpi-label">提醒 <span class="dot warn"></span></div><div class="kpi-value" id="kpiWarn">1</div><div class="kpi-sub">不阻断日常下单</div></div>
+      <div class="kpi done"><div class="kpi-label">本次已解决 <span class="dot ok"></span></div><div class="kpi-value" id="kpiDone">0</div><div class="kpi-sub">本次会话</div></div>
+    </div>
+
+    <div class="workspace">
+      <div class="list-pane panel">
+        <div class="list-head">
+          <div>事项 / 归属日期</div><div>原因与影响</div><div>关键证据 / 完成条件</div><div style="text-align:right">操作</div>
+        </div>
+        <div class="list-body" id="todoList">
+          <div class="row-item is-active" data-item="recon" data-scenario="blocked,permission,processing" tabindex="0" role="button">
+            <div>
+              <div class="row-title"><span class="chip danger">阻断</span><span>对账未完成 · 2026-09-30</span></div>
+              <div class="row-sub">MISSED_EXECUTION · 待核对 3 日</div>
+            </div>
+            <div class="row-impact">当时接管已开启、调度已启用，但任务未触发。新买入被禁止；风险卖出不受影响。</div>
+            <div class="row-evidence">无成功运行；订单 0；成交 0；现金流水 0；持仓未变</div>
+            <div class="row-action"><button class="btn" onclick="event.stopPropagation();selectItem('recon')">核查并处理</button></div>
+          </div>
+
+          <div class="row-item" data-item="data" data-scenario="blocked,permission" tabindex="0" role="button">
+            <div>
+              <div class="row-title"><span class="chip warn">阻断</span><span>000001 评分过期</span></div>
+              <div class="row-sub">DAILY_BAR / SCORE · 09-30</div>
+            </div>
+            <div class="row-impact">该标的买入受限；组合是否整体暂停由当前策略门禁决定。上游成交量指标缺 09-30 输入。</div>
+            <div class="row-evidence">日K 正常 → 指标缺失 → 模型 A 评分停在 09-18</div>
+            <div class="row-action"><button class="btn" onclick="event.stopPropagation();selectItem('data')">修复数据缺口</button></div>
+          </div>
+
+          <div class="row-item" data-item="dual" data-scenario="blocked,permission,processing" tabindex="0" role="button">
+            <div>
+              <div class="row-title"><span class="chip admit">准入</span><span>双跑验收未完成</span></div>
+              <div class="row-sub">VERSION GATE · 仅影响切换</div>
+            </div>
+            <div class="row-impact">当前环境未接通真实执行器，不能生成可用于切换的验收报告。日常新买入不受此项阻断。</div>
+            <div class="row-evidence">能力缺失：real_runner_available=false</div>
+            <div class="row-action"><button class="btn" onclick="event.stopPropagation();showView('accept');showAccept('dual')">查看验收</button></div>
+          </div>
+
+          <div class="row-item" data-item="queue" data-scenario="blocked,permission,processing" tabindex="0" role="button">
+            <div>
+              <div class="row-title"><span class="chip">提醒</span><span>待核对队列仍有 3 个交易日</span></div>
+              <div class="row-sub">QUEUE · 09-29 / 09-30 / 10-09</div>
+            </div>
+            <div class="row-impact">09-29 已通过但等待前序；09-30 当前阻断；10-09 未到期。节假日已自动剔除。</div>
+            <div class="row-evidence">连续游标：只从最早缺口往后推进</div>
+            <div class="row-action"><button class="btn" onclick="event.stopPropagation();selectItem('queue')">查看队列</button></div>
+          </div>
+
+          <div class="row-item" data-item="processing" data-scenario="processing" tabindex="0" role="button">
+            <div>
+              <div class="row-title"><span class="chip info"><span class="dot info pulse"></span>处理中</span><span>数据修复任务 T-8821</span></div>
+              <div class="row-sub">RUNNING · 000001 / 2026-09-30</div>
+            </div>
+            <div class="row-impact">正在同步日K并重算成交量指标；评分重算尚未开始。完成后自动重检，不需要重复点击。</div>
+            <div class="row-evidence"><div class="progress"><span style="width:46%"></span></div></div>
+            <div class="row-action"><button class="btn" onclick="event.stopPropagation();selectItem('data')">查看进度</button></div>
+          </div>
+
+          <div class="empty-state" data-scenario="healthy">
+            <div class="empty-icon"><svg class="icon" style="width:22px;height:22px"><use href="#i-check"/></svg></div>
+            <h3>没有待处理事项</h3>
+            <p>数据、评分、策略、对账均已通过。下次自动检查将在调度窗口前运行。</p>
+            <div style="margin-top:12px"><button class="btn" onclick="showView('accept');showAccept('audit')">查看审计记录</button></div>
+          </div>
+
+          <div class="empty-state" data-scenario="error">
+            <div class="empty-icon" style="color:#fca5a5;background:rgba(239,68,68,.08);border-color:rgba(248,113,113,.22)"><svg class="icon" style="width:22px;height:22px"><use href="#i-alert"/></svg></div>
+            <h3>无法读取待处理事项</h3>
+            <p>readiness 服务返回 503。读取失败不是“0 项”，当前不能判断组合健康。</p>
+            <div style="margin-top:12px"><button class="btn" onclick="recheck()"><svg class="icon icon-sm"><use href="#i-refresh"/></svg>重试检查</button></div>
+          </div>
+
+          <div class="row-item" data-item="holiday" data-scenario="holiday" tabindex="0" role="button">
+            <div>
+              <div class="row-title"><span class="chip info">信息</span><span>10-01 至 10-08 休市</span></div>
+              <div class="row-sub">MARKET_CLOSED · 自动跳过</div>
+            </div>
+            <div class="row-impact">休市日不产生漏跑待办，也不推进对账游标；账户现金与持仓活动仍独立核验。</div>
+            <div class="row-evidence">下一应核对交易日：10-09</div>
+            <div class="row-action"><button class="btn" onclick="event.stopPropagation();selectItem('recon')">查看规则</button></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="detail-pane panel" id="detailPane" aria-label="处理详情">
+        <div class="detail-tabs" role="tablist">
+          <button class="detail-tab active" data-panel="detail" role="tab" aria-selected="true">处理详情</button>
+          <button class="detail-tab" data-panel="ai" role="tab" aria-selected="false">AI 建议</button>
+        </div>
+        <div class="detail-body" id="detailBody">
+
+          <!-- ---------- reconciliation ---------- -->
+          <div class="detail is-active" data-detail="recon">
+            <div data-scenario="blocked,permission">
+            <div class="detail-head">
+              <div class="eyebrow">对账详情 / RECONCILIATION</div>
+              <h2>对账未完成 · 2026-09-30</h2>
+              <div class="meta"><span class="chip danger">MISSED_EXECUTION</span><span>组合 main</span><span>快照 v17</span></div>
+            </div>
+
+            <div class="section-title">待核对队列 <span class="muted">连续推进，不跳日</span></div>
+            <div class="queue">
+              <div class="queue-item pass"><div class="q-date">09-29</div><div class="q-state">已通过 · 待前序</div></div>
+              <div class="queue-item current"><div class="q-date">09-30</div><div class="q-state">当前 · 缺证据</div></div>
+              <div class="queue-item"><div class="q-date">10-09</div><div class="q-state">未到期</div></div>
+            </div>
+            <div class="note" style="margin-top:7px">10-01 至 10-08 休市，已自动剔除；空跑日不会生成漏跑待办。</div>
+
+            <div class="section-title">为什么检查这一天</div>
+            <div class="note">
+              09-30 是组合生效后的应核对交易日。当时自动接管已开启、调度 20:30 已启用；任务在合法执行窗口内未触发。
+              不是“对账开关被点开”，也不是“今天的状态反推过去”。
+            </div>
+
+            <div class="section-title">三项核对</div>
+            <div class="layer">
+              <div class="layer-icon danger"><svg class="icon icon-sm"><use href="#i-play"/></svg></div>
+              <div><div class="layer-title">执行完整性 <span class="tone-danger">应执行未触发</span></div><div class="layer-desc">预期：1 次 auto_simulation；实际：无成功运行、无进行中任务、无失败记录。</div></div>
+            </div>
+            <div class="layer">
+              <div class="layer-icon ok"><svg class="icon icon-sm"><use href="#i-layers"/></svg></div>
+              <div><div class="layer-title">持仓一致性 <span class="tone-ok">已核验</span></div><div class="layer-desc">期初持仓与当前快照一致；无订单、无成交，数量与成本未变化。</div></div>
+            </div>
+            <div class="layer">
+              <div class="layer-icon ok"><svg class="icon icon-sm"><use href="#i-db"/></svg></div>
+              <div><div class="layer-title">资金一致性 <span class="tone-ok">已核验</span></div><div class="layer-desc">当日无现金流水；账本余额与快照一致；无费用或分红待确认。</div></div>
+            </div>
+
+            <div class="section-title">证据</div>
+            <table class="evidence-table">
+              <thead><tr><th>检查项</th><th>预期</th><th>实际</th><th>状态</th><th>数据来源</th></tr></thead>
+              <tbody>
+                <tr><td>成功自动运行</td><td class="num">1</td><td class="num">0</td><td class="tone-danger">缺失</td><td><div class="src-label">决策运行记录</div><div class="src-raw">decision_runs</div></td></tr>
+                <tr><td>进行中 / 失败任务</td><td class="num">0</td><td class="num">0</td><td class="tone-ok">正常</td><td><div class="src-label">异步任务记录</div><div class="src-raw">async_tasks</div></td></tr>
+                <tr><td>订单 / 成交</td><td class="num">0</td><td class="num">0</td><td class="tone-ok">已核验</td><td><div class="src-label">模拟订单与成交</div><div class="src-raw">sim_orders</div></td></tr>
+                <tr><td>现金流水</td><td class="num">0</td><td class="num">0</td><td class="tone-ok">已核验</td><td><div class="src-label">现金流水账</div><div class="src-raw">cash_ledger</div></td></tr>
+                <tr><td>持仓快照</td><td>期初一致</td><td>未变化</td><td class="tone-ok">已核验</td><td><div class="src-label">上一交易日持仓快照</div><div class="src-raw">snapshot:T-1</div></td></tr>
+              </tbody>
+            </table>
+            <div class="source-note">主文案显示业务名称；小字为内部表名，仅排障与审计检索使用。</div>
+
+            <div class="note warn" style="margin-top:10px">历史配置来自审计事件；当前可追溯到 09-30 的接管与调度状态。若历史配置缺失，会显示“历史未知”，不会猜成“当时无需执行”。</div>
+
+            <div class="sticky-actions">
+              <div class="action-row">
+                <button class="btn btn-primary" onclick="openReconAction()"><svg class="icon icon-sm"><use href="#i-search"/></svg>核查并处理漏跑</button>
+                <button class="btn" onclick="showToast('warn','“记录未执行并申请恢复”需授权策略；当前默认关闭')"><svg class="icon icon-sm"><use href="#i-lock"/></svg>记录未执行并申请恢复</button>
+                <button class="btn btn-ghost" onclick="showView('accept');showAccept('audit')">查看相关审计</button>
+              </div>
+              <div class="blocked-reason">当前不能直接确认“差异清零”：这一天缺的是执行证据，不是账实差异。</div>
+            </div>
+            </div>
+            <div data-scenario="holiday">
+              <div class="detail-head">
+                <div class="eyebrow">休市 / MARKET CLOSED</div>
+                <h2>休市日，无需对账</h2>
+                <div class="meta"><span class="chip info">MARKET_CLOSED</span><span>10-01 ~ 10-08</span></div>
+              </div>
+              <div class="note">该市场休市，对账任务自动跳过，不产生漏跑待办，也不推进游标。休市期间发生的现金、持仓或其他市场活动仍独立核验；发现真实账差照常列出。</div>
+              <div class="section-title">下一应核对交易日</div>
+              <div class="queue"><div class="queue-item current"><div class="q-date">10-09</div><div class="q-state">未到期</div></div></div>
+              <div class="sticky-actions"><div class="action-row"><button class="btn btn-ghost" onclick="showToast('info','已打开日历证据（原型演示）')">查看日历依据</button></div></div>
+            </div>
+          </div>
+
+          <!-- ---------- data gap ---------- -->
+          <div class="detail" data-detail="data">
+            <div data-scenario="blocked,permission">
+            <div class="detail-head">
+              <div class="eyebrow">数据缺口 / DATA HEALTH</div>
+              <h2>000001 评分过期</h2>
+              <div class="meta"><span class="chip warn">STALE</span><span>模型 A · 09-30</span><span>影响该标的买入</span></div>
+            </div>
+
+            <div class="section-title">依赖链 <span class="muted">按顺序修复，不重复重算</span></div>
+            <div class="dep-chain">
+              <div class="dep-step"><span class="dep-dot ok"></span><div><div class="dep-title">日K · 000001 <span class="tone-ok">正常</span></div><div class="dep-desc">最后交易日 09-30；复权口径与当前策略一致。</div></div></div>
+              <div class="dep-step"><span class="dep-dot danger"></span><div><div class="dep-title">成交量指标 · 09-30 <span class="tone-danger">缺失</span></div><div class="dep-desc">上游日K已到，但指标任务未覆盖该日期。</div></div></div>
+              <div class="dep-step"><span class="dep-dot danger"></span><div><div class="dep-title">模型 A 评分 <span class="tone-danger">停在 09-18</span></div><div class="dep-desc">缺指标输入，评分无法重算；历史评分不能冒充当前评分。</div></div></div>
+            </div>
+
+            <div class="section-title">证据</div>
+            <table class="evidence-table">
+              <thead><tr><th>检查项</th><th>实际</th><th>应到</th><th>结论</th></tr></thead>
+              <tbody>
+                <tr><td>日K</td><td class="num">09-30</td><td class="num">09-30</td><td class="tone-ok">正常</td></tr>
+                <tr><td>成交量指标</td><td class="num">缺失</td><td class="num">09-30</td><td class="tone-danger">缺失</td></tr>
+                <tr><td>模型 A 评分</td><td class="num">09-18</td><td class="num">09-30</td><td class="tone-danger">超出允许滞后</td></tr>
+                <tr><td>评分版本</td><td class="num">model A v18</td><td class="num">model A v18</td><td class="tone-ok">匹配</td></tr>
+              </tbody>
+            </table>
+
+            <div class="section-title">修复范围</div>
+            <div class="note">仅处理 000001、2026-09-30、模型 A。先同步日K，再重算成交量指标，最后重算评分；不会触发交易，也不会重算全市场。</div>
+
+            <div class="sticky-actions">
+              <div class="action-row">
+                <button class="btn btn-primary" onclick="openDataPlan()"><svg class="icon icon-sm"><use href="#i-spark"/></svg>预览修复计划</button>
+                <button class="btn btn-ghost" onclick="selectItem('recon')">先处理对账阻断</button>
+              </div>
+              <div class="blocked-reason">修复完成后自动重检；若对账仍阻断，会显示“数据项已解决，还需完成 09-30 核对”。</div>
+            </div>
+            </div>
+            <div data-scenario="processing">
+              <div class="detail-head">
+                <div class="eyebrow">数据修复 / REPAIR RUNNING</div>
+                <h2>000001 数据修复中</h2>
+                <div class="meta"><span class="chip info"><span class="dot info pulse"></span>处理中</span><span>任务 T-8821</span></div>
+              </div>
+              <div class="section-title">进度 <span class="muted">完成后自动重检</span></div>
+              <div class="progress" style="height:7px"><span style="width:46%"></span></div>
+              <div class="note" style="margin-top:9px">已同步日K；成交量指标重算中；评分重算排队。修复范围仅限 000001 / 2026-09-30 / 模型 A。</div>
+              <div class="section-title">任务</div>
+              <table class="evidence-table">
+                <thead><tr><th>步骤</th><th>状态</th><th>结果</th></tr></thead>
+                <tbody>
+                  <tr><td>同步日K</td><td class="tone-ok">完成</td><td>09-30 已入库</td></tr>
+                  <tr><td>重算成交量指标</td><td class="tone-warn">运行中</td><td>已处理 12 / 27 个标的</td></tr>
+                  <tr><td>重算模型 A 评分</td><td class="tone-muted">排队</td><td>等待上游完成</td></tr>
+                </tbody>
+              </table>
+              <div class="sticky-actions"><div class="action-row"><button class="btn" disabled>等待任务完成</button><button class="btn btn-ghost" onclick="showToast('info','已打开任务 T-8821（原型演示）')">查看任务</button></div><div class="blocked-reason">任务运行中不会重复创建；完成后会自动重检。</div></div>
+            </div>
+          </div>
+
+          <!-- ---------- dual-run link ---------- -->
+          <div class="detail" data-detail="dual">
+            <div class="detail-head">
+              <div class="eyebrow">版本准入 / DUAL RUN</div>
+              <h2>双跑验收未完成</h2>
+              <div class="meta"><span class="chip admit">准入待验收</span><span>仅影响新方案切换</span></div>
+            </div>
+            <div class="note warn">当前环境未接通真实执行器，不能生成可用于切换的验收报告。缺报告不等于日常停机。</div>
+            <div class="section-title">影响范围</div>
+            <table class="perm-table">
+              <thead><tr><th>能力</th><th>影响</th><th>依据</th></tr></thead>
+              <tbody>
+                <tr><td>日常新买入</td><td class="tone-ok">不受此项阻断</td><td>双跑只用于新方案准入</td></tr>
+                <tr><td>切换新决策链</td><td class="tone-danger">阻断</td><td>real_runner_available=false</td></tr>
+                <tr><td>扩大运行范围</td><td class="tone-danger">阻断</td><td>缺少可信验收报告</td></tr>
+              </tbody>
+            </table>
+            <div class="sticky-actions">
+              <div class="action-row"><button class="btn btn-primary" onclick="showView('accept');showAccept('dual')">查看验收</button></div>
+              <div class="blocked-reason">原型会展示“能力未接通”和“演示结果”两种状态，演示数据不可用于准入。</div>
+            </div>
+          </div>
+
+          <!-- ---------- queue ---------- -->
+          <div class="detail" data-detail="queue">
+            <div class="detail-head">
+              <div class="eyebrow">待核对队列 / QUEUE</div>
+              <h2>3 个交易日待核对</h2>
+              <div class="meta"><span>连续游标</span><span>09-28 → 10-09</span></div>
+            </div>
+            <div class="note">队列从 `last_reconciled_trade_date` 的下一个交易日开始，按可信日历逐日核对；休市日不进入队列。</div>
+            <div class="section-title">日期</div>
+            <table class="evidence-table">
+              <thead><tr><th>交易日</th><th>状态</th><th>结论 / 处理</th></tr></thead>
+              <tbody>
+                <tr><td class="num">09-29</td><td class="tone-ok">已通过</td><td>报告已保存；等待 09-30 前序完成后连续推进。</td></tr>
+                <tr><td class="num">09-30</td><td class="tone-danger">阻断</td><td>MISSED_EXECUTION；核查漏跑或按授权策略记录未执行。</td></tr>
+                <tr><td class="num">10-09</td><td class="tone-muted">未到期</td><td>等待执行与撮合结果到齐后进入检查。</td></tr>
+                <tr><td class="num">10-01~10-08</td><td class="tone-info">休市</td><td>不生成待办；账户活动独立核验。</td></tr>
+              </tbody>
+            </table>
+            <div class="sticky-actions">
+              <div class="action-row"><button class="btn" onclick="selectItem('recon')">查看 09-30 详情</button><button class="btn btn-ghost" onclick="showToast('info','已打开日历证据（原型演示）')">查看日历依据</button></div>
+            </div>
+          </div>
+
+          <!-- ---------- status audit ---------- -->
+          <div class="detail" data-detail="status">
+            <div class="detail-head">
+              <div class="eyebrow">运行状态审核 / STATE REVIEW</div>
+              <h2>对账未完成，已暂停</h2>
+              <div class="meta"><span class="enum">RECONCILIATION_BLOCKED</span><span>检查于 10:32</span><span>快照 v17</span></div>
+            </div>
+
+            <div class="scenario-banner warn" data-scenario="permission" style="margin:0 0 12px">
+              <svg class="icon" style="color:#fcd34d"><use href="#i-lock"/></svg>
+              <div><b>无审核权限</b><br>当前账号可以查看审核材料，但不能提交确认或例外恢复。</div>
+            </div>
+
+            <div class="section-title">当前能力 <span class="muted">来自执行门禁，不是前端静态表</span></div>
+            <table class="perm-table">
+              <thead><tr><th>能力</th><th>当前结论</th><th>具体依据</th><th>解除条件</th></tr></thead>
+              <tbody>
+                <tr><td>新买入</td><td class="tone-danger">已阻断</td><td>09-30 缺执行证据；000001 评分过期</td><td>处理两项后重检</td></tr>
+                <tr><td>普通卖出</td><td class="tone-info">按门禁判定</td><td>取决于订单与持仓条件</td><td>查看原因与订单条件</td></tr>
+                <tr><td>风险退出</td><td class="tone-ok">门禁允许</td><td>当前阻断不禁止风险退出</td><td>仍需真实订单与持仓条件</td></tr>
+                <tr><td>自动恢复</td><td class="tone-warn">需本人审核</td><td>异常暂停后尚未确认恢复</td><td>查看修复报告后确认</td></tr>
+              </tbody>
+            </table>
+
+            <div class="section-title">审核材料 <span class="muted">3 / 4 齐全</span></div>
+            <div class="material-grid">
+              <div class="material"><div class="m-top">原异常 <span class="tone-ok">已记录</span></div><div class="m-sub">09-30 应执行未触发</div></div>
+              <div class="material"><div class="m-top">已采取修复 <span class="tone-ok">已记录</span></div><div class="m-sub">核查任务 T-8822；等待证据</div></div>
+              <div class="material"><div class="m-top">最新对账报告 <span class="tone-warn">缺执行证据</span></div><div class="m-sub">R17 v3 · 09-30</div></div>
+              <div class="material"><div class="m-top">连续待核对队列 <span class="tone-ok">已记录</span></div><div class="m-sub">09-29 / 09-30 / 10-09</div></div>
+            </div>
+
+            <div class="note warn" style="margin-top:10px">解除对账后，仍需修复 000001 评分；组合不会直接变为“可以运行”。</div>
+
+            <div class="sticky-actions">
+              <div class="action-row">
+                <button class="btn btn-primary" disabled title="缺 09-30 执行证据">确认对账修复并重检</button>
+                <button class="btn" onclick="selectItem('recon')">核查并处理漏跑</button>
+              </div>
+              <div class="blocked-reason">确认按钮禁用：材料尚未齐全，不能只凭一段备注放行。</div>
+            </div>
+
+            <div class="danger-zone">
+              <div class="dz-title"><svg class="icon icon-sm"><use href="#i-lock"/></svg>例外恢复（默认关闭）</div>
+              <p>只用于已核验的特定流程阻断；不改报告为通过、不推进游标、不隐藏原问题。真实现金/持仓差异不能靠备注豁免。</p>
+              <button class="btn btn-danger" id="forceBtn" onclick="openForceRecovery()">申请例外恢复</button>
+            </div>
+            <div class="force-banner" id="forceBanner" hidden>
+              <b>例外运行中 · 原问题待处理</b>
+              已记录操作者、范围、期限与证据快照；对应范围真正核验完成后才会关闭标记。
+            </div>
+          </div>
+
+          <!-- ---------- healthy detail ---------- -->
+          <div class="detail" data-detail="healthy">
+            <div class="detail-head">
+              <div class="eyebrow">组合健康 / ALL CLEAR</div>
+              <h2>全部通过</h2>
+              <div class="meta"><span class="chip ok">可以运行</span><span>检查于 10:32</span></div>
+            </div>
+            <div class="note ok">数据、评分、策略、对账均已通过；没有待处理阻断。下次自动检查将在调度窗口前运行。</div>
+            <div class="section-title">最近检查</div>
+            <table class="evidence-table">
+              <thead><tr><th>检查项</th><th>结论</th><th>时间</th></tr></thead>
+              <tbody>
+                <tr><td>行情/评分</td><td class="tone-ok">正常</td><td class="num">10:30</td></tr>
+                <tr><td>对账</td><td class="tone-ok">09-30 已通过</td><td class="num">10:31</td></tr>
+                <tr><td>策略 / 模型</td><td class="tone-ok">匹配</td><td class="num">10:30</td></tr>
+              </tbody>
+            </table>
+            <div class="sticky-actions"><div class="action-row"><button class="btn" onclick="showView('accept');showAccept('audit')">查看审计记录</button></div></div>
+          </div>
+
+          <!-- ---------- error detail ---------- -->
+          <div class="detail" data-detail="error">
+            <div class="detail-head">
+              <div class="eyebrow">证据读取失败 / READ ERROR</div>
+              <h2>当前无法判断组合健康</h2>
+              <div class="meta"><span class="chip danger">SERVICE UNAVAILABLE</span><span>readiness 503</span></div>
+            </div>
+            <div class="note danger">读取失败不是“0 项”，也不能显示绿色通过。请重试；若持续失败，查看服务状态与相关审计。</div>
+            <div class="sticky-actions"><div class="action-row"><button class="btn btn-primary" onclick="recheck()">重试检查</button><button class="btn btn-ghost" onclick="showView('accept');showAccept('audit')">查看审计</button></div></div>
+          </div>
+
+          <!-- ---------- AI panel ---------- -->
+          <div class="detail" data-detail="ai">
+            <div class="ai-block">
+              <div class="ai-hero">
+                <div class="ai-icon"><svg class="icon"><use href="#i-spark"/></svg></div>
+                <div><h3>当前有 2 项阻断新买入，1 项准入待办</h3><p>已读取当前组合的待办、证据、日历与最近审计；以下建议只针对本组合，不代替本人审核。</p></div>
+              </div>
+
+              <div data-scenario="healthy" class="note ok" style="margin-top:12px">当前没有阻断，无需处置。可以继续查看最近审计或验收记录。</div>
+              <div data-scenario="error" class="note danger" style="margin-top:12px">AI 无法读取当前证据；不会猜测原因。请先恢复 readiness 服务，再重新诊断。</div>
+
+              <div data-scenario="blocked,permission,processing">
+                <div class="section-title">已确认</div>
+                <div class="ai-plan">
+                  <div class="ai-step"><span class="ai-num">1</span><div><div class="s-title">09-30 缺执行证据</div><div class="s-desc">当时接管与调度已启用；账户活动已核验为 0。当前结论是 MISSED_EXECUTION，不是账实差异。</div><div class="ai-refs"><span class="ai-ref">E-09-30-01</span><span class="ai-ref">decision_runs</span><span class="ai-ref">snapshot:T-1</span></div></div></div>
+                  <div class="ai-step"><span class="ai-num">2</span><div><div class="s-title">000001 评分缺上游指标</div><div class="s-desc">日K 正常，但成交量指标缺 09-30，模型 A 评分停在 09-18。需按依赖顺序修复。</div><div class="ai-refs"><span class="ai-ref">E-000001-07</span><span class="ai-ref">indicator_task</span></div></div></div>
+                </div>
+
+                <div class="section-title">建议顺序</div>
+                <div class="ai-plan">
+                  <div class="ai-step"><span class="ai-num">①</span><div><div class="s-title">先核查 09-30 执行证据</div><div class="s-desc">创建只读核查任务，定位调度/任务记录；证据到齐后再选择对账处置。</div></div></div>
+                  <div class="ai-step"><span class="ai-num">②</span><div><div class="s-title">再修复 000001 数据缺口</div><div class="s-desc">同步日K → 重算成交量指标 → 重算模型 A 评分；只处理所列日期与标的。</div></div></div>
+                  <div class="ai-step"><span class="ai-num">③</span><div><div class="s-title">完成后重检</div><div class="s-desc">数据项解决后仍需对账审核；不会因为一次修复就宣称组合已恢复。</div></div></div>
+                </div>
+
+                <div class="note warn" style="margin-top:10px">可执行计划：仅处理 000001、2026-09-30、模型 A；不会触发交易。AI 不代替本人确认对账、模型变更或例外恢复。</div>
+                <div class="action-row">
+                  <button class="btn btn-primary" onclick="openAiPlan()"><svg class="icon icon-sm"><use href="#i-play"/></svg>预览并执行数据修复计划</button>
+                  <button class="btn" onclick="selectItem('recon')">查看对账缺失证据</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===================== ACCEPT VIEW ===================== -->
+  <section class="view" id="view-accept">
+    <div class="accept-head">
+      <div>
+        <h1>验收与记录</h1>
+        <div class="sub">版本切换验收用于方案变更；审计时间线用于还原一次处置的完整经过。</div>
+      </div>
+      <div class="subnav" role="tablist">
+        <button class="active" data-accept="dual" onclick="showAccept('dual')">版本切换验收</button>
+        <button data-accept="audit" onclick="showAccept('audit')">审计时间线</button>
+      </div>
+    </div>
+
+    <div id="accept-dual">
+      <div class="dual-grid">
+        <div class="panel card-pad">
+          <div class="card-title"><span>双跑验收</span><span class="chip admit">仅影响新方案切换</span></div>
+          <p class="card-sub">在相同组合、相同历史输入与相同截止时点下，分别运行当前方案与待验收方案，查看决策差异是否可解释。双跑不是每日对账的前置，也不自动切换方案。</p>
+
+          <div class="scenario-banner warn" id="capabilityBanner" style="margin:0 0 12px">
+            <svg class="icon" style="color:#fcd34d"><use href="#i-cpu"/></svg>
+            <div><b>当前环境未接通真实执行器</b><br>real_runner_available=false。不能启动真实验收，也不会生成可准入报告。</div>
+          </div>
+
+          <div class="snapshot-grid">
+            <div class="snapshot">
+              <div class="snap-top"><span class="snap-name">基线 · 当前已接受方案</span><span class="chip ok">B17</span></div>
+              <div class="snap-line"><span>执行来源</span><b>旧来源 · legacy</b></div>
+              <div class="snap-line"><span>构建</span><b>2026.09.18</b></div>
+              <div class="snap-line"><span>模型 / 策略</span><b>model A v18 / S12</b></div>
+              <div class="snap-line"><span>可重放</span><b class="tone-ok">是</b></div>
+            </div>
+            <div class="snapshot">
+              <div class="snap-top"><span class="snap-name">候选 · 待验收方案</span><span class="chip admit">C21</span></div>
+              <div class="snap-line"><span>执行来源</span><b>统一决策 · unified</b></div>
+              <div class="snap-line"><span>构建</span><b>2026.10.20</b></div>
+              <div class="snap-line"><span>模型 / 策略</span><b>model A v18 / S12</b></div>
+              <div class="snap-line"><span>可重放</span><b class="tone-warn">缺 09-30 评分</b></div>
+            </div>
+          </div>
+
+          <div class="section-title">预检</div>
+          <div class="preflight">
+            <div class="preflight-row"><span class="pr-label">验收区间</span><span class="pr-value">2026-09-01 ~ 2026-10-20</span></div>
+            <div class="preflight-row"><span class="pr-label">实际交易日</span><span class="pr-value">10 天（已剔除休市 8 天）</span></div>
+            <div class="preflight-row"><span class="pr-label">数据覆盖</span><span class="pr-value tone-danger">候选缺 09-30 评分</span></div>
+            <div class="preflight-row"><span class="pr-label">有效样本</span><span class="pr-value tone-warn">待运行，尚不能判定</span></div>
+            <div class="preflight-row"><span class="pr-label">互斥任务 / 锁</span><span class="pr-value tone-ok">无</span></div>
+            <div class="preflight-row"><span class="pr-label">结论</span><span class="pr-value tone-danger">不能启动：真实执行器未接通；另缺 09-30 评分</span></div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn btn-primary" disabled title="真实执行器未接通">启动真实双跑</button>
+            <button class="btn" onclick="showToast('info','已定位到 000001 评分缺口；请先完成数据修复')">补齐缺失评分</button>
+            <button class="btn btn-ghost" onclick="showDualDemo()">查看演示结果</button>
+          </div>
+          <div class="blocked-reason" style="text-align:left;margin-top:6px">启动按钮禁用：当前环境没有真实执行器；补齐评分后仍不能启动，需先接入真实执行器。原型不会用虚拟 runner 伪装通过。</div>
+        </div>
+
+        <div class="panel card-pad">
+          <div class="card-title"><span>验收环境</span><span class="chip">只读检查</span></div>
+          <p class="card-sub">这里只回答“当前环境能不能做真实验收”；方案与数据是否满足，看左侧预检。</p>
+          <table class="perm-table">
+            <thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>真实双链执行器</td><td class="tone-danger">未接通</td><td><div>当前环境没有真实执行器，无法启动真实验收。</div><div class="src-raw">G5_REAL_RUNNER_UNAVAILABLE</div></td></tr>
+              <tr><td>交易日历</td><td class="tone-ok">可信</td><td>已校验休市安排，国庆 8 天已剔除</td></tr>
+              <tr><td>历史双跑报告</td><td class="tone-warn">需复核</td><td>虚拟 / 空样本报告不参与准入</td></tr>
+              <tr><td>当前账号权限</td><td class="tone-info">可查看</td><td>不能代替本人确认切换或例外恢复</td></tr>
+              <tr><td>执行器注册表</td><td class="tone-danger">未建设</td><td>候选来源尚不能从真实注册表发现</td></tr>
+            </tbody>
+          </table>
+          <div class="note warn" style="margin-top:10px">结论：当前只能查看与准备，不能启动真实验收；演示结果不作为准入依据。</div>
+        </div>
+      </div>
+
+      <div id="dualDemo" hidden style="margin-top:14px">
+        <div class="scenario-banner warn">
+          <svg class="icon" style="color:#fcd34d"><use href="#i-alert"/></svg>
+          <div><b>演示数据 · 不可用于准入</b><br>以下结果用于评审交互，由原型静态数据生成；没有真实运行证据，不能作为切换或扩大范围的依据。</div>
+        </div>
+
+        <div class="result-grid">
+          <div class="panel card-pad">
+            <div class="card-title"><span>逐日结果</span><span class="demo-badge">DEMO DATA</span></div>
+            <div class="stat-row" style="margin-bottom:10px">
+              <div class="stat"><div class="sl">平均动作一致率</div><div class="sv" id="demoMatch">96.4%</div></div>
+              <div class="stat"><div class="sl">Universe Jaccard</div><div class="sv" id="demoJaccard">0.91</div></div>
+              <div class="stat"><div class="sl">P0 未解释</div><div class="sv" id="demoP0">0</div></div>
+              <div class="stat"><div class="sl">有效样本日</div><div class="sv" id="demoDays">10</div></div>
+            </div>
+            <div class="day-list" id="dayList">
+              <div class="day-item is-active" data-day="2026-10-09" onclick="selectDualDay('2026-10-09')"><span class="d-date">10-09</span><span class="tone-ok">通过 · P0 0</span><span class="mono">98.1%</span></div>
+              <div class="day-item" data-day="2026-09-30" onclick="selectDualDay('2026-09-30')"><span class="d-date">09-30</span><span class="tone-danger">失败 · P0 2</span><span class="mono">91.7%</span></div>
+              <div class="day-item" data-day="2026-09-29" onclick="selectDualDay('2026-09-29')"><span class="d-date">09-29</span><span class="tone-ok">通过 · P0 0</span><span class="mono">97.2%</span></div>
+              <div class="day-item" data-day="2026-09-28" onclick="selectDualDay('2026-09-28')"><span class="d-date">09-28</span><span class="tone-ok">通过 · P0 0</span><span class="mono">96.8%</span></div>
+              <div class="day-item" data-day="2026-09-25" onclick="selectDualDay('2026-09-25')"><span class="d-date">09-25</span><span class="tone-ok">通过 · P0 0</span><span class="mono">95.9%</span></div>
+            </div>
+            <div class="note warn" style="margin-top:10px">09-30 的差异用于展示“有解释不等于自动合格”；需按验收策略复验，不能靠备注清零。</div>
+          </div>
+
+          <div class="panel card-pad">
+            <div class="card-title"><span>当日证据</span><span class="mono" id="demoDayLabel">2026-10-09</span></div>
+            <div class="note" id="demoDayNote">该日双侧均有有效样本；差异为 0。矩阵仅显示当前所选交易日。</div>
+            <div class="section-title">6×6 动作矩阵</div>
+            <div style="overflow:auto">
+              <table class="matrix" id="matrix">
+                <thead><tr><th>旧 \ 新</th><th>买入</th><th>有限风险卖出</th><th>持有</th><th>拒绝/阻断</th><th>风险退出</th><th>无动作/归档</th></tr></thead>
+                <tbody id="matrixBody"></tbody>
+              </table>
+            </div>
+            <div class="section-title">归因</div>
+            <table class="attr-table">
+              <thead><tr><th>分类</th><th>数量</th><th>处理</th></tr></thead>
+              <tbody id="attrBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel card-pad" style="margin-top:14px">
+          <div class="card-title"><span>逐标的差异</span><span class="chip warn">需按策略复核</span></div>
+          <table class="evidence-table">
+            <thead><tr><th>标的</th><th>基线动作</th><th>候选动作</th><th>归因</th><th>处理</th></tr></thead>
+            <tbody>
+              <tr><td class="num">000001</td><td>买入</td><td>持有</td><td class="tone-warn">执行时点差异</td><td>确认是否属允许差异</td></tr>
+              <tr><td class="num">600519</td><td>持有</td><td>持有</td><td class="tone-ok">一致</td><td>—</td></tr>
+              <tr><td class="num">300750</td><td>拒绝</td><td>拒绝</td><td class="tone-ok">一致</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="accept-audit" hidden>
+      <div class="panel">
+        <div class="audit-toolbar">
+          <select id="auditType" onchange="filterAudit()">
+            <option value="">全部事件</option>
+            <option value="recon">对账</option>
+            <option value="data">数据修复</option>
+            <option value="state">状态 / 审核</option>
+            <option value="dual">双跑验收</option>
+            <option value="ai">AI 建议</option>
+          </select>
+          <select id="auditActor" onchange="filterAudit()">
+            <option value="">全部操作人</option>
+            <option value="self">本人</option>
+            <option value="system">系统</option>
+            <option value="scheduler">调度</option>
+          </select>
+          <input id="auditSearch" placeholder="搜索标的 / 报告 / 追踪号" oninput="filterAudit()" />
+          <label class="switch"><input type="checkbox" id="auditSince" onchange="filterAudit()" />自上次对账以来</label>
+          <button class="btn btn-ghost" onclick="resetAudit()">重置</button>
+          <div style="margin-left:auto"><button class="btn" onclick="showToast('info','已生成证据包（原型演示）')">导出证据包</button></div>
+        </div>
+        <div style="padding:4px 16px 16px" id="timelineWrap">
+          <div class="timeline" id="timeline">
+
+            <div class="timeline-day" data-day="2026-10-22">
+              <div class="td-label">2026-10-22 · 今天</div>
+
+              <div class="event" data-type="recon" data-actor="self" data-before-last="0" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">10:42</div>
+                  <div class="e-main">
+                    <div class="e-title">本人提交对账修复确认 <span class="chip ok">已完成</span></div>
+                    <div class="e-desc">依据报告 R17 v3，缺失成交关联已补齐，持仓与现金检查通过；已解除对账阻断，评分缺口仍待处理。</div>
+                    <div class="e-meta"><span>actor: 本人</span><span>corr: c_api_7f31</span><span>report: R17 v3</span></div>
+                  </div>
+                </div>
+                <div class="e-details">
+                  <dl><dt>动作</dt><dd>RECONCILIATION_ACK</dd><dt>归属交易日</dt><dd>2026-09-30</dd><dt>解除范围</dt><dd>仅对账维度；000001 评分仍阻断</dd><dt>证据哈希</dt><dd>sha256:9c1e…a72f</dd></dl>
+                  <div class="e-actions"><button class="btn" onclick="event.stopPropagation();showToast('info','已打开报告 R17 v3（原型演示）')">查看报告</button><button class="btn" onclick="event.stopPropagation();showView('todo');selectItem('recon')">相关待办</button></div>
+                </div>
+              </div>
+
+              <div class="event" data-type="data" data-actor="system" data-before-last="0" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">10:35</div>
+                  <div class="e-main">
+                    <div class="e-title">数据修复任务 T-8821 完成 <span class="chip ok">部分完成</span></div>
+                    <div class="e-desc">000001 日K已同步；成交量指标重算完成；模型 A 评分重算进入队列。修复范围仅限 000001 / 2026-09-30。</div>
+                    <div class="e-meta"><span>actor: system</span><span>task: T-8821</span><span>idempotency: data-000001-0930</span></div>
+                  </div>
+                </div>
+                <div class="e-details">
+                  <dl><dt>动作</dt><dd>REPAIR_TASK_RESULT</dd><dt>结果</dt><dd>partial_success</dd><dt>已处理</dt><dd>日K / 指标</dd><dt>待处理</dt><dd>评分重算</dd></dl>
+                  <div class="e-actions"><button class="btn" onclick="event.stopPropagation();selectItem('data')">查看任务</button></div>
+                </div>
+              </div>
+
+              <div class="event" data-type="recon" data-actor="system" data-before-last="0" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">10:32</div>
+                  <div class="e-main">
+                    <div class="e-title">系统检测到 09-30 缺执行证据 <span class="chip danger">MISSED_EXECUTION</span></div>
+                    <div class="e-desc">当时接管与调度已启用；账户活动已核验为 0；未发现成功运行或失败任务。结论进入漏跑处置，不直接补历史交易。</div>
+                    <div class="e-meta"><span>actor: system</span><span>trade_date: 09-30</span><span>snapshot: v17</span></div>
+                  </div>
+                </div>
+                <div class="e-details">
+                  <dl><dt>动作</dt><dd>RECONCILIATION_RESULT</dd><dt>verdict</dt><dd>MISSED_EXECUTION</dd><dt>证据</dt><dd>无决策记录；订单 0；成交 0；现金流水 0</dd><dt>游标</dt><dd>不推进</dd></dl>
+                  <div class="e-actions"><button class="btn" onclick="event.stopPropagation();showView('todo');selectItem('recon')">查看待办</button></div>
+                </div>
+              </div>
+
+              <div class="event" data-type="state" data-actor="self" data-before-last="0" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">09:58</div>
+                  <div class="e-main">
+                    <div class="e-title">运行状态审核材料被查看 <span class="chip">只读</span></div>
+                    <div class="e-desc">查看了 09-30 对账材料与当前能力；未提交确认。材料齐全度 3/4，缺执行证据。</div>
+                    <div class="e-meta"><span>actor: 本人</span><span>snapshot: v17</span></div>
+                  </div>
+                </div>
+                <div class="e-details"><dl><dt>动作</dt><dd>REVIEW_VIEWED</dd><dt>结果</dt><dd>未改变状态</dd></dl></div>
+              </div>
+            </div>
+
+            <div class="timeline-day" data-day="2026-10-21" data-before-last="1">
+              <div class="td-label">2026-10-21 · 昨日</div>
+
+              <div class="event" data-type="dual" data-actor="system" data-before-last="1" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">16:20</div>
+                  <div class="e-main">
+                    <div class="e-title">双跑报告查询被拒绝 <span class="chip danger">NOT_FOUND</span></div>
+                    <div class="e-desc">请求的 replay_id 不存在；系统返回 404，没有生成虚拟通过结果。准入仍为阻断。</div>
+                    <div class="e-meta"><span>actor: system</span><span>replay: g5-missing-01</span></div>
+                  </div>
+                </div>
+                <div class="e-details"><dl><dt>动作</dt><dd>G5_QUERY_REJECTED</dd><dt>错误码</dt><dd>G5_REPORT_NOT_FOUND</dd><dt>影响</dt><dd>仅新方案准入；日常买入不变</dd></dl></div>
+              </div>
+
+              <div class="event" data-type="ai" data-actor="self" data-before-last="1" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">15:04</div>
+                  <div class="e-main">
+                    <div class="e-title">AI 建议被查看，未执行 <span class="chip">只读</span></div>
+                    <div class="e-desc">AI 建议先核查 09-30 执行证据，再修复 000001 数据缺口；用户未采纳执行。</div>
+                    <div class="e-meta"><span>actor: 本人</span><span>context: snapshot v17</span><span>refs: E-09-30-01 / E-000001-07</span></div>
+                  </div>
+                </div>
+                <div class="e-details"><dl><dt>动作</dt><dd>AI_PLAN_REJECTED</dd><dt>原因</dt><dd>用户暂不执行</dd><dt>建议版本</dt><dd>plan-7f2</dd></dl></div>
+              </div>
+            </div>
+
+            <div class="timeline-day" data-day="2026-09-30" data-before-last="1">
+              <div class="td-label">2026-09-30 · 归属交易日</div>
+
+              <div class="event" data-type="state" data-actor="scheduler" data-before-last="1" onclick="toggleEvent(this)">
+                <div class="e-top">
+                  <div class="e-time">20:30</div>
+                  <div class="e-main">
+                    <div class="e-title">调度窗口开启，未发现成功运行 <span class="chip danger">未触发</span></div>
+                    <div class="e-desc">调度任务按配置触发，但未创建 auto_simulation；无失败记录。该事实进入次日对账证据。</div>
+                    <div class="e-meta"><span>actor: scheduler</span><span>trade_date: 09-30</span></div>
+                  </div>
+                </div>
+                <div class="e-details"><dl><dt>动作</dt><dd>SCHEDULE_WINDOW_OPENED</dd><dt>结果</dt><dd>no_decision_run</dd><dt>关联</dt><dd>recon:09-30</dd></dl></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="statusbar">
+    <span>CHECKED 10:32:18 · SNAPSHOT v17 · DATA CUTOFF 10:30</span>
+    <span>↑↓ 选择 · Enter 打开 · R 重新检查</span>
+    <div class="sb-right"><span>原型演示 · 数据为示例</span><span>不写入交易账本</span></div>
+  </footer>
+</div>
+
+<!-- ===================== MODALS ===================== -->
+<div class="modal-backdrop" id="modal-force" role="dialog" aria-modal="true" aria-labelledby="forceTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2 id="forceTitle">申请例外恢复</h2><div class="m-sub">默认关闭的高级能力；只处理已核验的特定流程阻断，不改变真实差异。</div></div>
+      <button class="icon-btn" onclick="closeModal('modal-force')" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="forceReason">理由类型</label>
+        <select id="forceReason">
+          <option value="">请选择</option>
+          <option value="broker">券商侧已确认，系统证据延迟</option>
+          <option value="known_false_positive">已知误报，待上游修复</option>
+          <option value="emergency">紧急风险处置</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="forceNote">说明（至少 30 字）</label>
+        <textarea id="forceNote" placeholder="说明已核验的范围、证据来源、影响与后续计划。"></textarea>
+        <div class="hint" id="forceNoteHint">0 字 / 至少 30 字</div>
+      </div>
+      <div class="field">
+        <label class="check-row"><input type="checkbox" id="forceAck" /> 我已阅读审核材料，理解例外恢复不会把报告改为通过，也不推进对账游标。</label>
+      </div>
+      <div class="field">
+        <label for="forceConfirm">输入“强制恢复”确认</label>
+        <input id="forceConfirm" placeholder="强制恢复" autocomplete="off" />
+      </div>
+      <div class="note danger">例外恢复只临时解除指定能力范围；真实现金/持仓差异、读库失败或未知成交不能靠备注豁免。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-force')">取消</button>
+      <button class="btn btn-danger" id="forceSubmit" disabled onclick="submitForce()">提交例外恢复</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-recon" role="dialog" aria-modal="true" aria-labelledby="reconTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2 id="reconTitle">核查 09-30 漏跑</h2><div class="m-sub">先查事实，再决定补跑、补证或记录未执行；不自动补历史交易。</div></div>
+      <button class="icon-btn" onclick="closeModal('modal-recon')" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="radio-list">
+        <label class="radio-card"><input type="radio" name="reconAction" value="inspect" checked /><div><div class="rc-title">创建只读核查任务</div><div class="rc-desc">定位调度、任务、订单与账本记录；不写交易事实。推荐先做这一步。</div></div></label>
+        <label class="radio-card" style="opacity:.55"><input type="radio" name="reconAction" value="rerun" disabled /><div><div class="rc-title">补跑仍有效的执行计划 <span class="chip warn">条件未满足</span></div><div class="rc-desc">历史回放不写实际订单；只有当前计划仍有效且通过原执行门禁时才允许。</div></div></label>
+        <label class="radio-card" style="opacity:.55"><input type="radio" name="reconAction" value="accept" disabled /><div><div class="rc-title">记录未执行并申请恢复 <span class="chip warn">策略默认关闭</span></div><div class="rc-desc">需完整无活动证据、本人审核与授权策略；不写成“执行成功”。</div></div></label>
+      </div>
+      <div class="note warn" style="margin-top:12px">本操作只创建核查任务，不会改变组合状态，也不会把差异清零。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-recon')">取消</button>
+      <button class="btn btn-primary" onclick="submitReconAction()">创建核查任务</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-ai" role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2 id="aiTitle">预览并执行数据修复计划</h2><div class="m-sub">只处理 000001 / 2026-09-30 / 模型 A；不会触发交易。</div></div>
+      <button class="icon-btn" onclick="closeModal('modal-ai')" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <table class="evidence-table">
+        <thead><tr><th>步骤</th><th>对象</th><th>动作</th><th>依赖</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>000001 / 09-30</td><td>同步日K</td><td>—</td></tr>
+          <tr><td class="num">2</td><td>000001 / 09-30</td><td>重算成交量指标</td><td>步骤 1</td></tr>
+          <tr><td class="num">3</td><td>000001 / 09-30</td><td>重算模型 A 评分</td><td>步骤 2</td></tr>
+        </tbody>
+      </table>
+      <div class="note warn" style="margin-top:10px">执行后只解决数据项；若对账仍阻断，会显示“数据项已解决，还需完成 09-30 核对”。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-ai')">取消</button>
+      <button class="btn btn-primary" onclick="submitAiPlan()">确认执行</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-root" aria-live="polite"></div>
+
+<script>
+const state = {
+  scenario: 'blocked',
+  view: 'todo',
+  selected: 'recon',
+  panel: 'detail',
+  dualDay: '2026-10-09',
+  forceBypass: false,
+  aiRunning: false
+};
+
+const SCENARIO_META = {
+  blocked: {
+    label: '对账未完成，已暂停', enum: 'RECONCILIATION_BLOCKED', tone: 'danger',
+    reason: '原因：2026-09-30 对账缺执行证据；000001 评分过期。新买入已阻断，风险退出仍允许。',
+    kpi: ['2','1','1','0'], nav: '2', selected: 'recon'
+  },
+  healthy: {
+    label: '可以运行', enum: 'READY', tone: 'ok',
+    reason: '原因：没有待处理阻断；数据、评分、策略、对账均已通过。',
+    kpi: ['0','0','0','3'], nav: '0', selected: 'healthy'
+  },
+  processing: {
+    label: '数据修复中，新买入仍暂停', enum: 'RECONCILIATION_BLOCKED', tone: 'warn',
+    reason: '原因：修复任务 T-8821 运行中；对账与评分阻断仍在，完成后自动重检。',
+    kpi: ['2','1','1','0'], nav: '2', selected: 'data'
+  },
+  permission: {
+    label: '对账未完成，已暂停', enum: 'RECONCILIATION_BLOCKED', tone: 'danger',
+    reason: '原因：当前账号无审核权限；可以查看证据，不能确认对账或提交例外恢复。',
+    kpi: ['2','1','1','0'], nav: '2', selected: 'recon'
+  },
+  error: {
+    label: '检查服务暂不可用', enum: 'READ_UNAVAILABLE', tone: 'danger',
+    reason: '原因：readiness 503。当前不能读取待处理事项；未知不是 0。',
+    kpi: ['—','—','—','—'], nav: '—', selected: 'error'
+  },
+  holiday: {
+    label: '休市日，无需对账', enum: 'MARKET_CLOSED', tone: 'info',
+    reason: '原因：10-01 至 10-08 休市，对账任务自动跳过；账户活动仍独立核验。',
+    kpi: ['1','0','0','0'], nav: '1', selected: 'recon'
+  }
+};
+
+const DAY_DATA = {
+  '2026-10-09': {
+    label: '2026-10-09', note: '该日双侧均有有效样本；差异为 0。矩阵仅显示当前所选交易日。',
+    match: '98.1%', jaccard: '0.94', p0: '0',
+    matrix: [
+      [0,0,0,0,0,0],
+      [0,0,0,0,0,0],
+      [0,0,14,0,0,1],
+      [0,0,0,3,0,0],
+      [0,0,0,0,2,0],
+      [0,0,1,0,0,9]
+    ],
+    attr: [['参数配置差异','0','—'],['风险配置差异','0','—'],['评分版本不一致','0','—'],['执行时点差异','1','已解释'],['未知引擎差异','0','—']]
+  },
+  '2026-09-30': {
+    label: '2026-09-30', note: '该日存在 2 条 P0 未解释差异；矩阵仅显示当前所选交易日，不能用首日结果代表全区间。',
+    match: '91.7%', jaccard: '0.86', p0: '2',
+    matrix: [
+      [0,0,2,1,0,0],
+      [0,0,0,0,0,0],
+      [1,0,12,0,0,0],
+      [0,0,0,3,0,0],
+      [0,0,0,0,2,0],
+      [0,0,1,0,0,8]
+    ],
+    attr: [['参数配置差异','0','—'],['风险配置差异','1','需修复后复验'],['评分版本不一致','0','—'],['执行时点差异','1','已解释'],['未知引擎差异','2','不可准入']]
+  },
+  '2026-09-29': {
+    label: '2026-09-29', note: '该日双侧均有有效样本；差异为 0。矩阵仅显示当前所选交易日。',
+    match: '97.2%', jaccard: '0.93', p0: '0',
+    matrix: [
+      [0,0,0,0,0,0],
+      [0,0,0,0,0,0],
+      [0,0,11,0,0,1],
+      [0,0,0,4,0,0],
+      [0,0,0,0,2,0],
+      [0,0,1,0,0,8]
+    ],
+    attr: [['参数配置差异','0','—'],['风险配置差异','0','—'],['评分版本不一致','0','—'],['执行时点差异','1','已解释'],['未知引擎差异','0','—']]
+  },
+  '2026-09-28': {
+    label: '2026-09-28', note: '该日双侧均有有效样本；差异为 0。矩阵仅显示当前所选交易日。',
+    match: '96.8%', jaccard: '0.92', p0: '0',
+    matrix: [
+      [0,0,0,0,0,0],
+      [0,0,0,0,0,0],
+      [0,0,10,0,0,2],
+      [0,0,0,5,0,0],
+      [0,0,0,0,1,0],
+      [0,0,1,0,0,7]
+    ],
+    attr: [['参数配置差异','0','—'],['风险配置差异','0','—'],['评分版本不一致','0','—'],['执行时点差异','1','已解释'],['未知引擎差异','0','—']]
+  },
+  '2026-09-25': {
+    label: '2026-09-25', note: '该日双侧均有有效样本；差异为 0。矩阵仅显示当前所选交易日。',
+    match: '95.9%', jaccard: '0.90', p0: '0',
+    matrix: [
+      [0,0,0,0,0,0],
+      [0,0,0,0,0,0],
+      [0,0,9,0,0,1],
+      [0,0,0,6,0,0],
+      [0,0,0,0,2,0],
+      [0,0,1,0,0,8]
+    ],
+    attr: [['参数配置差异','0','—'],['风险配置差异','0','—'],['评分版本不一致','0','—'],['执行时点差异','1','已解释'],['未知引擎差异','0','—']]
+  }
+};
+
+const ACTION_LABELS = ['买入','有限风险卖出','持有','拒绝/阻断','风险退出','无动作/归档'];
+
+function qs(sel, root=document){ return root.querySelector(sel); }
+function qsa(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
+
+function showToast(type, msg){
+  const root = qs('#toast-root');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'info');
+  const icon = type === 'ok' ? 'check' : type === 'danger' ? 'alert' : type === 'warn' ? 'alert' : 'spark';
+  el.innerHTML = '<svg class="icon icon-sm"><use href="#i-' + icon + '"/></svg><div>' + msg + '</div>';
+  root.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; el.style.transition = 'all .25s'; }, 3200);
+  setTimeout(() => el.remove(), 3600);
+}
+
+function showView(view){
+  state.view = view;
+  qsa('.view').forEach(v => v.classList.remove('active'));
+  const target = qs('#view-' + view);
+  if (target) target.classList.add('active');
+  qsa('.nav-tab').forEach(b => {
+    const active = (view === 'todo' && b.dataset.view === 'todo') || (view === 'accept' && b.dataset.view === 'accept');
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  if (view === 'accept') showAccept('dual');
+}
+
+function showAccept(which){
+  qs('#accept-dual').hidden = which !== 'dual';
+  qs('#accept-audit').hidden = which !== 'audit';
+  qsa('[data-accept]').forEach(b => b.classList.toggle('active', b.dataset.accept === which));
+}
+
+function selectItem(id){
+  state.selected = id;
+  state.panel = 'detail';
+  qsa('[data-item]').forEach(r => r.classList.toggle('is-active', r.dataset.item === id));
+  qsa('[data-detail]').forEach(d => d.classList.toggle('is-active', d.dataset.detail === id));
+  qsa('.detail-tab').forEach(t => {
+    const active = t.dataset.panel === 'detail';
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  const body = qs('#detailBody');
+  if (body) body.scrollTop = 0;
+}
+
+function switchPanel(panel){
+  state.panel = panel;
+  qsa('.detail-tab').forEach(t => {
+    const active = t.dataset.panel === panel;
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  qsa('[data-detail]').forEach(d => d.classList.toggle('is-active', d.dataset.detail === panel));
+  const body = qs('#detailBody');
+  if (body) body.scrollTop = 0;
+}
+
+function applyScenario(name){
+  state.scenario = name;
+  const meta = SCENARIO_META[name] || SCENARIO_META.blocked;
+  document.body.dataset.scenario = name;
+  qs('#scenarioSelect').value = name;
+
+  const label = qs('#stateLabel'), en = qs('#stateEnum'), reason = qs('#healthReason'), dot = qs('#stateDot');
+  if (label) label.textContent = meta.label;
+  if (en) en.textContent = meta.enum;
+  if (reason) reason.textContent = meta.reason;
+  if (dot) {
+    dot.className = 'status-dot dot ' + (meta.tone === 'ok' ? 'ok' : meta.tone === 'warn' ? 'warn' : meta.tone === 'info' ? 'info' : 'danger') + (meta.tone === 'ok' ? '' : ' pulse');
+    dot.id = 'stateDot';
+  }
+
+  const kpis = [qs('#kpiBlock'), qs('#kpiAdmit'), qs('#kpiWarn'), qs('#kpiDone')];
+  kpis.forEach((el, i) => {
+    if (!el) return;
+    el.textContent = meta.kpi[i];
+    el.parentElement.classList.toggle('unknown', meta.kpi[i] === '—');
+  });
+  const navCount = qs('#navCount');
+  if (navCount) navCount.textContent = meta.nav;
+
+  qsa('[data-scenario]').forEach(el => {
+    const list = (el.dataset.scenario || '').split(',').map(s => s.trim());
+    el.hidden = !list.includes(name);
+  });
+
+  // Ensure the detail pane shows a visible block for the scenario.
+  let selected = meta.selected;
+  if (name === 'blocked' || name === 'permission') selected = 'recon';
+  if (name === 'processing') selected = 'data';
+  if (name === 'holiday') selected = 'recon';
+  selectItem(selected);
+
+  if (name === 'permission') {
+    qsa('.requires-admin').forEach(el => { el.disabled = true; el.title = '需要 admin 角色'; });
+  }
+}
+
+function recheck(){
+  const btn = qs('#recheckBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="icon icon-sm spin"><use href="#i-refresh"/></svg>检查中';
+  }
+  setTimeout(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="icon icon-sm"><use href="#i-refresh"/></svg>重新检查';
+    }
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0');
+    const mm = String(now.getMinutes()).padStart(2,'0');
+    const checkTime = qs('#checkTime');
+    if (checkTime) checkTime.textContent = hh + ':' + mm;
+    if (state.scenario === 'error') {
+      showToast('danger', '检查服务仍不可用（readiness 503）；未显示为通过');
+    } else if (state.scenario === 'healthy') {
+      showToast('ok', '已重新检查：全部通过');
+    } else if (state.scenario === 'processing') {
+      showToast('info', '修复任务仍在运行；完成后会自动重检');
+    } else {
+      showToast('warn', '已重新检查：仍有 ' + (state.scenario === 'holiday' ? '1' : '2') + ' 项阻断');
+    }
+  }, 900);
+}
+
+function openForceRecovery(){
+  if (state.scenario === 'permission') {
+    showToast('danger', '无权限：例外恢复需要 admin 角色');
+    return;
+  }
+  if (state.scenario === 'healthy') {
+    showToast('info', '当前没有需要例外恢复的阻断');
+    return;
+  }
+  qs('#forceNote').value = '';
+  qs('#forceConfirm').value = '';
+  qs('#forceAck').checked = false;
+  qs('#forceReason').value = '';
+  qs('#forceSubmit').disabled = true;
+  qs('#forceNoteHint').textContent = '0 字 / 至少 30 字';
+  qs('#modal-force').classList.add('open');
+  setTimeout(() => qs('#forceReason').focus(), 50);
+}
+
+function validateForce(){
+  const reason = qs('#forceReason').value;
+  const note = qs('#forceNote').value.trim();
+  const ack = qs('#forceAck').checked;
+  const confirm = qs('#forceConfirm').value.trim();
+  qs('#forceNoteHint').textContent = note.length + ' 字 / 至少 30 字';
+  qs('#forceSubmit').disabled = !(reason && note.length >= 30 && ack && confirm === '强制恢复');
+}
+
+function submitForce(){
+  if (qs('#forceSubmit').disabled) return;
+  closeModal('modal-force');
+  state.forceBypass = true;
+  const banner = qs('#forceBanner');
+  if (banner) banner.hidden = false;
+  const btn = qs('#forceBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '例外运行中';
+  }
+  showToast('danger', '已记录例外恢复：范围、期限、操作者与证据快照已写入审计');
+  appendAuditEvent({
+    type: 'state', actor: 'self',
+    title: '提交例外恢复', chip: 'DANGER', chipTone: 'danger',
+    desc: '以“券商侧已确认，系统证据延迟”为理由提交例外恢复；仅解除指定能力范围，不改变报告与游标。',
+    meta: ['actor: 本人', 'bypass: true', 'corr: c_api_' + Math.random().toString(16).slice(2,8)]
+  });
+}
+
+function openReconAction(){
+  qs('#modal-recon').classList.add('open');
+}
+
+function submitReconAction(){
+  closeModal('modal-recon');
+  showToast('info', '已创建核查任务 T-8822：只读定位调度、任务与账本记录');
+  appendAuditEvent({
+    type: 'recon', actor: 'self',
+    title: '创建 09-30 漏跑核查任务', chip: '进行中', chipTone: 'info',
+    desc: '只读核查调度、任务、订单与账本记录；不写交易事实，不改变组合状态。',
+    meta: ['actor: 本人', 'task: T-8822', 'trade_date: 09-30']
+  });
+}
+
+function openDataPlan(){
+  qs('#modal-ai').classList.add('open');
+}
+
+function submitAiPlan(){
+  closeModal('modal-ai');
+  state.aiRunning = true;
+  showToast('info', '已提交数据修复计划：000001 / 09-30 / 模型 A');
+  appendAuditEvent({
+    type: 'ai', actor: 'self',
+    title: '采纳 AI 数据修复计划', chip: '已授权', chipTone: 'ok',
+    desc: '授权范围仅限 000001、2026-09-30、模型 A；不触发交易。任务已提交。',
+    meta: ['actor: 本人', 'plan: ai-plan-7f2', 'scope: 000001 / 09-30']
+  });
+  setTimeout(() => {
+    showToast('warn', '数据修复部分完成：日K已同步；指标与评分重算仍在队列');
+  }, 1200);
+}
+
+function showDualDemo(){
+  const demo = qs('#dualDemo');
+  if (demo) demo.hidden = false;
+  const banner = qs('#capabilityBanner');
+  if (banner) banner.hidden = true;
+  showToast('warn', '已展开演示结果：数据为示例，不可用于准入');
+  renderDualDay(state.dualDay);
+  setTimeout(() => demo && demo.scrollIntoView({behavior:'smooth', block:'start'}), 60);
+}
+
+function hideDualDemo(){
+  const demo = qs('#dualDemo');
+  if (demo) demo.hidden = true;
+  const banner = qs('#capabilityBanner');
+  if (banner) banner.hidden = false;
+}
+
+function selectDualDay(day){
+  state.dualDay = day;
+  qsa('.day-item').forEach(el => el.classList.toggle('is-active', el.dataset.day === day));
+  renderDualDay(day);
+}
+
+function renderDualDay(day){
+  const data = DAY_DATA[day] || DAY_DATA['2026-10-09'];
+  qs('#demoMatch').textContent = data.match;
+  qs('#demoJaccard').textContent = data.jaccard;
+  qs('#demoP0').textContent = data.p0;
+  qs('#demoDayLabel').textContent = data.label;
+  qs('#demoDayNote').textContent = data.note;
+
+  const tbody = qs('#matrixBody');
+  if (tbody) {
+    tbody.innerHTML = '';
+    data.matrix.forEach((row, i) => {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = ACTION_LABELS[i];
+      th.style.textAlign = 'left';
+      tr.appendChild(th);
+      row.forEach((val, j) => {
+        const td = document.createElement('td');
+        td.textContent = val === 0 ? '·' : String(val);
+        td.className = i === j ? (val > 0 ? 'diag' : 'zero') : (val > 0 ? 'off' : 'zero');
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  const attrBody = qs('#attrBody');
+  if (attrBody) {
+    attrBody.innerHTML = '';
+    data.attr.forEach(([name, count, action]) => {
+      const tr = document.createElement('tr');
+      const tone = count === '0' ? 'tone-muted' : (action === '不可准入' ? 'tone-danger' : 'tone-warn');
+      tr.innerHTML = '<td>' + name + '</td><td class="num ' + tone + '">' + count + '</td><td>' + action + '</td>';
+      attrBody.appendChild(tr);
+    });
+  }
+}
+
+function toggleEvent(el){
+  el.classList.toggle('open');
+}
+
+function filterAudit(){
+  const type = qs('#auditType').value;
+  const actor = qs('#auditActor').value;
+  const q = qs('#auditSearch').value.trim().toLowerCase();
+  const since = qs('#auditSince').checked;
+  qsa('#timeline .event').forEach(ev => {
+    const typeOk = !type || ev.dataset.type === type;
+    const actorOk = !actor || ev.dataset.actor === actor;
+    const qOk = !q || ev.textContent.toLowerCase().includes(q);
+    const sinceOk = !since || ev.dataset.beforeLast === '0';
+    ev.hidden = !(typeOk && actorOk && qOk && sinceOk);
+  });
+  qsa('#timeline .timeline-day').forEach(day => {
+    const visible = qsa('.event', day).some(ev => !ev.hidden);
+    day.hidden = !visible;
+  });
+}
+
+function resetAudit(){
+  qs('#auditType').value = '';
+  qs('#auditActor').value = '';
+  qs('#auditSearch').value = '';
+  qs('#auditSince').checked = false;
+  filterAudit();
+}
+
+function appendAuditEvent({type, actor, title, chip, chipTone, desc, meta}){
+  const timeline = qs('#timeline');
+  if (!timeline) return;
+  const day = timeline.firstElementChild;
+  if (!day) return;
+  const ev = document.createElement('div');
+  ev.className = 'event';
+  ev.dataset.type = type;
+  ev.dataset.actor = actor;
+  ev.dataset.beforeLast = '0';
+  ev.onclick = function(){ toggleEvent(this); };
+  ev.innerHTML =
+    '<div class="e-top"><div class="e-time">' + new Date().toTimeString().slice(0,5) + '</div>' +
+    '<div class="e-main"><div class="e-title">' + title + ' <span class="chip ' + chipTone + '">' + chip + '</span></div>' +
+    '<div class="e-desc">' + desc + '</div><div class="e-meta">' + meta.map(m => '<span>' + m + '</span>').join('') + '</div></div></div>' +
+    '<div class="e-details"><dl><dt>动作</dt><dd>' + (type === 'state' ? 'FORCE_RECOVERY' : type === 'recon' ? 'RECON_TASK_REQUESTED' : 'AI_PLAN_ACCEPTED') + '</dd><dt>结果</dt><dd>recorded</dd><dt>审计位置</dt><dd>本次会话（原型）</dd></dl></div>';
+  day.insertBefore(ev, day.children[1] || null);
+}
+
+function closeModal(id){
+  const el = qs('#' + id);
+  if (el) el.classList.remove('open');
+}
+
+function init(){
+  qsa('.nav-tab').forEach(btn => {
+    btn.addEventListener('click', () => showView(btn.dataset.view));
+  });
+  qsa('.detail-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchPanel(btn.dataset.panel));
+  });
+  qsa('.row-item[data-item]').forEach(row => {
+    row.addEventListener('click', () => selectItem(row.dataset.item));
+    row.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectItem(row.dataset.item); }
+    });
+  });
+  qs('#scenarioSelect').addEventListener('change', e => applyScenario(e.target.value));
+  qs('#forceReason').addEventListener('change', validateForce);
+  qs('#forceNote').addEventListener('input', validateForce);
+  qs('#forceAck').addEventListener('change', validateForce);
+  qs('#forceConfirm').addEventListener('input', validateForce);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') qsa('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+    if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) recheck();
+  });
+  qsa('.modal-backdrop').forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+  });
+  applyScenario('blocked');
+  renderDualDay('2026-10-09');
+  filterAudit();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

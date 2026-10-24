@@ -4,7 +4,7 @@
 
 降级链配置(_CHAIN_CONFIG):
     cn-stock: em_stock -> sina_stock -> tx_stock -> tdx  (4 源,含本地兜底)
-    cn-etf:   em_etf -> sina_etf                        (2 源,无本地兜底)
+    cn-etf:   em_etf -> tx_etf -> sina_etf              (qfq禁止使用新浪raw)
     us-stock: us_em                                     (1 源)
 
 设计要点:
@@ -25,6 +25,7 @@ from app.services.market_data_sources.sources.akshare_source import (
     SinaETFSource,
     SinaStockSource,
     TxStockSource,
+    TxETFSource,
     USStockSource,
 )
 from app.services.market_data_sources.sources.base import HistorySource
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # 降级链配置:按 region-asset_type 组装,前面的优先级高
 _CHAIN_CONFIG: dict[str, list[str]] = {
     "cn-stock": ["em_stock", "sina_stock", "tx_stock", "tdx"],
-    "cn-etf": ["em_etf", "sina_etf"],
+    "cn-etf": ["em_etf", "tx_etf", "sina_etf"],
     "us-stock": ["us_em"],
 }
 
@@ -52,6 +53,7 @@ def _register(name: str, factory: Callable[[], HistorySource | None]) -> None:
 # akshare 源:无状态,每次新建
 _register("em_stock", lambda: EMStockSource())
 _register("em_etf", lambda: EMETFSource())
+_register("tx_etf", lambda: TxETFSource())
 _register("sina_stock", lambda: SinaStockSource())
 _register("sina_etf", lambda: SinaETFSource())
 _register("tx_stock", lambda: TxStockSource())

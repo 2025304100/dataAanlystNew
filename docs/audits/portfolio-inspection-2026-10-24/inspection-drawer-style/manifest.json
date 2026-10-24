@@ -1,0 +1,183 @@
+{
+  "date": "2026-10-24",
+  "scope": "history, original order association and runtime review drawer presentation",
+  "files": [
+    {
+      "path": "browser-result.json",
+      "bytes": 5663,
+      "sha256": "43d1f5915b0cfd5f9d4425a22f264161c85da5ae8987f83e0d26b792b231494c"
+    },
+    {
+      "path": "browser-run.log",
+      "bytes": 5874,
+      "sha256": "285fea801586bf87be0d7d42ae908cd72679298a40e20042b20f7eecb1ed077a"
+    },
+    {
+      "path": "evidence-1024.png",
+      "bytes": 63559,
+      "sha256": "8df69c6726fc3213ce3669f450fc1174ac5aeb2edf6114eec305c05166594823"
+    },
+    {
+      "path": "evidence-1440.png",
+      "bytes": 64898,
+      "sha256": "da8787102c002796b81e1d8c3a6df1f8e4243064c385e63eb8d2df4cefa4964b"
+    },
+    {
+      "path": "evidence-320.png",
+      "bytes": 54774,
+      "sha256": "4f2be0fc4174d80f52f08dc5eba9142caf5951e565c767a9993c1ae69dd299bc"
+    },
+    {
+      "path": "evidence-390.png",
+      "bytes": 61239,
+      "sha256": "77879442fa9efd03542dc7864fc73b4ea7a02d3c8ff23f69dba2b55f6615a269"
+    },
+    {
+      "path": "freeze.py",
+      "bytes": 5754,
+      "sha256": "33faff2c85682f4be13365c1838f36ebf0157cd0357fdce74e66011a2ead3b8b"
+    },
+    {
+      "path": "frontend-build-final.log",
+      "bytes": 3351,
+      "sha256": "04d1a63479f7b17b31e3cb6e8d9c6866900583f699e03258891febd7b50b2eba"
+    },
+    {
+      "path": "frontend-tests-final.log",
+      "bytes": 5230,
+      "sha256": "fa256fea58cbf0927ded846c1279c6203befcd0507024bbef482194d0be4e967"
+    },
+    {
+      "path": "history-1024.png",
+      "bytes": 83150,
+      "sha256": "f8ef3f27bcbe8f898e76f927a0a4464a96ce8c9f1c1a1da502c9625d54552bd1"
+    },
+    {
+      "path": "history-1440.png",
+      "bytes": 105012,
+      "sha256": "f5801926ebc733114267f915d824d8954589d86df04313bdaa94a247a986ab54"
+    },
+    {
+      "path": "history-320.png",
+      "bytes": 56976,
+      "sha256": "6ed96e97079244f8fd5075bd81ce3d15b1e98ef01a88c6afcef23462e880bbe5"
+    },
+    {
+      "path": "history-390.png",
+      "bytes": 74740,
+      "sha256": "bb616e857b9285f7861a186c2f4416394aaeb22897349e76e7d0717d4dfd1cf7"
+    },
+    {
+      "path": "history-detail.png",
+      "bytes": 97337,
+      "sha256": "c44b85fca33fc8419cd64d6affaea4ba2d0e4ac49ca2c7ed5748cef2e6009c21"
+    },
+    {
+      "path": "history-filtered.png",
+      "bytes": 102342,
+      "sha256": "5199b78f86a5f04f050dc1c98f6956ce711e4db82587d32c065a5fb374858c44"
+    },
+    {
+      "path": "history-material.png",
+      "bytes": 53614,
+      "sha256": "9cb266b18fe1a54e23ebf5e805cb0a6e96fc2709372d9ff0d951951a56fcc770"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3018,
+      "sha256": "a08563b28e91f1e9b682550b62ae9e71b581e80053250a315af115b5e9d1c9e2"
+    },
+    {
+      "path": "related-history.png",
+      "bytes": 108469,
+      "sha256": "46330ae58e514eb0d18c19fa16c95eb3fc2c951654978d9bef612ef886d766bf"
+    },
+    {
+      "path": "runtime-1024.png",
+      "bytes": 98650,
+      "sha256": "ca3c7327f6abc15083128943d18da7c0df145e1f766a240f9c4ebae9527545eb"
+    },
+    {
+      "path": "runtime-1440.png",
+      "bytes": 116105,
+      "sha256": "cf968b224553bd641c2c3125a1142ac92b7c24df24c78f37494d6a31c267e010"
+    },
+    {
+      "path": "runtime-320.png",
+      "bytes": 60501,
+      "sha256": "9c48b5d147a7a221010f83bfc040409b676457e3c8f106f41d678c625b0b61e1"
+    },
+    {
+      "path": "runtime-390.png",
+      "bytes": 81233,
+      "sha256": "be5a852406da09147924a714c711bdb36a7391985b7afd38d844887d818c94c1"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 12341,
+      "sha256": "144674f14a79a05b2ee4ff38c041fe853de8210bdf67e0ad7a8f70f0280fc573"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionSurface.tsx",
+      "bytes": 2100,
+      "sha256": "393ab5de146f77f1a1cfa1f920478fc46f2cda3035bb67f87b7ae828866ee2d2"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/inspectionSurfaces.css",
+      "bytes": 13339,
+      "sha256": "9dd80724a40477a36312475acc40cda346d6c7f8ca72d6c5ae68dc597e3b0083"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionDrawer.tsx",
+      "bytes": 3660,
+      "sha256": "f86e1e97dc498f9a90027e01423efc0d7ac40046a3ec0b1a9180d530b4ec1850"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionHistoryPanel.tsx",
+      "bytes": 38073,
+      "sha256": "b1e76951ca3582e4d3682862151e01061648ce8bb02498b047688094446a72ed"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/inspectionHistory.css",
+      "bytes": 11486,
+      "sha256": "bff07ad8d72ec9b765c7d46461ad4f92cc5158daa6636aba6294934ae4d4c77a"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionEvidencePanel.tsx",
+      "bytes": 13214,
+      "sha256": "3aa35183a3bb1820e0d7c2599a426f4844217684e2a40fbd6a069c9441ef638b"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionRuntimeReview.tsx",
+      "bytes": 6510,
+      "sha256": "75b43d67552ad329fab5fe4f95095bf3fcd4e01fa10125bd58523b79284679b4"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx",
+      "bytes": 68738,
+      "sha256": "04b963f0ec9749a15c0e7fa7fc918e07aa8c1e5243daffc7afd0f0bc5b51f62b"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/ReconciliationQuickCheckModal.tsx",
+      "bytes": 15285,
+      "sha256": "63ef207e1edce96e5fc70fd76e53c7659785380622d3d97a89f2102d4fe3d1f1"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx",
+      "bytes": 46792,
+      "sha256": "97ba3b1be94693faefd7e345cb420605a8789de40e23ae444ccdd3e02b22a79c"
+    },
+    {
+      "path": "docs/组合交易检查与对账-功能闭环与交互重构设计-2026-10-21.md",
+      "bytes": 152728,
+      "sha256": "e3ccf768c82e9e701f4a40944af7531c7f8bca2065845f3f4cb22acf0b7569f9"
+    },
+    {
+      "path": "docs/组合交易检查与对账-设计与v10逐项核查及补齐记录-2026-10-23.md",
+      "bytes": 76068,
+      "sha256": "5349042e7f751213b1cecde790c7e7a80e76eadbfca24ca935f56992464c24a6"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "protected_tables": 25,
+  "unchanged_tables_before_to_after": 24,
+  "changed_before_to_after": [
+    "scheduled_tasks"
+  ],
+  "all_25_stable_after_controlled_restart_and_during_browser_review": true,
+  "schedule_observation": {
+    "schedule_id": 16,
+    "type": "portfolio_reconciliation",
+    "dispatch_id": 860,
+    "dispatched_at_utc": "2026-10-24 00:03:32",
+    "controlled_backend_started_at_shanghai": "2026-10-24 08:05:29",
+    "note": "The ordinary backend dispatched automatic reconciliation before the controlled restart. Its schedule metadata changed in the initial window. This is recorded separately; no claim is made that all 25 tables were unchanged over the full window."
+  },
+  "main_unchanged": true,
+  "auto_trade_tasks": 16,
+  "automatic_dispatches": 66,
+  "active_tasks_after": [],
+  "audit_before": 3772,
+  "audit_after": 3775,
+  "own_repair_audit_ids": [
+    3773,
+    3774,
+    3775
+  ],
+  "material_notes_unchanged": true,
+  "daily_bar_state": [
+    {
+      "symbol_id": 1,
+      "latest_date": "2026-10-23",
+      "target_rows": "3"
+    },
+    {
+      "symbol_id": 2,
+      "latest_date": "2026-10-20",
+      "target_rows": "0"
+    },
+    {
+      "symbol_id": 3215,
+      "latest_date": "2026-10-23",
+      "target_rows": "3"
+    }
+  ]
+}

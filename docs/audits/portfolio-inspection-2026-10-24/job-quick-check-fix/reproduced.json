@@ -1,0 +1,9 @@
+{
+  "job_visible": false,
+  "day_visible": true,
+  "centered_quick_modal": 0,
+  "new_reads": [
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29"
+  ],
+  "writes": []
+}

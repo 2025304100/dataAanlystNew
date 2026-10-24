@@ -1,0 +1,10 @@
+{
+  "portfolio_id": 1,
+  "current_state": "RECONCILIATION_BLOCKED",
+  "last_decision_trade_date": null,
+  "last_reconciled_trade_date": "2026-09-28",
+  "allowed_transitions": [
+    "ADMIN_PAUSED"
+  ],
+  "is_auto_simulation_eligible": false
+}

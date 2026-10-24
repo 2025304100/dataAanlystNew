@@ -1,0 +1,60 @@
+{
+  "provider": "tencent_etf",
+  "unit_contract": "tencent-etf-named-fund-units-v1",
+  "official_page": "https://gu.qq.com/sh510300",
+  "official_client": "https://st.gtimg.com/quotes/hs-fund/bundle.13362df9.js",
+  "official_client_sha256": "58ba2828754c5b5fe2db1a1c7d1c8fb35a4fa2e21c46e4b03b768a235b88db8c",
+  "endpoint": "https://proxy.finance.qq.com/cgi/cgi-bin/stockinfoquery/kline/app/get",
+  "request_adjustment": "qfq",
+  "returned_adjustment_field": "data.fqtype",
+  "identity_fields": [
+    "data.stockCode",
+    "data.qt.fields[2]",
+    "data.qt.fields[61]",
+    "data.qt.fields[82]"
+  ],
+  "field_mapping": {
+    "open": "open",
+    "high": "high",
+    "low": "low",
+    "last": "close",
+    "volume": "volume:fund_unit",
+    "amount": "amount:CNY",
+    "exchangeRaw": "turnover_rate:percentage_point"
+  },
+  "conversion": {
+    "volume_multiplier": 1,
+    "amount_multiplier": 1,
+    "turnover_multiplier": 1
+  },
+  "official_client_interpretation": "具名日K成交量按100份一手展示，金额按10000元换算为万元；本地直接保存基金份额及人民币元，不再乘100。",
+  "cross_check": {
+    "status": "PASSED",
+    "reference_trade_dates": [
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-19",
+      "2026-10-20"
+    ],
+    "reference_count": 7,
+    "max_absolute_differences": {
+      "price": 0.0,
+      "volume_fund_units": 36.0,
+      "amount_CNY": 0.0
+    },
+    "volume_unit": "fund_unit",
+    "amount_unit": "CNY",
+    "price_basis": "qfq",
+    "point_in_time_certified": false
+  },
+  "raw_qfq_quantities_equal": true,
+  "target_trade_dates": [
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23"
+  ],
+  "point_in_time_certified": false
+}

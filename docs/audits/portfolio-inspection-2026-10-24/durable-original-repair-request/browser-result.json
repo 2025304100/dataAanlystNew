@@ -1,0 +1,2448 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "checks": [
+    "发送前原请求已持久保存，另一标签立即保留同一标识并暂停另起请求；真实Web Locks确认发送中互斥",
+    "发起页关闭后刷新另一页，仍按原标识精确GET；404不清除原记录、不恢复确认、不重提",
+    "原任务503时原请求继续保留，不能换新标识；有明确只读重试入口",
+    "原任务恢复可见后精确找回已完成任务，即使最近任务第一页是其他任务；只GET、提交总数仍1",
+    "新标签页重新进入同一组合，恢复同一个原任务，不继承确认勾选，也不创建新请求",
+    "关闭隔离浏览器并用同一持久配置重新打开，原标识与原任务仍可找回，期间没有重放POST"
+  ],
+  "reads": [
+    {
+      "tab": "sender",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792836462053
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792836462053
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios",
+      "at": 1792836462053
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/macro/overview",
+      "at": 1792836462188
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/market-events",
+      "at": 1792836462189
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/system/data-health",
+      "at": 1792836462190
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792836462190
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836462190
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792836462615
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836462615
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792836462654
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836462760
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836463210
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836463690
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463690
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463712
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463730
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463745
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463761
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463777
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463793
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463808
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463824
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463844
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463858
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463875
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463895
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463913
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463929
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463947
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836463962
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836463989
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464012
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464037
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464060
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464082
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464102
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464119
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464137
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464154
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464174
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464194
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464211
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792836464227
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836464396
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836464757
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464758
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464781
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464799
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464815
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464831
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464849
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464865
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464882
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464898
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464916
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464936
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464953
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464969
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836464985
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465001
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465015
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465031
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465048
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465064
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465079
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465097
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465116
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465131
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465147
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465164
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465180
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465197
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols",
+      "at": 1792836465213
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/news/latest",
+      "at": 1792836465230
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios",
+      "at": 1792836468933
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/performance",
+      "at": 1792836468933
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/allocation",
+      "at": 1792836468933
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/positions",
+      "at": 1792836468934
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836468935
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1",
+      "at": 1792836468935
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836468935
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836468935
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836470978
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836470978
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792836470979
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836470979
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792836470981
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792836470981
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792836470981
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792836484097
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836484097
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792836484263
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792836484263
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios",
+      "at": 1792836484263
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/macro/overview",
+      "at": 1792836484362
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/market-events",
+      "at": 1792836484363
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/system/data-health",
+      "at": 1792836484363
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792836484363
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836484364
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792836484981
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836484982
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792836485026
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836485072
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836485532
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836486036
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486037
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486060
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486076
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486095
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486112
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486131
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486148
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486166
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486182
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486198
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486222
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486239
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486259
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486279
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486297
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486316
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836486331
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486397
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486422
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486443
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486463
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486483
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486501
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486521
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486539
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486560
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486580
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486603
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836486626
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792836486645
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836486766
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836487141
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487141
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487164
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487182
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487201
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487219
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487237
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487254
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487270
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487288
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487306
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487324
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487339
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487356
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487372
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487389
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487406
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487423
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487440
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487456
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487472
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487491
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487508
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487526
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487545
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487565
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487586
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487605
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836487623
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/news/latest",
+      "at": 1792836487643
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios",
+      "at": 1792836488266
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/performance",
+      "at": 1792836488267
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/allocation",
+      "at": 1792836488268
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/positions",
+      "at": 1792836488268
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836488268
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1",
+      "at": 1792836488268
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836488268
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836488268
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836488357
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836488358
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792836488358
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836488358
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792836488358
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792836488358
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792836488359
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792836491210
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836491211
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792836492052
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836497340
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836497341
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792836497566
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792836497566
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios",
+      "at": 1792836497566
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792836497607
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836497608
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/macro/overview",
+      "at": 1792836497632
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/market-events",
+      "at": 1792836497632
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/system/data-health",
+      "at": 1792836497633
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792836497634
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836497634
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792836497652
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836497683
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836498137
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836498610
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498611
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498632
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498648
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498664
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498678
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498693
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498711
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498728
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498745
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498764
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498781
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498798
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498816
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498836
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498856
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498873
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498896
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498916
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498935
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498956
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498977
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836498994
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499011
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499028
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836499035
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499069
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499093
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499114
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499137
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792836499160
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836499500
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836499930
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499931
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499950
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499967
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836499984
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500003
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500018
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500035
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500052
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500069
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500085
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500102
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500118
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500134
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500152
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500171
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500190
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500215
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500233
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500250
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500266
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500285
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500303
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500319
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500336
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500353
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500374
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500394
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836500412
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/news/latest",
+      "at": 1792836500431
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios",
+      "at": 1792836501069
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/performance",
+      "at": 1792836501071
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/allocation",
+      "at": 1792836501071
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/positions",
+      "at": 1792836501071
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836501071
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1",
+      "at": 1792836501071
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836501072
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836501072
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836501141
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836501142
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792836501142
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836501142
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792836501143
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792836501143
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792836501143
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792836503143
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836503144
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836503152
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836503220
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836503446
+    },
+    {
+      "tab": "other-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836503473
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792836503772
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792836503772
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios",
+      "at": 1792836503772
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792836503806
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836503807
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/macro/overview",
+      "at": 1792836503870
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/market-events",
+      "at": 1792836503871
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/system/data-health",
+      "at": 1792836503871
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792836503872
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836503872
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792836504022
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836504051
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836504494
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836505033
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505034
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505177
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505202
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505222
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505241
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505262
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505282
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505303
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505320
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505336
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836505357
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505417
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505579
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505596
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505613
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505637
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505657
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505679
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505697
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505716
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505738
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505755
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505773
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505793
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836505806
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505815
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505835
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505857
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505881
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836505899
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792836505919
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836506289
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506290
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506313
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506332
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506350
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506374
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506393
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506411
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506428
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506448
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506468
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506485
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506499
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506516
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506536
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506556
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506574
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506594
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506614
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506632
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506654
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506676
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506694
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506712
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506732
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506752
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506768
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506786
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols",
+      "at": 1792836506802
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/news/latest",
+      "at": 1792836506822
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios",
+      "at": 1792836507465
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/performance",
+      "at": 1792836507465
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/allocation",
+      "at": 1792836507466
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/positions",
+      "at": 1792836507466
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836507467
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1",
+      "at": 1792836507467
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836507467
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836507467
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836507553
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836507553
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792836507553
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836507554
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792836507554
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792836507554
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792836507554
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792836510919
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836510920
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836510928
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/notifications/inbox",
+      "at": 1792836512030
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/market-data/sync-tasks",
+      "at": 1792836512030
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios",
+      "at": 1792836512031
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/signal-rules/presets",
+      "at": 1792836512135
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836512136
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/macro/overview",
+      "at": 1792836512200
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/market-events",
+      "at": 1792836512200
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/system/data-health",
+      "at": 1792836512201
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/scoring/overview",
+      "at": 1792836512201
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836512201
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/discovery/tasks",
+      "at": 1792836512347
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836512385
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836512895
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836513396
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513396
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513417
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513440
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513465
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513484
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513503
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats",
+      "at": 1792836513521
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513582
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513604
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513626
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513646
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513667
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513688
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513706
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513724
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513745
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513767
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513785
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513804
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513824
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513849
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513870
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513892
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513911
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513932
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513951
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513972
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/dashboard/workbench",
+      "at": 1792836513983
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836513997
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514019
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/system/capabilities",
+      "at": 1792836514041
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/watchlists/1/items",
+      "at": 1792836514518
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514518
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514543
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514561
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514581
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514597
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514618
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514635
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514653
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514671
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514691
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514707
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514724
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514743
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514761
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514781
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514803
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514822
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514840
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514857
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514874
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514894
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514915
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514935
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514956
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514976
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836514994
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836515013
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols",
+      "at": 1792836515031
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/news/latest",
+      "at": 1792836515050
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios",
+      "at": 1792836515704
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/performance",
+      "at": 1792836515704
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/allocation",
+      "at": 1792836515704
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/positions",
+      "at": 1792836515705
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "at": 1792836515705
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1",
+      "at": 1792836515706
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836515706
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836515706
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items",
+      "at": 1792836515790
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/status",
+      "at": 1792836515790
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/runtime",
+      "at": 1792836515790
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836515790
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/model-binding-review",
+      "at": 1792836515791
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/reconciliation-preview",
+      "at": 1792836515791
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job",
+      "at": 1792836515791
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/repairs",
+      "at": 1792836519149
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics",
+      "at": 1792836519149
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3",
+      "at": 1792836519160
+    }
+  ],
+  "simulatedWrites": [
+    {
+      "tab": "sender",
+      "forwarded": false,
+      "taskId": "a8803c9277afcd3592de3134e99304e3",
+      "key": "inspection-63000335-78c8-48d5-8886-05963032f9e9"
+    }
+  ],
+  "blockedWrites": [],
+  "errors": [],
+  "httpErrors": [],
+  "faults": [
+    {
+      "tab": "other-tab",
+      "status": 404,
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3"
+    },
+    {
+      "tab": "sender",
+      "status": 404,
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3"
+    },
+    {
+      "tab": "other-tab",
+      "status": 404,
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3"
+    },
+    {
+      "tab": "other-tab",
+      "status": 503,
+      "path": "/api/v1/portfolios/1/inspection/repairs/a8803c9277afcd3592de3134e99304e3"
+    }
+  ],
+  "locks": [
+    {
+      "while_sender_pending": false
+    },
+    {
+      "after_sender_closed": true
+    }
+  ],
+  "boundary": "Actual main GETs with browser-only repair plans, task lists and accepted-task response. The only POST is recorded and held in the browser, never forwarded. Isolated Chrome persistent profile tests refresh, tab closure, new tab and full browser restart without accessing the user profile.",
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null,
+    "portfolio_ids": [
+      1
+    ]
+  },
+  "passed": true
+}

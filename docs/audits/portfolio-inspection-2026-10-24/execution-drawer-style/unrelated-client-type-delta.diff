@@ -1,0 +1,20 @@
+--- before-client.ts
++++ current-client.ts
+@@ -552,6 +552,8 @@
+   provider_history_limit_days: number | null;
+   chunk_days?: number | null;
+   chunk_count?: number;
++  partial_history_fields?: string[] | null;
++  unavailable_history_fields?: string[] | null;
+   provider_reason: string;
+   partition_strategy: string;
+   symbol_batch_size: number;
+@@ -561,6 +563,8 @@
+   modes: Array<"incremental" | "backfill">;
+   history_limit_days: number | null;
+   chunk_days?: number | null;
++  partial_history_fields?: string[] | null;
++  unavailable_history_fields?: string[] | null;
+   reason: string;
+   northbound?: { available: boolean; reason: string; api_key: string };
+ }>;

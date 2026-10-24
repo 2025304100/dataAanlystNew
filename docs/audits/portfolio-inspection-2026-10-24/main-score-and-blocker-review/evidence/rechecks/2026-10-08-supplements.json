@@ -1,0 +1,15 @@
+{
+  "portfolio_id": 1,
+  "trade_date": "2026-10-08",
+  "baseline_id": null,
+  "generation": null,
+  "candidates": [],
+  "candidate_count": 0,
+  "matched_source_count": 0,
+  "has_more": false,
+  "requests": [],
+  "limitations": [
+    "仅已留存且保留确切自动计划键的订单可关联；人工成交、备份导入和无来源记录需先核查独立材料",
+    "关联成功后仍需重检资金、持仓与差异，最后本人审核；不会自动恢复交易"
+  ]
+}

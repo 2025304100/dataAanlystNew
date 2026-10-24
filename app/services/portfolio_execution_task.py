@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from datetime import date, datetime, time, timezone
 from uuid import uuid4
@@ -21,6 +22,7 @@ from app.services.portfolio_status import resolve_composite_status
 _DISPATCH_LOCK = threading.RLock()
 _ACTIVE_TASK_IDS: set[str] = set()
 TASK_TYPE = "portfolio_auto_simulation"
+logger = logging.getLogger(__name__)
 
 
 def portfolio_execution_in_progress(db: Session, portfolio_id: int) -> bool:
@@ -175,11 +177,17 @@ def _execute_task(task_id: str) -> bool:
         portfolio = db.get(Portfolio, portfolio_id, populate_existing=True)
         if portfolio is None:
             raise ValueError("组合不存在")
+        from app.services.portfolio_reconciliation_activation import assert_execution_within_active_coverage
+        assert_execution_within_active_coverage(db, portfolio_id, trade_date)
         state = _get_status(db, portfolio)
         if state != "READY" or resolve_composite_status(portfolio).composite_status.value != "READY":
             raise ValueError("组合尚未就绪，请先处理检查与对账中的未完成事项")
         if payload.get("resume_mode"):
-            from app.services.portfolio_resume_service import _is_trade_date
+            from app.services.portfolio_resume_service import _is_trade_date, review_resume_execution_date
+            review = review_resume_execution_date(db, portfolio_id, trade_date,
+                strategy_snapshot_id=payload.get("strategy_snapshot_id"), current_read=True)
+            if not review["enabled"]:
+                raise ValueError(review["disabled_code"] + ": " + review["reason"])
             if not _is_trade_date(db, trade_date):
                 raise ValueError("缺少该日期的有效交易日历，请先更新交易日历，再恢复执行。")
         snapshot_id = payload.get("strategy_snapshot_id")
@@ -217,9 +225,14 @@ def _execute_task(task_id: str) -> bool:
                 control_db.close()
         db.info["portfolio_execution_cancelled"] = cancelled
         if payload.get("resume_mode"):
-            # The worker advances one session at a time. A later bar already
-            # present in the local database must not become today's holding.
-            db.info["portfolio_resume_processing_day"] = trade_date
+            # The review admits an older signal only when its immutable plan
+            # was originally due today. Use that verified execution session as
+            # the bar boundary, rather than freezing it at yesterday's signal.
+            # Dates after the actual current session remain unavailable.
+            db.info["portfolio_resume_processing_day"] = (
+                date.fromisoformat(review["source_refs"][0]["execution_date"])
+                if review["mode"] == "CURRENT_ORIGINAL_PLAN" else trade_date
+            )
         # The strict shared path retains account/switch/model/data/entry gates,
         # order idempotency, fees, market rules and cancellation checks.
         result = run_dual_trade(db, portfolio_id=portfolio_id, trade_date=trade_date,
@@ -266,6 +279,8 @@ def _execute_task(task_id: str) -> bool:
             ok_count=0 if waiting and not daily_processed else 1, result_json=json.dumps(result, ensure_ascii=False, default=str),
             message=("当天处理完成，仍有订单待成交" if waiting and daily_processed
                 else "推演已完成，仍有订单等待行情" if waiting else "自动推演已完成"), finished_at=async_tasks._now())
+        # Source receipts were committed atomically with account/task writes.
+        # The reconciliation scanner consumes them without dispatching trades.
         return daily_processed or not waiting
     except Exception as exc:
         db.rollback()

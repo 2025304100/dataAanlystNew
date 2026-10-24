@@ -1,0 +1,909 @@
+{
+  "tables": {
+    "portfolios": {
+      "rows": 12,
+      "sha256": "26da9fdf4ccf02b3220c697642622dc5487c3594e2a5fb68e7b5797a44b2416d"
+    },
+    "positions": {
+      "rows": 2,
+      "sha256": "53b9a0c9b613d44da27aaafcda5aab6ee29cba642e6913cf34ad4a70ac742964"
+    },
+    "cash_ledger": {
+      "rows": 16,
+      "sha256": "5925036de354d10971c42b86cc67eac76a6d889738b048c2ae6c7767cd7b2008"
+    },
+    "sim_orders": {
+      "rows": 10,
+      "sha256": "75f6103b58eb358aa6a02fac524a4b1f7271649f2b9ddd878a8be7de7ea5ceb6"
+    },
+    "sim_trades": {
+      "rows": 10,
+      "sha256": "97c8f6b15c5dc4a1da4a0e8ea689b2b8c818b6fc4b7e43aafd6d694127115b6d"
+    },
+    "sim_accounts": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "g5_dual_run_reports": {
+      "rows": 10,
+      "sha256": "fc00f8ce0f89fa4c6cf4f168cfd99d7332a4da801b9960c5a610b631c129051c"
+    },
+    "portfolio_account_baselines": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "portfolio_reconciliation_cursors": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "inspection_evidence_requests": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "inspection_evidence_decisions": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "g5_admission_controls": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "g5_admission_events": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "factor_model_runs": {
+      "rows": 11,
+      "sha256": "9cb182b432d48f52a8487ea436fd257335c663da59238b452b0b837e094232f2"
+    },
+    "factor_model_members": {
+      "rows": 7,
+      "sha256": "8d7a0eb2b5f27a69e5eff519f5d1cf5bf1cc7b9755effb8fecb0a71e6b7fa528"
+    },
+    "factor_weight_snapshots": {
+      "rows": 1,
+      "sha256": "7cb4adc06b03e3c945296256270540613483a204b4a1a106f11ff03b760e55fb"
+    },
+    "factor_runtime_state": {
+      "rows": 1,
+      "sha256": "39dc52a0075df10571a2afefda014f011614ada628885e2ca15893fcce278c94"
+    },
+    "portfolio_rules": {
+      "rows": 12,
+      "sha256": "82cf1f24bfbfa249e7d75dec91ff0515ab98f4b4c55497f93e05b9e1ff8cb32c"
+    },
+    "portfolio_factor_usages": {
+      "rows": 4,
+      "sha256": "b6101cab0dc7f9f00cf2efebba6266b76b4b5e6de0f8114de7912b83b18ecb60"
+    },
+    "strategy_execution_snapshots": {
+      "rows": 4,
+      "sha256": "c76473c856231d2b867e5a98c7fcf13cf90c050319431038d50fc8f56d2f8de5"
+    },
+    "portfolio_members": {
+      "rows": 6,
+      "sha256": "17f93e5f8a043f2d2ea506a73a4c59fee1916fa99583c6cadc19d02e0bc20d0d"
+    },
+    "decision_runs": {
+      "rows": 77,
+      "sha256": "eb519894b36473994b76bd8ca7bc2343d2037056bb13becb36057143a6ef54d5"
+    },
+    "decision_evidence": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "decision_order_plans": {
+      "rows": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "scheduled_tasks": {
+      "rows": 16,
+      "sha256": "0b1640209ef4749fe6bc577b3b7383e4a4d6ab9510948932d6183fdc0bb072b2"
+    }
+  },
+  "active_tasks": [],
+  "auto_trade_tasks": [
+    {
+      "id": "02dda4d7bc4045f08c51d10086d21af5",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-08 06:55:01",
+      "finished_at": "2026-08-08 06:55:01"
+    },
+    {
+      "id": "2adc244016df4b3ca4f8c3c31d3d595e",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-09 06:55:07",
+      "finished_at": "2026-08-09 06:55:07"
+    },
+    {
+      "id": "2b4d9abcc5b242e683cb5672cb219a26",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-10 12:29:33",
+      "finished_at": "2026-08-10 12:29:34"
+    },
+    {
+      "id": "2ce9831ca02c4e819ca9e537f9484071",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-13 06:55:19",
+      "finished_at": "2026-08-13 06:55:19"
+    },
+    {
+      "id": "35f765dde1b548e8ab56e57851158465",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-21 10:38:39",
+      "finished_at": "2026-08-21 10:38:41"
+    },
+    {
+      "id": "3af78b6fb99b48c9884516992c5bfe5d",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-19 06:55:29",
+      "finished_at": "2026-08-19 06:55:30"
+    },
+    {
+      "id": "3ec2a563dd2f4b4ab063024d09b84644",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-18 06:55:03",
+      "finished_at": "2026-08-18 06:55:05"
+    },
+    {
+      "id": "493c24b0e6764458891150031f0dd059",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-22 06:55:10",
+      "finished_at": "2026-08-22 06:55:11"
+    },
+    {
+      "id": "7839cf565b3b4286966faf3ed92c67a6",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-20 06:55:09",
+      "finished_at": "2026-08-20 06:55:11"
+    },
+    {
+      "id": "8605258645b04ea094c41c1809ac6839",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-10-23 11:51:48",
+      "finished_at": "2026-10-23 11:51:48"
+    },
+    {
+      "id": "861672e80eb74c388fd1a90537397ccd",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-15 06:55:22",
+      "finished_at": "2026-08-15 06:55:22"
+    },
+    {
+      "id": "9035a0dc92314a96a4ff7659551c139a",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-14 06:55:07",
+      "finished_at": "2026-08-14 06:55:08"
+    },
+    {
+      "id": "b24c53266d174e49b8ef3b881e160158",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-16 06:55:29",
+      "finished_at": "2026-08-16 06:55:30"
+    },
+    {
+      "id": "d77fbdb5cf86422f87e524fee6113756",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-12 06:55:16",
+      "finished_at": "2026-08-12 06:55:17"
+    },
+    {
+      "id": "e15cd54b19104d53bf2c93954e26d12c",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-11 06:55:10",
+      "finished_at": "2026-08-11 06:55:10"
+    },
+    {
+      "id": "e55ff07040ab479cb4065d42e43f36b8",
+      "task_type": "portfolio_auto_trade",
+      "status": "done",
+      "created_at": "2026-08-18 05:59:20",
+      "finished_at": "2026-10-22 06:55:27"
+    }
+  ],
+  "automatic_dispatches": [
+    {
+      "id": 124,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "02dda4d7bc4045f08c51d10086d21af5",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-08 06:55:01"
+    },
+    {
+      "id": 132,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "2adc244016df4b3ca4f8c3c31d3d595e",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-09 06:55:06"
+    },
+    {
+      "id": 139,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "2b4d9abcc5b242e683cb5672cb219a26",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-10 12:29:33"
+    },
+    {
+      "id": 146,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e15cd54b19104d53bf2c93954e26d12c",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-11 06:55:10"
+    },
+    {
+      "id": 153,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "d77fbdb5cf86422f87e524fee6113756",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-12 06:55:16"
+    },
+    {
+      "id": 160,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "2ce9831ca02c4e819ca9e537f9484071",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-13 06:55:19"
+    },
+    {
+      "id": 167,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "9035a0dc92314a96a4ff7659551c139a",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-14 06:55:07"
+    },
+    {
+      "id": 175,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "861672e80eb74c388fd1a90537397ccd",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-15 06:55:21"
+    },
+    {
+      "id": 182,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "b24c53266d174e49b8ef3b881e160158",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-16 06:55:29"
+    },
+    {
+      "id": 191,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-18 05:59:20"
+    },
+    {
+      "id": 200,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "3ec2a563dd2f4b4ab063024d09b84644",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-18 06:55:03"
+    },
+    {
+      "id": 209,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "3af78b6fb99b48c9884516992c5bfe5d",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-19 06:55:29"
+    },
+    {
+      "id": 218,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "7839cf565b3b4286966faf3ed92c67a6",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-20 06:55:09"
+    },
+    {
+      "id": 227,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "35f765dde1b548e8ab56e57851158465",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-21 10:38:39"
+    },
+    {
+      "id": 237,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "493c24b0e6764458891150031f0dd059",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-08-22 06:55:10"
+    },
+    {
+      "id": 246,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-23 06:55:11"
+    },
+    {
+      "id": 255,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-24 06:55:28"
+    },
+    {
+      "id": 264,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-25 06:55:09"
+    },
+    {
+      "id": 273,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-26 06:55:14"
+    },
+    {
+      "id": 282,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-27 13:45:04"
+    },
+    {
+      "id": 291,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-28 06:55:14"
+    },
+    {
+      "id": 301,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-29 07:42:26"
+    },
+    {
+      "id": 310,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-30 06:55:06"
+    },
+    {
+      "id": 321,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-08-31 06:55:20"
+    },
+    {
+      "id": 330,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-01 15:30:05"
+    },
+    {
+      "id": 338,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-02 06:55:17"
+    },
+    {
+      "id": 347,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": null,
+      "task_id": null,
+      "status": "failed",
+      "message": "(pymysql.err.OperationalError) (1054, \"Unknown column 'async_tasks.idempotency_key' in 'field list'\")\n[SQL: SELECT async_tasks.id, async_tasks.task_type, async_tasks.status, async_tasks.stage, async_tasks.percent, async_tasks.message, async_tasks.total, async_tasks.processed, async_tasks.ok_count, async_tasks.failed_count, async_tasks.current_item, async_tasks.payload_json, async_tasks.result_json, async_tasks.errors_json, async_tasks.created_at, async_tasks.started_at, async_tasks.finished_at, async_tasks.updated_at, async_tasks.heartbeat_at, async_tasks.stage_budget_seconds, async_tasks.stage_started_at, async_tasks.last_progress_at, async_tasks.last_progress_percent, async_tasks.current_step_description, async_tasks.suggested_action, async_tasks.batch_recovery_json, async_tasks.last_patrol_at, async_tasks.worker_thread_id, async_tasks.cancel_requested, async_tasks.idempotency_key, async_tasks.correlation_id, async_tasks.is_terminal_locked, async_tasks.cancelled_timeout_at \nFROM async_tasks \nWHERE async_tasks.status IN (%(status_1_1)s, %(status_1_2)s) AND async_tasks.updated_at < %(updated_at_1)s AND (async_tasks.is_terminal_locked = %(is_terminal_locked_1)s OR async_tasks.is_terminal_locked IS NULL)]\n[parameters: {'updated_at_1': datetime.datetime(2026, 9, 3, 6, 28, 50, 113385), 'is_terminal_locked_1': 0, 'status_1_1': 'queued', 'status_1_2': 'running'}]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)",
+      "created_at": "2026-09-03 06:58:50"
+    },
+    {
+      "id": 356,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-04 07:22:26"
+    },
+    {
+      "id": 366,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-05 06:55:10"
+    },
+    {
+      "id": 375,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-06 06:55:05"
+    },
+    {
+      "id": 384,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-07 13:16:02"
+    },
+    {
+      "id": 393,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-16 14:19:38"
+    },
+    {
+      "id": 402,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-19 15:39:57"
+    },
+    {
+      "id": 411,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-20 06:55:20"
+    },
+    {
+      "id": 420,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-21 06:55:27"
+    },
+    {
+      "id": 429,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-22 06:55:24"
+    },
+    {
+      "id": 438,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-23 07:07:23"
+    },
+    {
+      "id": 447,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-24 06:55:24"
+    },
+    {
+      "id": 456,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-25 06:58:20"
+    },
+    {
+      "id": 466,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-26 06:55:09"
+    },
+    {
+      "id": 475,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-27 06:55:16"
+    },
+    {
+      "id": 484,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-28 07:23:31"
+    },
+    {
+      "id": 494,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-29 06:55:01"
+    },
+    {
+      "id": 503,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-09-30 06:55:08"
+    },
+    {
+      "id": 512,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-01 06:55:06"
+    },
+    {
+      "id": 522,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-02 06:55:07"
+    },
+    {
+      "id": 534,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-03 06:55:02"
+    },
+    {
+      "id": 544,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-04 06:55:13"
+    },
+    {
+      "id": 554,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-05 06:55:26"
+    },
+    {
+      "id": 564,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-06 06:55:07"
+    },
+    {
+      "id": 574,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-07 06:55:17"
+    },
+    {
+      "id": 584,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-09 14:41:30"
+    },
+    {
+      "id": 598,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-11 01:44:09"
+    },
+    {
+      "id": 613,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-11 06:55:14"
+    },
+    {
+      "id": 623,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-13 04:49:57"
+    },
+    {
+      "id": 636,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-13 06:55:07"
+    },
+    {
+      "id": 646,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-14 06:55:08"
+    },
+    {
+      "id": 656,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-15 06:55:01"
+    },
+    {
+      "id": 666,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-16 06:55:14"
+    },
+    {
+      "id": 677,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-17 06:55:30"
+    },
+    {
+      "id": 688,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-18 14:13:27"
+    },
+    {
+      "id": 699,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-19 06:55:03"
+    },
+    {
+      "id": 720,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-20 06:55:09"
+    },
+    {
+      "id": 731,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-21 06:55:19"
+    },
+    {
+      "id": 742,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "e55ff07040ab479cb4065d42e43f36b8",
+      "status": "done",
+      "message": "Portfolio auto-trade completed",
+      "created_at": "2026-10-22 06:55:27"
+    },
+    {
+      "id": 833,
+      "schedule_id": 11,
+      "trigger_source": "scheduled",
+      "task_source": "async",
+      "task_id": "8605258645b04ea094c41c1809ac6839",
+      "status": "queued",
+      "message": "Task created",
+      "created_at": "2026-10-23 11:51:48"
+    }
+  ],
+  "audit_max": 3778,
+  "main_state": {
+    "name": "main",
+    "last_reconciled_trade_date": "2026-09-28",
+    "status_score": "READY",
+    "status_data": "READY",
+    "status_model": "READY",
+    "status_reconciliation": "RECONCILIATION_BLOCKED"
+  },
+  "main_sha256": "6bae4e013e6716e988dc165bdec2500910578f800bf0cf283ddd315322efbd23",
+  "market_histories": {
+    "1": {
+      "rows": 337,
+      "sha256": "4aba60aa664c3dc6e878ad62942bce168a3f2bafdc232d766e249ef83688cc4f"
+    },
+    "2": {
+      "rows": 1280,
+      "sha256": "4ed3ec97b47de98da7d8fc44061dea2614e823c7af6ad1049a6093e44b0dbb20"
+    },
+    "3215": {
+      "rows": 291,
+      "sha256": "e0a0c9889790d7dbd7fed4d15bd5308aa47954b5a90b89a03ff956dae6c0c295"
+    }
+  },
+  "universe_etf": {
+    "rows": 1277,
+    "sha256": "bcc2b61258785df98d5b6470f52c10e38f6d1ddb10cc2008d8c88aea35c1432d"
+  }
+}

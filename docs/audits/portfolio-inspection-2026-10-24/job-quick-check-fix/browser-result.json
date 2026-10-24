@@ -1,0 +1,61 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null
+  },
+  "reads": [
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-30",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history?trade_date_from=2026-09-30&trade_date_to=2026-09-30&occurred_from=2026-09-24T11%3A57%3A00%2B08%3A00&occurred_to=2026-10-24T11%3A57%3A59%2B08%3A00&report_ref=reconciliation%3A%3A1%3A%3A2026-09-30&report_version=19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9&page_size=20",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/inspection/history/securities?",
+    "http://127.0.0.1:8000/api/v1/portfolios/1/reconciliation-preview?trade_date=2026-09-29"
+  ],
+  "writes": [],
+  "errors": [],
+  "httpErrors": [],
+  "checks": [
+    "已有09-29执行抽屉时，同日核查仍新开居中弹窗；读取时有加载状态；Escape只关闭弹窗并返回原按钮，作业仍在",
+    "逐日核查09-30有独立报告及相关历史，关闭保留作业展开和滚动；下层09-29报告不被改写；主页面直接进入作业也可核查"
+  ],
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null
+  },
+  "passed": true
+}

@@ -504,7 +504,8 @@ def test_g3_stm_02_confirm_reconciliation_fixed(tmp_alembic_db):
     finally:
         _prec_mod.reconcile_trade_date = _orig_rec  # type: ignore[attr-defined]
 
-    # C) 修复后再 confirm：position=1000 + 撮合 1000 BUY → 对账通过 → RBLOCKED→READY，last_reconciled 推进
+    # C) 修复后再 confirm：本日对账通过且推进检查点；该旧夹具没有
+    # 当前有效模型绑定，不能让对账确认顺带释放独立的运行准入。
     _set_position(db, pid, sid, 1000)
 
     def tp_good(session, pid_arg, td_arg):
@@ -523,7 +524,12 @@ def test_g3_stm_02_confirm_reconciliation_fixed(tmp_alembic_db):
                                            correlation_id="C_STM_02")
     finally:
         _prec_mod.reconcile_trade_date = _orig_rec  # type: ignore[attr-defined]
-    assert res.portfolio_now_ready is True
+    assert res.portfolio_now_ready is False
     from app.models.portfolio import Portfolio
     p = db.get(Portfolio, pid)
     assert p.last_reconciled_trade_date == td
+    assert getattr(p.status_reconciliation, "value", p.status_reconciliation) == "READY"
+    from app.services.portfolio_inspection_runtime import get_portfolio_runtime_inspection
+    binding = next(item for item in get_portfolio_runtime_inspection(db, pid)["recovery_summary"]["checks"]
+                   if item["key"] == "binding")
+    assert binding["passed"] is False

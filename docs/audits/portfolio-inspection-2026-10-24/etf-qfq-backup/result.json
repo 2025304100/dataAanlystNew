@@ -1,0 +1,28 @@
+{
+  "status": "completed",
+  "symbol": "510300",
+  "portfolio": "main",
+  "task_id": "ec41b004c15161f5b43d03a7ceb0717b",
+  "trade_dates": [
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23"
+  ],
+  "added_rows": 3,
+  "source": "tencent:cn-etf:v1:qfq",
+  "reinspection": "PASSED",
+  "all_protected_tables_unchanged": 25,
+  "successful_symbols_not_rerun": [
+    "000001",
+    "600428"
+  ],
+  "historical_etf_rows_unchanged": 1277,
+  "tests_passed": 139,
+  "browser_readonly_passed": true,
+  "trading_resumed": false,
+  "orders_placed": false,
+  "baseline_accepted": false,
+  "admission_unfrozen": false,
+  "final_capture_matches_post_write_capture": true,
+  "freeze_time_utc": "2026-10-24T00:41:40.814121+00:00"
+}

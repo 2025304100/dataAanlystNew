@@ -618,6 +618,8 @@ def _start_worker(task_id: str, worker_func) -> None:
     下一个用例的 tmp 库里（体检报告 §十二.7）。宁可让任务不跑（由
     orphan 巡查兼顶），也不能写错库。
     """
+    from app.services.inspection_acceptance_readonly import require_task_writes_allowed
+    require_task_writes_allowed()
     origin_db_url = _current_db_url()
 
     def _run():
@@ -775,6 +777,8 @@ def create_async_task(
 
     use_control_plane：提交请求是轻 INSERT，传 True 可绕过主连接池排队。
     """
+    from app.services.inspection_acceptance_readonly import require_task_writes_allowed
+    require_task_writes_allowed()
     SessionLocal = _pick_session_factory(use_control_plane)
     db = SessionLocal()
     try:
@@ -846,6 +850,8 @@ def create_async_task_once(task_type: str, payload: dict, *, task_id: str,
     The primary key arbitrates across processes. Only the inserting caller may
     start its worker; replays never run patrols or silently requeue a terminal task.
     """
+    from app.services.inspection_acceptance_readonly import require_task_writes_allowed
+    require_task_writes_allowed()
     if not re.fullmatch(r'[a-f0-9]{32}', task_id) or not re.fullmatch(r'[a-f0-9]{64}', request_fingerprint):
         raise ValueError('async_task_request_identity_invalid')
     db = _pick_session_factory(False)()

@@ -388,6 +388,9 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
     try:
         entry = get_registry_entry(api_key)
         func = getattr(ak, api_key, None)
+        if api_key == 'fund_etf_hist_tx':
+            from app.services.market_data_sources.sources.tencent_etf_history import probe_tencent_etf_history
+            func = probe_tencent_etf_history
         if entry is None or func is None:
             reason = f"unknown api_key: {api_key}" if entry is None else f"akshare has no attribute: {api_key}"
             _set_task(db, task_id, status="failed", stage="failed", percent=100,

@@ -1,0 +1,95 @@
+{
+  "purpose": "Consolidated read-only history-gap details and three-part runtime review; backend verification and release rules unchanged.",
+  "files": [
+    {
+      "path": "result.json",
+      "bytes": 2374,
+      "sha256": "d2dee653e0275f8837c112e33f745b43d654d908c63ee1f8a0259866b9f1d80e"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 11212,
+      "sha256": "91405f8577098527e7f3f9d792e7b018e1994f403993226f01e66e33420a3652"
+    },
+    {
+      "path": "frontend-tests.log",
+      "bytes": 4255,
+      "sha256": "2d17d120ad162445c081393e74254c8d41888f102999550742a9bbfddee3d268"
+    },
+    {
+      "path": "frontend-build.log",
+      "bytes": 3303,
+      "sha256": "9d4af5c3fae1cbcd5f0f9206190964d939bf812ac3e5cc63c8b33dd394572dd0"
+    },
+    {
+      "path": "reconciliation-summary.png",
+      "bytes": 215286,
+      "sha256": "cb62f21efc010b8bb3e70983ba73c7ec254ef0047a061a8f22933e0666012f07"
+    },
+    {
+      "path": "history-gap.png",
+      "bytes": 262516,
+      "sha256": "3ee2f8c2aab1ec741decc406e537c885a7aa7f7e6f94c51da8e5458b44247721"
+    },
+    {
+      "path": "history-return-scope.png",
+      "bytes": 252772,
+      "sha256": "bcc378785a1e70f62295c9428bef06918adbd3a878a0e459bbb1fb05e8682c86"
+    },
+    {
+      "path": "history-gap-390.png",
+      "bytes": 102844,
+      "sha256": "72e4a48c28835592d890281a245a646e1b7e940e60e6caa6b956afc72157ef11"
+    },
+    {
+      "path": "history-gap-320.png",
+      "bytes": 93340,
+      "sha256": "9008ca23b791d84cecfdf706054f866e36cf603749a00f39283118ebcbd01038"
+    },
+    {
+      "path": "runtime-review.png",
+      "bytes": 250082,
+      "sha256": "163121c1e22b2a8be3a951f426f6f41747e8e9d30cc7bd9f1626902b1f70d310"
+    },
+    {
+      "path": "runtime-review-390.png",
+      "bytes": 88769,
+      "sha256": "2b013a3c4ff279a6284a3c1b674b479a1a486e0d542baa3b5be136b3859b0f8b"
+    },
+    {
+      "path": "runtime-review-320.png",
+      "bytes": 72621,
+      "sha256": "440d3a96d8aae8e384edb4b0dd56cc603adabcd2e81ed298bf02acf3e50821e1"
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx",
+      "sha256": "71a4e5dd6fa9d60896d5e78b05dbb113e4a112622b8038534dffd49a6e13ed2b"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionReconciliationSummary.tsx",
+      "sha256": "b48d742b0a94b1b914faa149a6347e17431e6bf5a28635959953f357ac156896"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionHistoryGapPanel.tsx",
+      "sha256": "2a8a4aa85d965a5641782552973ada8c9ddfa258fefca702473bfdbc18d691c8"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionRuntimeReview.tsx",
+      "sha256": "e8e22ea6d47f51625aa768de49e8f2c965e074035a8723ec646bac8603821c71"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/reconciliationGaps.ts",
+      "sha256": "6a15fed7bad3263d6d2badbe0de9c20c602c9cfa4bcf0a018d8d8b980c36099c"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/InspectionEvidencePanel.tsx",
+      "sha256": "71c45ee6fd55489d1465d00bd8c02a1cf4f6ec96d0036ffe9d0dc582ab88a771"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/inspection.css",
+      "sha256": "68374916e9002166213502d0afe3ec5223f15cd78954d56e76a6494509b58df4"
+    }
+  ]
+}

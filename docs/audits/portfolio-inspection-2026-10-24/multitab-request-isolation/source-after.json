@@ -1,0 +1,13 @@
+{
+  "frontend/src/api/client.ts": "510fd9b39dd710fc586895313dbecf027239105aaea501fa12a4ae649475808c",
+  "frontend/src/api/__tests__/inspectionReadIsolation.test.ts": "d934db5633cfefa76f4016ad3ff0156925cc32d6f2760c51cad2008fe7b11406",
+  "frontend/src/components/portfolio-trading/PortfolioGovernanceTab.tsx": "3af16639746f0c6ac053d708aa73e398af70e25e98d8a2f2b6d6661f23692ac5",
+  "frontend/src/components/portfolio-trading/__tests__/PortfolioGovernanceTab.g7.test.tsx": "8a35eeb64c46e8f3c6610c9e83d404ae4128c0edd21d4eb8d6d4b9f47098aa18",
+  "frontend/src/components/portfolio-trading/inspection/InspectionEvidencePanel.tsx": "0d8463aa18533e21cf6f4c8aef9ff83cc006158bae342efff6f32484122d7a29",
+  "frontend/src/components/portfolio-trading/inspection/InspectionHistoryPanel.tsx": "f09ec8584e198e4c47094d64efa4729ad06ef55509cf3f57e3012e0212146f75",
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": "5387e2e0e368e2062cf52b2f7cdfb8c5f6116032944051a9430cdd38efaeea55",
+  "frontend/src/components/portfolio-trading/inspection/inspectionBrowseState.ts": "879ea84ebc243ebbc153cf1161742647c5e948ded3e8ca85b399c2a5886f00fa",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/InspectionEvidencePanel.test.tsx": "fc146cf359e6d23a1afa6a46a08837ecabaca0b6fc4f41572731b252501da5b3",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/InspectionHistoryPanel.test.tsx": "e4a8b2271d4fd471118a53197aec54bc5669fc56f6f698c264febdfe8872f76a",
+  "frontend/src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx": "fe306a141b95e66027d77a4695c52ccbd2ea885a81d601131046beffc26b70fe"
+}

@@ -26,6 +26,7 @@ import logging
 import math
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -551,8 +552,14 @@ def create_portfolio_auto_trade_task(*, dry_run: bool = False, buy_candidate_lim
         return existing[0]
     task = create_async_task(
         TASK_TYPE,
-        {"dry_run": dry_run, "buy_candidate_limit": buy_candidate_limit},
+        {"dry_run": dry_run, "buy_candidate_limit": buy_candidate_limit,
+         # This is the dispatch date, not a manufactured historical signal day.
+         # Without it, the generic idempotency hash reuses an old completed
+         # task on every subsequent daily schedule with the same settings.
+         "dispatch_date": _now().replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()},
     )
+    if task.status not in {"queued", "running"}:
+        return task
     _start_worker(
         task.id,
         lambda task_id: _run_auto_trade_task(
@@ -583,7 +590,7 @@ def _run_auto_trade_task(
     db = SessionLocal()
     try:
         task = db.get(AsyncTaskRecord, task_id)
-        if task is None or task.status == "cancelled":
+        if task is None or task.status not in {"queued", "running"} or task.is_terminal_locked:
             return
         _set_task(
             db,

@@ -1,0 +1,1182 @@
+[
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_4s3hp1cg.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_5288jyqa.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_6xpijaba.db",
+    "bytes": 12288,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_78c3iduj.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_7auix50h.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_9z4giguz.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_c0oe302y.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_jxixqhlp.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_q45o1f1y.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_qe77hl13.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_g1_de_wf7xnum3.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_test_4dfi38lx.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_test_fok2b_eu.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_test_valjc4ss.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.tmp_test\\qa_test_vjcsytgb.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\quant_workbench.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\quant_workbench_test.db",
+    "bytes": 8192,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp_validation.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_api_get_cbc7f88ba03f4dfaaf7b7ea9521300fe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_api_get_smoke.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_backend_1231dbe59a3e44cf9d771ed62a735c6d.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_backend_smoke.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_sa_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_smoke.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_sqlalchemy_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\.workbuddy\\mining\\fix_repo\\tmp\\qa_sqlite_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\backups\\backup_sqlite_20260817_114212.db",
+    "bytes": 1884160,
+    "table_count": 88,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_after_envpy_fix_abc.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_debug2.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_debug3.db",
+    "bytes": 1875968,
+    "table_count": 88,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_debug_db.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_roundtrip.db",
+    "bytes": 1884160,
+    "table_count": 88,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_roundtrip_tgt.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tests\\_tmp_unique123.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\test_output\\g3_fixture_current_20260822.db",
+    "bytes": 3526656,
+    "table_count": 104,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\test_output\\g3_fixture_probe_20260822.db",
+    "bytes": 2686976,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\test_output\\g3_fixture_probe_migrated_20260822.db",
+    "bytes": 3096576,
+    "table_count": 115,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\test_output\\g3\\ui_acceptance_20260823.sqlite",
+    "bytes": 3588096,
+    "table_count": 105,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\test_output\\g5\\g5-historical-audit.sqlite",
+    "bytes": 49152,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\ci_fresh3.sqlite3",
+    "bytes": 3358720,
+    "table_count": 134,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\ci_like_fresh.sqlite3",
+    "bytes": 3358720,
+    "table_count": 134,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g3_conservation_fixture_20260822_b.db",
+    "bytes": 3497984,
+    "table_count": 103,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g3_conservation_fixture_20260822_c.db",
+    "bytes": 3506176,
+    "table_count": 103,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g3_conservation_fixture_20260822_d.db",
+    "bytes": 3497984,
+    "table_count": 103,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g3_conservation_fixture_20260822_e.db",
+    "bytes": 3506176,
+    "table_count": 103,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g3_report_verify_20260822.db",
+    "bytes": 3346432,
+    "table_count": 114,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g3_ui_acceptance_20260822.db",
+    "bytes": 2871296,
+    "table_count": 102,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\g5_migration_verify_20260822_b.db",
+    "bytes": 2351104,
+    "table_count": 96,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\migration_check_factor_members.db",
+    "bytes": 2494464,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_api_get_cbc7f88ba03f4dfaaf7b7ea9521300fe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_api_get_smoke.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_backend_1231dbe59a3e44cf9d771ed62a735c6d.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_backend_smoke.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_sa_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_smoke.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_sqlalchemy_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_sqlite_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_5qzhmp4p.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_5wzk5arp.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_7ztmwzde.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_aoojxcgs.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_c8v5ndg8.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_io5zuuas.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_k0hz7iyj.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_kz5jm5x0.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_n99ou3f1.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_p303l5kw.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_p4v9e0gt.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_rcor7u2f.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_wo2wr96e.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\qa_test_y___bf_e.db",
+    "bytes": 4096,
+    "table_count": 0,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\ui_e2e_20260821_v2.db",
+    "bytes": 2646016,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\ui_e2e_20260821_v3.db",
+    "bytes": 2686976,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\business-closure-followup\\production-qualified-evidence.sqlite",
+    "bytes": 3940352,
+    "table_count": 135,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\business-closure-followup\\production-release-real-evidence.sqlite",
+    "bytes": 3936256,
+    "table_count": 135,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew\\tmp\\three-types-verification-20261022\\pytest-safety.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本\\quant_workbench.db",
+    "bytes": 12288,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本\\quant_workbench_test.db",
+    "bytes": 8192,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本\\tmp_validation.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_0wmnq3o9.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_180qrnnx.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_1mznz7d3.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_2qw00je_.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_4yq0bt4_.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_60e1sv26.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_6_b6rf3_.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_7f2enfjp.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_9emzt2i4.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_ahj_l9in.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_bks_fcq8.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_cd60gsx3.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_d9y6nx2a.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_dbpyqt1u.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_dfa53jd2.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_dmcic375.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_e06a060n.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_e2z1y2gj.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_fc7y4o5a.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_gzejeku3.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_h3yxi_8y.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_knh528am.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_m5wz4etj.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_mkip3oap.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_ojuo4e2z.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_qkkestg8.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_ql_dyjzn.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_s7_dexn3.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_s8zxqpoj.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_t3abjibn.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_tfuzipem.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_tytl9ota.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_uvjrwg0r.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_vd8k1h7j.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_wg0th5qm.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_wtyr59zz.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_zjhb_dh0.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\integration_zz8pjbdt.sqlite3",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\quant_workbench_test.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp_debug_contract.db",
+    "bytes": 2154496,
+    "table_count": 93,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp_validation.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_debug_046.db",
+    "bytes": 3280896,
+    "table_count": 123,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_debug_046_3.db",
+    "bytes": 3280896,
+    "table_count": 113,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_debug_046_4.db",
+    "bytes": 3186688,
+    "table_count": 124,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_debug_046_5.db",
+    "bytes": 3280896,
+    "table_count": 106,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_tr3_alembic_tmp.db",
+    "bytes": 2437120,
+    "table_count": 99,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_tr3_final_verify.db",
+    "bytes": 2437120,
+    "table_count": 99,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\_tr3_scenario.db",
+    "bytes": 3280896,
+    "table_count": 106,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_0021_migration_backfills_0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_0021_migration_is_idempot0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_ai_profiles_table_complet0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_async_tasks_has_state_mac0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_async_tasks_new_fields_nu0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_backtest_execution_fills_0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_decision_order_plans_tabl0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_discovery_score_snapshots0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_downgrade_drops_new_table0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 22,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_factors_has_lifecycle_col0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_factor_lifecycle_tables_e0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_factor_versions_has_gover0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_full_upgrade_on_empty_db0\\test_migration.db",
+    "bytes": 2732032,
+    "table_count": 115,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_notification_tables_exist0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_scan_runs_has_snapshot_fi0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_sim_orders_has_attributio0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_sim_orders_new_fields_nul0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_upgrade_downgrade_upgrade0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 136,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.pytest_tmp_td4reg\\test_upgrade_idempotent_with_m0\\test_migration.db",
+    "bytes": 3563520,
+    "table_count": 138,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\Default\\heavy_ad_intervention_opt_out.db",
+    "bytes": 16384,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\Default\\load_statistics.db",
+    "bytes": 45056,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\Default\\EdgeEDrop\\EdgeEDropSQLite.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\Default\\EdgeHubAppUsage\\EdgeHubAppUsageSQLite.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp-edge\\GPUPersistentCache\\DawnGraphiteCache\\MNIWWJ6LYBXKQS7RZ2KZNUZ3QHFNW4K3\\cache.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_4s3hp1cg.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_5288jyqa.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_6xpijaba.db",
+    "bytes": 12288,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_78c3iduj.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_7auix50h.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_9z4giguz.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_c0oe302y.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_jxixqhlp.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_q45o1f1y.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_qe77hl13.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_g1_de_wf7xnum3.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_test_4dfi38lx.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_test_fok2b_eu.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_test_valjc4ss.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\.tmp_test\\qa_test_vjcsytgb.db",
+    "bytes": 2609152,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\backups\\backup_sqlite_20260817_114212.db",
+    "bytes": 1884160,
+    "table_count": 88,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_after_envpy_fix_abc.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_debug2.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_debug3.db",
+    "bytes": 1875968,
+    "table_count": 88,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_debug_db.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_roundtrip.db",
+    "bytes": 1884160,
+    "table_count": 88,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_roundtrip_tgt.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tests\\_tmp_unique123.db",
+    "bytes": 32768,
+    "table_count": 2,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_current_20260822.db",
+    "bytes": 3526656,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_probe_20260822.db",
+    "bytes": 2686976,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3_fixture_probe_migrated_20260822.db",
+    "bytes": 3096576,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g3\\ui_acceptance_20260823.sqlite",
+    "bytes": 3588096,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\test_output\\g5\\g5-historical-audit.sqlite",
+    "bytes": 49152,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_b.db",
+    "bytes": 3497984,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_c.db",
+    "bytes": 3506176,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_d.db",
+    "bytes": 3497984,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_conservation_fixture_20260822_e.db",
+    "bytes": 3506176,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_report_verify_20260822.db",
+    "bytes": 3346432,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g3_ui_acceptance_20260822.db",
+    "bytes": 2871296,
+    "table_count": 102,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\g5_migration_verify_20260822_b.db",
+    "bytes": 2351104,
+    "table_count": 96,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\migration_check_factor_members.db",
+    "bytes": 2494464,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_api_get_cbc7f88ba03f4dfaaf7b7ea9521300fe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_api_get_smoke.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_backend_1231dbe59a3e44cf9d771ed62a735c6d.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_backend_smoke.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_sa_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_smoke.db",
+    "bytes": 0,
+    "status": "empty"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_sqlalchemy_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\qa_sqlite_probe.db",
+    "bytes": 8192,
+    "table_count": 1,
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\ui_e2e_20260821_v2.db",
+    "bytes": 2646016,
+    "status": "unreadable",
+    "error_type": "OperationalError"
+  },
+  {
+    "path": "D:\\ai_project\\dataAanlystNew - 副本 (2)\\tmp\\ui_e2e_20260821_v3.db",
+    "bytes": 2686976,
+    "table_count": 101,
+    "main_rows": [],
+    "status": "read_only_inspected"
+  },
+  {
+    "path": "D:\\ai_project\\dataAnalyst\\data\\quant_workbench.db",
+    "bytes": 86016,
+    "table_count": 7,
+    "status": "read_only_inspected"
+  }
+]

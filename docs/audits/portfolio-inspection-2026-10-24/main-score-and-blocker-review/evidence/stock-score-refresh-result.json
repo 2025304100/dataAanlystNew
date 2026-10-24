@@ -1,0 +1,115 @@
+{
+  "completed": [
+    {
+      "symbol": "000001",
+      "name": "平安银行",
+      "score_id": 79582,
+      "trade_date": "2026-10-23",
+      "config_id": 3,
+      "config_name": "趋势成长",
+      "config_version": 1,
+      "quality_score": 56.9,
+      "timing_score": 65.34,
+      "priority_score": 60.85,
+      "weight_mode": "manual",
+      "pit_safety": "NOT_PIT_SAFE",
+      "published_at": "2026-10-24T01:13:35.897262+00:00",
+      "input_bars_sha256": "9e56d9e66701d2f536b57f58bd2f808ad96deb8f008078e9bde986bbba447ec9",
+      "configuration_sha256": "ef510059e607589be196c289eea1148d7b918ac8d297a04c9774436e30d6c900",
+      "production_model_score": false,
+      "runtime_state_changed": false,
+      "formal_binding_remains_blocked": true,
+      "audit_event_id": 3794
+    },
+    {
+      "symbol": "600428",
+      "name": "中远海特",
+      "score_id": 79583,
+      "trade_date": "2026-10-23",
+      "config_id": 3,
+      "config_name": "趋势成长",
+      "config_version": 1,
+      "quality_score": 48.75,
+      "timing_score": 55.46,
+      "priority_score": 52.57,
+      "weight_mode": "manual",
+      "pit_safety": "NOT_PIT_SAFE",
+      "published_at": "2026-10-24T01:13:35.914291+00:00",
+      "input_bars_sha256": "6fc1f2882f21c06c691c76eab078a547cdb19c79abcdf24ce3754e307d894d10",
+      "configuration_sha256": "ef510059e607589be196c289eea1148d7b918ac8d297a04c9774436e30d6c900",
+      "production_model_score": false,
+      "runtime_state_changed": false,
+      "formal_binding_remains_blocked": true,
+      "audit_event_id": 3796
+    }
+  ],
+  "historical_bar_corrections": [
+    {
+      "symbol": "600428",
+      "trade_date": "2026-08-07",
+      "before": {
+        "id": 774401,
+        "symbol_id": 3215,
+        "trade_date": "2026-08-07",
+        "open": 8.130000114440918,
+        "high": 8.25,
+        "low": 8.0,
+        "close": 8.09000015258789,
+        "volume": 319711.0,
+        "amount": 260480608.0,
+        "turnover_rate": 1.309999942779541,
+        "source": "akshare",
+        "created_at": "2026-08-07 15:02:30"
+      },
+      "after": {
+        "id": 774401,
+        "symbol_id": 3215,
+        "trade_date": "2026-08-07",
+        "open": 11.98,
+        "high": 12.13,
+        "low": 11.77,
+        "close": 11.95,
+        "volume": 66880281.0,
+        "amount": 798051001.0,
+        "turnover_rate": 2.735070351903351,
+        "source": "akshare:sina:cn-stock:v1:qfq",
+        "created_at": "2026-08-07 15:02:30"
+      },
+      "audit_event_id": 3795
+    }
+  ],
+  "writes": [
+    {
+      "verb": "INSERT",
+      "table": "scores"
+    },
+    {
+      "verb": "INSERT",
+      "table": "data_governance_audit_events"
+    },
+    {
+      "verb": "UPDATE",
+      "table": "daily_bars"
+    },
+    {
+      "verb": "INSERT",
+      "table": "data_governance_audit_events"
+    },
+    {
+      "verb": "INSERT",
+      "table": "scores"
+    },
+    {
+      "verb": "INSERT",
+      "table": "data_governance_audit_events"
+    }
+  ],
+  "old_score_rows_overwritten": false,
+  "successful_sync_steps_rerun": false,
+  "formal_binding_remains_blocked": true,
+  "model_or_strategy_changed": false,
+  "trading_resumed": false,
+  "orders_created": false,
+  "baseline_accepted": false,
+  "admission_unfrozen": false
+}

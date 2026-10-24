@@ -32,42 +32,11 @@ def _portfolio(db_session, name: str) -> Portfolio:
     return row
 
 
-def _passing_g5(portfolio_id: int) -> dict:
-    dates = [f"2026-08-{day:02d}" for day in range(3, 13)]
-    return {
-        "portfolio_id": portfolio_id,
-        "start_date": "2026-08-03",
-        "end_date": "2026-08-14",
-        "total_days": 10,
-        "days_replayed": 10,
-        "skipped_days": [],
-        "total_p0_unexplained": 0,
-        "total_p1_hold_noaction_flip": 0,
-        "g5_eligible_for_g6": True,
-        "daily_reports": [
-            {
-                "trade_date": trade_date,
-                "chain_a_meta": {
-                    "capture_mode": "legacy_dry_run",
-                    "source_run_id": f"scan-{trade_date}",
-                    "data_cutoff_at": f"{trade_date}T15:00:00+08:00",
-                },
-                "chain_b_meta": {
-                    "capture_mode": "unified_dry_run",
-                    "source_run_id": f"decision-{trade_date}",
-                    "data_cutoff_at": f"{trade_date}T15:00:00+08:00",
-                },
-            }
-            for trade_date in dates
-        ],
-        "provenance": {
-            "capture_mode": "real_dry_run_export",
-            "exported_at": "2026-08-22T10:00:00+08:00",
-            "trading_calendar": "SSE",
-            "source_manifest_sha256": "b" * 64,
-            "expected_trade_dates": dates,
-        },
-    }
+def _decision_archive(db, portfolio_id: int) -> dict:
+    # The shared fixture verifies only persisted decision-action evidence;
+    # current engine-source-v1 policy cannot grant formal G6 admission.
+    from tests.g5_report_fixtures import passing_g5
+    return passing_g5(db, portfolio_id)
 
 
 def _order(portfolio_id: int, *, status: str, review_status: str | None = None) -> SimOrder:
@@ -115,7 +84,7 @@ def test_g7_reports_admin_pause_as_an_effective_new_buy_stop(db_session):
     from app.services.g7_operational_readiness import evaluate_g7_operational_status
 
     portfolio = _portfolio(db_session, "g7-paused")
-    persist_g5_summary(db_session, _passing_g5(portfolio.id))
+    persist_g5_summary(db_session, _decision_archive(db_session, portfolio.id))
     _set_status(db_session, portfolio, "ADMIN_PAUSED")
     db_session.commit()
 
@@ -124,6 +93,8 @@ def test_g7_reports_admin_pause_as_an_effective_new_buy_stop(db_session):
     assert status.current_state == "ADMIN_PAUSED"
     assert status.new_buys_stopped is True
     assert status.can_resume is True
+    assert status.g6_eligible is False
+    assert status.ready_for_expansion is False
 
 
 def test_g7_resume_is_independent_from_g5_expansion_gate(db_session):
@@ -154,14 +125,19 @@ def test_g7_uses_composite_buy_gate_for_stale_score(db_session):
     assert status.ready_for_expansion is False
 
 
-def test_composite_stop_blocks_expansion_even_with_a_passing_g5_report(db_session):
-    from app.services.g7_operational_readiness import evaluate_g7_operational_status
+def test_composite_stop_blocks_expansion_when_the_independent_g6_boundary_is_ready(db_session, monkeypatch):
+    from app.services import g7_operational_readiness as g7
+    from app.services.g6_graduated_rollout import G6Readiness
 
     portfolio = _portfolio(db_session, "g7-model-lock-with-g5")
-    persist_g5_summary(db_session, _passing_g5(portfolio.id))
     portfolio.status_model = "MODEL_INACTIVE"
     db_session.commit()
-    status = evaluate_g7_operational_status(db_session, portfolio_id=portfolio.id)
+    # Controlled G6 boundary for testing the independent G7 composite stop.
+    # This mock is neither a production runner acceptance nor a passing G5
+    # report fixture; no report or approval is persisted by this test.
+    monkeypatch.setattr(g7, "evaluate_g6_readiness", lambda db, *, portfolio_id:
+        G6Readiness(portfolio_id=portfolio_id, eligible=True, current_state="READY"))
+    status = g7.evaluate_g7_operational_status(db_session, portfolio_id=portfolio.id)
     assert status.g6_eligible is True
     assert status.current_state == "READY"
     assert status.new_buys_stopped is True
@@ -195,7 +171,7 @@ def test_g7_surfaces_unacknowledged_portfolio_alerts_and_blocks_resume(db_sessio
     from app.services.g7_operational_readiness import evaluate_g7_operational_status
 
     portfolio = _portfolio(db_session, "g7-active-alert")
-    persist_g5_summary(db_session, _passing_g5(portfolio.id))
+    persist_g5_summary(db_session, _decision_archive(db_session, portfolio.id))
     _set_status(db_session, portfolio, "ADMIN_PAUSED")
     db_session.add(_active_alert(portfolio.id))
     db_session.commit()

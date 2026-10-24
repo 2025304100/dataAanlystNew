@@ -109,7 +109,7 @@ def _allowed_transitions_from(from_state: str) -> list[str]:
                                      "INTERRUPTED", "ADMIN_PAUSED"],
         "RUNNING_BACKTEST": ["READY", "RECONCILIATION_BLOCKED",
                              "INTERRUPTED", "ADMIN_PAUSED"],
-        "RECONCILIATION_BLOCKED": ["READY", "ADMIN_PAUSED"],
+        "RECONCILIATION_BLOCKED": ["ADMIN_PAUSED"],
         "INTERRUPTED": ["READY", "ADMIN_PAUSED"],
         "ADMIN_PAUSED": ["READY"],
     }
@@ -122,33 +122,25 @@ def _corr_id() -> str:
 
 
 def _previous_closed_trade_date(db: Session, today: date | None = None) -> date:
-    """上一个已收盘的交易日：复用因子域的完整交易日判定，不查交易日历表。
+    """Resolve an actually due business day; unavailable calendars stay unknown."""
+    from datetime import time, timezone
+    from zoneinfo import ZoneInfo
+    from app.services.portfolio_inspection_diagnostics import resolve_inspection_expected_trade_date
+    at = datetime.combine(today, time.min, ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc) if today else None
+    target = resolve_inspection_expected_trade_date(db, at=at)
+    if target is None:
+        raise HTTPException(409, detail={"error_code": "RECONCILIATION_CALENDAR_UNKNOWN",
+            "message": "缺少可信交易日历，尚不能确定应核对日期。请先核实日历来源或选择实际执行所属交易日。"})
+    return target
 
-    为什么不信日历：A 股节假日不固定 —— 春节/中秋按农历、每年日期都不同，调休还得
-    国务院逐年通知；日历一旦没跟上就会把假期算成交易日（实测 ``trade_calendar`` 把
-    2025-10-01~10-08 与 2026-10-01 全标成了 ``is_trading_day=1``）。行情数据是
-    「事实验证」，不是「预测未来的放假安排」，天然免疫这件事。
 
-    为什么走 ``factors.trade_calendar`` 而不是自己查行情表：那里已经把口径定死了 ——
-    ``universe_daily_bars`` + ``region='cn'`` + 「≥ 过去 20 日中位数 × 0.9」的完整度
-    阈值。直接用 ``daily_bars`` 会踩两个坑：① 该表 9 月每天只有十几行，是残缺数据，
-    会把目标日误推到很久以前；② 它是全市场混合，必须自己按 market 过滤，否则国庆
-    期间美股 AAPL 每天那一行会让整个假期看起来都"有交易"。
-
-    判定不出来时退回自然日昨天，避免把对账接口变成 500 —— 目标日选错最多多报一条
-    能自解释的 ``DECISION_RUN_NOT_FOUND``，接口 500 的代价不对等。
-
-    ``today`` 仅用于测试注入；生产一律取系统当天。
-    """
-    ref = today or date.today()
-    fallback = ref - timedelta(days=1)
-    try:
-        evidence = previous_complete_trade_date(db, before=ref)
-    except Exception:
-        return fallback
-    if not evidence.selected_trade_date or evidence.selected_trade_date == EPOCH_DATE:
-        return fallback
-    return evidence.selected_trade_date
+def _reconciliation_target(db: Session, p: Portfolio, explicit: date | None = None) -> date:
+    if explicit:
+        return explicit
+    from app.services.portfolio_resume_service import get_reconciliation_queue
+    queue = get_reconciliation_queue(db, p.id)
+    target = queue.get("target_trade_date")
+    return date.fromisoformat(target) if target else _previous_closed_trade_date(db)
 
 
 # ──────────────────────────────────────────────────────────── Schemas
@@ -189,6 +181,8 @@ class ConfirmReconciliationRequest(BaseModel):
     force_skip: bool | None = None
     force_rerun_before: bool | None = None
     review_note: str | None = None
+    report_id: str | None = Field(default=None, max_length=256)
+    report_version: str | None = Field(default=None, max_length=128)
 
 
 class ConfirmModelBindingRequest(BaseModel):
@@ -211,8 +205,8 @@ class ReconciliationResponse(BaseModel):
     trade_date: date
     decision_run_id: str | None
     status: Literal["PASSED", "BLOCKED"]
-    expected_position_count: int = 0
-    actual_position_count: int = 0
+    expected_position_count: int | None = None
+    actual_position_count: int | None = None
     expected_cash: float | None = None
     actual_cash: float | None = None
     differences: list[ReconciliationDiffResponse] = Field(default_factory=list)
@@ -226,6 +220,28 @@ class ReconciliationResponse(BaseModel):
     correlation_id: str | None = None
     read_only: bool = False
     cash_audit: dict[str, Any] | None = None
+    report_id: str | None = None
+    report_version: str | None = None
+    verdict: str | None = None
+    work_state: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    missing_evidence: list[Any] = Field(default_factory=list)
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    next_check_at: str | None = None
+    progression: dict[str, Any] = Field(default_factory=dict)
+    activity_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    execution_expected: bool | None = None
+    execution_expected_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    execution_status: str = "UNKNOWN"
+    execution_window: dict[str, Any] = Field(default_factory=dict)
+    is_trading_day: bool | None = None
+    checks: list[dict[str, Any]] = Field(default_factory=list)
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    next_actions: list[dict[str, Any]] = Field(default_factory=list)
+    can_confirm: bool = False
+    confirm_blockers: list[str] = Field(default_factory=list)
+    generated_at: str | None = None
+    evidence_hash: str | None = None
 
 
 class PortfolioStatusResponse(BaseModel):
@@ -385,12 +401,7 @@ def reconcile_portfolio(
 ) -> ReconciliationResponse:
     p = _load_portfolio(db, portfolio_id)
     corr = _corr_id()
-    effective_trade_date = (
-        payload.trade_date
-        or payload.as_of_trade_date
-        or p.last_decision_trade_date
-        or _previous_closed_trade_date(db)
-    )
+    effective_trade_date = _reconciliation_target(db, p, payload.trade_date or payload.as_of_trade_date)
     report: ReconciliationReport = reconcile_trade_date(
         db, portfolio_id, effective_trade_date,
         operator_id=actor, correlation_id=corr,
@@ -410,7 +421,7 @@ def preview_portfolio_reconciliation(
     """Read-only current-book diagnosis; never advances cursors or writes audit/state."""
     with db.no_autoflush:
         p = _load_portfolio(db, portfolio_id)
-        effective_date = trade_date or p.last_decision_trade_date or _previous_closed_trade_date(db)
+        effective_date = _reconciliation_target(db, p, trade_date)
         report = reconcile_trade_date(db, portfolio_id, effective_date, persist=False)
         response = _reconciliation_response(report, p, None)
         response.read_only = True
@@ -466,6 +477,17 @@ def _reconciliation_response(report: ReconciliationReport, p: Portfolio, corr: s
         items=items,
         correlation_id=corr,
         cash_audit=report.cash_audit,
+        report_id=report.report_id, report_version=report.report_version,
+        verdict=report.verdict, work_state=report.work_state,
+        reason_codes=report.reason_codes, missing_evidence=report.missing_evidence,
+        actions=report.actions, next_check_at=report.next_check_at,
+        progression=report.progression,
+        activity_evidence=report.activity_evidence, execution_expected=report.execution_expected,
+        execution_expected_evidence=report.execution_expected_evidence, execution_status=report.execution_status,
+        execution_window=report.execution_window, is_trading_day=report.is_trading_day,
+        checks=report.checks, findings=report.findings, next_actions=report.next_actions,
+        can_confirm=report.can_confirm, confirm_blockers=report.confirm_blockers,
+        generated_at=report.generated_at, evidence_hash=report.evidence_hash,
     )
 
 
@@ -518,16 +540,19 @@ def confirm_portfolio_reconciliation(
     if payload.force_skip_re_reconcile or payload.force_skip or payload.force_rerun_before is False:
         raise HTTPException(status_code=400, detail="对账确认必须重跑且差异清零，不能跳过校验")
 
+    if not payload.report_id or not payload.report_version:
+        raise HTTPException(422, detail="请先读取当前对账报告，并提交所审核的报告编号与版本")
     from_state = current_state
     try:
         result = confirm_reconciliation_fixed(
             db, portfolio_id,
-            payload.trade_date or p.last_decision_trade_date or _previous_closed_trade_date(db),
+            _reconciliation_target(db, p, payload.trade_date),
             operator_id=operator,
             acknowledge_all_diffs_cleared=True,
             force_skip_re_reconcile=False,
             correlation_id=corr,
             review_note=review_note,
+            report_id=payload.report_id, report_version=payload.report_version,
         )
     except StateTransitionError as e:
         # 重跑对账仍有差异 → 409
@@ -583,7 +608,10 @@ def admin_transition_portfolio_state(
             operator_id=actor,
             correlation_id=corr,
             reason=payload.reason or payload.trigger_reason,
+            review_note=payload.review_note,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except StateTransitionError as e:
         # ILLEGAL_STATE_TRANSITION 审计事件在底层已写 → 返回 409
         raise HTTPException(status_code=409, detail=str(e)) from e

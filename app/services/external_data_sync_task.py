@@ -123,9 +123,12 @@ _DATASET_CAPABILITIES: dict[ExternalDataset, dict[str, Any]] = {
     "fundamental": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "当天仅请求缺失标的及指定交易日；历史回填在服务端按起止日期过滤。接口未返回的日期不会填补，当天失败不会切换历史下载。"},
     "financial": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "日更仅请求所选公告日期的新报告，不重复下载全历史；首次历史初始化请使用历史回填。财报可在休市日公告。"},
     "capital_flow": {"modes": {"incremental", "backfill"}, "history_limit_days": 100, "reason": "提供商每次返回近约 120 个交易日（2026-10-01 实测 120 行）；当日仅按所选标的批量获取当日资金流，不下载历史；历史回填才使用近约 120 个交易日的个股接口。"},
-    "lhb": {"modes": {"incremental", "backfill"}, "history_limit_days": 31, "reason": "龙虎榜为事件数据，单次区间受接口限制。"},
+    "lhb": {"modes": {"incremental", "backfill"}, "history_limit_days": 31, "chunk_days": 31, "reason": "龙虎榜为事件数据，单次请求最多 31 个自然日；更长历史区间会自动分段执行。"},
     "hot_rank": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "人气榜接口仅提供当前快照。"},
-    "etf": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "按所选境内 ETF 批量请求当日行情、IOPV 和份额；溢折价按 IOPV 计算，规模为同日 IOPV×份额估算。跟踪误差未接入基准历史；日更不下载净值历史。"},
+    "etf": {"modes": {"incremental", "backfill"}, "history_limit_days": None,
+            "partial_history_fields": ["nav", "close", "premium_discount", "premium_discount_score"],
+            "unavailable_history_fields": ["total_shares", "fund_size", "tracking_error"],
+            "reason": "历史回填仅补净值、收盘价、溢折价和评分；份额、规模、跟踪误差只有当天快照。"},
 }
 
 
@@ -370,10 +373,14 @@ def build_external_sync_plan(
     history_limit_days = capability["history_limit_days"]
     # A limit of zero denotes a current-snapshot-only provider. The one-day
     # incremental request is valid; only multi-day ranges should be rejected.
-    if history_limit_days is not None and history_limit_days > 0 and span_days > history_limit_days:
+    # ``chunk_days`` marks providers whose per-request limit is not a total
+    # history limit: longer ranges are split into consecutive safe windows.
+    chunk_days = capability.get("chunk_days")
+    if history_limit_days is not None and history_limit_days > 0 and span_days > history_limit_days and not chunk_days:
         raise ValueError(
             f"{dataset} requested {span_days} days exceeds provider limit {history_limit_days}: {capability['reason']}"
         )
+    chunk_count = (span_days + chunk_days - 1) // chunk_days if chunk_days and span_days > chunk_days else 1
     return {
         "dataset": dataset,
         "mode": mode,
@@ -382,6 +389,10 @@ def build_external_sync_plan(
         "requested_end_date": requested_end.isoformat(),
         "requested_span_days": span_days,
         "provider_history_limit_days": history_limit_days,
+        "chunk_days": chunk_days,
+        "chunk_count": chunk_count,
+        "partial_history_fields": capability.get("partial_history_fields"),
+        "unavailable_history_fields": capability.get("unavailable_history_fields"),
         "provider_reason": capability["reason"],
         "partition_strategy": "symbol_batches" if dataset in {"financial", "capital_flow", "fundamental", "etf"} else "single_fetch",
         "symbol_batch_size": min(max(int(payload.get("limit", 20)), 1), 50),
@@ -393,6 +404,9 @@ def get_external_sync_capabilities() -> dict[str, dict[str, Any]]:
         dataset: {
             "modes": sorted(values["modes"]),
             "history_limit_days": values["history_limit_days"],
+            "chunk_days": values.get("chunk_days"),
+            "partial_history_fields": values.get("partial_history_fields"),
+            "unavailable_history_fields": values.get("unavailable_history_fields"),
             "reason": values["reason"],
         }
         for dataset, values in _DATASET_CAPABILITIES.items()
@@ -823,6 +837,21 @@ def _record_source_points(db, dataset, symbol_ids, start, end, task_id, *, allow
     partial = {sid: days - final.get(sid, set()) for sid, days in observed.items()}
     record_coverage_points(db, dataset, complete, task_id=task_id, complete=True)
     record_coverage_points(db, dataset, partial, task_id=task_id, complete=False)
+
+
+def _etf_partial_history_ranges(db, symbol_id: int, start: date, end: date, policy: str):
+    """Skip days already carrying historical NAV, close and premium evidence."""
+    if policy == "force":
+        return [(start, end)]
+    covered = set(db.execute(select(EtfIndicator.trade_date).where(
+        EtfIndicator.symbol_id == symbol_id,
+        EtfIndicator.trade_date >= start,
+        EtfIndicator.trade_date <= end,
+        EtfIndicator.nav.is_not(None),
+        EtfIndicator.close.is_not(None),
+        EtfIndicator.premium_discount.is_not(None),
+    )).scalars())
+    return subtract_ranges(requested_days(db, "etf", start, end), covered)
 
 
 def _record_financial_scan(db, symbols, ranges, task_id):
@@ -1297,8 +1326,72 @@ def _run_symbol_sync(
         return result
 
     if dataset == "etf":
-        from app.services.etf_basic_data import sync_etf_snapshots
+        from app.services.etf_basic_data import sync_etf_indicator_range, sync_etf_snapshots
         from app.services.sync_progress import CancellationProbe
+
+        if plan.get("mode") == "backfill":
+            if not _wait_for_market_priority(db, task_id):
+                return None
+            policy = sync_policy(payload)
+            for index, symbol in enumerate(symbols):
+                if _is_cancelled(db, task_id):
+                    return None
+                partition = partitions_by_symbol.get(symbol.id)
+                part_start = partition.start_date if partition is not None else range_start
+                part_end = partition.end_date if partition is not None else range_end
+                segments = _etf_partial_history_ranges(db, symbol.id, part_start, part_end, policy)
+                written = 0
+                dates: set[date] = set()
+                failed = False
+                for begin, finish in segments:
+                    try:
+                        summary = sync_etf_indicator_range(
+                            db, symbol, begin, finish,
+                            should_cancel=lambda: _is_cancelled(db, task_id),
+                        )
+                    except InterruptedError:
+                        db.rollback()
+                        return None
+                    except Exception as exc:
+                        db.rollback()
+                        failed = True
+                        result["failed"] += 1
+                        if len(result["errors"]) < 20:
+                            result["errors"].append(f"{symbol.symbol}: {exc}")
+                        logger.warning(
+                            "ETF history backfill %s %s..%s failed: %s",
+                            symbol.symbol, begin, finish, exc,
+                        )
+                        break
+                    written += int(summary.get("written") or 0)
+                    dates.update(summary.get("written_dates") or ())
+                    db.commit()
+                if failed:
+                    _set_partition_status(db, partition, "failed",
+                                          error_message="；".join(result["errors"][-3:]))
+                elif written:
+                    result["success"] += 1
+                    result["records"] += written
+                    _merge_written_dates(result, dates)
+                    _record_source_points(db, dataset, [symbol.id], part_start, part_end,
+                                          task_id, allowed={symbol.id: dates})
+                    db.commit()
+                    _set_partition_status(db, partition, "done", rows_written=written)
+                else:
+                    result["skipped"] += 1
+                    _set_partition_status(db, partition, "skipped")
+                _update_task(
+                    db, task_id,
+                    status="running", stage="sync",
+                    percent=100 if not symbols else min(99, 5 + 94 * (index + 1) / len(symbols)),
+                    total=len(symbols), processed=index + 1,
+                    ok_count=result["success"], failed_count=result["failed"],
+                    current_item=symbol.symbol,
+                    message=f"ETF 历史回填 {index + 1}/{len(symbols)}",
+                )
+            if sync_plan_id:
+                _refresh_sync_plan(db, sync_plan_id, terminal=True)
+            return result
 
         if not _wait_for_market_priority(db, task_id):
             return None
@@ -1523,20 +1616,63 @@ def _run_bulk_sync(
 
             result = {"dataset": dataset, "total": 0, "success": 0, "skipped": 0,
                       "failed": 0, "records": 0, "errors": []}
+            chunk_days = max(int(plan.get("chunk_days") or 31), 1)
+            chunks: list[tuple[date, date]] = []
             for begin, finish in segments:
+                cursor = begin
+                while cursor <= finish:
+                    chunk_end = min(finish, cursor + timedelta(days=chunk_days - 1))
+                    chunks.append((cursor, chunk_end))
+                    cursor = chunk_end + timedelta(days=1)
+            planned_days = max(sum((finish - begin).days + 1 for begin, finish in chunks), 1)
+            processed_days = 0
+            summary = None
+            for begin, finish in chunks:
                 if _is_cancelled(db, task_id):
                     raise InterruptedError("龙虎榜同步已取消")
-                summary = sync_lhb_institution_trades(db, start_date=begin, end_date=finish, **write_options)
-                result["total"] += summary.received
-                result["success"] += summary.written
-                result["records"] += summary.written
-                result["skipped"] += summary.unmatched
-                _merge_written_dates(result, getattr(summary, "written_dates", ()))
-                # A completed past event-list scan also proves genuine empty
-                # days. Unmatched records must remain repairable after import.
-                if not summary.unmatched:
-                    days = [day for day in requested_days(db, dataset, begin, finish) if day < date.today()]
-                    record_coverage_points(db, dataset, {0: days}, task_id=task_id, complete=True)
+                try:
+                    summary = sync_lhb_institution_trades(db, start_date=begin, end_date=finish, **write_options)
+                    result["total"] += summary.received
+                    result["success"] += summary.written
+                    result["records"] += summary.written
+                    result["skipped"] += summary.unmatched
+                    _merge_written_dates(result, getattr(summary, "written_dates", ()))
+                    # Persist each completed window before continuing so a
+                    # later provider failure cannot roll back earlier history.
+                    db.commit()
+                except Exception as exc:
+                    db.rollback()
+                    result["failed"] += 1
+                    if len(result["errors"]) < 20:
+                        result["errors"].append(
+                            f"{begin.isoformat()} ~ {finish.isoformat()}: {type(exc).__name__}: {exc}"
+                        )
+                    logger.warning("LHB chunk %s..%s failed: %s", begin, finish, exc)
+                else:
+                    # A completed past event-list scan also proves genuine empty
+                    # days. Unmatched records must remain repairable after import.
+                    if not summary.unmatched:
+                        days = [day for day in requested_days(db, dataset, begin, finish) if day < date.today()]
+                        try:
+                            record_coverage_points(db, dataset, {0: days}, task_id=task_id, complete=True)
+                            db.commit()
+                        except Exception as exc:
+                            db.rollback()
+                            logger.warning("LHB coverage record %s..%s failed: %s", begin, finish, exc)
+                processed_days += (finish - begin).days + 1
+                _update_task(
+                    db,
+                    task_id,
+                    status="running",
+                    stage="fetch",
+                    percent=min(90, 10 + int(80 * processed_days / planned_days)),
+                    total=result["total"],
+                    processed=result["success"] + result["skipped"] + result["failed"],
+                    ok_count=result["success"],
+                    failed_count=result["failed"],
+                    current_item=f"{begin.isoformat()} ~ {finish.isoformat()}",
+                    message=f"龙虎榜分段同步 {processed_days}/{planned_days} 天",
+                )
         elif dataset == "hot_rank":
             from app.services.hot_rank_data import sync_hot_rank_snapshot
 

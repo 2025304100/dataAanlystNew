@@ -1,0 +1,288 @@
+{
+  "portfolio_id": 1,
+  "coverage_start": null,
+  "verified_through": "2026-09-28",
+  "target_trade_date": "2026-09-29",
+  "calendar_status": "KNOWN",
+  "days": [
+    {
+      "trade_date": "2026-08-20",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 34
+    },
+    {
+      "trade_date": "2026-08-21",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 35
+    },
+    {
+      "trade_date": "2026-08-22",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 36
+    },
+    {
+      "trade_date": "2026-08-25",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 40
+    },
+    {
+      "trade_date": "2026-08-26",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 43
+    },
+    {
+      "trade_date": "2026-08-27",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 52
+    },
+    {
+      "trade_date": "2026-08-28",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 55
+    },
+    {
+      "trade_date": "2026-09-03",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 99
+    },
+    {
+      "trade_date": "2026-09-04",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 101
+    },
+    {
+      "trade_date": "2026-09-24",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 177
+    },
+    {
+      "trade_date": "2026-09-25",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 109
+    },
+    {
+      "trade_date": "2026-09-27",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 112
+    },
+    {
+      "trade_date": "2026-09-28",
+      "status": "HISTORICAL_EVIDENCE_UNKNOWN",
+      "history_only": true,
+      "reason": "旧版核验日期之前的材料没有完整结论，保留历史未知，仅供追溯",
+      "work_state": "history_unknown",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": 120
+    },
+    {
+      "trade_date": "2026-09-29",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-09-29",
+      "report_version": "f90634f86c6dc057fa720c0f48f721a53d52eb76dd41d89ae492072732c76e5b",
+      "audit_event_id": 3760
+    },
+    {
+      "trade_date": "2026-09-30",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-09-30",
+      "report_version": "19f72697585a0fd09833a01f5054eac435b392bc50f0feac70744369462577f9",
+      "audit_event_id": 3746
+    },
+    {
+      "trade_date": "2026-10-08",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-08",
+      "report_version": "eb82126a2f3c4996da66502a34161add11243ee4fd6571532f239e168f61e8d0",
+      "audit_event_id": 3747
+    },
+    {
+      "trade_date": "2026-10-09",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-09",
+      "report_version": "b619dae986e9ab6ca9db114190b9eb1e22dab9fb71f8bfbd0654b503ad243263",
+      "audit_event_id": 3748
+    },
+    {
+      "trade_date": "2026-10-12",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-12",
+      "report_version": "3c0561f143dbf788be7b5d33fc93a48b58f3773d9b60e6450c9ebb17e3971421",
+      "audit_event_id": 3749
+    },
+    {
+      "trade_date": "2026-10-13",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-13",
+      "report_version": "e139442b79067c07a8dfb4b5c7a4b5e80a59a7170151616c44d31676e5254b07",
+      "audit_event_id": 3750
+    },
+    {
+      "trade_date": "2026-10-14",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-14",
+      "report_version": "755aa925cbc35557d017968ad069c3ae55f39ab4645aa4188bf87518cc13089a",
+      "audit_event_id": 3751
+    },
+    {
+      "trade_date": "2026-10-15",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-15",
+      "report_version": "52c64566b2618c708ed575c73fcd01f4364543b2fa4687db19f3ae8d5aa94915",
+      "audit_event_id": 3752
+    },
+    {
+      "trade_date": "2026-10-16",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-16",
+      "report_version": "d0210859abd15d5e7e174fa2e36c8f00641d0030a5b1e263f52b94626b00916d",
+      "audit_event_id": 3753
+    },
+    {
+      "trade_date": "2026-10-19",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-19",
+      "report_version": "15c6c55f8bea2abc4da8938904cace0fbbfec9891448cd18227fa58aeb5c7669",
+      "audit_event_id": 3754
+    },
+    {
+      "trade_date": "2026-10-20",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-20",
+      "report_version": "1eb903c9184bec00f4c7c3dc6244e301fe7047c9db17feffb6c9201e6dd8e099",
+      "audit_event_id": 3755
+    },
+    {
+      "trade_date": "2026-10-21",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-21",
+      "report_version": "331081ad7cc35b45fa3374e37a521fd8c95b89925a1eec1a3fdc9c1657795a25",
+      "audit_event_id": 3756
+    },
+    {
+      "trade_date": "2026-10-22",
+      "status": "EVIDENCE_INCOMPLETE",
+      "history_only": false,
+      "reason": "DECISION_RUN_NOT_FOUND",
+      "work_state": "needs_review",
+      "report_id": "reconciliation::1::2026-10-22",
+      "report_version": "264bf696af8379f2fa95bc0b566be53de5a47b34e827ee14c397791ae75b5a9a",
+      "audit_event_id": 3757
+    },
+    {
+      "trade_date": "2026-10-23",
+      "status": "NOT_CHECKED",
+      "history_only": false,
+      "reason": "等待读取本日证据并核对",
+      "work_state": "queued",
+      "report_id": null,
+      "report_version": null,
+      "audit_event_id": null
+    }
+  ],
+  "calendar_version": "93eba68262d6aa4995bf44508cc2cfb4ddcf736b337ba212c7e84cd40d8aa201",
+  "calendar_reason": "按交易所年度日历与15:00收盘时点计算应到数据日",
+  "limitations": [
+    "NO_ACCEPTED_ACCOUNT_BASELINE",
+    "LEGACY_CHECKPOINT_NOT_FULL_HISTORY_PROOF"
+  ],
+  "coverage_source": "legacy_checkpoint",
+  "baseline_creation_available": true,
+  "automatic_job_registered": true
+}

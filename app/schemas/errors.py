@@ -570,6 +570,32 @@ def factor_structured_error(
     )
 
 
+# Inspection conflicts are business prerequisites. Refresh/review explicitly;
+# a generic retryable "service unavailable" would send users into a loop.
+for _inspection_code, _inspection_message in {
+    "EVIDENCE_SOURCE_CHANGED": "补证来源已经变化，请刷新原始材料并重新申请",
+    "EVIDENCE_SCOPE_CHANGED": "账户覆盖代次已变化，请按当前范围重新申请补证",
+    "EVIDENCE_KEY_REUSED": "补证申请键已用于其他内容，请重新预览当前范围",
+    "EVIDENCE_ALREADY_REVIEWED": "本申请已有审核结论，原记录保留，变化后需新增申请",
+    "EVIDENCE_REQUEST_NOT_FOUND": "当前组合找不到这份补证申请",
+    "EVIDENCE_NOTE_REQUIRED": "请填写完整的来源核查说明",
+    "EVIDENCE_REVIEW_REQUIRED": "请本人填写审核理由并确认结论",
+    "GUIDE_EVIDENCE_CHANGED": "步骤依据已变化，请保留理由并重新核实当前材料",
+    "GUIDE_PREREQUISITES_NOT_MET": "前置步骤尚未完成，请处理待办后重检",
+    "GUIDE_KEY_REUSED": "本审核键已用于其他材料，请重新审核当前范围",
+    "GUIDE_REPORT_MISSING": "当前步骤缺少确切交易日报告，请先核查执行证据",
+    "INSPECTION_REVIEW_CONFLICT": "当前材料或运行条件已变化，请重新核实后审核",
+    "RECONCILIATION_SOURCE_PENDING": "账户来源有待重检的变化，完成核对后才能新买入",
+}.items():
+    ERROR_CODE_LIBRARY[_inspection_code] = {"user_message": _inspection_message,
+        "impact": "当前申请或恢复尚未完成；原始来源、已保存结果和审核理由继续保留",
+        "retryable": False, "next_actions": [{"label": "返回检查与对账核实", "action_type": "redirect", "target": "portfolio:governance"}]}
+for _inspection_code in ("EVIDENCE_STORAGE_UNAVAILABLE", "EVIDENCE_NOT_SAVED"):
+    ERROR_CODE_LIBRARY[_inspection_code] = {"user_message": "补证存储或来源暂不可用，请保留填写内容后重试",
+        "impact": "本次补证或审核尚未确认保存，不能视为处理成功", "retryable": True,
+        "next_actions": [{"label": "重新读取来源", "action_type": "retry"}]}
+
+
 # ── 工厂函数 ──────────────────────────────────────────
 
 

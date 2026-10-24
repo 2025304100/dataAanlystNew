@@ -1,0 +1,283 @@
+{
+  "mode": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "original": {
+    "task_id": "ea20e274a59a5dfd8e6544c8739fd38b",
+    "portfolio_id": 1,
+    "status": "partial",
+    "message": "部分对象未完成；成功产物已保留，可仅重试失败项",
+    "total": 3,
+    "processed": 3,
+    "ok_count": 2,
+    "failed_count": 1,
+    "objects": [
+      {
+        "operation_id": "1:sync_daily_bars",
+        "kind": "sync_daily_bars",
+        "label": "补齐 平安银行 日K行情",
+        "symbol_id": 1,
+        "symbol": "000001",
+        "trade_date": "2026-10-23",
+        "start_date": "2026-10-17",
+        "end_date": "2026-10-23",
+        "config_id": null,
+        "config_version": null,
+        "config_fingerprint": null,
+        "enabled": true,
+        "disabled_reason": null,
+        "disabled_code": null,
+        "target": "settings:data-center",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "1:daily_bar"
+        ],
+        "expected_effect": "仅同步明确日期范围内的日K行情，成功后重检实际覆盖日",
+        "status": "succeeded",
+        "output": {
+          "source_record_ref": "daily_bar:1568253",
+          "actual_trade_date": "2026-10-23",
+          "verified_trade_dates": [
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-21",
+            "2026-10-22",
+            "2026-10-23"
+          ],
+          "verified_fields": []
+        },
+        "reinspection_status": "PASSED",
+        "remaining_evidence_ids": []
+      },
+      {
+        "operation_id": "2:sync_daily_bars",
+        "kind": "sync_daily_bars",
+        "label": "补齐 沪深300ETF华泰柏瑞 日K行情",
+        "symbol_id": 2,
+        "symbol": "510300",
+        "trade_date": "2026-10-23",
+        "start_date": "2026-10-21",
+        "end_date": "2026-10-23",
+        "config_id": null,
+        "config_version": null,
+        "config_fingerprint": null,
+        "enabled": true,
+        "disabled_reason": null,
+        "disabled_code": null,
+        "target": "settings:data-center",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "2:daily_bar"
+        ],
+        "expected_effect": "仅同步明确日期范围内的日K行情，成功后重检实际覆盖日",
+        "status": "failed",
+        "error_code": "REPAIR_OBJECT_FAILED",
+        "reason": "数据修复失败，请查看来源任务后重试",
+        "reinspection_status": "STILL_BLOCKED",
+        "remaining_evidence_ids": [
+          "2:daily_bar"
+        ]
+      },
+      {
+        "operation_id": "3215:sync_daily_bars",
+        "kind": "sync_daily_bars",
+        "label": "补齐 中远海特 日K行情",
+        "symbol_id": 3215,
+        "symbol": "600428",
+        "trade_date": "2026-10-23",
+        "start_date": "2026-08-08",
+        "end_date": "2026-10-23",
+        "config_id": null,
+        "config_version": null,
+        "config_fingerprint": null,
+        "enabled": true,
+        "disabled_reason": null,
+        "disabled_code": null,
+        "target": "settings:data-center",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "3215:daily_bar"
+        ],
+        "expected_effect": "仅同步明确日期范围内的日K行情，成功后重检实际覆盖日",
+        "status": "succeeded",
+        "output": {
+          "source_record_ref": "daily_bar:1568302",
+          "actual_trade_date": "2026-10-23",
+          "verified_trade_dates": [
+            "2026-08-10",
+            "2026-08-11",
+            "2026-08-12",
+            "2026-08-13",
+            "2026-08-14",
+            "2026-08-17",
+            "2026-08-18",
+            "2026-08-19",
+            "2026-08-20",
+            "2026-08-21",
+            "2026-08-24",
+            "2026-08-25",
+            "2026-08-26",
+            "2026-08-27",
+            "2026-08-28",
+            "2026-08-31",
+            "2026-09-01",
+            "2026-09-02",
+            "2026-09-03",
+            "2026-09-04",
+            "2026-09-07",
+            "2026-09-08",
+            "2026-09-09",
+            "2026-09-10",
+            "2026-09-11",
+            "2026-09-14",
+            "2026-09-15",
+            "2026-09-16",
+            "2026-09-17",
+            "2026-09-18",
+            "2026-09-21",
+            "2026-09-22",
+            "2026-09-23",
+            "2026-09-24",
+            "2026-09-28",
+            "2026-09-29",
+            "2026-09-30",
+            "2026-10-08",
+            "2026-10-09",
+            "2026-10-12",
+            "2026-10-13",
+            "2026-10-14",
+            "2026-10-15",
+            "2026-10-16",
+            "2026-10-19",
+            "2026-10-20",
+            "2026-10-21",
+            "2026-10-22",
+            "2026-10-23"
+          ],
+          "verified_fields": []
+        },
+        "reinspection_status": "PASSED",
+        "remaining_evidence_ids": []
+      }
+    ],
+    "retryable_operation_ids": [
+      "2:sync_daily_bars"
+    ],
+    "parent_task_id": null,
+    "recovery": {
+      "status": "RETRY_AVAILABLE",
+      "reason": "已保存的成功产物保留，可仅重试未完成对象",
+      "error_codes": [
+        "REPAIR_OBJECT_FAILED"
+      ]
+    },
+    "dimension_recovery": {
+      "status": "BLOCKED",
+      "changed_fields": [],
+      "snapshot_id": "4bb93ed5911c8a350393d9254a34e06287e14ff589dfb6b359658b0d73168707",
+      "aggregation_policy": "existing_any_healthy_symbol_v1",
+      "restricted_symbol_ids": [],
+      "coverage": {
+        "entry_symbols": 0,
+        "healthy_symbols": 0,
+        "restricted_symbols": 0
+      },
+      "reason": "参与新买入与自动恢复范围的当前业务日数据已通过检查",
+      "runtime_state_changed": false
+    },
+    "audit_refs": [
+      "data_governance_audit_event:3768",
+      "data_governance_audit_event:3769",
+      "data_governance_audit_event:3770",
+      "data_governance_audit_event:3771",
+      "data_governance_audit_event:3772"
+    ]
+  },
+  "retry": {
+    "task_id": "cdeb2a1d202db141c32f83febfd0fe08",
+    "portfolio_id": 1,
+    "status": "failed",
+    "message": "部分对象未完成；成功产物已保留，可仅重试失败项",
+    "total": 1,
+    "processed": 1,
+    "ok_count": 0,
+    "failed_count": 1,
+    "objects": [
+      {
+        "operation_id": "2:sync_daily_bars",
+        "kind": "sync_daily_bars",
+        "label": "补齐 沪深300ETF华泰柏瑞 日K行情",
+        "symbol_id": 2,
+        "symbol": "510300",
+        "trade_date": "2026-10-23",
+        "start_date": "2026-10-21",
+        "end_date": "2026-10-23",
+        "config_id": null,
+        "config_version": null,
+        "config_fingerprint": null,
+        "enabled": true,
+        "disabled_reason": null,
+        "disabled_code": null,
+        "target": "settings:data-center",
+        "depends_on": [],
+        "resolves_evidence_ids": [
+          "2:daily_bar"
+        ],
+        "expected_effect": "仅同步明确日期范围内的日K行情，成功后重检实际覆盖日",
+        "status": "failed",
+        "error_code": "ETF_QFQ_SOURCE_UNAVAILABLE",
+        "reason": "ETF前复权行情获取失败：行情服务连接中断，本次未写入该标的行情；未使用不复权数据替代。",
+        "source_label": "东方财富 · ETF前复权日K",
+        "next_action": "稍后仅重试本标的失败步骤。若持续失败，可核查有明确前复权口径的历史资料后按正式流程导入；已成功的其他标的不必重跑。",
+        "source_retryable": true,
+        "reinspection_status": "STILL_BLOCKED",
+        "remaining_evidence_ids": [
+          "2:daily_bar"
+        ]
+      }
+    ],
+    "retryable_operation_ids": [
+      "2:sync_daily_bars"
+    ],
+    "parent_task_id": "ea20e274a59a5dfd8e6544c8739fd38b",
+    "recovery": {
+      "status": "RETRY_AVAILABLE",
+      "reason": "已保存的成功产物保留，可仅重试未完成对象",
+      "error_codes": [
+        "ETF_QFQ_SOURCE_UNAVAILABLE"
+      ]
+    },
+    "dimension_recovery": {
+      "status": "BLOCKED",
+      "changed_fields": [],
+      "snapshot_id": "4bb93ed5911c8a350393d9254a34e06287e14ff589dfb6b359658b0d73168707",
+      "aggregation_policy": "existing_any_healthy_symbol_v1",
+      "restricted_symbol_ids": [],
+      "coverage": {
+        "entry_symbols": 0,
+        "healthy_symbols": 0,
+        "restricted_symbols": 0
+      },
+      "reason": "参与新买入与自动恢复范围的当前业务日数据已通过检查",
+      "runtime_state_changed": false
+    },
+    "audit_refs": [
+      "data_governance_audit_event:3773",
+      "data_governance_audit_event:3774",
+      "data_governance_audit_event:3775"
+    ]
+  },
+  "original_unchanged": true,
+  "runtime": {
+    "allow_new_buys": false,
+    "allow_risk_exits": true,
+    "allow_auto_recovery": false,
+    "requires_manual_ack": true
+  }
+}

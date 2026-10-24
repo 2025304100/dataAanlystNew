@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes import external_data
 from app.db.session import get_db
+from app.models.daily_bar import DailyBar
 from app.models.etf_indicator import EtfIndicator
 from app.models.factor_runtime import FactorSystemConfig
 from app.models.market_data import MarketCalendar
@@ -158,6 +159,40 @@ def test_no_current_metrics_does_not_report_success_or_mirror_local_prices(envir
     assert task["result"]["warehouse_mirror"]["status"] == "skipped"
     assert db_session.query(EtfIndicator).count() == 0
     assert len(calls) == 1
+
+
+def test_etf_history_backfill_writes_only_available_fields(db_session, monkeypatch):
+    symbol = Symbol(symbol="510300", name="history-etf", market="sh", asset_type="etf")
+    db_session.add(symbol)
+    db_session.flush()
+    db_session.add(DailyBar(
+        symbol_id=symbol.id, trade_date=date(2026, 1, 5),
+        open=4.0, high=4.1, low=3.9, close=4.05, source="test",
+    ))
+    db_session.commit()
+    monkeypatch.setattr(
+        etf, "_fetch_etf_nav_history",
+        lambda *_a, **_k: {date(2026, 1, 5): 4.0, date(2026, 1, 6): 4.02},
+    )
+
+    summary = etf.sync_etf_indicator_range(
+        db_session, symbol, date(2026, 1, 5), date(2026, 1, 6)
+    )
+
+    assert summary["written"] == 2
+    rows = {
+        row.trade_date: row
+        for row in db_session.query(EtfIndicator).filter_by(symbol_id=symbol.id)
+    }
+    first = rows[date(2026, 1, 5)]
+    assert first.nav == 4.0
+    assert first.close == 4.05
+    assert first.premium_discount == pytest.approx((4.05 - 4.0) / 4.0 * 100)
+    assert first.premium_discount_score == etf.calc_premium_discount_score(first.premium_discount)
+    assert first.total_shares is None
+    assert first.fund_size is None
+    assert rows[date(2026, 1, 6)].nav == 4.02
+    assert rows[date(2026, 1, 6)].total_shares is None
 
 
 def test_provider_outage_has_two_attempts_and_no_history_fallback(environment, db_session, monkeypatch):

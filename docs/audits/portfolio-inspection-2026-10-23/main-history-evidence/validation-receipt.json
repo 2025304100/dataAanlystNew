@@ -1,0 +1,51 @@
+{
+  "backend_final": {
+    "command": "pytest tests/test_portfolio_execution_history.py tests/test_portfolio_inspection_reconciliation_services.py tests/test_portfolio_inspection_history.py tests/test_portfolio_inspection_workflow_http.py tests/test_g3_audit_reconciliation_statemachine.py -q --disable-warnings",
+    "passed": 108,
+    "seconds": 92.22
+  },
+  "automatic_dispatch": {
+    "command": "pytest tests/test_auto_trade_dispatch_date.py tests/test_whitebox_auto_trade.py -q --disable-warnings",
+    "passed": 42,
+    "xfailed": 1,
+    "seconds": 20.26
+  },
+  "frontend": {
+    "command": "npx vitest run src/components/portfolio-trading/inspection/__tests__/PortfolioInspectionWorkbench.test.tsx --reporter=dot",
+    "passed": 17,
+    "seconds": 22.26
+  },
+  "build": {
+    "command": "npm run build",
+    "typescript": "passed",
+    "vite": "passed",
+    "vite_seconds": 32.77,
+    "existing_warning": "large chunks"
+  },
+  "browser": {
+    "pageerrors": [],
+    "httpErrors": [],
+    "writes": [],
+    "widths": [
+      {
+        "viewport": 390,
+        "document": 390,
+        "drawer": 390
+      },
+      {
+        "viewport": 320,
+        "document": 320,
+        "drawer": 320
+      }
+    ],
+    "checks": [
+      "09-29 guide shows cross-day task reuse and retained exact task reference",
+      "No fabricated supplement candidates",
+      "Final recovery remains disabled",
+      "10-19 selected report/version directly matches historical treatment"
+    ],
+    "taskGroups": 2,
+    "passed": true
+  },
+  "source": "Actual command outputs from this task; test collections overlap earlier regressions and are not cumulative."
+}

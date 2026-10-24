@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "protected_table_count": 25,
+  "comparisons": {
+    "tables": true,
+    "market_rows": true,
+    "main": true,
+    "active_tasks": true,
+    "auto_trade_tasks": true,
+    "automatic_dispatches": true,
+    "universe_etf": true
+  },
+  "old_scores_preserved": 45,
+  "scoring_configs_unchanged": true,
+  "scores_appended": [
+    {
+      "id": 79581,
+      "symbol": "510300",
+      "trade_date": "2026-10-23",
+      "preset_name": "ETF均衡机会",
+      "published_at": "2026-10-24 01:00:01",
+      "weight_mode": "manual",
+      "pit_safety": "NOT_PIT_SAFE"
+    }
+  ],
+  "audit_before": 3778,
+  "audit_after": 3793,
+  "new_audit_count": 15,
+  "rechecked_days": 14,
+  "permissions": {
+    "allow_new_buys": false,
+    "allow_risk_exits": true,
+    "allow_auto_recovery": false,
+    "requires_manual_ack": true
+  },
+  "final_review_can_confirm": false,
+  "mode": {
+    "mode": "inspection_acceptance",
+    "portfolio_id": 1,
+    "scheduled_task_types": [],
+    "background_jobs_enabled": false,
+    "automatic_trading_enabled": false,
+    "trading_mutations_allowed": false,
+    "final_reviews_allowed": false
+  },
+  "model_or_strategy_changed": false,
+  "market_bars_changed": false,
+  "accepted_new_baseline": false,
+  "trading_resumed": false,
+  "admission_unfrozen": false
+}

@@ -1,0 +1,27 @@
+{
+  "portfolio_id": 1,
+  "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+  "model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+  "model_name": "验证测试",
+  "change_summary": "首次确认此组合的模型与策略快照；没有历史已接受绑定记录",
+  "before": null,
+  "after": {
+    "snapshot_id": "3713ceab91b3a8d73391ae870b03f18d7a7f22350005229097584ad7a2588118",
+    "model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e",
+    "model_name": "验证测试",
+    "factor_set_id": "fs-set-3126b70f",
+    "rule_id": 1,
+    "rule_version": 1,
+    "snapshot_no": 4,
+    "run_mode": "research",
+    "pit_mode": "best_effort"
+  },
+  "requires_confirmation": false,
+  "first_confirmation": true,
+  "can_confirm": false,
+  "blockers": [
+    "当前策略为研究模式，请保存应用正式执行策略",
+    "绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练",
+    "快照关联的策略已失效，请重新保存应用"
+  ]
+}

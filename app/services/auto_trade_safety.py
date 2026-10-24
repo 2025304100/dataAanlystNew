@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -29,7 +29,8 @@ from app.models.sim_account import SimOrder
 logger = logging.getLogger(__name__)
 
 
-# 数据新鲜度阈值（小时）
+# Deprecated compatibility exports. Admission uses business dates and the
+# portfolio's real policy; these natural-hour values no longer decide health.
 KLINE_FRESHNESS_HOURS = 24
 SCORE_FRESHNESS_HOURS = 48
 RULE_FRESHNESS_HOURS = 168  # 7 天
@@ -45,6 +46,11 @@ class DataHealthResult:
     score_latest_at: datetime | None = None
     rule_version_id: int | None = None
     rule_version_at: datetime | None = None
+    checks: list[dict[str, Any]] = field(default_factory=list)
+    reason_codes: list[str] = field(default_factory=list)
+    expected_trade_date: date | None = None
+    kline_trade_date: date | None = None
+    score_trade_date: date | None = None
 
 
 def _now_utc_naive() -> datetime:
@@ -67,94 +73,64 @@ def check_data_health(
     *,
     symbol_id: int,
     rule_version_id: int | None = None,
+    portfolio_id: int | None = None,
 ) -> DataHealthResult:
-    """数据健康检查（WP6.5 fail-closed）。
+    """Share business-date and source checks with portfolio inspection.
 
-    检查：
-    1. K 线数据新鲜度（24 小时内）
-    2. 评分数据新鲜度（48 小时内）
-    3. 规则版本新鲜度（7 天内，仅当 rule_version_id 指定时）
-
-    任一过期返回 healthy=False（fail-closed 禁止买入）。
-    错误消息不暴露敏感信息（不暴露具体表结构、连接字符串等）。
+    Kept return fields preserve callers' API. Natural-hour freshness and a
+    placeholder rule timestamp are no longer production admission evidence.
+    Risk exits continue through check_sell_risk's explicit allowed+alert path.
     """
-    now = _now_utc_naive()
-
-    # 1. K 线数据新鲜度
-    kline_latest = _get_latest_kline_time(db, symbol_id)
-    if kline_latest is None:
-        return DataHealthResult(
-            healthy=False,
-            reason="K线数据缺失",
-            kline_latest_at=None,
-        )
-    kline_latest_naive = _to_naive(kline_latest)
-    if (now - kline_latest_naive) > timedelta(hours=KLINE_FRESHNESS_HOURS):
-        return DataHealthResult(
-            healthy=False,
-            reason=f"K线数据过期（最后更新 {kline_latest_naive.isoformat()}，阈值 {KLINE_FRESHNESS_HOURS}h）",
-            kline_latest_at=kline_latest_naive,
-        )
-
-    # 2. 评分数据新鲜度
-    score_latest = _get_latest_score_time(db, symbol_id)
-    if score_latest is None:
-        return DataHealthResult(
-            healthy=False,
-            reason="评分数据缺失",
-            kline_latest_at=kline_latest_naive,
-            score_latest_at=None,
-        )
-    score_latest_naive = _to_naive(score_latest)
-    if (now - score_latest_naive) > timedelta(hours=SCORE_FRESHNESS_HOURS):
-        return DataHealthResult(
-            healthy=False,
-            reason=f"评分数据过期（最后更新 {score_latest_naive.isoformat()}，阈值 {SCORE_FRESHNESS_HOURS}h）",
-            kline_latest_at=kline_latest_naive,
-            score_latest_at=score_latest_naive,
-        )
-
-    # 3. 规则版本新鲜度（仅当指定 rule_version_id 时检查）
-    rule_version_at: datetime | None = None
-    if rule_version_id is not None:
-        rule_version_at = _get_rule_version_time(db, rule_version_id)
-        if rule_version_at is None:
-            return DataHealthResult(
-                healthy=False,
-                reason=f"规则版本 {rule_version_id} 不存在",
-                kline_latest_at=kline_latest_naive,
-                score_latest_at=score_latest_naive,
-                rule_version_id=rule_version_id,
-            )
-        rule_version_at_naive = _to_naive(rule_version_at)
-        if (now - rule_version_at_naive) > timedelta(hours=RULE_FRESHNESS_HOURS):
-            return DataHealthResult(
-                healthy=False,
-                reason=(
-                    f"规则版本过期（版本 {rule_version_id}，"
-                    f"最后更新 {rule_version_at_naive.isoformat()}，"
-                    f"阈值 {RULE_FRESHNESS_HOURS}h）"
-                ),
-                kline_latest_at=kline_latest_naive,
-                score_latest_at=score_latest_naive,
-                rule_version_id=rule_version_id,
-                rule_version_at=rule_version_at_naive,
-            )
-
-    return DataHealthResult(
-        healthy=True,
-        reason="",
-        kline_latest_at=kline_latest_naive,
-        score_latest_at=score_latest_naive,
-        rule_version_id=rule_version_id,
-        rule_version_at=rule_version_at,
+    from app.models.symbol import Symbol
+    from app.services.portfolio_inspection_diagnostics import (
+        _binding, _calendar, _member_rule_evidence, _symbol_diagnostics, _utc, inspection_admission_failures,
     )
+    at = _utc(_now_utc_naive())
+    with db.no_autoflush:
+        try:
+            symbol = db.get(Symbol, symbol_id)
+            if symbol is None:
+                return DataHealthResult(False, "标的基本资料缺失", reason_codes=["MISSING"])
+            binding = {"model_run_id": None, "factor_set_id": None, "score_allowed_lag": 0}
+            dependencies = {"members": []}
+            binding_checks = []
+            if portfolio_id is not None:
+                binding, binding_checks, dependencies = _binding(db, portfolio_id, at)
+            row = _symbol_diagnostics(db, {"symbol_id": symbol_id, "scopes": [], "entry_authorized": True},
+                symbol, _calendar(db, symbol.market, at), binding, dependencies, at)
+            checks = [ev for ev in row["evidence"] if ev.get("admission_relevant")] + binding_checks
+            if rule_version_id is not None:
+                # Members reference a version registry which is not implemented.
+                # A PortfolioRule id is a different object; never claim it exists
+                # by returning the current time or guessing another table's id.
+                checks.append(_member_rule_evidence(at, symbol, rule_version_id, binding, ["new_buy", "automatic_recovery"]))
+            failed = inspection_admission_failures(checks)
+            def message(ev):
+                label = ev.get("label") or ev["check_code"]
+                if ev["check_code"] == "DAILY_BAR_FRESHNESS":
+                    label = {"MISSING": "K线数据缺失", "STALE": "K线数据过期", "READ_ERROR": "K线读取失败"}.get(ev["status"], "日K行情")
+                elif ev["check_code"] == "SCORE_FRESHNESS":
+                    label = {"MISSING": "评分数据缺失", "STALE": "评分数据过期", "READ_ERROR": "评分读取失败"}.get(ev["status"], "适用评分")
+                return f"{label}：{ev['reason']}"
+            bar_ev = next(ev for ev in checks if ev["check_code"] == "DAILY_BAR_FRESHNESS")
+            score_ev = next(ev for ev in checks if ev["check_code"] == "SCORE_FRESHNESS")
+            return DataHealthResult(healthy=not failed,
+                reason="；".join(dict.fromkeys(message(ev) for ev in failed)),
+                kline_latest_at=_to_naive(bar_ev.get("available_at")), score_latest_at=_to_naive(score_ev.get("available_at")),
+                rule_version_id=rule_version_id, checks=checks,
+                reason_codes=list(dict.fromkeys(ev["status"] for ev in failed)),
+                expected_trade_date=row["expected_trade_date"], kline_trade_date=row["actual_bar_trade_date"],
+                score_trade_date=row["actual_score_trade_date"])
+        except Exception:
+            logger.warning("读取业务日期健康证据失败 symbol_id=%s", symbol_id, exc_info=True)
+            return DataHealthResult(False, "行情或评分数据读取失败", reason_codes=["READ_ERROR"],
+                checks=[{"check_code": "DATA_READ", "status": "READ_ERROR", "reason": "行情或评分数据读取失败"}])
 
 
 def _get_latest_kline_time(db: Session, symbol_id: int) -> datetime | None:
-    """获取最新 K 线数据时间（按 created_at 取最新一条）。
+    """Legacy metadata helper; latest business row's ingestion time only.
 
-    第一阶段：查询 DailyBar 表，返回最新 created_at。
+    This timestamp does not decide admission freshness.
     """
     try:
         from app.models.daily_bar import DailyBar
@@ -162,7 +138,7 @@ def _get_latest_kline_time(db: Session, symbol_id: int) -> datetime | None:
         bar = db.execute(
             select(DailyBar)
             .where(DailyBar.symbol_id == symbol_id)
-            .order_by(DailyBar.created_at.desc(), DailyBar.id.desc())
+            .order_by(DailyBar.trade_date.desc(), DailyBar.id.desc())
             .limit(1)
         ).scalars().first()
         return bar.created_at if bar is not None else None
@@ -173,33 +149,28 @@ def _get_latest_kline_time(db: Session, symbol_id: int) -> datetime | None:
 
 
 def _get_latest_score_time(db: Session, symbol_id: int) -> datetime | None:
-    """获取最新评分时间。"""
+    """Legacy metadata helper; latest business row's actual publication time."""
     try:
         from app.models.score import Score
 
         score = db.execute(
             select(Score)
             .where(Score.symbol_id == symbol_id)
-            .order_by(Score.created_at.desc(), Score.id.desc())
+            .order_by(Score.trade_date.desc(), Score.id.desc())
             .limit(1)
         ).scalars().first()
-        return score.created_at if score is not None else None
+        return score.published_at if score is not None else None
     except Exception as exc:
         logger.warning("获取评分最新时间失败 symbol_id=%s: %s", symbol_id, exc)
         return None
 
 
 def _get_rule_version_time(db: Session, rule_version_id: int) -> datetime | None:
-    """获取规则版本时间。
-
-    第一阶段占位：规则版本表尚未建立，返回当前时间表示"版本存在且新鲜"。
-    后续接入规则版本表后实现真实查询；若版本不存在应返回 None，
-    让 check_data_health 走 "规则版本 X 不存在" 分支（fail-closed）。
-    """
-    # TODO: 接入规则版本表后实现真实查询
-    # 当前规则版本表尚未建立，返回当前时间作为占位（视为新鲜）
+    """Legacy compatibility helper: no registry exists, so return unverified."""
+    # Legacy helper retained for import compatibility. There is no real member
+    # rule-version registry, so absence must remain unverified.
     _ = (db, rule_version_id)
-    return _now_utc_naive()
+    return None
 
 
 # ----------------------------------------------------------------------------
@@ -222,7 +193,7 @@ def check_sell_risk(
     - 即使数据缺失，仍允许卖出（止损保护）
     - 但会生成高优先级告警
     """
-    health = check_data_health(db, symbol_id=symbol_id)
+    health = check_data_health(db, symbol_id=symbol_id, portfolio_id=portfolio_id)
 
     if not health.healthy:
         # 数据缺失：生成高优先级告警（不静默跳过）

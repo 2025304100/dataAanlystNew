@@ -1,0 +1,162 @@
+[
+  {
+    "id": 1,
+    "task_type": "universe_incremental_sync",
+    "name": "每日行情增量同步",
+    "enabled": 1,
+    "created_at": "2026-07-14 13:26:24",
+    "updated_at": "2026-10-23 11:51:49",
+    "next_run_at": "2026-10-24 10:00:00",
+    "last_run_at": "2026-10-23 11:51:49"
+  },
+  {
+    "id": 2,
+    "task_type": "macro_update",
+    "name": "每日宏观数据更新",
+    "enabled": 1,
+    "created_at": "2026-07-14 13:26:24",
+    "updated_at": "2026-10-23 11:51:49",
+    "next_run_at": "2026-10-24 09:30:00",
+    "last_run_at": "2026-10-23 11:51:49"
+  },
+  {
+    "id": 3,
+    "task_type": "factor_pipeline",
+    "name": "每日因子评分",
+    "enabled": 1,
+    "created_at": "2026-07-14 13:26:24",
+    "updated_at": "2026-10-23 11:51:49",
+    "next_run_at": "2026-10-24 10:10:00",
+    "last_run_at": "2026-10-23 11:51:49"
+  },
+  {
+    "id": 4,
+    "task_type": "factor_pipeline",
+    "name": "每周因子训练",
+    "enabled": 0,
+    "created_at": "2026-07-14 13:26:24",
+    "updated_at": "2026-07-14 13:26:24",
+    "next_run_at": null,
+    "last_run_at": null
+  },
+  {
+    "id": 5,
+    "task_type": "discovery_mining",
+    "name": "每日机会挖掘",
+    "enabled": 0,
+    "created_at": "2026-07-14 13:26:24",
+    "updated_at": "2026-07-14 13:26:24",
+    "next_run_at": null,
+    "last_run_at": null
+  },
+  {
+    "id": 6,
+    "task_type": "hot_rank_snapshot",
+    "name": "每日人气榜快照",
+    "enabled": 1,
+    "created_at": "2026-07-15 09:26:37",
+    "updated_at": "2026-10-23 11:51:48",
+    "next_run_at": "2026-10-24 08:20:00",
+    "last_run_at": "2026-10-23 11:51:48"
+  },
+  {
+    "id": 7,
+    "task_type": "tail_proxy_snapshot",
+    "name": "每日候选尾盘代理",
+    "enabled": 0,
+    "created_at": "2026-07-15 09:26:37",
+    "updated_at": "2026-07-15 09:26:37",
+    "next_run_at": null,
+    "last_run_at": null
+  },
+  {
+    "id": 8,
+    "task_type": "lhb_institution_sync",
+    "name": "每日龙虎榜机构同步",
+    "enabled": 1,
+    "created_at": "2026-07-15 09:26:37",
+    "updated_at": "2026-10-23 11:51:48",
+    "next_run_at": "2026-10-24 08:30:00",
+    "last_run_at": "2026-10-23 11:51:48"
+  },
+  {
+    "id": 9,
+    "task_type": "financial_report_sync",
+    "name": "每周财报历史同步",
+    "enabled": 1,
+    "created_at": "2026-07-15 09:26:37",
+    "updated_at": "2026-10-17 02:00:23",
+    "next_run_at": "2026-10-24 02:00:00",
+    "last_run_at": "2026-10-17 02:00:23"
+  },
+  {
+    "id": 10,
+    "task_type": "portfolio_equity_snapshot",
+    "name": "每日组合净值快照",
+    "enabled": 1,
+    "created_at": "2026-07-18 04:13:23",
+    "updated_at": "2026-10-23 11:51:48",
+    "next_run_at": "2026-10-24 08:00:00",
+    "last_run_at": "2026-10-23 11:51:48"
+  },
+  {
+    "id": 11,
+    "task_type": "portfolio_auto_trade",
+    "name": "每日组合自动交易",
+    "enabled": 1,
+    "created_at": "2026-07-18 07:19:58",
+    "updated_at": "2026-10-23 11:51:48",
+    "next_run_at": "2026-10-24 06:55:00",
+    "last_run_at": "2026-10-23 11:51:48"
+  },
+  {
+    "id": 12,
+    "task_type": "external_data_sync",
+    "name": "每日因子估值增量同步",
+    "enabled": 1,
+    "created_at": "2026-08-15 15:15:58",
+    "updated_at": "2026-10-23 12:30:25",
+    "next_run_at": "2026-10-24 12:30:00",
+    "last_run_at": "2026-10-23 12:30:25"
+  },
+  {
+    "id": 13,
+    "task_type": "index_daily_sync",
+    "name": "每日指数日线同步",
+    "enabled": 1,
+    "created_at": "2026-08-15 15:15:58",
+    "updated_at": "2026-10-23 11:51:48",
+    "next_run_at": "2026-10-24 08:05:00",
+    "last_run_at": "2026-10-23 11:51:48"
+  },
+  {
+    "id": 14,
+    "task_type": "external_data_sync",
+    "name": "每日因子资金流增量同步",
+    "enabled": 1,
+    "created_at": "2026-10-01 00:18:15",
+    "updated_at": "2026-10-23 12:40:29",
+    "next_run_at": "2026-10-24 12:40:00",
+    "last_run_at": "2026-10-23 12:40:29"
+  },
+  {
+    "id": 15,
+    "task_type": "alert_evaluation",
+    "name": "每日告警规则评估",
+    "enabled": 1,
+    "created_at": "2026-10-17 16:01:55",
+    "updated_at": "2026-10-23 23:47:00",
+    "next_run_at": "2026-10-24 13:30:00",
+    "last_run_at": "2026-10-23 23:47:00"
+  },
+  {
+    "id": 16,
+    "task_type": "portfolio_reconciliation",
+    "name": "main 组合自动对账（仅核对）",
+    "enabled": 1,
+    "created_at": "2026-10-23 04:16:44",
+    "updated_at": "2026-10-24 00:03:32",
+    "next_run_at": "2026-10-24 00:08:33",
+    "last_run_at": "2026-10-24 00:03:32"
+  }
+]

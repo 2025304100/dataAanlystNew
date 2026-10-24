@@ -1,0 +1,113 @@
+{
+  "date": "2026-10-24",
+  "scope": "quick reconciliation visual refinement",
+  "files": [
+    {
+      "path": "browser-result.json",
+      "bytes": 2001,
+      "sha256": "a0bfa153556e4700446d24bc9da7a7cd88ddd105024fb67fdea4b4efe75be25d"
+    },
+    {
+      "path": "browser-run.log",
+      "bytes": 2083,
+      "sha256": "19d0374ec090362513d9cb6d674b8ac3ef137f52ec2d4ba6483d1d51a3cd1214"
+    },
+    {
+      "path": "desktop.png",
+      "bytes": 228136,
+      "sha256": "459ea6087a4f8b4733f430cab2d6a70bfd1ab34b9e198279a4cfcf31dd84316d"
+    },
+    {
+      "path": "expanded.png",
+      "bytes": 251949,
+      "sha256": "2d86fc7b8b07a44f214698cc473340f7c6d9aa2a16877fc6768b1ea02e2528ef"
+    },
+    {
+      "path": "freeze.py",
+      "bytes": 4601,
+      "sha256": "10d578f3450fe65bc8d0819a2f63aebd72ff2db94f5e92b53a0ce603b0e0e085"
+    },
+    {
+      "path": "frontend-build-final.log",
+      "bytes": 3351,
+      "sha256": "74386af7fdd871b821f8df3828d4012453fd0dbcf816aa0de5114c9de85b5c48"
+    },
+    {
+      "path": "frontend-tests.log",
+      "bytes": 1094,
+      "sha256": "804b26676f4cf985e987f23b3483bf996ce6aed6c22fc5a0c5e706dd16854b09"
+    },
+    {
+      "path": "material.png",
+      "bytes": 263500,
+      "sha256": "e56bc7b7f322a7b1c747e9544c63af1742dcdd65c9e83b51a4c5d4c498c38875"
+    },
+    {
+      "path": "modal.png",
+      "bytes": 58875,
+      "sha256": "3acdca92410604e5502fa1b75d70a53f77d9251d259f18527a3085aeb1fef740"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1945,
+      "sha256": "06d1786e20bc32f2ecbd86b014d9ca9e9f9000888f416a8f9c4575c38c0f25e0"
+    },
+    {
+      "path": "verify.mjs",
+      "bytes": 8300,
+      "sha256": "d002080df4c12fc735aaf521a1ffb95419e520d447618c20e3cb9e77f31ab1a6"
+    },
+    {
+      "path": "width-1024-expanded.png",
+      "bytes": 123686,
+      "sha256": "29493bb6099f2c8bd1dbf45d32ba81ee2e7daaab516d3908cc704010a1af39cb"
+    },
+    {
+      "path": "width-1024.png",
+      "bytes": 118065,
+      "sha256": "84e35966630dc45c7588421a4260db047be9a7afac474c53e7eb7b79fd2ac1ba"
+    },
+    {
+      "path": "width-320-expanded.png",
+      "bytes": 63979,
+      "sha256": "7cba035be93b0da7de866fa8f5784a320ae59606084204a8af488d1a69ebbe13"
+    },
+    {
+      "path": "width-320.png",
+      "bytes": 57590,
+      "sha256": "cd3c9234278c3b9249e7a29f8866b1d98dbed72af6d9e1b5ec062a7de460dd3e"
+    },
+    {
+      "path": "width-390-expanded.png",
+      "bytes": 82337,
+      "sha256": "9a7e0de90b2d5ad9a8b083eb56be62a477b454f8d362093872a4601e158e4e4d"
+    },
+    {
+      "path": "width-390.png",
+      "bytes": 67583,
+      "sha256": "c9d50ad9d5f69194e0d6fce26477378eb35bd1e8c3e56f82b42fa16d37581977"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/ReconciliationQuickCheckModal.tsx",
+      "bytes": 15196,
+      "sha256": "b3e2ba6c2ff2724af08eba02a2172b3e38440f30c72950958678c7ca7453a8b3"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/reconciliationQuickCheck.css",
+      "bytes": 11953,
+      "sha256": "930b64868c4aecb279eb54134397d2856024622dbcb065b3d32a8384ebf4a394"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/inspection/__tests__/ReconciliationQuickCheckModal.test.tsx",
+      "bytes": 8912,
+      "sha256": "f2baedf5aa504071d733dd132118f42c831d704dddb5210d302edef19aad1d07"
+    },
+    {
+      "path": "docs/组合交易检查与对账-设计与v10逐项核查及补齐记录-2026-10-23.md",
+      "bytes": 73068,
+      "sha256": "94644b44ca3ea965b41e855110534443ff218f7baddc52d522184bdc244aae5d"
+    }
+  ]
+}

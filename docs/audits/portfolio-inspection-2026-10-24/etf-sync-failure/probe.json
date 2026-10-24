@@ -1,0 +1,18 @@
+{
+  "symbol": "510300",
+  "price_basis": "qfq",
+  "start_date": "2026-10-21",
+  "end_date": "2026-10-23",
+  "database_writes": false,
+  "status": "unavailable",
+  "cause_chain": [
+    {
+      "type": "ValueError",
+      "message": "ETF前复权行情获取失败，未使用不复权数据替代，请稍后重试。"
+    },
+    {
+      "type": "ConnectionError",
+      "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    }
+  ]
+}

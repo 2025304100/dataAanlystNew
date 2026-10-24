@@ -1,0 +1,30 @@
+{
+  "frontend/src/components/portfolio-trading/inspection/InspectionDataOverview.tsx": {
+    "before": "93e53aa7f8a5f764374c4ad0ea5028931b2ee283a9805b1cc0df6e155bf90ea8",
+    "after": "8bd13f4a42b7157595ea7a15a177bd19180f270f4bad3c7bfc72010aef726eca"
+  },
+  "frontend/src/components/portfolio-trading/inspection/InspectionDrawer.tsx": {
+    "before": "2052a1997c371aa10ff1a54ac0ea887e6c4ec2ac30b9cafff033d5088264b4df",
+    "after": "1d69d24d4b139e081939deca44565f114771f95e8bb86f6fddc5ca8c11d71459"
+  },
+  "frontend/src/components/portfolio-trading/inspection/InspectionHistoryGapPanel.tsx": {
+    "before": "9d7df62b00e07213c5fb7f01e0851e68c30ea92e56ef00017ed464492e3ed30f",
+    "after": "c49815b9f4bb2f11fe38f8887ed91d3b6d124c74fb46e03024bdf3de0488f432"
+  },
+  "frontend/src/components/portfolio-trading/inspection/InspectionHistoryPanel.tsx": {
+    "before": "b1e76951ca3582e4d3682862151e01061648ce8bb02498b047688094446a72ed",
+    "after": "81d7c1371d2ad8c970a15c40a3804d1b2854af48394a6c3a08c942e9b1fc45bf"
+  },
+  "frontend/src/components/portfolio-trading/inspection/InspectionJobPanel.tsx": {
+    "before": "14e588b75229c06d738cfd42cdcc265af427b725cc71938a352d69ae20ec2be2",
+    "after": "12c058c843ef13f5d3a9ef727a926059e057666db23ccc3d01f9a511a284d713"
+  },
+  "frontend/src/components/portfolio-trading/inspection/PortfolioInspectionWorkbench.tsx": {
+    "before": "3bf9ac9dc8977ebef797bebd2099c4c5419e02c0baa3c79cc0147d47724d242b",
+    "after": "175ce7f3e57f4ce0836f77f0c07e5a4f1825ce68ec59617ddc6e698e6364a75c"
+  },
+  "frontend/src/components/portfolio-trading/inspection/ReconciliationQuickCheckModal.tsx": {
+    "before": "63ef207e1edce96e5fc70fd76e53c7659785380622d3d97a89f2102d4fe3d1f1",
+    "after": "dee54f6ef821c7d38db25ef3099797356234a835571a5928e398023ccd0cb480"
+  }
+}

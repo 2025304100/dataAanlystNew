@@ -1,5 +1,6 @@
+import {AcceptanceButton as Button} from './inspection/AcceptanceControls';
 import { useEffect, useRef, useState } from "react";
-import { Button, Checkbox, Input } from "antd";
+import { Checkbox, Input } from "antd";
 import { api } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { t, template } from "../../i18n";
@@ -111,7 +112,7 @@ export default function ModelBindingReview({ portfolioId, onResolved, onNavigate
                 rows={2}
                 style={{ width: "100%", marginTop: 8 }}
               />
-              <Button size="small" type="primary" loading={busy} disabled={!ack || busy || note.trim().length < 10} onClick={() => void confirm()}>
+              <Button mutation size="small" type="primary" loading={busy} disabled={!ack || busy || note.trim().length < 10} onClick={() => void confirm()}>
                 {t("repairDrawer.binding.confirm")}
               </Button>
             </>

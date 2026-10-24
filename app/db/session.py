@@ -27,6 +27,8 @@ from app.core import text_charset as _text_charset  # noqa: F401
 # before_flush 守卫——4 字节字符（emoji/CJK 扩展区）在写库前被拦截为
 # ValueError（带类名.字段名），替代 DB 层的 1366 Incorrect string value。
 _text_charset.install_bmp_text_guard()
+from app.services.portfolio_reconciliation_events import install_source_receipts
+install_source_receipts()
 
 
 # ── 控制平面 NullPool 引擎 ─────────────────────────────────────

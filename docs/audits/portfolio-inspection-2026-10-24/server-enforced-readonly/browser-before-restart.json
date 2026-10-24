@@ -1,0 +1,24 @@
+{
+  "phase": "before-restart",
+  "checks": [
+    "真实原请求可读，独立来源备注明确显示验收关页异常，不冒充正式业务或授权。",
+    "浏览器直接向真实旧接口提交原键，服务端423拒绝；没有浏览器或代理拦截。",
+    "新键keepalive请求后立即关闭发起页，另一页回查仍404，没有误登记。",
+    "真实404后的显式原键重试也被服务端拒绝，保留原键与范围。",
+    "刷新只恢复读取，不自动重放失败请求。"
+  ],
+  "posts": [
+    {
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck",
+      "status": 423
+    },
+    {
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck",
+      "status": 423
+    }
+  ],
+  "pageErrors": [],
+  "getErrors": [],
+  "boundary": "All APIs go directly to the real read-only acceptance server. No API interception and no proxy. Only local production HTML/assets pinned.",
+  "passed": true
+}

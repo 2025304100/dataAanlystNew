@@ -1,0 +1,16 @@
+{
+  "browser-result.json": "37083bf0aaaec6342fa66ab8d8feed8e3904d57eed47c89d6dac074b09099514",
+  "browser-run.log": "61363335e47877b871954fb3ca1b57f049ba85c3557cb99de592dd50c7dcb630",
+  "built-assets.json": "d046a7b52bd4f683bd98ef55ed860d27fadb58781447464e4f23743b6ae8e3ab",
+  "diff-check.log": "4fbe79f0d7a7b9c04b493cc7b95509748fc0c5d0b13e12a4417e05552a76a275",
+  "final-safety.json": "f106e6dc80e4d7e33f33c468f2ce52d24cadbd7343502a9ff6fec9d1cfb12d6f",
+  "frontend-build.log": "5d6d0394146999778f93cd6f094ff9eb471d6343ebad0009ff1ab334b42b490b",
+  "frontend-tests.log": "c17d0bde8407e3c5b25926bc1d325a204746f805d52b505a34cfef9b9ea12877",
+  "offline-expired.png": "9ff34a6f3c9616f1b41215fb33aebc998e1f070d505a8de9b7be0b7877089204",
+  "original-task-after-lost-response.png": "6ec273782b257b00e3d94d6f7b7025e36ed795f2ff1af6eac157442c263eb9e0",
+  "README.md": "7b73f60b2bceba5476170e8b531947e5497c814df9d2f2403bfe45e14c4f4642",
+  "recovered-main.png": "dc925f36d9c67e42b1abebee2e5daa72e3f50a1ce02bc17f0b1d2b688f018235",
+  "source-after.json": "a5f17c51b437c8f444bcb9a15957ba54f7dcc109a38f8cee6cc889e0768ab816",
+  "verify.mjs": "24acd1d4648d6963eabffaa33c0e7dfd9ce7a1a965be1bcf72d623afb963f009",
+  "wake-expired.png": "8598dfca2f4e1273300ceda1226dcd713de405f73345c86230a4ad15f429a23f"
+}

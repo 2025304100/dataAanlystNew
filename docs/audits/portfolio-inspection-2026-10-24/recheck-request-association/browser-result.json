@@ -1,0 +1,2058 @@
+{
+  "before": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null
+  },
+  "checks": [
+    "提交前持久保存原请求与日期；同源另一标签按原键读取，真实 Web Locks 阻止并发新键。",
+    "发起页关闭、另一页刷新后仍保留原键；404 不另起请求、不自动重放。",
+    "后端 503 时只读恢复失败保留原请求，不提供换键提交。",
+    "精确找回后再次点登记只读取原任务；提交总数仍为 1，未按最近作业猜测。",
+    "新标签进入同一组合后按同一个原请求恢复，期间不发送 POST。",
+    "隔离浏览器整体关闭重开后，持久原标识和原任务仍能只读恢复。"
+  ],
+  "reads": [
+    {
+      "tab": "sender",
+      "path": "/api/v1/notifications/inbox"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/market-data/sync-tasks"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/macro/overview"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/market-events"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/system/data-health"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/scoring/overview"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/discovery/tasks"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/system/capabilities"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/news/latest"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/performance"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/allocation"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/notifications/inbox"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/market-data/sync-tasks"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/macro/overview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/market-events"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/system/data-health"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/scoring/overview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/tasks"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/system/capabilities"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/news/latest"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/performance"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/allocation"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "sender",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/notifications/inbox"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/market-data/sync-tasks"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/macro/overview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/market-events"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/system/data-health"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/scoring/overview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/tasks"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/news/latest"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/system/capabilities"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/notifications/inbox"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/market-data/sync-tasks"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/macro/overview"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/market-events"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/system/data-health"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/scoring/overview"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/discovery/tasks"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/news/latest"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/system/capabilities"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "receiver",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/news/latest"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/performance"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/allocation"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "new-tab",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/notifications/inbox"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/market-data/sync-tasks"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/signal-rules/presets"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/macro/overview"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/market-events"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/system/data-health"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/scoring/overview"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/discovery/tasks"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/discovery/scopes/cn-stock/stats"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/dashboard/workbench"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/system/capabilities"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/watchlists/1/items"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/symbols"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/news/latest"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/performance"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/allocation"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/positions"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/signal-rule"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/auto-trade/action-items"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/status"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/runtime"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/data-diagnostics"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/model-binding-review"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/reconciliation-preview"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/requests/e2055524-6b65-487b-a517-0638cab0c81e"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-queue"
+    },
+    {
+      "tab": "reopened-browser",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job"
+    }
+  ],
+  "simulatedWrites": [
+    {
+      "tab": "sender",
+      "body": {
+        "request_key": "e2055524-6b65-487b-a517-0638cab0c81e"
+      },
+      "forwarded": false
+    }
+  ],
+  "blockedWrites": [],
+  "errors": [],
+  "httpErrors": [],
+  "boundary": "Real main GET only. Source recheck POST and request receipts intercepted in an isolated persistent browser. No actual jobs submitted.",
+  "after": {
+    "mode": {
+      "mode": "inspection_acceptance",
+      "portfolio_id": 1,
+      "scheduled_task_types": [],
+      "background_jobs_enabled": false,
+      "automatic_trading_enabled": false,
+      "trading_mutations_allowed": false,
+      "final_reviews_allowed": false
+    },
+    "permissions": {
+      "allow_new_buys": false,
+      "allow_risk_exits": true,
+      "allow_auto_recovery": false,
+      "requires_manual_ack": true
+    },
+    "can_confirm": false,
+    "audit": 3800,
+    "verified_through": "2026-09-28",
+    "coverage_start": null
+  },
+  "passed": true,
+  "proxyBlocked": [
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolios/1/inspection/reconciliation-job/recheck"
+    }
+  ]
+}

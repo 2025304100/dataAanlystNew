@@ -1,9 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {AcceptanceButton as Button,AcceptanceModal as Modal} from './inspection/AcceptanceControls';
+import PortfolioInspectionWorkbench from "./inspection/PortfolioInspectionWorkbench";
+import InspectionDrawer from "./inspection/InspectionDrawer";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRightLeft, CheckCircle2, Compass, HelpCircle, History, ListChecks, Lock, PlayCircle, RefreshCw, ShieldCheck, X } from "lucide-react";
-import { Button, Checkbox, DatePicker, Input, Modal, Select, Tag, Tooltip } from "antd";
+import { Checkbox, DatePicker, Input, Select, Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import { useApp } from "../../context/AppContext";
-import { api } from "../../api/client";
+import { api, ApiError } from "../../api/client";
 import { t, template } from "../../i18n";
 import type {
   AuditEvent,
@@ -13,7 +16,6 @@ import type {
   ConfirmReconciliationRequest,
   G5AttributionCategory,
   G5BusinessAction,
-  G5DualRunLaunchRequest,
   G5DualRunSummaryResponse,
   G7OperationalStatus,
   PortfolioStatePermissions,
@@ -61,13 +63,11 @@ function normalizeGovSubTab(raw: string | null | undefined): GovSubTabKey {
 }
 
 const G5_BUSINESS_ACTIONS: G5BusinessAction[] = [
-  "BUY",
-  "SELL_LIMITED_RISK",
-  "HOLDS",
-  "REJECTED_OR_BLOCKED",
-  "RISK_CLOSED",
-  "NO_ACTION_OR_ARCHIVED",
+  "BUY", "SELL", "HOLD", "NO_ACTION", "REJECTED", "DATA_BLOCKED",
 ];
+const G5_ACTION_LABELS: Record<G5BusinessAction, string> = {
+  BUY: "买入", SELL: "卖出", HOLD: "持有", NO_ACTION: "无操作", REJECTED: "拒绝", DATA_BLOCKED: "资料不足",
+};
 
 const G5_ATTR_CATEGORIES: G5AttributionCategory[] = [
   "PARAMETER_CONFIG_DIFF",
@@ -485,7 +485,7 @@ const StatePanel: React.FC<{
               }
               placement="top"
             >
-              <Button
+              <Button mutation
                 type="primary"
                 icon={<ArrowRightLeft size={15} />}
                 onClick={handleOpenTransition}
@@ -803,7 +803,7 @@ const TransitionDialog: React.FC<{
           <Button onClick={p.onCancel} disabled={p.submitting}>
             {t("common.cancel")}
           </Button>
-          <Button
+          <Button mutation
             type="primary"
             onClick={p.onConfirm}
             loading={p.submitting}
@@ -895,7 +895,7 @@ const ReconciliationPanel: React.FC<{
   const [loading, setLoading] = useState(false);
   const [resp, setResp] = useState<ReconciliationResponse | null>(null);
   const [ackChecked, setAckChecked] = useState(false);
-  const [forceSkipChecked, setForceSkipChecked] = useState(false);
+  const forceSkipChecked = false;
   const [rerunFirst, setRerunFirst] = useState(true);
   const [reviewNote, setReviewNote] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -972,7 +972,7 @@ const ReconciliationPanel: React.FC<{
     const payload: ConfirmReconciliationRequest = {
       ack: true,
       review_note: reviewNote.trim(),
-      force_skip: forceSkipChecked || undefined,
+      force_skip: false,
       force_rerun_before: rerunFirst || undefined,
     };
     setConfirming(true);
@@ -988,7 +988,7 @@ const ReconciliationPanel: React.FC<{
         const statusText = out.acknowledged_diffs_cleared ? "差异已清零" : "已人工确认";
         showToast("success", `${t("governance.reconcile.confirmed")}（${statusText}，关联追踪号：${out.correlation_id ?? "—"}）`);
         setAckChecked(false);
-        setForceSkipChecked(false);
+
         setReviewNote("");
         setResp(null);
         setTimeout(() => void runReconcile(), 200);
@@ -1062,7 +1062,7 @@ const ReconciliationPanel: React.FC<{
               <b>{resp?.last_reconciled_trade_date ?? "—"}</b>
             </span>
           </div>
-          <Button type="primary" icon={<RefreshCw size={14} />} onClick={runReconcile} loading={loading}>
+          <Button mutation type="primary" icon={<RefreshCw size={14} />} onClick={runReconcile} loading={loading}>
             {t("governance.reconcile.btn")}
           </Button>
         </div>
@@ -1295,24 +1295,7 @@ const ReconciliationPanel: React.FC<{
                   {t("governance.reconcile.ackRequired")}
                 </Checkbox>
 
-                <Checkbox
-                  checked={forceSkipChecked}
-                  onChange={(e) => {
-                    setForceSkipChecked(e.target.checked);
-                    if (e.target.checked && rerunFirst) setRerunFirst(true);
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontWeight: 600, color: "#fca5a5" }}>{t("governance.reconcile.forceSkip")}</span>
-                    <span style={{ fontSize: 12, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(248,113,113,0.3)", color: "#fca5a5", padding: "4px 8px", borderRadius: 6 }}>
-                      {t("governance.reconcile.forceSkipWarn")}
-                    </span>
-                  </div>
-                </Checkbox>
-
-                <Checkbox checked={rerunFirst} onChange={(e) => setRerunFirst(e.target.checked)}>
-                  {t("governance.reconcile.rerunFirst")}
-                </Checkbox>
+                <p>普通对账确认会强制重跑并核验差异清零，不能跳过。</p>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
@@ -1328,7 +1311,7 @@ const ReconciliationPanel: React.FC<{
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <Button
+                  <Button mutation
                     type="primary"
                     danger={forceSkipChecked}
                     onClick={doConfirm}
@@ -1773,11 +1756,15 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
 /* Sub Tab 4：G5 双跑对账                                                     */
 /* -------------------------------------------------------------------------- */
 
-const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error" | "info", msg: React.ReactNode) => void }> = ({
+const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error" | "info", msg: React.ReactNode) => void; onOverlayChange?: (open:boolean)=>void; visible?:boolean }> = ({
   portfolioId,
   showToast,
+  onOverlayChange,
+  visible=true,
 }) => {
   const MIN_TRADE_DAYS = 10;
+  const [reportOpen,setReportOpen]=useState(false);
+  useEffect(()=>{onOverlayChange?.(visible&&reportOpen);return()=>onOverlayChange?.(false);},[visible,reportOpen,onOverlayChange]);
 
   // Launch form
   const [startDate, setStartDate] = useState<string>(() => dayjs().subtract(3, "month").format("YYYY-MM-DD"));
@@ -1786,115 +1773,139 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
   const [newEngine, setNewEngine] = useState<string>("");
   const [launching, setLaunching] = useState(false);
   const [replayId, setReplayId] = useState<string | null>(null);
-  const [summary, setSummary] = useState<G5DualRunSummaryResponse | null>(null);
+  const [storedSummary, setSummary] = useState<G5DualRunSummaryResponse | null>(null);
+  const [reportOptions, setReportOptions] = useState<Array<{ replay_id: string; start_date: string; end_date: string; verdict: string }>>([]);
+  const [reportListError, setReportListError] = useState("");
+  const [selectedDay, setSelectedDay] = useState<string>("all");
+  useEffect(() => { let cancelled = false; setReportOptions([]); setReportListError(""); void Promise.resolve().then(() => api.getG5DualRunReports(portfolioId)).then(value => { if (!value || value.portfolio_id !== portfolioId || !Array.isArray(value.reports)) throw new Error("报告列表材料不完整"); if (!cancelled) setReportOptions(value.reports); }).catch(() => { if (!cancelled) setReportListError("历史双跑报告读取失败，不能把未读取视作无记录。"); }); return () => { cancelled = true; }; }, [portfolioId]);
+  const summary = storedSummary?.portfolio_id === portfolioId ? storedSummary : null;
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [capability, setCapability] = useState<{ real_runner_available: boolean; message: string; old_chain?: { id: string; label: string; engine_version: string } | null; candidate_chains?: Array<{ id: string; label: string; engine_version: string }> } | null>(null);
+  const [capabilityError, setCapabilityError] = useState("");
+  const capabilitySequence = useRef(0);
+  const readCapability = useCallback(async () => {
+    const token = ++capabilitySequence.current;
+    setCapability(null); setCapabilityError("");
+    try {
+      const value = await api.getG5DualRunCapabilities(portfolioId);
+      if (token === capabilitySequence.current) {
+        setCapability(value);
+        setOldEngine(value.old_chain?.engine_version ?? "");
+        setNewEngine(current => value.candidate_chains?.some(chain => chain.engine_version === current) ? current : "");
+      }
+    } catch {
+      if (token === capabilitySequence.current) setCapabilityError("暂时无法确认能否运行，请重新读取。");
+    }
+  }, [portfolioId]);
+  useEffect(() => { void readCapability(); return () => { ++capabilitySequence.current; }; }, [readCapability]);
   const [asyncTaskStatus, setAsyncTaskStatus] = useState<{ is_terminal_locked: boolean; lock_reason: string | null; status: string } | null>(null);
 
-  // 简化版连续交易日估算：按工作日(周一~周五)粗略估算 (真实交易日需后端校验)
-  const estimateWeekdays = (start: string, end: string): number => {
-    if (!start || !end) return 0;
-    const s = dayjs(start);
-    const e = dayjs(end);
-    if (!s.isValid() || !e.isValid() || e.isBefore(s)) return 0;
-    let n = 0;
-    let cur = s;
-    while (cur.isBefore(e) || cur.isSame(e, "day")) {
-      const d = cur.day();
-      if (d !== 0 && d !== 6) n += 1;
-      cur = cur.add(1, "day");
-      if (n > 60) break; // 上限，防止死循环
-    }
-    return n;
-  };
-  const weekDays = estimateWeekdays(startDate, endDate);
-  const daysOk = weekDays >= MIN_TRADE_DAYS;
+  const daysOk = Boolean(startDate && endDate && dayjs(startDate).isValid() && dayjs(endDate).isValid() && !dayjs(endDate).isBefore(dayjs(startDate)));
+  const registeredPair = Boolean(oldEngine && newEngine && oldEngine !== newEngine && capability?.old_chain?.engine_version === oldEngine && capability?.candidate_chains?.some(chain => chain.engine_version === newEngine));
+
+  const [resultError, setResultError] = useState("");
+  const [resultReasons, setResultReasons] = useState<string[]>([]);
+  const resultSequence = useRef(0);
+  const activePortfolio = useRef(portfolioId);
+  activePortfolio.current = portfolioId;
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const launchInFlight = useRef(false);
+  const stopPoll = useCallback(() => {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    pollTimer.current = null;
+  }, []);
+  useEffect(() => {
+    ++resultSequence.current; stopPoll(); launchInFlight.current = false;
+    setReplayId(null); setSummary(null); setResultError(""); setAsyncTaskStatus(null); setReportOpen(false);
+    setLoadingSummary(false); setLaunching(false);
+    return () => { ++resultSequence.current; stopPoll(); };
+  }, [portfolioId, stopPoll]);
+
+  const readResult = useCallback(async (pid: number, id: string, token: number) => {
+    const current = () => activePortfolio.current === pid && resultSequence.current === token;
+    if (!current()) return;
+    setLoadingSummary(true); setSummary(null); setResultReasons([]);
+    try {
+      const value = await api.queryG5DualRunResult(pid, id);
+      if (!current()) return;
+      if (value.portfolio_id !== pid) {
+        setResultError("这份报告不属于当前组合，请重新查询。");
+        return;
+      }
+      const status = String(value.status ?? "").toUpperCase();
+      setAsyncTaskStatus({ is_terminal_locked: value.is_terminal_locked === true, lock_reason: value.terminal_lock_reason ?? null, status });
+      if (["SUBMITTED", "QUEUED", "RUNNING"].includes(status) && value.g5_eligible_for_g6 !== true) {
+        setSummary(null); setResultError("");
+        pollTimer.current = setTimeout(() => void readResult(pid, id, token), 5000);
+        return;
+      }
+      const hasMatrix = Array.isArray(value.daily_reports) && value.daily_reports.length === value.days_replayed
+        && value.days_replayed >= MIN_TRADE_DAYS && value.total_days === value.days_replayed && value.skipped_days?.length === 0
+        && value.daily_reports.every(day => G5_BUSINESS_ACTIONS.every(a => G5_BUSINESS_ACTIONS.every(b => {
+          const count = day.action_confusion_matrix?.[a]?.[b];
+          return typeof count === "number" && Number.isInteger(count) && count >= 0;
+        })) && G5_BUSINESS_ACTIONS.reduce((sum, a) => sum + G5_BUSINESS_ACTIONS.reduce((rowSum, b) => rowSum + (day.action_confusion_matrix?.[a]?.[b] ?? 0), 0), 0) > 0);
+      if (status !== "COMPLETED" || value.evidence_verified !== true || !hasMatrix) {
+        setSummary(null); setResultError("报告缺少可核验的真实执行证据，不能据此切换方案。请重新查询。");
+        return;
+      }
+      setSummary(value); setResultError("");
+    } catch (error) {
+      if (!current()) return;
+      setSummary(null); stopPoll();
+      const code = error instanceof ApiError ? error.status_code : null;
+      const raw = error instanceof ApiError ? error.detail as any : null;
+      const reasons = raw?.detail?.reasons ?? raw?.reasons;
+      setResultReasons(Array.isArray(reasons) ? reasons.slice(0,40).map(String) : []);
+      setResultError(code === 404 ? "报告不存在或已清理，不能据此切换方案。"
+        : code === 409 ? "报告内容或真实执行证据未通过核对，不能据此切换方案。原始报告已保留。"
+        : "暂时读不到报告，已清除上次通过状态。请重新查询。");
+      setAsyncTaskStatus({ is_terminal_locked: false, lock_reason: null, status: code === 404 ? "NOT_FOUND" : "INVALID" });
+    } finally { if (current()) setLoadingSummary(false); }
+  }, [stopPoll]);
 
   const doLaunch = async () => {
-    if (!portfolioId) return;
-    if (!daysOk) {
-      showToast("error", template(t("g5.tradeDaysCheck") as string, { minDays: String(MIN_TRADE_DAYS) }) + ` (当前估算 ${weekDays} 个工作日)`);
-      return;
-    }
-    if (!oldEngine.trim() || !newEngine.trim()) {
-      showToast("error", "请填写新旧引擎版本号 / Please fill old & new engine versions.");
-      return;
-    }
-    const payload: G5DualRunLaunchRequest = {
-      start_date: startDate,
-      end_date: endDate,
-      old_engine_version: oldEngine.trim(),
-      new_engine_version: newEngine.trim(),
-    };
-    setLaunching(true);
+    if (!portfolioId || capability?.real_runner_available !== true || launchInFlight.current || !daysOk || !registeredPair) return;
+
+    const pid = portfolioId, token = ++resultSequence.current;
+    stopPoll(); launchInFlight.current = true; setLaunching(true); setSummary(null); setResultError(""); setReplayId(null);
     try {
-      const r = await api.launchG5DualRun(portfolioId, payload);
-      setReplayId(r.replay_id);
-      setAsyncTaskStatus({
-        is_terminal_locked: r.is_terminal_locked === true,
-        lock_reason: r.terminal_lock_reason ?? null,
-        status: r.status ?? "SUBMITTED",
-      });
-      showToast("success", `${t("g5.launch")} → replay_id=${r.replay_id} (async_task=${r.async_task_id ?? "—"})`);
-      // 立即拉一次，然后 5 秒轮询一次，最多 60 次
-      let counter = 0;
-      const tick = async () => {
-        if (!r.replay_id) return;
-        try {
-          setLoadingSummary(true);
-          const s = await api.queryG5DualRunResult(portfolioId, r.replay_id);
-          setSummary(s);
-          const locked = s.is_terminal_locked === true;
-          setAsyncTaskStatus({
-            is_terminal_locked: locked,
-            lock_reason: s.terminal_lock_reason ?? null,
-            status: s.status ?? "UNKNOWN",
-          });
-          if (!locked && counter < 60) {
-            counter += 1;
-            setTimeout(() => void tick(), 5000);
-          }
-        } catch {
-          /* best-effort polling */
-        } finally {
-          setLoadingSummary(false);
-        }
-      };
-      setTimeout(() => void tick(), 2500);
-    } catch (err: any) {
-      showToast("error", (err?.message || String(err)) + " (launchG5)");
+      const result = await api.launchG5DualRun(pid, { start_date: startDate, end_date: endDate, old_engine_version: oldEngine.trim(), new_engine_version: newEngine.trim() });
+      if (activePortfolio.current !== pid || resultSequence.current !== token) return;
+      if (!result.replay_id) { setResultError("尚未取得对比记录，请重新查询。"); return; }
+      setReplayId(result.replay_id);setReportOpen(true);
+      void readResult(pid, result.replay_id, token);
+    } catch {
+      if (activePortfolio.current === pid && resultSequence.current === token) setResultError("对比没有开始。请重新读取运行条件后再试。");
     } finally {
-      setLaunching(false);
+      if (activePortfolio.current === pid && resultSequence.current === token) { launchInFlight.current = false; setLaunching(false); }
     }
   };
 
-  const doFetchResult = useCallback(async () => {
+  const doFetchResult = useCallback(() => {
     if (!portfolioId || !replayId) return;
-    setLoadingSummary(true);
-    try {
-      const s = await api.queryG5DualRunResult(portfolioId, replayId);
-      setSummary(s);
-      setAsyncTaskStatus({
-        is_terminal_locked: s.is_terminal_locked === true,
-        lock_reason: s.terminal_lock_reason ?? null,
-        status: s.status ?? "UNKNOWN",
-      });
-    } catch (err: any) {
-      showToast("error", (err?.message || String(err)) + " (queryG5)");
-    } finally {
-      setLoadingSummary(false);
-    }
-  }, [portfolioId, replayId, showToast]);
+    stopPoll();setReportOpen(true);
+    void readResult(portfolioId, replayId, ++resultSequence.current);
+  }, [portfolioId, replayId, readResult, stopPoll]);
 
   const locked = asyncTaskStatus?.is_terminal_locked === true;
   const lockReason = asyncTaskStatus?.lock_reason ?? "T-LOCK";
-  const eligible = summary?.g5_eligible_for_g6 === true;
+  const eligible = !resultError && summary?.status === "COMPLETED" && summary.evidence_verified === true && summary.g5_eligible_for_g6 === true;
 
-  // 6×6 混淆矩阵 (取首日用于渲染，若无日级数据则显示空矩阵)
-  const report = summary?.daily_reports?.[0] ?? null;
-  const matrix = report?.action_confusion_matrix ?? {};
+  // Display the whole verified interval, using the same daily records as the gate.
+  const viewedDays = summary?.daily_reports.filter(day => selectedDay === "all" || day.trade_date === selectedDay) ?? [];
+  const report = viewedDays[0] ?? null;
+  const matrix = summary ? Object.fromEntries(G5_BUSINESS_ACTIONS.map(a => [a, Object.fromEntries(G5_BUSINESS_ACTIONS.map(b => [b,
+    viewedDays.reduce((sum, day) => sum + day.action_confusion_matrix![a]![b]!, 0),
+  ]))])) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {capability?.real_runner_available === false && <div role="status">{capability.message}</div>}
+      {capability?.real_runner_available === true && !capability.old_chain && <p>执行器未返回可核实的已登记引擎链，暂不能提交验收。</p>}
+      {!reportOpen&&resultError && <div role="alert">{resultError}</div>}{!reportOpen&&resultReasons.length > 0 && <details className="pi-disclosure"><summary>查看未通过的具体证据校验项</summary><p>以下为本次报告的实际校验结果，原始记录继续保留。</p>{resultReasons.map((reason,i) => <p key={i}>{reason}</p>)}</details>}
+      {capabilityError && <div role="alert">{capabilityError} <Button onClick={() => void readCapability()}>重新读取</Button></div>}
+      <section className="pi-callout"><strong>查看真实留存的验收报告</strong><p>历史报告保留原版本和原始证据；不能将旧验收直接当作当前运行授权。</p>{reportListError && <p role="alert">{reportListError}</p>}<Select aria-label="选择历史双跑报告" style={{width:"100%"}} placeholder={reportOptions.length ? "按实际日期和结果选择报告" : "未读取到可选的留存报告"} value={reportOptions.some(x => x.replay_id === replayId) ? replayId : undefined} options={reportOptions.map(r => ({value:r.replay_id,label:`${r.start_date} 至 ${r.end_date} · ${r.verdict}`}))} onChange={id => { stopPoll(); setReportOpen(true); setReplayId(id); setSelectedDay("all"); void readResult(portfolioId,id,++resultSequence.current); }}/></section>
       {/* 启动表单 */}
       <div className="pt-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
@@ -1902,11 +1913,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
             <h4 style={{ margin: 0, fontSize: 14 }}>{t("g5.title")}</h4>
             <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "var(--pt-muted-foreground)", maxWidth: 900 }}>{t("g5.intro")}</p>
           </div>
-          {summary != null && (
-            <Tag color={eligible ? "success" : "error"} style={{ fontWeight: 700, margin: 0 }}>
-              {eligible ? t("g5.eligible") : t("g5.notEligible")}
-            </Tag>
-          )}
+          {replayId&&<Button onClick={()=>setReportOpen(true)}>查看本次验收报告</Button>}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))", gap: 12, alignItems: "flex-end" }}>
@@ -1934,19 +1941,19 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("g5.oldEngine")}</label>
-            <Input value={oldEngine} onChange={(e) => setOldEngine(e.target.value)} placeholder="e.g. v1.4.2" disabled={locked} />
+            <Input aria-label="当前已登记引擎链" value={capability?.old_chain ? `${capability.old_chain.label} · ${capability.old_chain.engine_version}` : "尚无可核实的已登记执行链"} readOnly />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("g5.newEngine")}</label>
-            <Input value={newEngine} onChange={(e) => setNewEngine(e.target.value)} placeholder="e.g. v2.0.0" disabled={locked} />
+            <Select aria-label="候选新引擎链" value={newEngine || undefined} onChange={setNewEngine} placeholder="选择已登记的候选引擎链" disabled={locked || capability?.real_runner_available !== true || !capability?.candidate_chains?.length} options={capability?.candidate_chains?.filter(chain => chain.engine_version !== oldEngine).map(chain => ({ value: chain.engine_version, label: `${chain.label} · ${chain.engine_version}` })) ?? []} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Button
+            <Button mutation
               type="primary"
               icon={<PlayCircle size={14} />}
               onClick={doLaunch}
               loading={launching}
-              disabled={locked}
+              disabled={locked || capability?.real_runner_available !== true || !registeredPair || !daysOk}
             >
               {t("g5.launch")}
             </Button>
@@ -1957,7 +1964,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
               <span style={{ fontSize: 12, color: "#f87171", fontWeight: 600 }}>
                 {template(t("g5.tradeDaysCheck") as string, { minDays: String(MIN_TRADE_DAYS) })}
                 {" "}
-                (当前估算: {weekDays})
+                (请检查起止日期；实际交易日数由可信日历核实)
               </span>
             )}
           </div>
@@ -1969,8 +1976,8 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
             locked
               ? `${t("terminalLock.rowDisabled")} (${lockReason})`
               : replayId
-                ? "Replay is still running; results will update on poll."
-                : "Replay not started yet."
+                ? "正在读取对比结果。"
+                : "尚未开始对比。"
           }
         >
           <div
@@ -2024,6 +2031,12 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
         </Tooltip>
       </div>
 
+      <InspectionDrawer open={reportOpen&&visible} zIndex={1500} title="双跑验收报告详情" context="检查与对账 / 引擎验收 / 报告预览"
+        onClose={()=>setReportOpen(false)} onBack={()=>setReportOpen(false)} backLabel="返回双跑验收"
+        footer={<Button onClick={doFetchResult} loading={loadingSummary} disabled={!replayId}>{t("g5.queryResult")}</Button>}>
+        {resultError&&<div role="alert" className="pi-callout pi-error">{resultError}</div>}
+        {resultReasons.length>0&&<details><summary>查看未通过的具体证据校验项</summary>{resultReasons.map((reason,index)=><p key={index}>{reason}</p>)}</details>}
+        {summary&&<Tag color={eligible?"success":"error"}>{eligible?t("g5.eligible"):t("g5.notEligible")}</Tag>}
       {/* 汇总卡 + 6×6 混淆矩阵 + 归因 */}
       {summary && (
         <>
@@ -2054,23 +2067,24 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
               <StatCard label={t("g5.failingDaysP1")} value={String((summary.failing_days_p1 ?? []).length || 0)} positive={(summary.failing_days_p1 ?? []).length === 0} invertGood />
             </div>
 
-            <h5 style={{ margin: "0 0 10px 0", fontSize: 13 }}>{t("g5.matrix.title")}</h5>
+            <div className="pi-callout"><p>验收策略 {summary.acceptance_policy_version ?? "旧记录未保留"} · 有效样本 {summary.valid_symbol_days ?? "未知"} 个标的交易日</p><Select aria-label="双跑报告交易日" value={selectedDay} onChange={setSelectedDay} style={{width:"100%"}} options={[{value:"all",label:"全区间汇总"},...summary.daily_reports.map(d => ({value:d.trade_date,label:d.trade_date}))]}/><p>当前视图真实动作样本分母 {viewedDays.every(d => d.action_denominator != null) ? viewedDays.reduce((n,d) => n+d.action_denominator!,0) : "未提供"} · 已匹配 {viewedDays.every(d => d.action_match_count != null) ? viewedDays.reduce((n,d) => n+d.action_match_count!,0) : "未提供"}</p><details><summary>查看来源、策略与逐标的原始差异</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify({policy:summary.acceptance_policy,scope:summary.applicable_scope,provenance:summary.provenance,days:viewedDays.map(d=>({date:d.trade_date,source_a:d.chain_a_meta,source_b:d.chain_b_meta,sample_status:d.sample_status,metric_status:d.metric_status,symbol_diffs:d.symbol_diffs}))},null,2)}</pre></details><p>系统差异归因尚需本人核实，自动分类不代表已审核。</p>{summary.acceptance_blockers?.map((reason,i) => <p key={i} className="pi-warning-text">{reason}</p>)}</div>
+            <h5 style={{ margin: "0 0 10px 0", fontSize: 13 }}>{selectedDay === "all" ? "全区间" : selectedDay} · {t("g5.matrix.title")}</h5>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 560 }}>
                 <thead>
                   <tr style={{ background: "var(--pt-surface-1)" }}>
                     <th style={thStyle("left")}>{t("g5.matrix.oldHeader")}</th>
                     {G5_BUSINESS_ACTIONS.map((a) => (
-                      <th key={a} style={thStyle("left")}>{t(`g5.action.${a}` as any)}</th>
+                      <th key={a} style={thStyle("left")}>{G5_ACTION_LABELS[a]}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {G5_BUSINESS_ACTIONS.map((oldAct) => (
                     <tr key={oldAct}>
-                      <td style={tdStyle("left")}>{t(`g5.action.${oldAct}` as any)}</td>
+                      <td style={tdStyle("left")}>{G5_ACTION_LABELS[oldAct]}</td>
                       {G5_BUSINESS_ACTIONS.map((newAct) => {
-                        const count = (matrix as any)?.[oldAct]?.[newAct] ?? 0;
+                        const count = (matrix as any)?.[oldAct]?.[newAct];
                         const isDiagonal = oldAct === newAct;
                         const warnBg = !isDiagonal && count > 0 ? "rgba(239,68,68,0.18)" : undefined;
                         return (
@@ -2117,7 +2131,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
                 <tbody>
                   {(() => {
                     const items: { cat: G5AttributionCategory; s: string | null; summary: string; sev: string | null; note: string | null; symbol: string | null }[] = [];
-                    for (const r of summary.daily_reports ?? []) {
+                    for (const r of viewedDays) {
                       for (const a of r.attributions ?? []) {
                         items.push({
                           cat: a.category,
@@ -2193,11 +2207,12 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
         </>
       )}
 
-      {!summary && replayId && !loadingSummary && (
+      {!summary && !resultError && replayId && !loadingSummary && (
         <div className="pt-panel" style={{ padding: 16, fontSize: 12, color: "var(--pt-muted-foreground)" }}>
           {t("g5.running")}
         </div>
       )}
+      </InspectionDrawer>
     </div>
   );
 };
@@ -2232,39 +2247,55 @@ const StatCard: React.FC<{ label: string; value: string; positive?: boolean; inv
 const G7OperationsPanel: React.FC<{
   portfolioId: number;
   showToast: (t: "success" | "error" | "info", msg: React.ReactNode) => void;
-}> = ({ portfolioId, showToast }) => {
+  onOverlayChange?: (open:boolean)=>void;
+  visible?:boolean;
+}> = ({ portfolioId, showToast, onOverlayChange,visible=true }) => {
   const [status, setStatus] = useState<G7OperationalStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [readError,setReadError]=useState<string|null>(null);
+  const readRequest=useRef(0);
+  const readScope=useRef(portfolioId);readScope.current=portfolioId;
   const [actionLoading, setActionLoading] = useState<"start" | "rollback" | null>(null);
+  const [rolloutReview, setRolloutReview] = useState<Awaited<ReturnType<typeof api.getG6Readiness>> | null>(null);
+  useEffect(()=>{onOverlayChange?.(visible&&Boolean(rolloutReview));return()=>onOverlayChange?.(false);},[visible,rolloutReview,onOverlayChange]);
+  const [rolloutNote, setRolloutNote] = useState("");
+  const [rolloutAck, setRolloutAck] = useState(false);
+  useEffect(()=>{setRolloutReview(null);setRolloutNote("");setRolloutAck(false);},[portfolioId]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const token=++readRequest.current;
+    setLoading(true);setReadError(null);
     try {
-      setStatus(await api.getG7OperationalStatus(portfolioId));
+      const value=await api.getG7OperationalStatus(portfolioId);
+      if(token!==readRequest.current||readScope.current!==portfolioId)return;
+      if(value?.portfolio_id!=null&&value.portfolio_id!==portfolioId)throw new Error("运行状态不属于当前组合，请重新读取。");
+      setStatus(value);
     } catch (err: any) {
-      showToast("error", err?.message || String(err));
+      if(token===readRequest.current&&readScope.current===portfolioId){setStatus(null);setReadError(err?.message||"引擎运行状态读取失败，请重试。");}
     } finally {
-      setLoading(false);
+      if(token===readRequest.current&&readScope.current===portfolioId)setLoading(false);
     }
-  }, [portfolioId, showToast]);
+  }, [portfolioId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {setStatus(null);void load();return()=>{readRequest.current++;};}, [load]);
 
   const runG6Action = useCallback(async (action: "start" | "rollback") => {
+    if (action === "start" && (!rolloutReview?.eligible || !rolloutAck || rolloutNote.trim().length < 10)) return;
     if (action === "rollback" && !window.confirm(t("governance.g7.rollbackConfirm"))) return;
     setActionLoading(action);
     try {
       const result = action === "start"
-        ? await api.startG6Rollout(portfolioId, { operator_id: "ui:g6" })
+        ? await api.startG6Rollout(portfolioId, { expected_g5_report_id: rolloutReview?.g5_report_id ?? undefined, expected_g5_report_hash: rolloutReview?.g5_report_hash ?? undefined, expected_source_mode: rolloutReview?.current_source_mode ?? undefined, review_note: rolloutNote.trim() })
         : await api.rollbackG6Rollout(portfolioId, { operator_id: "ui:g6", reason: "治理页人工操作" });
       showToast("success", `${action === "start" ? t("governance.g7.startSuccess") : t("governance.g7.rollbackSuccess")} (${result.status}, audit=${result.audit_event_id ?? "-"})`);
+      setRolloutReview(null); setRolloutAck(false);
       await load();
     } catch (err: any) {
       showToast("error", err?.message || String(err));
     } finally {
       setActionLoading(null);
     }
-  }, [load, portfolioId, showToast]);
+  }, [load, portfolioId, showToast, rolloutReview, rolloutNote, rolloutAck]);
 
   const flagLabel = (key: string) => {
     if (key === "partial") return t("governance.g7.status.partial");
@@ -2274,7 +2305,7 @@ const G7OperationsPanel: React.FC<{
   };
 
   if (!status) {
-    return <div className="pt-panel" style={{ padding: 16 }}>{loading ? t("loading") : t("governance.g7.empty")}</div>;
+    return <div className="pt-panel" style={{ padding: 16 }}>{readError?<div role="alert"><strong>引擎运行状态暂不可用</strong><p>{readError}</p></div>:loading?t("loading"):t("governance.g7.empty")}<Button loading={loading} onClick={()=>void load()}>重新读取引擎运行状态</Button></div>;
   }
 
   const flagEntries = Object.entries(status.pending_orders_by_status || {});
@@ -2283,6 +2314,7 @@ const G7OperationsPanel: React.FC<{
 
   return (
     <div data-testid="g7-operational-status" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Modal open={visible&&Boolean(rolloutReview)} zIndex={1600} title="本人审核引擎切换材料" footer={null} onCancel={()=>{if(!actionLoading)setRolloutReview(null);}}><div className="pi-workbench">{rolloutReview && <section className="pi-callout pi-warning"><p>当前来源 {rolloutReview.current_source_mode ?? "未知"} · 双跑报告 {rolloutReview.g5_report_id ?? "未保留"}</p><small>冻结报告校验值 {rolloutReview.g5_report_hash ?? "缺失，不能确认"}</small>{!rolloutReview.eligible && <div role="alert">当前准入尚未通过，不能提交切换。{rolloutReview.blockers?.map((reason,i) => <p key={i}>{reason}</p>)}</div>}<p>仅切换当前组合的新执行来源；验收通过不会自动应用，独立运行门禁继续校验。</p><Input.TextArea aria-label="引擎切换审核理由" value={rolloutNote} onChange={e => setRolloutNote(e.target.value)} placeholder="说明已核实的报告与本次切换理由（至少10字）"/><Checkbox checked={rolloutAck} onChange={e => setRolloutAck(e.target.checked)}>我已核实报告、当前来源与本次切换范围</Checkbox><div><Button onClick={() => setRolloutReview(null)}>取消本次切换</Button><Button mutation type="primary" disabled={!rolloutReview.eligible || !rolloutAck || rolloutNote.trim().length < 10 || !rolloutReview.g5_report_id || !rolloutReview.g5_report_hash || !rolloutReview.current_source_mode} loading={actionLoading === "start"} onClick={() => void runG6Action("start")}>确认切换当前组合引擎</Button></div></section>}</div></Modal>
       <div className="pt-panel" style={{ padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
@@ -2317,7 +2349,7 @@ const G7OperationsPanel: React.FC<{
                         );
                         return;
                       }
-                      void runG6Action("start");
+                      void api.getG6Readiness(portfolioId).then(value => { setRolloutReview(value); setRolloutAck(false); }).catch(err => showToast("error", err.message));
                     }}
                   >
                     {t("governance.g7.startG6")}
@@ -2325,7 +2357,7 @@ const G7OperationsPanel: React.FC<{
                 </Tooltip>
               );
             })()}
-            <Button
+            <Button mutation
               danger
               icon={<ShieldCheck size={14} />}
               onClick={() => void runG6Action("rollback")}
@@ -2392,7 +2424,7 @@ export interface PortfolioGovernanceTabProps {
   onGovernanceChanged?: (portfolioId: number) => void | Promise<void>;
 }
 
-const PortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = ({ portfolioId, onNavigate, navigation, onGovernanceChanged }) => {
+const LegacyPortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = ({ portfolioId, onNavigate, navigation, onGovernanceChanged }) => {
   const { showToast } = useApp();
   // P1：默认落地「待办总览」；旧 operations 深链归一到 state。
   const [sub, setSubRaw] = useState<GovSubTabKey>(() => normalizeGovSubTab(navigation?.tab ?? "overview"));
@@ -2518,6 +2550,14 @@ const PortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = ({ portfol
       </Modal>
     </div>
   );
+};
+
+const PortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = props => {
+  const { showToast } = useApp();
+  return <PortfolioInspectionWorkbench {...props}
+    renderDualRun={(onOverlayChange,visible) => <G5Panel portfolioId={props.portfolioId} showToast={showToast} onOverlayChange={onOverlayChange} visible={visible}/> }
+    renderOperations={(onOverlayChange,visible) => <G7OperationsPanel portfolioId={props.portfolioId} showToast={showToast} onOverlayChange={onOverlayChange} visible={visible}/> }
+  />;
 };
 
 export default PortfolioGovernanceTab;

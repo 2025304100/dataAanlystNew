@@ -178,6 +178,10 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const [autoScan, setAutoScan] = useState(false);
   const [historyTask, setHistoryTask] = useState<HistoryInitializationTask | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReading, setHistoryReading] = useState(true);
+  const [historyReadError, setHistoryReadError] = useState(false);
+  const [historyConfirmed, setHistoryConfirmed] = useState(false);
+  const [historyReadAt, setHistoryReadAt] = useState<string | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [cleanupKeep, setCleanupKeep] = useState(5);
   const [cleanupLoading, setCleanupLoading] = useState(false);
@@ -193,6 +197,9 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const [activeEtfPreset, setActiveEtfPreset] = useState<{ preset_key: string; name: string; version: number } | null>(null);
   const historyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingInFlightRef = useRef(false);
+  const historyReadSequence = useRef(0);
+  const historyPollSequence = useRef(0);
+  const historyMounted = useRef(true);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const presetFocusRef = useRef<HTMLDivElement | null>(null);
@@ -213,6 +220,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const focusFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focusFlash, setFocusFlash] = useState(false);
   const clearHistoryPolling = useCallback(() => {
+    historyPollSequence.current += 1;
     if (historyPollRef.current) {
       clearInterval(historyPollRef.current);
       historyPollRef.current = null;
@@ -220,41 +228,61 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
     pollingInFlightRef.current = false;
   }, []);
 
+  const readHistoryStatus = useCallback(async () => {
+    const sequence = ++historyReadSequence.current;
+    setHistoryReading(true);
+    try {
+      const status = await api.getHistoryInitializationStatus() as HistoryInitializationTask;
+      if (!historyMounted.current || sequence !== historyReadSequence.current) return null;
+      setHistoryTask(status);
+      setHistoryReadError(false);
+      setHistoryConfirmed(true);
+      setHistoryReadAt(new Date().toISOString());
+      return status;
+    } catch {
+      if (historyMounted.current && sequence === historyReadSequence.current) {
+        setHistoryReadError(true);
+        setHistoryConfirmed(false);
+      }
+      return null;
+    } finally {
+      if (historyMounted.current && sequence === historyReadSequence.current) setHistoryReading(false);
+    }
+  }, []);
+
   const startHistoryPolling = useCallback(() => {
     clearHistoryPolling();
+    const pollSequence = historyPollSequence.current;
     historyPollRef.current = setInterval(async () => {
       if (pollingInFlightRef.current) return;
       pollingInFlightRef.current = true;
       try {
-        const status = await api.getHistoryInitializationStatus() as HistoryInitializationTask;
-        setHistoryTask(status);
-        if (status.status !== "running") {
+        const status = await readHistoryStatus();
+        if (!historyMounted.current || pollSequence !== historyPollSequence.current) return;
+        if (!status || status.status !== "running") {
           clearHistoryPolling();
         }
-      } catch {
-        clearHistoryPolling();
       } finally {
-        pollingInFlightRef.current = false;
+        if (pollSequence === historyPollSequence.current) pollingInFlightRef.current = false;
       }
     }, 1200);
-  }, [clearHistoryPolling]);
+  }, [clearHistoryPolling, readHistoryStatus]);
 
   const loadHistoryTask = useCallback(async () => {
-    try {
-      const status = await api.getHistoryInitializationStatus() as HistoryInitializationTask;
-      setHistoryTask(status);
+    clearHistoryPolling();
+    const status = await readHistoryStatus();
+    if (status) {
       if (status.preset) {
         setHistoryPreset(status.preset);
       }
       if (status.status === "running") {
         startHistoryPolling();
       }
-    } catch {
-      // noop
     }
-  }, [startHistoryPolling]);
+  }, [startHistoryPolling, clearHistoryPolling, readHistoryStatus]);
 
   useEffect(() => {
+    historyMounted.current = true;
     loadHistoryTask();
   }, [loadHistoryTask]);
 
@@ -274,6 +302,8 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   }, []);
 
   useEffect(() => () => {
+    historyMounted.current = false;
+    historyReadSequence.current += 1;
     clearHistoryPolling();
     if (focusFlashTimerRef.current) {
       clearTimeout(focusFlashTimerRef.current);
@@ -298,6 +328,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   }, [focusSignal]);
 
   const runHistoryInitialization = async (preset: HistoryInitializationTask["preset"]) => {
+    if (!historyConfirmed || historyReading || historyLoading || historyTask?.status === "running") return;
     try {
       setHistoryLoading(true);
       // 单标的上下文：显式传 symbol_ids（resolver 中 id 优先）；否则按来源选择处理
@@ -359,6 +390,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   };
 
   const handleRetryFailedOnly = async (taskId?: string | null) => {
+    if (!historyConfirmed || historyReading || historyLoading || historyTask?.status === "running") return;
     if (!taskId) {
       setRetryFailedMsg({ type: "error", text: t("histRetryFailedEmpty") });
       return;
@@ -554,7 +586,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
     const filteredSyncFailedItems = filteredItems.filter((item) => item.stage === "sync_bars");
     const filteredScoreFailedItems = filteredItems.filter((item) => item.stage === "calc_scores");
     const hasFailureFilter = failedFilterStage !== "all" || normalizedKeyword.length > 0 || failedCompareScope !== "all";
-    const retryable = failedItems.length > 0 && !isRunning;
+    const retryable = failedItems.length > 0 && !isRunning && historyConfirmed && !historyReading && !historyLoading;
     const runScopeLabel = getRunScopeLabel(run);
 
     return (
@@ -699,6 +731,10 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         </div>
 
         <Alert type="info" showIcon style={{ marginBottom: 16 }} message={requestedRange ? "按本次标的、日期和缺失项补充资料。完成后返回回测页重新检查。" : t("histPanelDesc")} />
+        {historyReadError && <Alert type="error" showIcon style={{ marginBottom: 16 }}
+          message={historyTask?.status === "running" ? "暂时读不到进度，任务可能仍在运行。" : "历史资料任务读取失败，还不能确认是否已有任务在运行。"}
+          description={historyReadAt ? `上次读取：${formatDate(historyReadAt)}。已读取的进度会保留。` : "先重新查看任务状态，确认后再开始补充。"}
+          action={<Button loading={historyReading} onClick={() => void loadHistoryTask()}>重新查看进度</Button>} />}
         {requestedRange && isRunning && !historyTaskMatchesRequest && <Alert type="info" showIcon style={{ marginBottom: 16 }}
           message="另有历史资料任务正在运行，本次补充还没有开始。请等它结束后重新读取。" />}
 
@@ -768,20 +804,20 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           </Tooltip>
           </>}
           <div className="history-init-toolbar__actions">
-            <Button icon={<ReloadOutlined />} onClick={loadHistoryTask} disabled={isRunning}>
+            {!historyReadError && <Button icon={<ReloadOutlined />} onClick={loadHistoryTask} disabled={historyReading || historyLoading}>
               {t("histBtnRefresh")}
-            </Button>
-            {!requestedRange && <Button icon={<HistoryOutlined />} onClick={handleRetryLastRun} disabled={!latestRun || isRunning || historyLoading}>
+            </Button>}
+            {!requestedRange && <Button icon={<HistoryOutlined />} onClick={handleRetryLastRun} disabled={!latestRun || isRunning || historyLoading || historyReading || !historyConfirmed}>
               {t("histBtnRetry")}
             </Button>}
             {isRunning && historyTaskMatchesRequest ? (
               <Popconfirm title={t("histCancelConfirm")} onConfirm={handleCancelTask} okText={t("histBtnCancel")} cancelText={t("cancel")}>
-                <Button danger icon={<CloseOutlined />}>
+                <Button danger icon={<CloseOutlined />} disabled={historyReading || !historyConfirmed}>
                   {t("histBtnCancel")}
                 </Button>
               </Popconfirm>
             ) : (
-              <Button type="primary" icon={<SyncOutlined spin={historyTask?.status === "running"} />} loading={historyLoading} disabled={isRunning} onClick={handleStartHistoryInitialization}>
+              <Button type="primary" icon={<SyncOutlined spin={historyTask?.status === "running"} />} loading={historyLoading} disabled={isRunning || historyReading || !historyConfirmed} onClick={handleStartHistoryInitialization}>
                 {requestedRange ? "补充所需资料" : t("histBtnInit")}
               </Button>
             )}
