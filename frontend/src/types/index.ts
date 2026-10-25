@@ -2135,9 +2135,10 @@ export interface PortfolioStatusResponse {
   last_decision_trade_date?: string | null;          // ISO date，可 NULL 但 JSON 键必须存在
   last_reconciled_trade_date?: string | null;        // ISO date，可 NULL 但 JSON 键必须存在
   allowed_transitions: string[];                     // 直接来自 _allowed_transitions_from(current)；空数组=全部按钮 disabled
-  is_auto_simulation_eligible: boolean;              // HG1 综合结果；false=预检按钮灰
+  is_auto_simulation_eligible: boolean;              // 当前运行检查允许新买入且允许自动恢复；不由持久化 READY 推断
   // FR-P1-8a 扩展：若后端未返回，前端按 ALLOWANCE_MATRIX 静态表 fail-closed 派生
-  permissions?: PortfolioStatePermissions;
+  permissions?: { [K in keyof PortfolioStatePermissions]: boolean | null } | null;
+  admission_checked_at?: string | null;
 }
 
 /** 9×4 允许矩阵静态常量（FR-P0-10 / FR-P1-8a 契约）。

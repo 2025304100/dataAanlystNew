@@ -291,3 +291,18 @@ describe("自动接管胶囊展示口径", () => {
     expect(screen.queryByRole("button", { name: /已就绪，等待调度/ })).not.toBeInTheDocument();
   });
 });
+
+
+it("持久化 READY 但当日评分过期时，顶部与检查页都暂停新买入",async()=>{
+  mockApi.getPortfolioInspectionRuntime.mockImplementation(async(id:number)=>({
+    portfolio_id:id,current_state:"READY",generated_at:new Date().toISOString(),dimensions:{},
+    permissions:{allow_new_buys:false,allow_auto_recovery:false,allow_risk_exits:true,requires_manual_ack:false},
+    capability_reasons:{allow_new_buys:["评分落后两个交易日"]},
+    recovery_summary:{can_confirm:false,phase:"BLOCKED",recommended_action:"VIEW_BLOCKERS",review_required:false,
+      blockers:["评分落后两个交易日"],checks:[{key:"data",passed:false,reason:"评分落后两个交易日"}]}
+  }));
+  render(<PortfolioTradingShell/>);
+  expect(await screen.findByRole("heading",{name:"新买入已暂停",level:1})).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:/^组合一 模拟/})).toHaveTextContent("新买入已暂停");
+  expect(screen.queryByText("可以运行")).not.toBeInTheDocument();
+});

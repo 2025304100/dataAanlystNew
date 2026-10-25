@@ -251,6 +251,8 @@ class PortfolioStatusResponse(BaseModel):
     last_reconciled_trade_date: date | None = None
     allowed_transitions: list[str] = Field(default_factory=list)
     is_auto_simulation_eligible: bool = False
+    permissions: dict[str, bool | None] | None = None
+    admission_checked_at: datetime | None = None
 
 
 class StateTransitionResponse(BaseModel):
@@ -375,14 +377,19 @@ def get_portfolio_status(
     db: Session = Depends(get_db),
 ) -> PortfolioStatusResponse:
     p = _load_portfolio(db, portfolio_id)
-    current = _psm_get_status(db, p)
+    from app.services.portfolio_inspection_runtime import get_portfolio_runtime_inspection
+    runtime = get_portfolio_runtime_inspection(db, portfolio_id)
+    current = runtime["current_state"]
     return PortfolioStatusResponse(
         portfolio_id=portfolio_id,
         current_state=current,
         last_decision_trade_date=p.last_decision_trade_date,
         last_reconciled_trade_date=p.last_reconciled_trade_date,
         allowed_transitions=_allowed_transitions_from(current),
-        is_auto_simulation_eligible=(current == "READY"),
+        is_auto_simulation_eligible=(runtime["permissions"]["allow_new_buys"] is True
+                                     and runtime["permissions"]["allow_auto_recovery"] is True),
+        permissions=runtime["permissions"],
+        admission_checked_at=runtime["generated_at"],
     )
 
 
