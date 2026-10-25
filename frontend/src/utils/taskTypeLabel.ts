@@ -46,6 +46,9 @@ const TASK_TYPE_LABEL_KEYS: Record<string, string> = {
   external_api_probe: "taskTypeApiProbe",
   external_data_sync: "taskTypeExternalSync",
   wp5_evaluation: "taskTypeFactorEvaluation",
+  universe_field_repair: "taskTypeUniverseFieldRepair",
+  portfolio_data_repair: "taskTypePortfolioDataRepair",
+  portfolio_reconciliation: "taskTypePortfolioReconciliation",
   // 组合交易
   portfolio_auto_trade: "taskTypePortfolioAutoTrade",
   portfolio_auto_simulation: "taskTypePortfolioAutoSimulation",

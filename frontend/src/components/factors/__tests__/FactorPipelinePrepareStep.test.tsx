@@ -174,7 +174,8 @@ describe("factor pipeline input preparation", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "准备因子输入" }));
 
     expect(screen.getByText("当前观察池")).toBeInTheDocument();
-    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "更新日期" }).closest(".ant-select")).toHaveTextContent("最近数据");
+    expect(screen.getByRole("combobox", { name: "更新方式" }).closest(".ant-select")).toHaveTextContent("只补未更新的部分");
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
   });
@@ -187,7 +188,8 @@ describe("factor pipeline input preparation", () => {
     render(<ExternalDataSync />);
 
     expect(await screen.findByText("当前观察池")).toBeInTheDocument();
-    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "更新日期" }).closest(".ant-select")).toHaveTextContent("最近数据");
+    expect(screen.getByRole("combobox", { name: "更新方式" }).closest(".ant-select")).toHaveTextContent("只补未更新的部分");
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新评分" })).toBeInTheDocument();
   });
@@ -214,7 +216,8 @@ describe("factor pipeline input preparation", () => {
     render(<FactorPipelinePrepareStep {...createProps()} />);
     await userEvent.setup().click(screen.getByRole("button", { name: "准备因子输入" }));
 
-    expect(screen.getByText("结束日期不能晚于今天")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /日期和更新设置/ }));
+    expect(screen.getByText("结束日期不能晚于今天")).toBeVisible();
     expect(screen.getByRole("button", { name: /同步股票估值/ })).toBeDisabled();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
   });

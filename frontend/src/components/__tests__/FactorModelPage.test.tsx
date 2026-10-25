@@ -788,17 +788,13 @@ describe("FactorModelPage", () => {
     });
   });
 
-  it("shows error when load fails", async () => {
+  it("shows a recoverable inline error when model loading fails", async () => {
     mockApi.scoringGetOverviewAsFactor.mockRejectedValue(new Error("network error"));
     mockApi.scoringListFactorSetsAsFactor.mockResolvedValue([]);
-
     render(<FactorModelPage />);
-
-    await waitFor(() => {
-      expect(mockMessage.error).toHaveBeenCalledWith(
-        expect.stringContaining("factorModelLoadFailed"),
-      );
-    });
+    expect(await screen.findByRole("alert", { name: "模型资料读取失败" })).toHaveTextContent("模型资料暂时读不到");
+    expect(await screen.findByRole("button", { name: "重试读取模型资料" })).toBeEnabled();
+    expect(mockMessage.error).not.toHaveBeenCalled();
   });
   it("shows rejection reason alert in model detail when rejected", async () => {
     mockLoadSuccess({

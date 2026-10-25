@@ -72,7 +72,7 @@ it('keeps market statistics errors in place with a read-only retry and hides the
   expect(await screen.findByText('行情数据状态暂时读不到')).toBeVisible();
   expect(screen.getByText('statistics offline')).not.toBeVisible();
   statsStatus = async () => json(stats);
-  fireEvent.click(screen.getByRole('button', { name: '重试读取行情状态' }));
+  fireEvent.click(await screen.findByRole('button', { name: '重试读取行情状态' }));
   await waitFor(() => expect(screen.queryByText('行情数据状态暂时读不到')).not.toBeInTheDocument());
   expect(calls.every(call => call.method === 'GET')).toBe(true);
 });

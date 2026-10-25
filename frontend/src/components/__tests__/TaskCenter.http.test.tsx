@@ -105,7 +105,9 @@ it('keeps existing records after a refresh failure and clears only the recovered
   await screen.findByText('同步资金流');
   history = async () => json({ detail: 'history offline' }, 503);
   observation = async () => json({ detail: 'statistics offline' }, 503);
-  fireEvent.click(screen.getByRole('button', { name: /刷新/ }));
+  const refresh = screen.getByRole('button', { name: /刷新/ });
+  await waitFor(() => expect(refresh).toBeEnabled());
+  fireEvent.click(refresh);
   expect(await screen.findByText('任务记录暂时读不到')).toBeVisible();
   expect(await screen.findByText('运行统计暂时读不到')).toBeVisible();
   expect(screen.getByText('同步资金流')).toBeVisible();

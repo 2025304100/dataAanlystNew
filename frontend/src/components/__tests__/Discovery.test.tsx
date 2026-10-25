@@ -465,7 +465,7 @@ describe("Discovery 交互测试", () => {
     expect(await screen.findByText("dpEnabledIndicators")).toBeVisible();
     expect(screen.getByPlaceholderText("dpNamePlaceholder")).not.toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "discoveryViewAll" }));
-    expect(screen.getByRole("button", { name: "discoveryRestoreFilters" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "discoveryRestoreFilters" })).toBeVisible();
     await userEvent.click(screen.getByText("discoveryFilterOptions"));
     expect(screen.getByPlaceholderText("dpNamePlaceholder")).toBeVisible();
   });

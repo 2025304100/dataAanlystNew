@@ -14,6 +14,8 @@ import httpx
 import os
 
 from tests._e2e_settle import settle
+from tests._e2e_navigation import click_named
+from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
 
@@ -31,33 +33,19 @@ BACKEND_URL = os.getenv("E2E_BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 
 def _click_view_tab(page, labels):
-    """通过文本切换主 Tab，返回首个可见的 Tab locator。"""
-    for label in labels:
-        tab = page.locator(f"button.view-tab:has-text('{label}')").first
-        if tab.is_visible():
-            tab.click()
-            settle(page, 1500)
-            return tab
-    return None
+    return click_named(page.locator("nav.view-tabs"), labels)
 
 
 def _click_settings_nav(page, labels):
-    """点击设置页左侧 nav 切换到指定 section。"""
-    for label in labels:
-        nav = page.locator(f".settings-nav-item:has-text('{label}')").first
-        if nav.is_visible():
-            nav.click()
-            settle(page, 1500)
-            return nav
-    return None
+    return click_named(page.locator(".settings-sidebar"), labels)
 
 
 def _goto_api_mgmt(page):
     """切换到 设置 → 接口管理。"""
     _click_view_tab(page, SETTINGS_TAB_LABELS)
     _click_settings_nav(page, API_MGMT_NAV_LABELS)
-    # 等待接口列表加载
-    page.wait_for_timeout(2000)
+    expect(page.locator("[data-settings-content='settings-api-mgmt']")).to_be_visible(timeout=20000)
+    expect(page.locator("[data-settings-content='settings-api-mgmt'] .ant-table-row").first).to_be_visible(timeout=20000)
 
 
 def test_api_mgmt_tab_visible(page):

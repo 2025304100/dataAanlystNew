@@ -189,7 +189,7 @@ describe("TodayDecision 待修复样本交互测试", () => {
     try {
       const button = (await screen.findByText("tdRepairAll")).closest("button")!;
       expect(button).toBeDisabled(); fireEvent.click(button);
-      for (const repair of screen.getAllByText("tdRepair")) expect(repair.closest("button")).toBeDisabled();
+      for (const repair of await screen.findAllByText("tdRepair")) expect(repair.closest("button")).toBeDisabled();
       expect(mockApi.repairAllSymbolMarketData).not.toHaveBeenCalled();
       expect(mockApi.repairSymbolMarketData).not.toHaveBeenCalled();
       expect(screen.getByText("tdRefresh").closest("button")).toBeEnabled();

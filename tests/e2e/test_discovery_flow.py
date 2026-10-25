@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 
 from tests._e2e_settle import settle
+from tests._e2e_navigation import click_named
+from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
 
@@ -28,14 +30,7 @@ CN_ETF_SCOPE_LABELS = ("ETF",)
 
 
 def _click_view_tab(page, labels):
-    """通过文本切换主 Tab，返回首个可见的 Tab locator。"""
-    for label in labels:
-        tab = page.locator(f"button.view-tab:has-text('{label}')").first
-        if tab.is_visible():
-            tab.click()
-            settle(page, 1500)
-            return tab
-    return None
+    return click_named(page.locator("nav.view-tabs"), labels)
 
 
 def test_discovery_tab_visible(page):
@@ -45,7 +40,7 @@ def test_discovery_tab_visible(page):
 
     # 切换后 discovery 内容容器可见
     content = page.locator("[data-tab-content='discovery']").first
-    assert content.is_visible(), "切换后未看到 discovery 内容容器"
+    expect(content).to_be_visible(timeout=20000)
 
 
 def test_create_cn_etf_discovery_task(page):
@@ -60,8 +55,8 @@ def test_create_cn_etf_discovery_task(page):
     _click_view_tab(page, DISCOVERY_TAB_LABELS)
 
     # 选择 scope=cn-etf：discovery-control-bar 内首个 Select
-    scope_select = page.locator(".discovery-control-bar .ant-select").first
-    assert scope_select.is_visible(), "未找到 scope Select"
+    scope_select = page.locator("[data-tab-content=discovery] .discovery-field .ant-select").first
+    expect(scope_select).to_be_visible(timeout=20000)
     scope_select.click()
     page.wait_for_timeout(500)
     # 选择 cn-etf 选项（标签含 ETF，且排除 us-etf 的歧义用下标）
@@ -94,7 +89,12 @@ def test_discovery_candidates_table_loaded(page):
     _click_view_tab(page, DISCOVERY_TAB_LABELS)
     page.wait_for_timeout(2000)
 
-    # pool-tabs 容器始终可见
+    # Simple mode exposes pool filters through a user-operated disclosure.
+    disclosure = page.locator("[data-tab-content=discovery] details").filter(has=page.locator(".pool-tabs"))
+    expect(disclosure.locator("summary")).to_be_visible(timeout=20000)
+    disclosure.locator("summary").click()
+
+    # Pool tabs become visible after expanding filters.
     pool_tabs = page.locator(".pool-tabs").first
     assert pool_tabs.is_visible(), "未找到候选池 Tab 容器 .pool-tabs"
 
