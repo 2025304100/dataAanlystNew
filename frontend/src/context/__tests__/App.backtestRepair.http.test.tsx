@@ -33,6 +33,9 @@ const pendingResponses: Array<(response: Response) => void> = [];
 const symbol = { id: 11, symbol: "510300", name: "测试ETF", asset_type: "etf", market: "sh", region: "cn" };
 
 beforeEach(() => {
+  // Startup can publish before the scoped message bridge is installed. Keep
+  // both real AntD channels visible so expiry cannot mask duplicate notices.
+  message.config({ duration: 0 });
   localStorage.clear(); sessionStorage.clear(); setLocale("zh-CN"); requests.length = 0;
   precheck = clearPrecheck;
   oldHistory = false;
@@ -143,6 +146,7 @@ it("carries the single-symbol repair range and missing type and returns to the s
 afterEach(async () => {
   cleanup();
   await act(async () => { for (const resolve of pendingResponses.splice(0)) resolve(json({ detail: "测试已结束" }, 503)); message.destroy(); });
+  message.config({ duration: 3 });
   vi.useRealTimers();
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
