@@ -41,13 +41,18 @@ jobs:
           chmod +x /tmp/combination-mysqldump /tmp/combination-mysql
       - name: Pure migrations, restart, concurrent gates, recovery and no-loss replay
         env:
-          COMBINATION_MYSQL57_URL: mysql+pymysql://root:ci_combination_pw@127.0.0.1:3306/
+          COMBINATION_MYSQL57_URL: mysql+pymysql://root:ci_combination_pw@127.0.0.1:3306/?ssl_disabled=true
           MYSQLDUMP_BIN: /tmp/combination-mysqldump
           MYSQL_BIN: /tmp/combination-mysql
-        run: python scripts/verify_combination_mysql57.py --prefix codex_combination_ci_${{ github.run_id }}_${{ github.run_attempt }} --evidence-dir tmp/combination-ci
+        # Legacy 5.7.26 TLS is incompatible with the modern runner. This URL
+        # is only the ephemeral loopback CI service; application TLS is unchanged.
+        run: |
+          mkdir -p tmp/combination-ci
+          set -o pipefail
+          python scripts/verify_combination_mysql57.py --prefix codex_combination_ci_${{ github.run_id }}_${{ github.run_attempt }} --evidence-dir tmp/combination-ci 2>&1 | tee tmp/combination-ci/runner.log
       - name: Real admission display HTTP flow on a fresh retained-model copy
         env:
-          ADMISSION_DISPLAY_SOURCE_URL: mysql+pymysql://root:ci_combination_pw@127.0.0.1:3306/codex_combination_ci_${{ github.run_id }}_${{ github.run_attempt }}_auto_http
+          ADMISSION_DISPLAY_SOURCE_URL: mysql+pymysql://root:ci_combination_pw@127.0.0.1:3306/codex_combination_ci_${{ github.run_id }}_${{ github.run_attempt }}_auto_http?ssl_disabled=true
           MYSQLDUMP_BIN: /tmp/combination-mysqldump
           MYSQL_BIN: /tmp/combination-mysql
         run: python scripts/verify_combination_admission_display.py --target-database codex_combination_display_${{ github.run_id }}_${{ github.run_attempt }} --evidence-dir tmp/combination-ci/admission-display
