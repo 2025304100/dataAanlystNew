@@ -28,6 +28,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.mysql import DATETIME as MySQLDateTime
 
 from app.db.base import Base
 
@@ -136,8 +137,8 @@ class PortfolioFactorUsage(Base):
     versions_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
 
-    effective_from: Mapped[datetime] = mapped_column(DateTime, index=True)
-    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    effective_from: Mapped[datetime] = mapped_column(DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), index=True)
+    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=True)
 
     created_by: Mapped[str] = mapped_column(
         String(128), default="local_user", server_default="local_user",
@@ -242,7 +243,7 @@ class StrategyExecutionSnapshot(Base):
     gate_result_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     versions_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    effective_from: Mapped[datetime] = mapped_column(DateTime, index=True)
+    effective_from: Mapped[datetime] = mapped_column(DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), index=True)
     task_locked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True,
     )

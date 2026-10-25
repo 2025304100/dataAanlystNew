@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
 REQUIRED={
+    'test_g4_http_applied_binding_is_immediately_effective_at_fractional_second',
     'test_g4_api_01_status','test_g4_api_02_reconcile','test_g4_api_03_confirm','test_g4_api_04_transition',
     'test_g4_api_08a_excludes_today','test_g4_api_08b_skips_incomplete_day',
     'test_g4_api_08c_us_region_does_not_count','test_g4_api_08d_falls_back_when_universe_empty',

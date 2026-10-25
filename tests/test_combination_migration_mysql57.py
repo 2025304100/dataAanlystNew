@@ -221,7 +221,71 @@ def test_applied_0082_receives_0083_compensation_without_changing_member_history
             side="buy", quantity=100, submitted_price=10, review_status=None)).inserted_primary_key[0]
         assert conn.execute(sa.text("SELECT review_status FROM sim_orders WHERE id=:id"), {"id": inserted}).scalar_one() is None
         assert conn.execute(sa.text("SELECT sim_account_id FROM sim_orders WHERE id=:id"), {"id": inserted}).scalar_one() is None
-        assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == "wps_0024_085_legacy_dates"
+        assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == "wps_0024_087_binding_precision"
         with pytest.raises(sa.exc.IntegrityError):
             conn.execute(sql, dict(p=p,s=s,status="active",start=datetime(2026,3,1),end=None,note="duplicate must fail"))
     engine.dispose()
+
+
+def test_binding_precision_upgrade_keeps_history_and_full_audit_actions(isolated_url):
+    from app.models.portfolio import Portfolio
+    from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSnapshot
+    from app.models.factor_runtime import FactorModelAuditLog
+    target=sibling_database(isolated_url,"binding")
+    upgrade(target,"wps_0024_085_legacy_dates")
+    engine=sa.create_engine(target,hide_parameters=True)
+    old_time=datetime(2026,9,1,8,0,1)
+    names=("portfolios","portfolio_factor_usages","strategy_execution_snapshots","factor_model_audit_logs")
+    def capture():
+        with engine.connect() as conn:
+            return {name:[dict(row) for row in conn.execute(sa.text(f"SELECT * FROM {name} ORDER BY id")).mappings()] for name in names}
+    try:
+        with Session(engine) as db:
+            p=Portfolio(name="binding fidelity historical account",account_type="simulated",total_capital=100000,
+                        investable_ratio=.9,cash_reserve_ratio=.1,created_at=old_time)
+            db.add(p);db.flush()
+            from tests.test_stage3_factor_binding_contract import _ready_model
+            model=_ready_model(db,set_id="fs-legacy-fidelity",model_id="model-legacy-fidelity")
+            usage=PortfolioFactorUsage(id="legacy-binding",portfolio_id=p.id,run_mode="research",
+                factor_model_run_id=model.id,factor_set_id="fs-legacy-fidelity",pit_mode="strict_pit_safe",status="active",content_hash="legacy-evidence",effective_from=old_time,
+                effective_to=None,created_at=old_time,updated_at=old_time)
+            db.add(usage);db.flush()
+            snapshot=StrategyExecutionSnapshot(id="legacy-snapshot",portfolio_id=p.id,snapshot_no=1,
+                portfolio_factor_usage_id=usage.id,snapshot_hash="old-proof",snapshot_type="save_and_apply",
+                decision_clock_json="{}",member_snapshot_json="[]",effective_from=old_time,created_at=old_time)
+            audit=FactorModelAuditLog(action="legacy-history-is-kept",previous_mode="manual",new_mode="manual",
+                actor="historical-owner",note="完整原文；不能截断或删除旧行",created_at=old_time)
+            db.add_all([snapshot,audit]);db.commit()
+        before=capture()
+        old_indexes={name:sa.inspect(engine).get_indexes(name) for name in names}
+        upgrade(target)
+        assert capture()==before
+        assert {name:sa.inspect(engine).get_indexes(name) for name in names}==old_indexes
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='factor_model_audit_logs' AND column_name='action'")) >= 64
+            assert conn.scalar(sa.text("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND ((table_name='portfolio_factor_usages' AND column_name IN ('effective_from','effective_to')) OR (table_name='strategy_execution_snapshots' AND column_name='effective_from')) AND datetime_precision=6"))==3
+        stamp=datetime(2026,10,1,0,0,0,800000)
+        with Session(engine) as db:
+            usage=db.get(PortfolioFactorUsage,"legacy-binding")
+            usage.effective_to=stamp
+            audit=FactorModelAuditLog(action="PORTFOLIO_FACTOR_USAGE_SAVE_APPLY",previous_mode="manual",new_mode="ridge",
+                actor="new-owner",note="新增完整动作，原始审计行继续保留",created_at=stamp)
+            db.add(audit);db.commit();db.refresh(audit);db.refresh(usage)
+            assert audit.action=="PORTFOLIO_FACTOR_USAGE_SAVE_APPLY"
+            assert usage.effective_to==stamp
+        with pytest.raises(RuntimeError,match="Do not truncate"):
+            upgrade_config=Config(str(ROOT/"alembic.ini"))
+            upgrade_config.set_main_option("script_location",str(ROOT/"alembic"))
+            prior=os.environ.get("ALEMBIC_DATABASE_URL")
+            try:
+                os.environ["ALEMBIC_DATABASE_URL"]=target.render_as_string(hide_password=False)
+                command.downgrade(upgrade_config,"wps_0024_085_legacy_dates")
+            finally:
+                if prior is None:os.environ.pop("ALEMBIC_DATABASE_URL",None)
+                else:os.environ["ALEMBIC_DATABASE_URL"]=prior
+        after=capture()
+        assert after["factor_model_audit_logs"][0]==before["factor_model_audit_logs"][0]
+        upgrade(target)
+        assert capture()==after
+    finally:
+        engine.dispose()

@@ -13,7 +13,7 @@ concurrency:
 jobs:
   combination-mysql57-required:
     runs-on: ubuntu-latest
-    # G4 adds 23 fresh, fully migrated schemas; keep the existing real-model lanes.
+    # G4 adds 24 fresh, fully migrated schemas; keep the existing real-model lanes.
     timeout-minutes: 45
     services:
       mysql:

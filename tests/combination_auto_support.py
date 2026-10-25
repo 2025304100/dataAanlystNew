@@ -28,7 +28,7 @@ def migrate(raw):
     env = dict(os.environ, APP_DATABASE_URL=raw, ALEMBIC_DATABASE_URL=raw, PYTHONIOENCODING="utf-8")
     run = subprocess.run([sys.executable, "scripts/guarded_database_migration.py", "upgrade",
         "--expected-database", url.database, "--expected-revision", "base", "--expected-server-version", "5.7.26",
-        "--target-revision", "wps_0024_085_legacy_dates"], env=env, cwd=ROOT,
+        "--target-revision", "wps_0024_087_binding_precision"], env=env, cwd=ROOT,
         capture_output=True, encoding="utf-8", timeout=300)
     assert run.returncode == 0, run.stdout + run.stderr
     return engine, json.loads(run.stdout)

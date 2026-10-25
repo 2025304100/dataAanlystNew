@@ -237,13 +237,20 @@ def test_cron_preflight_cannot_bypass_dimension_locks(binding, field, state):
 
 @pytest.fixture
 def reconciliation(db_session):
-    db = db_session
-    portfolio = _portfolio(db)
-    portfolio.status_reconciliation = "RECONCILIATION_BLOCKED"
-    portfolio.last_decision_trade_date = date(2026, 9, 1)
-    _legacy_state(db, portfolio, "RECONCILIATION_BLOCKED")
+    from tests.g4_contract_support import DAY, seed_account
+    db=db_session
+    portfolio=seed_account(db)
+    portfolio.status_reconciliation="RECONCILIATION_BLOCKED"
+    portfolio.last_decision_trade_date=DAY
+    _legacy_state(db,portfolio,"RECONCILIATION_BLOCKED")
     db.commit()
-    return db, portfolio
+    return db,portfolio
+
+
+def reviewed_reconciliation(db, portfolio, note="已核对成交持仓资金并修复所有差异"):
+    report=api.preview_portfolio_reconciliation(portfolio.id,portfolio.last_decision_trade_date,db)
+    return api.ConfirmReconciliationRequest(ack=True,trade_date=portfolio.last_decision_trade_date,
+        report_id=report.report_id,report_version=report.report_version,review_note=note)
 
 
 @pytest.mark.parametrize("ack_field", ["ack", "acknowledge_all_diffs_cleared"])
@@ -271,79 +278,64 @@ def test_reconciliation_cannot_bypass_rerun(reconciliation, flags):
     assert api._psm_get_status(db, portfolio) == "RECONCILIATION_BLOCKED"
 
 
-@pytest.mark.parametrize("report_status,diffs", [("BLOCKED", []), ("PASSED", [ReconciliationDiff(symbol_id=None, kind="NOT_CHECKED")])])
-def test_reconciliation_only_unlocks_passed_zero_diffs(reconciliation, monkeypatch, report_status, diffs):
-    db, portfolio = reconciliation
-    monkeypatch.setattr("app.services.portfolio_reconciliation.reconcile_trade_date", lambda *a, **k: ReconciliationReport(
-        portfolio_id=portfolio.id, trade_date=portfolio.last_decision_trade_date,
-        decision_run_id=None, status=report_status, differences=diffs,
-    ))
+@pytest.mark.parametrize("missing", ["execution", "cash"])
+def test_reconciliation_only_unlocks_complete_zero_diff_evidence(reconciliation,missing):
+    from tests.g4_contract_support import seed_buy,financial_rows
+    db,portfolio=reconciliation
+    if missing=="cash":seed_buy(db,portfolio,cash=False)
+    payload=reviewed_reconciliation(db,portfolio)
+    before=financial_rows(db)
     with pytest.raises(HTTPException) as error:
-        api.confirm_portfolio_reconciliation(
-            portfolio.id, api.ConfirmReconciliationRequest(ack=True, review_note="已核对成交持仓资金并修复所有差异"), db, "owner",
-        )
-    assert error.value.status_code == 409
-    assert portfolio.status_reconciliation == "RECONCILIATION_BLOCKED"
+        api.confirm_portfolio_reconciliation(portfolio.id,payload,db,"owner")
+    assert error.value.status_code==409
+    assert portfolio.status_reconciliation=="RECONCILIATION_BLOCKED"
+    assert financial_rows(db)==before
 
 
-def test_reconciliation_saves_trimmed_note_and_preserves_model_lock(reconciliation, monkeypatch):
-    db, portfolio = reconciliation
-    portfolio.status_model = "MODEL_INACTIVE"
-    db.commit()
-    seen_dates = []
-    def passed(db, pid, td, **kwargs):
-        seen_dates.append(td)
-        return ReconciliationReport(portfolio_id=pid, trade_date=td, decision_run_id=None, status="PASSED")
-    monkeypatch.setattr("app.services.portfolio_reconciliation.reconcile_trade_date", passed)
-    response = api.confirm_portfolio_reconciliation(
-        portfolio.id, api.ConfirmReconciliationRequest(ack=True, review_note="  已核对成交持仓资金并修复所有差异  "), db, "owner",
-    )
-    assert seen_dates == [portfolio.last_decision_trade_date]
+def test_reconciliation_saves_trimmed_note_and_preserves_model_lock(reconciliation):
+    from tests.g4_contract_support import seed_buy,financial_rows
+    db,portfolio=reconciliation
+    seed_buy(db,portfolio)
+    portfolio.status_model="MODEL_INACTIVE";db.commit()
+    before=financial_rows(db)
+    response=api.confirm_portfolio_reconciliation(portfolio.id,
+        reviewed_reconciliation(db,portfolio,"  已核对成交持仓资金并修复所有差异  "),db,"owner")
+    assert response.last_reconciled_trade_date==portfolio.last_decision_trade_date
     assert response.portfolio_now_ready is False
-    assert portfolio.status_reconciliation == "READY"
-    assert portfolio.status_model == "MODEL_INACTIVE"
-    event = db.get(DataGovernanceAuditEvent, response.audit_event_id)
-    assert event.action == "DATA_BLOCK_RESOLUTION"
-    assert event.note == "已核对成交持仓资金并修复所有差异"
-    assert event.operator_id == "owner"
-    assert json.loads(event.attributes_json)["confirmation_type"] == "RECONCILIATION_CONFIRMED"
+    assert portfolio.status_reconciliation=="READY" and portfolio.status_model=="MODEL_INACTIVE"
+    event=db.get(DataGovernanceAuditEvent,response.audit_event_id)
+    assert event.action=="DATA_BLOCK_RESOLUTION" and event.note=="已核对成交持仓资金并修复所有差异"
+    assert event.operator_id=="owner"
+    assert json.loads(event.attributes_json)["confirmation_type"]=="RECONCILIATION_CONFIRMED"
+    assert financial_rows(db)==before
 
 
-@pytest.mark.parametrize("legacy_state", ["READY", "ADMIN_PAUSED", "INTERRUPTED", "PENDING_INITIAL_REVIEW", "MODEL_INACTIVE"])
-def test_dimension_only_reconciliation_confirmation_preserves_independent_runtime_state(reconciliation, monkeypatch, legacy_state):
-    from app.services.portfolio_reconciliation import _finalize_report
-    db, portfolio = reconciliation
-    _legacy_state(db, portfolio, legacy_state)
-    db.commit()
-    def passed(db, pid, td, **kwargs):
-        report = ReconciliationReport(portfolio_id=pid, trade_date=td, decision_run_id=None, status="PASSED")
-        # Exercise the real report finalizer, including its audit/cursor write.
-        _finalize_report(db, portfolio, report, kwargs["operator_id"], kwargs["correlation_id"])
-        return report
-    monkeypatch.setattr("app.services.portfolio_reconciliation.reconcile_trade_date", passed)
-    response = api.confirm_portfolio_reconciliation(
-        portfolio.id, api.ConfirmReconciliationRequest(ack=True, review_note="已核对成交持仓资金并修复所有差异"), db, "owner",
-    )
-    assert portfolio.status_reconciliation == "READY"
-    assert response.from_state == legacy_state
-    assert response.to_state == legacy_state
-    assert api._psm_get_status(db, portfolio) == legacy_state
-    assert response.portfolio_now_ready is (legacy_state == "READY")
+@pytest.mark.parametrize("legacy_state",["READY","ADMIN_PAUSED","INTERRUPTED","PENDING_INITIAL_REVIEW","MODEL_INACTIVE"])
+def test_dimension_only_reconciliation_confirmation_preserves_independent_runtime_state(reconciliation,legacy_state):
+    from tests.g4_contract_support import seed_buy,financial_rows
+    db,portfolio=reconciliation
+    seed_buy(db,portfolio)
+    _legacy_state(db,portfolio,legacy_state);db.commit()
+    before=financial_rows(db)
+    response=api.confirm_portfolio_reconciliation(portfolio.id,reviewed_reconciliation(db,portfolio),db,"owner")
+    assert portfolio.status_reconciliation=="READY"
+    assert response.from_state==legacy_state and response.to_state==legacy_state
+    assert api._psm_get_status(db,portfolio)==legacy_state
+    assert response.portfolio_now_ready is (legacy_state=="READY")
+    assert financial_rows(db)==before
 
 
-def test_reconciliation_audit_failure_rolls_back_state_and_cursor(reconciliation, monkeypatch):
-    db, portfolio = reconciliation
-    monkeypatch.setattr("app.services.portfolio_reconciliation.reconcile_trade_date", lambda db, pid, td, **kwargs: ReconciliationReport(
-        portfolio_id=pid, trade_date=td, decision_run_id=None, status="PASSED",
-    ))
-    def fail(*a, **k):
-        raise RuntimeError("audit unavailable")
-    monkeypatch.setattr("app.services.data_governance_audit.write_audit_event", fail)
+def test_reconciliation_audit_failure_rolls_back_state_and_cursor(reconciliation,monkeypatch):
+    from tests.g4_contract_support import seed_buy,financial_rows
+    db,portfolio=reconciliation
+    seed_buy(db,portfolio)
+    payload=reviewed_reconciliation(db,portfolio)
+    before=financial_rows(db)
+    def fail(*a,**k):raise RuntimeError("audit unavailable")
+    monkeypatch.setattr("app.services.data_governance_audit.write_audit_event",fail)
     with pytest.raises(RuntimeError):
-        api.confirm_portfolio_reconciliation(
-            portfolio.id, api.ConfirmReconciliationRequest(ack=True, review_note="已核对成交持仓资金并修复所有差异"), db, "owner",
-        )
+        api.confirm_portfolio_reconciliation(portfolio.id,payload,db,"owner")
     db.refresh(portfolio)
-    assert portfolio.status_reconciliation == "RECONCILIATION_BLOCKED"
-    assert portfolio.last_reconciled_trade_date is None
-    assert api._psm_get_status(db, portfolio) == "RECONCILIATION_BLOCKED"
+    assert portfolio.status_reconciliation=="RECONCILIATION_BLOCKED" and portfolio.last_reconciled_trade_date is None
+    assert api._psm_get_status(db,portfolio)=="RECONCILIATION_BLOCKED"
+    assert financial_rows(db)==before

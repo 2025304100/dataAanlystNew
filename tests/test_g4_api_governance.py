@@ -30,14 +30,18 @@ def real_schema_before_clock_boundary():
 @pytest.fixture
 def mounted(tmp_path,monkeypatch,request):
     with migrated_account_db(tmp_path,monkeypatch,request.node.nodeid) as db:
-        # Only external time is controlled; actual reports and gates run unchanged.
+        # FastAPI resolves deferred date annotations again at mount time.
+        # Mount before freezegun replaces date; only request time crosses the clock seam.
+        from app.api.routes import portfolio_factor_usage
+        app=FastAPI();app.include_router(governance.router,prefix='/api/v1')
+        app.include_router(portfolio_factor_usage.router,prefix='/api/v1')
+        app.openapi()
+        def isolated_db():
+            try:yield db
+            except Exception:
+                db.rollback();raise
+        app.dependency_overrides[get_db]=isolated_db
         with freeze_time('2026-10-01T00:00:00Z',real_asyncio=True) as clock:
-            app=FastAPI();app.include_router(governance.router,prefix='/api/v1')
-            def isolated_db():
-                try:yield db
-                except Exception:
-                    db.rollback();raise
-            app.dependency_overrides[get_db]=isolated_db
             p=seed_account(db)
             with TestClient(app) as client:
                 yield client,db,p,clock
@@ -313,4 +317,30 @@ def test_g4_http_confirmation_does_not_accept_unreviewed_applied_binding(mounted
     result=post(client,p,'confirm-reconciliation',confirmation(report))
     assert result['portfolio_now_ready'] is False
     assert get(client,p,'status')['is_auto_simulation_eligible'] is False
+    assert financial_rows(db)==before
+
+
+def test_g4_http_applied_binding_is_immediately_effective_at_fractional_second(mounted):
+    from tests.test_stage3_factor_binding_contract import _ready_model, _activate
+    client,db,p,clock=mounted
+    model=_ready_model(db,set_id="fs-clock-contract",model_id="model-clock-contract")
+    _activate(db,model.id);db.commit()
+    before=financial_rows(db)
+    clock.move_to('2026-10-01T00:00:00.800000Z')
+    result=post(client,p,'factor-usage',{
+        'factor_model_run_id':model.id,'factor_set_id':'fs-clock-contract',
+        'run_mode':'production_sim','pit_mode':'strict_pit_safe'})
+    from tests.test_whitebox_portfolio_confirmation import _legacy_state
+    p.status_reconciliation='RECONCILIATION_BLOCKED'
+    p.status_score='SCORE_STALE';p.status_data='DATA_INCOMPLETE_PAUSED'
+    _legacy_state(db,p,'MODEL_INACTIVE');db.commit()
+    review=get(client,p,'model-binding-review')
+    assert review['can_confirm'] is True,review
+    assert review['snapshot_id']==result['strategy_snapshot_id']
+    accepted=post(client,p,'confirm-model-binding',{'snapshot_id':review['snapshot_id'],
+        'model_run_id':model.id,'ack':True,'review_note':NOTE})
+    assert accepted['current_state']=='RECONCILIATION_BLOCKED'
+    db.refresh(p)
+    assert p.status_model=='READY' and p.status_reconciliation=='RECONCILIATION_BLOCKED'
+    assert p.status_score=='SCORE_STALE' and p.status_data=='DATA_INCOMPLETE_PAUSED'
     assert financial_rows(db)==before

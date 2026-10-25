@@ -83,6 +83,7 @@ from app.services.portfolio_state_machine import (
     confirm_reconciliation_fixed,
     transition_portfolio_state,
     _get_status as _psm_get_status,
+    _set_status as _psm_set_status,
 )
 
 router = APIRouter(tags=["portfolio-governance"])
@@ -329,10 +330,12 @@ def confirm_portfolio_model_binding(
         # Clear only the legacy MODEL_INACTIVE state. ADMIN_PAUSED, initial
         # review, interruption and every independent dimension stay intact.
         if from_state == "MODEL_INACTIVE":
-            transition_portfolio_state(
-                db, portfolio_id, "READY", operator_id=actor,
-                correlation_id=corr, reason="本人确认接受模型与策略变更",
-            )
+            # This reviewed operation accepts only the binding. A generic READY
+            # transition also asks to clear independent reconciliation gates.
+            # Move the redundant legacy lock to its remaining blocked state;
+            # persisted dimensions and all real-time execution checks stay active.
+            reconciliation = getattr(p.status_reconciliation, "value", p.status_reconciliation)
+            _psm_set_status(db, p, "RECONCILIATION_BLOCKED" if reconciliation == "RECONCILIATION_BLOCKED" else "READY")
         to_state = _psm_get_status(db, p)
         event = write_audit_event(
             db, "FACTOR_USAGE_APPLIED", portfolio_id=portfolio_id,

@@ -65,7 +65,7 @@ class FactorModelAuditLog(Base):
     __tablename__ = 'factor_model_audit_logs'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    action: Mapped[str] = mapped_column(String(32), index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
     model_run_id: Mapped[str | None] = mapped_column(
         ForeignKey('factor_model_runs.id', ondelete='SET NULL'),
         nullable=True,
