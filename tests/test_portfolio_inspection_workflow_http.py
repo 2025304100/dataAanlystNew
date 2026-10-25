@@ -512,8 +512,12 @@ def test_persistent_repair_history_and_cancel_use_actual_actor_and_scope_after_n
     assert (portfolio.id, "another-reviewer") in checked
 
 
-@pytest.mark.parametrize("effective_microsecond,passed", [(700000, True), (900000, False)])
-def test_fractional_binding_clock_is_consistent_across_real_http_reads(mounted, monkeypatch, effective_microsecond, passed):
+@pytest.mark.parametrize("effective_microsecond,publication_microsecond,passed,status", [
+    (700000,700000,True,"PASSED"),
+    (900000,700000,False,"UNKNOWN"),
+    (700000,900000,False,"FUTURE_DATA"),
+])
+def test_fractional_binding_clock_is_consistent_across_real_http_reads(mounted, monkeypatch, effective_microsecond, publication_microsecond, passed, status):
     from freezegun import freeze_time
     from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSnapshot
     from app.services.auto_trade_safety import check_data_health
@@ -535,8 +539,9 @@ def test_fractional_binding_clock_is_consistent_across_real_http_reads(mounted, 
         snapshot_no=1, snapshot_type="save_and_apply", snapshot_hash="fraction-proof",
         member_snapshot_json="[]", decision_clock_json="{}", effective_from=stamp))
     _bar(db, symbols[0], NOW.date())
-    _score(db, symbols[0], config, NOW.date(), weight_mode="ridge",
+    value=_score(db, symbols[0], config, NOW.date(), weight_mode="ridge",
         factor_model_run_id=model.id, factor_set_id="fs-fraction-http")
+    value.published_at=NOW.replace(tzinfo=None,microsecond=publication_microsecond)
     portfolio.status_model="MODEL_INACTIVE"
     db.commit()
     before=financial_rows(db)
@@ -545,17 +550,17 @@ def test_fractional_binding_clock_is_consistent_across_real_http_reads(mounted, 
     with freeze_time(at.isoformat(), real_asyncio=True):
         root=f"/api/v1/portfolios/{portfolio.id}"
         review=client.get(root+"/model-binding-review")
-        assert review.status_code==200 and review.json()["can_confirm"] is passed
+        assert review.status_code==200 and review.json()["can_confirm"] is (effective_microsecond < 800000)
         health=check_data_health(db, symbol_id=symbols[0].id, portfolio_id=portfolio.id)
         assert health.healthy is passed,health.reason
         response=client.get(root+"/inspection/data-diagnostics")
         assert response.status_code==200,response.text
         inspection=response.json()
         score=next(e for e in inspection["symbols"][0]["evidence"] if e["check_code"]=="SCORE_FRESHNESS")
-        assert score["status"] == ("PASSED" if passed else "UNKNOWN"),score
+        assert score["status"] == status,score
         assert datetime.fromisoformat(inspection["generated_at"].replace("Z","+00:00"))==at
         runtime=client.get(root+"/inspection/runtime")
         assert runtime.status_code==200,runtime.text
         data=next(c for c in runtime.json()["recovery_summary"]["checks"] if c["key"]=="data")
-        assert data["passed"] is (True if passed else None),data
+        assert data["passed"] is (True if passed else None if status=="UNKNOWN" else False),data
     assert financial_rows(db)==before

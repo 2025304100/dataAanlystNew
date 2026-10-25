@@ -32,9 +32,11 @@ def mounted(tmp_path,monkeypatch,request):
     with migrated_account_db(tmp_path,monkeypatch,request.node.nodeid) as db:
         # FastAPI resolves deferred date annotations again at mount time.
         # Mount before freezegun replaces date; only request time crosses the clock seam.
-        from app.api.routes import portfolio_factor_usage
+        from app.api.routes import portfolio_factor_usage, portfolio_inspection, portfolio_inspection_workflow
         app=FastAPI();app.include_router(governance.router,prefix='/api/v1')
         app.include_router(portfolio_factor_usage.router,prefix='/api/v1')
+        app.include_router(portfolio_inspection.router,prefix='/api/v1')
+        app.include_router(portfolio_inspection_workflow.router,prefix='/api/v1')
         app.openapi()
         def isolated_db():
             try:yield db
@@ -330,6 +332,9 @@ def test_g4_http_applied_binding_is_immediately_effective_at_fractional_second(m
     result=post(client,p,'factor-usage',{
         'factor_model_run_id':model.id,'factor_set_id':'fs-clock-contract',
         'run_mode':'production_sim','pit_mode':'strict_pit_safe'})
+    diagnosis=get(client,p,'inspection/data-diagnostics')
+    assert not diagnosis['binding'].get('not_effective'),diagnosis['binding']
+    assert datetime.fromisoformat(diagnosis['generated_at'].replace('Z','+00:00')).microsecond==800000
     from tests.test_whitebox_portfolio_confirmation import _legacy_state
     p.status_reconciliation='RECONCILIATION_BLOCKED'
     p.status_score='SCORE_STALE';p.status_data='DATA_INCOMPLETE_PAUSED'
