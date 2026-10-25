@@ -1,0 +1,2 @@
+# Raw provider receipts are byte evidence; never rewrite line endings.
+tests/fixtures/**/*.response -text
