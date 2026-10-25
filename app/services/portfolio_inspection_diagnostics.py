@@ -565,7 +565,9 @@ def build_portfolio_inspection(db: Session, portfolio_id: int, *, now: datetime 
 
 
 def _build_portfolio_inspection(db: Session, portfolio_id: int, *, now: datetime | None = None) -> dict:
-    at = _utc(now or datetime.now(timezone.utc)).replace(microsecond=0)
+    # Compare evidence against the real observation instant. Rounding this
+    # down makes a valid same-second DATETIME(6) binding appear future-dated.
+    at = _utc(now or datetime.now(timezone.utc))
     with db.no_autoflush:
         portfolio = _get_record(db, Portfolio, portfolio_id)
         if portfolio is None:
