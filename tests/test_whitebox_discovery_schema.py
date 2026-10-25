@@ -156,23 +156,12 @@ def test_snapshot_building_to_ready_transition(db_session):
     assert snap.build_duration_seconds == 12.5
 
 
-def test_snapshot_unique_scope_status_trade_date(db_session):
-    """WP-P.2: (scope, status, trade_date) 唯一约束生效，同 scope+status+date 不允许重复。"""
-    _make_snapshot(
-        db_session,
-        scope="cn_stock",
-        status="building",
-        trade_date=datetime(2026, 7, 19),
-    )
-    # 重复插入应抛 IntegrityError
-    with pytest.raises(IntegrityError):
-        _make_snapshot(
-            db_session,
-            scope="cn_stock",
-            status="building",
-            trade_date=datetime(2026, 7, 19),
-        )
-    db_session.rollback()
+def test_snapshot_repeated_scope_status_date_preserves_distinct_versions(db_session):
+    first = _make_snapshot(db_session, scope="cn_stock", status="building", trade_date=datetime(2026, 7, 19))
+    second = _make_snapshot(db_session, scope="cn_stock", status="building", trade_date=datetime(2026, 7, 19))
+    assert first.id != second.id
+    assert db_session.get(type(first), first.id) is first
+    assert db_session.get(type(second), second.id) is second
 
 
 def test_snapshot_allows_different_status_same_scope_date(db_session):

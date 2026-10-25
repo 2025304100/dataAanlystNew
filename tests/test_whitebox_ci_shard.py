@@ -72,3 +72,32 @@ def test_empty_collection_is_not_silently_accepted():
     """收集为 0 时不能给出"全绿"的分片计划（那正是零覆盖假绿的入口）。"""
     buckets = partition({}, 3)
     assert buckets == [[], [], []]
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_cli_rejects_partial_collection(tmp_path, broken):
+    """A valid collected case must never hide a neighboring import failure."""
+    import os
+    import shutil
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ("ci_shard.py", "_ci_collect_plugin.py"):
+        shutil.copyfile(root / "scripts" / name, scripts / name)
+    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers = whitebox: isolated CLI contract\n", encoding="utf8")
+    (tmp_path / "test_valid.py").write_text(
+        "import pytest\n@pytest.mark.whitebox\ndef test_valid(): assert True\n", encoding="utf8")
+    if broken:
+        (tmp_path / "test_broken.py").write_text("raise RuntimeError('contract-input-missing')\n", encoding="utf8")
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONIOENCODING="utf-8")
+    run = subprocess.run([sys.executable, str(scripts / "ci_shard.py"), "--marker", "whitebox",
+                          "--groups", "1", "--plan"], cwd=tmp_path, env=env,
+                         capture_output=True, text=True, encoding="utf8", timeout=45)
+    if broken:
+        assert run.returncode != 0, run.stdout
+        assert "contract-input-missing" in run.stdout + run.stderr
+    else:
+        assert run.returncode == 0, run.stdout + run.stderr
+        assert "test_valid" not in run.stderr

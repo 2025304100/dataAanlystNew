@@ -23,7 +23,7 @@ pytestmark = pytest.mark.whitebox
 
 
 CONTRACT = json.loads((Path(__file__).resolve().parents[1] /
-    '.analysis/turnover-phase2-quadratic-contract-2026-10-16.json').read_text(encoding='utf-8'))
+    'tests/fixtures/turnover/turnover-phase2-quadratic-contract-2026-10-16.json').read_text(encoding='utf-8'))
 BASE = 'turnover_z20'
 SQUARED = 'turnover_z20_squared'
 

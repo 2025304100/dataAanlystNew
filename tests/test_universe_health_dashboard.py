@@ -9,6 +9,11 @@ from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.universe_health import coverage_percent, read_universe_quality
 from app.services.universe_sync import get_universe_stats
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 NOW = datetime(2026, 10, 25, 18, tzinfo=ZoneInfo('Asia/Shanghai'))
 
 

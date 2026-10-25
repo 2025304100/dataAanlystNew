@@ -10,6 +10,11 @@ from alembic.operations import Operations
 from sqlalchemy.dialects import mysql
 from sqlalchemy.schema import CreateIndex
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

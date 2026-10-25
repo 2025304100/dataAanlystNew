@@ -21,6 +21,11 @@ from app.models.symbol import Symbol
 from app.schemas.security_status import SecurityStatusFileRequest
 from app.services.security_status.local_import import import_file, preview_import
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 def _funding_scenario(db, *, flat_prices=False, base_price=10, symbol_code="600000", market="SH", asset_type="stock",
                       missing_history_day=None, suspended_on_entry=False, locked_limit_up=False, extra_symbol_codes=(),

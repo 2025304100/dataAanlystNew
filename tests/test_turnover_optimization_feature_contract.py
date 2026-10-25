@@ -21,7 +21,7 @@ pytestmark = pytest.mark.whitebox
 
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / (
-    ".analysis/turnover-optimization-feature-candidates-2026-10-16.json"
+    "tests/fixtures/turnover/turnover-optimization-feature-candidates-2026-10-16.json"
 )
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 CANDIDATES = CONTRACT["candidates"]

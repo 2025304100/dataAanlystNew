@@ -42,7 +42,7 @@ def test_launcher_requests_job_breakaway_only_when_current_job_explicitly_allows
     dev_services.launch_process(["isolated-program"], tmp_path,
         tmp_path / "out.log", tmp_path / "err.log")
     flags = popen.call_args.kwargs["creationflags"]
-    base = dev_services.subprocess.DETACHED_PROCESS | dev_services.subprocess.CREATE_NEW_PROCESS_GROUP
+    base = getattr(dev_services.subprocess, "DETACHED_PROCESS", 0x8) | getattr(dev_services.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
     expected = base | (0x01000000 if allow_breakaway else 0)
     assert flags == expected
     assert popen.call_count == 1
@@ -58,7 +58,7 @@ def test_launcher_preserves_flags_when_win32_job_query_is_unavailable(tmp_path, 
     dev_services.launch_process(["isolated-program"], tmp_path,
         tmp_path / "out.log", tmp_path / "err.log")
     assert popen.call_args.kwargs["creationflags"] == (
-        dev_services.subprocess.DETACHED_PROCESS | dev_services.subprocess.CREATE_NEW_PROCESS_GROUP)
+        getattr(dev_services.subprocess, "DETACHED_PROCESS", 0x8) | getattr(dev_services.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200))
 
 
 def test_posix_launcher_keeps_new_session_without_reading_windows_jobs(tmp_path, monkeypatch):

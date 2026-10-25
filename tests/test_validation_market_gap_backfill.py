@@ -13,6 +13,11 @@ import pytest
 from app.services import capital_flow_history_provider as provider
 from scripts import backfill_validation_market_gaps as runbook
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 def payload():
     return {"rc": 0, "data": {"code": "600519", "market": 1,

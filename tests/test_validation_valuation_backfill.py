@@ -7,6 +7,11 @@ import pytest
 
 from scripts import backfill_validation_valuations as backfill
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 def test_insert_only_backfill_is_atomic_and_never_replaces_existing_rows(tmp_path, monkeypatch):
     database = tmp_path / "isolated.sqlite"

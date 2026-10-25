@@ -22,6 +22,11 @@ from app.models.symbol import Symbol
 from app.schemas.security_status import SecurityStatusFileRequest
 from app.services.security_status.local_import import import_file, preview_import
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 @pytest.fixture
 def score_rule_client(db_session):

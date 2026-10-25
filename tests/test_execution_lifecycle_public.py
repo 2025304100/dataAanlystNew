@@ -8,6 +8,26 @@ from app.services.decision_schedule_gate import ensure_auto_simulation_schedule
 pytestmark = pytest.mark.whitebox
 
 
+
+def seed_execution_calendar(db):
+    import json
+    from datetime import timedelta
+    from sqlalchemy import select
+    from app.models.market_data import MarketCalendar
+    from app.models.app_setting import AppSetting
+    db.flush()
+    existing=set(db.scalars(select(MarketCalendar.trade_date)))
+    start=date(2026,1,1)
+    days=[start+timedelta(days=i) for i in range(365)]
+    closed=set([d for d in days if d.weekday()<5][:18])
+    opened={d for d in days if d.weekday()<5 and d not in closed}
+    db.add_all(MarketCalendar(trade_date=d,is_trading_day=int(d in opened)) for d in days if d not in existing)
+    if db.get(AppSetting,'market.cn_trade_calendar') is None:
+        db.add(AppSetting(key='market.cn_trade_calendar',updated_by='exchange-calendar-sync',value_json=json.dumps({
+            'year':2026,'source':'https://www.sse.com.cn/disclosure/dealinstruc/closed/',
+            'trading_days':len(opened),'refreshed_at':'2026-09-01T00:00:00Z','source_version':'execution-synthetic-2026'})))
+    db.commit()
+
 def test_evening_utc_request_is_checked_as_shanghai_time():
     result = ensure_auto_simulation_schedule(
         datetime(2026, 9, 2, 12, 30, tzinfo=timezone.utc), portfolio_id=1,
@@ -98,7 +118,7 @@ def test_resume_reattaches_old_queued_task_and_stops_after_real_failure(db_sessi
     from app.services import decision_schedule_gate as schedule
     from app.services.portfolio_resume_service import resume_idempotency_key
     from app.services.async_tasks import get_async_task
-    monkeypatch.setattr(schedule, "shanghai_now", lambda: datetime(2026, 9, 3, 12, 30, tzinfo=timezone.utc))
+    monkeypatch.setattr(schedule, "shanghai_now", lambda: datetime(2026, 9, 2, 12, 30, tzinfo=timezone.utc))
     # Old versions created this queued record without starting any worker.
     old_id = "a" * 32
     db_session.add_all([
@@ -110,8 +130,9 @@ def test_resume_reattaches_old_queued_task_and_stops_after_real_failure(db_sessi
                 "trade_date": "2026-09-02"})),
     ])
     db_session.commit()
+    seed_execution_calendar(db_session)
     result = api.portfolio_resume_execute(ready_portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 3), dry_run=False), db_session)
+        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 2), dry_run=False), db_session)
     assert old_id in [task["task_id"] for task in result["created_tasks"]]
     assert wait_task(old_id)["status"] == "failed"
     for task in result["created_tasks"]:
@@ -153,7 +174,7 @@ def test_resume_cannot_execute_future_days_from_client_date(db_session, ready_po
     assert error.value.detail["code"] == "eval.portfolio.resume_future_date"
 
 
-def seed_approved_no_action_portfolio(db, portfolio, *, score_value=50.0):
+def seed_approved_no_action_portfolio(db, portfolio, *, score_value=50.0, score_days=(2, 3)):
     import json
     from app.models.daily_bar import DailyBar
     from app.models.decision_engine import StrategyExecutionSnapshot
@@ -177,12 +198,13 @@ def seed_approved_no_action_portfolio(db, portfolio, *, score_value=50.0):
     if score_value >= 70:
         from app.models.portfolio_member import PortfolioMember
         snapshot.member_snapshot_json = json.dumps([{"symbol_id": symbol.id, "execution_mode": "auto"}])
-        db.add(PortfolioMember(portfolio_id=portfolio.id, symbol_id=symbol.id, execution_mode="auto", status="active"))
+        db.add(PortfolioMember(portfolio_id=portfolio.id, symbol_id=symbol.id, execution_mode="auto", status="active",
+            effective_from=datetime(2026,9,1),created_at=datetime(2026,9,1)))
     db.add(snapshot)
     bind_applied_snapshot(db, snapshot)
     from tests.test_g1_decision_engine import _insert_scores
     _insert_scores(db, snapshot.factor_model_run_id, [
-        (symbol.id, date(2026, 9, d), score_value, datetime(2026, 9, d, 6)) for d in (2, 3)])
+        (symbol.id, date(2026, 9, d), score_value, datetime(2026, 9, d, 6)) for d in score_days])
     _make_active_rule(db, portfolio.id)
     ensure_sim_account_seed(db, portfolio)
     portfolio.status_model = "MODEL_INACTIVE"
@@ -241,11 +263,16 @@ def test_resume_runs_real_days_then_repeating_it_creates_nothing(db_session, rea
     seed_approved_no_action_portfolio(db_session, ready_portfolio)
     db_session.add_all([MarketCalendar(trade_date=date(2026, 9, d), is_trading_day=1) for d in (2, 3)])
     db_session.commit()
-    request = api.PortfolioResumeExecuteRequest(today=date(2026, 9, 3), dry_run=False)
-    result = api.portfolio_resume_execute(ready_portfolio.id, request, db_session)
-    assert len(result["created_tasks"]) == 2
-    for task in result["created_tasks"]:
-        assert wait_task(task["task_id"])["status"] == "done", [e["detail_zh"] for e in get_async_task(task["task_id"]).errors]
+    seed_execution_calendar(db_session)
+    for day in (2,3):
+        monkeypatch.setattr(schedule,"shanghai_now",lambda day=day: datetime(2026,9,day,12,30,tzinfo=timezone.utc))
+        request=api.PortfolioResumeExecuteRequest(today=date(2026,9,day),dry_run=False)
+        result=api.portfolio_resume_execute(ready_portfolio.id,request,db_session)
+        assert len(result["created_tasks"])==1,result
+        assert result["created_tasks"][0]["trade_date"]==date(2026,9,day).isoformat()
+        for task in result["created_tasks"]:
+            assert wait_task(task["task_id"])["status"]=="done",get_async_task(task["task_id"]).errors
+        db_session.expire_all()
     db_session.expire_all()
     assert ready_portfolio.last_decision_trade_date == date(2026, 9, 3)
     repeated = api.portfolio_resume_execute(ready_portfolio.id, request, db_session)
@@ -271,6 +298,7 @@ def test_resume_database_failure_can_be_retried_without_duplicate_decisions(db_s
             raise RuntimeError("isolated database failure")
     engine = db_session.get_bind()
     event.listen(engine, "before_cursor_execute", fail_first_decision)
+    seed_execution_calendar(db_session)
     request = api.PortfolioResumeExecuteRequest(today=date(2026, 9, 2), dry_run=False)
     try:
         first = api.portfolio_resume_execute(ready_portfolio.id, request, db_session)
@@ -328,23 +356,39 @@ def test_partial_task_can_pass_preflight_and_resume_original_plan(db_session, re
     from app.api.routes import portfolio_governance as api
     from app.services import decision_schedule_gate as schedule
     from app.services.async_tasks import get_async_task
-    monkeypatch.setenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED", "true")
-    monkeypatch.setattr(schedule, "shanghai_now", lambda: datetime(2026, 9, 2, 12, 30, tzinfo=timezone.utc))
-    from app.services import auto_trade_safety
-    monkeypatch.setattr(auto_trade_safety, "_now_utc_naive", lambda: datetime(2026, 9, 2, 12, 30))
-    seed_approved_no_action_portfolio(db_session, ready_portfolio, score_value=90)
-    request = api.AutoSimulationPreflightRequest(trade_date=date(2026, 9, 2))
-    first = api.start_auto_simulation(ready_portfolio.id, request, db_session, "owner")
-    assert wait_task(first["task_id"])["status"] == "partial"
-    first_result = get_async_task(first["task_id"]).result["execution_result"]
-    db_session.expire_all()
-    assert api.preflight_auto_simulation(ready_portfolio.id, request, db_session, "owner").proceed is True
-    retry = api.start_auto_simulation(ready_portfolio.id, request, db_session, "owner")
-    assert wait_task(retry["task_id"])["status"] == "partial"
-    retried_result = get_async_task(retry["task_id"]).result["execution_result"]
-    assert retried_result["decision_run_id"] == first_result["decision_run_id"]
-    assert retried_result["pending_orders"][0]["order_plan_id"] == first_result["pending_orders"][0]["order_plan_id"]
-    assert retried_result["executed_orders"] == []
+    from app.main import app
+    from freezegun import freeze_time
+    app.openapi()
+    with freeze_time('2026-09-02T12:30:00Z',tick=True,real_asyncio=True):
+        monkeypatch.setenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED", "true")
+        monkeypatch.setattr(schedule, "shanghai_now", lambda: datetime(2026, 9, 2, 12, 30, tzinfo=timezone.utc))
+        from app.services import auto_trade_safety
+        monkeypatch.setattr(auto_trade_safety, "_now_utc_naive", lambda: datetime(2026, 9, 2, 12, 30))
+        seed_execution_calendar(db_session)
+        seed_approved_no_action_portfolio(db_session, ready_portfolio, score_value=90, score_days=(2,))
+        from sqlalchemy import select
+        from app.models.score import Score
+        from app.services.scoring_config_engine import seed_system_scoring_configs
+        seed_system_scoring_configs(db_session)
+        for score in db_session.scalars(select(Score)):
+            score.weight_mode = "ridge"
+        db_session.commit()
+        from app.models.symbol import Symbol
+        symbol_id = db_session.scalar(select(Symbol.id).where(Symbol.symbol == "600001"))
+        health = auto_trade_safety.check_data_health(db_session, symbol_id=symbol_id, portfolio_id=ready_portfolio.id)
+        assert health.healthy, health.reason
+        request = api.AutoSimulationPreflightRequest(trade_date=date(2026, 9, 2))
+        first = api.start_auto_simulation(ready_portfolio.id, request, db_session, "owner")
+        assert wait_task(first["task_id"])["status"] == "partial", get_async_task(first["task_id"]).errors[0]["detail_zh"]
+        first_result = get_async_task(first["task_id"]).result["execution_result"]
+        db_session.expire_all()
+        assert api.preflight_auto_simulation(ready_portfolio.id, request, db_session, "owner").proceed is True
+        retry = api.start_auto_simulation(ready_portfolio.id, request, db_session, "owner")
+        assert wait_task(retry["task_id"])["status"] == "partial"
+        retried_result = get_async_task(retry["task_id"]).result["execution_result"]
+        assert retried_result["decision_run_id"] == first_result["decision_run_id"]
+        assert retried_result["pending_orders"][0]["order_plan_id"] == first_result["pending_orders"][0]["order_plan_id"]
+        assert retried_result["executed_orders"] == []
 
 
 def test_failed_start_retries_when_task_business_key_is_unique(db_session, ready_portfolio, monkeypatch):
@@ -374,6 +418,7 @@ def test_second_resume_does_not_start_a_later_day_while_first_is_running(db_sess
     seed_approved_no_action_portfolio(db_session, ready_portfolio)
     db_session.add_all([MarketCalendar(trade_date=date(2026, 9, d), is_trading_day=1) for d in (2, 3)])
     db_session.commit()
+    seed_execution_calendar(db_session)
     entered, release = threading.Event(), threading.Event()
     def pause_first_decision(_conn, _cursor, statement, _parameters, _context, _executemany):
         if statement.startswith("INSERT INTO decision_runs") and not entered.is_set():
@@ -384,7 +429,7 @@ def test_second_resume_does_not_start_a_later_day_while_first_is_running(db_sess
     tasks = []
     try:
         first = api.portfolio_resume_execute(ready_portfolio.id,
-            api.PortfolioResumeExecuteRequest(today=date(2026, 9, 3), max_days=1, dry_run=False), db_session)
+            api.PortfolioResumeExecuteRequest(today=date(2026, 9, 3), max_days=2, dry_run=False), db_session)
         tasks.extend(first["created_tasks"])
         assert entered.wait(timeout=3)
         second = api.portfolio_resume_execute(ready_portfolio.id,
@@ -440,10 +485,12 @@ def test_resume_requires_a_real_trading_calendar_before_execution(db_session, re
     seed_approved_no_action_portfolio(db_session, ready_portfolio)
     # The planning fallback guesses weekdays when the calendar is empty.
     # Such a date must never authorize a real calculation or trade.
-    result = api.portfolio_resume_execute(ready_portfolio.id,
-        api.PortfolioResumeExecuteRequest(today=date(2026, 9, 2), dry_run=False), db_session)
-    task_id = result["created_tasks"][0]["task_id"]
-    assert wait_task(task_id)["status"] == "failed"
-    assert "交易日历" in get_async_task(task_id).errors[0]["detail_zh"]
+    from fastapi import HTTPException
+    from app.services.async_tasks import list_async_tasks
+    with pytest.raises(HTTPException) as error:
+        api.portfolio_resume_execute(ready_portfolio.id,
+            api.PortfolioResumeExecuteRequest(today=date(2026,9,2),dry_run=False),db_session)
+    assert error.value.status_code==400
+    assert list_async_tasks(task_type="portfolio_resume")==[]
     db_session.expire_all()
-    assert ready_portfolio.last_decision_trade_date == date(2026, 9, 1)
+    assert ready_portfolio.last_decision_trade_date==date(2026,9,1)

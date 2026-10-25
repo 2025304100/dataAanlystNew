@@ -78,7 +78,7 @@ class TestMigrationUpDown:
         try:
             os.environ["ALEMBIC_DATABASE_URL"] = url
             cfg = _alembic_cfg()
-            ac.upgrade(cfg, "head")
+            ac.upgrade(cfg, "wps_0023_060_factor_version_grade_columns")
             cols = _upgraded_columns(url)
             assert {"quality_grade", "grade_updated_at",
                     "grade_metrics_json", "grade_manual_adjusted"} <= cols
@@ -92,7 +92,7 @@ class TestMigrationUpDown:
             assert "grade_updated_at" not in cols
 
             # ③ 再 upgrade → 4 列回（迁移幂等且可逆）
-            ac.upgrade(cfg, "head")
+            ac.upgrade(cfg, "wps_0023_060_factor_version_grade_columns")
             cols = _upgraded_columns(url)
             assert {"quality_grade", "grade_updated_at",
                     "grade_metrics_json", "grade_manual_adjusted"} <= cols

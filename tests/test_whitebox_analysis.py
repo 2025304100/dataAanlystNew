@@ -144,7 +144,7 @@ def test_calculate_score_with_zero_bars(db_session):
 def test_calculate_score_with_enough_bars_computes_credibility(db_session):
     """K 线 >= 5 根时，data_credibility 应基于 bar_count 与时效性计算 (0, 1]。"""
     sym = _make_symbol(db_session)
-    _add_bars(db_session, sym.id, count=30)
+    _add_bars(db_session, sym.id, count=30, base_date=date.today()-timedelta(days=29))
 
     trade_date = date.today()
     score = analysis.calculate_symbol_score(db_session, sym, trade_date)

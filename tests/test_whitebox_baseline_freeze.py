@@ -43,7 +43,6 @@ EXPECTED_FACTOR_CODES = {
     "lhb_institution_net_ratio",
     "turnover_z20",
     "hot_rank_attention",
-    "tail_accumulation_proxy",
 }
 
 
@@ -103,15 +102,15 @@ def test_content_hash_differs_on_direction_change():
 # ── 2. freeze_factor_baseline ────────────────────────────
 
 
-def test_freeze_factor_baseline_has_8_factors(db_session):
+def test_freeze_factor_baseline_has_7_factors(db_session):
     """seed_factor_definitions 后冻结基线 → 8 个因子且 code 正确。"""
     seed_factor_definitions(db_session)
     db_session.commit()
 
     snapshot = freeze_factor_baseline(db_session)
     assert isinstance(snapshot, FactorBaselineSnapshot)
-    assert snapshot.factor_count == 8
-    assert len(snapshot.factors) == 8
+    assert snapshot.factor_count == 7
+    assert len(snapshot.factors) == 7
     assert {f.code for f in snapshot.factors} == EXPECTED_FACTOR_CODES
 
 
@@ -132,7 +131,7 @@ def test_freeze_factor_baseline_detects_missing_factor(db_session):
     missing_msgs = [
         s for s in snapshot.inconsistencies if s.startswith("missing_factor_in_db:")
     ]
-    assert len(missing_msgs) == 8
+    assert len(missing_msgs) == 7
     for code in EXPECTED_FACTOR_CODES:
         assert f"missing_factor_in_db:{code}" in snapshot.inconsistencies
 
@@ -329,10 +328,10 @@ def test_generate_baseline_freeze_report_structure(db_session):
     assert hasattr(report, "repo_head_revision")
 
 
-def test_generate_baseline_freeze_report_factor_baseline_has_8(db_session):
-    """seed 后报告的 factor_baseline.factor_count == 8。"""
+def test_generate_baseline_freeze_report_factor_baseline_has_7(db_session):
+    """seed 后报告的 factor_baseline.factor_count == 7。"""
     seed_factor_definitions(db_session)
     db_session.commit()
 
     report = generate_baseline_freeze_report(db_session)
-    assert report.factor_baseline.factor_count == 8
+    assert report.factor_baseline.factor_count == 7

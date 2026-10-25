@@ -15,6 +15,11 @@ from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.source_field_integrity import get_source_field_integrity
 from app.services.task_outcomes import external_sync_result
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 def task(**changes):
     return SimpleNamespace(**(dict(task_type="external_sync_fundamental", status="done",

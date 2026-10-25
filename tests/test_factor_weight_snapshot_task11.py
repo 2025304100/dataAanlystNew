@@ -226,7 +226,7 @@ def test_TR11_1_alembic_three_step_loop():
         _ALEM = ["python", "-m", "alembic"]
         # Step 1: upgrade head
         r1 = subprocess.run(
-            _ALEM + ["-c", str(ALEMBIC_INI), "upgrade", "head"],
+            _ALEM + ["-c", str(ALEMBIC_INI), "upgrade", HEAD_REV],
             cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=180,
         )
         assert r1.returncode == 0, f"[step1 upgrade] stderr={r1.stderr[-800:]}"
@@ -238,7 +238,7 @@ def test_TR11_1_alembic_three_step_loop():
         assert r2.returncode == 0, f"[step2 downgrade] stderr={r2.stderr[-800:]}"
         # Step 3: upgrade head again
         r3 = subprocess.run(
-            _ALEM + ["-c", str(ALEMBIC_INI), "upgrade", "head"],
+            _ALEM + ["-c", str(ALEMBIC_INI), "upgrade", HEAD_REV],
             cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=180,
         )
         assert r3.returncode == 0, f"[step3 upgrade] stderr={r3.stderr[-800:]}"

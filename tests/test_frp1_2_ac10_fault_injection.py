@@ -471,13 +471,19 @@ def test_portfolio_resume_5day_then_idempotent_all_skip(db_session, monkeypatch)
     _insert_scores(db_session, "model-approved-lifecycle", [
         (symbol.id, d, 50.0, datetime(d.year, d.month, d.day, 6)) for d in days[2:]
     ], batch_id_suffix="-five-day")
-    db_session.add_all([MarketCalendar(trade_date=d, is_trading_day=1) for d in days])
+    from tests.g4_contract_support import seed_calendar
+    seed_calendar(db_session)
+    pf.created_at = datetime(2026, 9, 1)
+    pf.effective_start_date = date(2026, 9, 1)
     db_session.commit()
-    request = api.PortfolioResumeExecuteRequest(today=days[-1], dry_run=False)
-    result = api.portfolio_resume_execute(pf.id, request, db_session)
-    assert result["created_count"] == 5
-    for task in result["created_tasks"]:
-        assert wait_task(task["task_id"])["status"] == "done"
+    for day in days:
+        monkeypatch.setattr(schedule,"shanghai_now",lambda day=day: datetime(day.year,day.month,day.day,12,30,tzinfo=timezone.utc))
+        request=api.PortfolioResumeExecuteRequest(today=day,dry_run=False)
+        result=api.portfolio_resume_execute(pf.id,request,db_session)
+        assert result["created_count"]==1,result
+        for task in result["created_tasks"]:
+            assert wait_task(task["task_id"])["status"]=="done"
+        db_session.expire_all()
     db_session.expire_all()
     assert pf.last_decision_trade_date == days[-1]
     repeated = api.portfolio_resume_execute(pf.id, request, db_session)

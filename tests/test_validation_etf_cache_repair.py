@@ -8,6 +8,11 @@ import pytest
 
 from scripts import repair_validation_etf_cache as repair
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 def sample_rows():
     result = []

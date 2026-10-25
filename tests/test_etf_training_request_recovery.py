@@ -14,7 +14,10 @@ pytestmark = [pytest.mark.whitebox, pytest.mark.reap_workers]
 
 
 @pytest.fixture
-def etf_training_api(db_session, tmp_path):
+def etf_training_api(db_session, tmp_path, monkeypatch):
+    from app.services.factors import pipeline_task
+    monkeypatch.setattr(pipeline_task, "_run_factor_pipeline_process",
+        lambda task_id, **kwargs: pipeline_task._run_factor_pipeline(task_id))
     from app.api.routes import factors, factor_sets, factor_models, scoring_facade
     from app.db.session import get_db
     application = FastAPI()

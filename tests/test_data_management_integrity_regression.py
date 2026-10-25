@@ -17,6 +17,11 @@ from app.services import async_tasks, fundamental_data, index_data, market_data,
 from app.services.source_field_integrity import get_source_field_integrity
 from app.services.task_outcomes import external_sync_result
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 
 def test_valuation_partial_observations_preserve_existing_key_fields_in_both_paths(db_session, monkeypatch):
     symbol = Symbol(symbol="600000", name="test", market="sh", asset_type="stock")

@@ -6,6 +6,11 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
+
+
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "app/services/portfolio_inspection_repair.py"
 DIAGNOSTICS = ROOT / "app/services/portfolio_inspection_diagnostics.py"
