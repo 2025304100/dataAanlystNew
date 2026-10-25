@@ -1,483 +1,316 @@
-"""G4：对账 & 状态流转 REST API 契约测试（等价路由调用）。
+"""G4 HTTP contracts on fully migrated, isolated evidence.
 
-不跑 ASGI TestClient（避免 DB config 环境差异），而是直接调用路由 handler
-注入 get_db/X-User 实参，验证：
-  - 请求/响应 Schema 字段齐全
-  - 错误码（404/400/409/428）对应业务语义
-  - 路由侧做的"428 READY 下不应 confirm-reconciliation""400 ack 未勾选""400 非法 to_state"
-    这些防护不依赖 G3 service 逻辑
-
-用例（T_G4_API_01…04 共 4 个）：
-  T_G4_API_01  GET /portfolios/{pid}/status
-    → current_state ∈ {READY,PENDING}；allowed_transitions 与矩阵一致；
-      is_auto_simulation_eligible==(state==READY)
-  T_G4_API_02  POST /portfolios/{pid}/reconcile
-    → 无 DR → ReconciliationResponse.status=BLOCKED + diff_kind=DECISION_RUN_NOT_FOUND；
-      有 DR+BUY1000+Position=1000+Trade=1000 BUY → PASSED + last_reconciled_trade_date=T
-  T_G4_API_03  POST /portfolios/{pid}/confirm-reconciliation
-    → 当前 READY → 428（预条件失败）；ack=False → 400；
-      RBLOCKED + 差异 → 409（重跑对账仍 BLOCKED）；
-      RBLOCKED + 修复 → SUCCESS + READY + last_reconciled 推进
-  T_G4_API_04  POST /portfolios/{pid}/transition-state
-    → 非法 to_state → 400；RBLOCKED → RUN_AUTO_SIM → 409；READY → ADMIN_PAUSED → 200 OK
+Historical IDs trace the seven legacy failures. No internal result/gate stubs.
 """
-from __future__ import annotations
-
-import os
-import tempfile
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from pathlib import Path
-from typing import Any
+from datetime import datetime
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from freezegun import freeze_time
 
-os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
+from app.api.routes import portfolio_governance as governance
+from app.db.session import get_db
+from app.models.sim_account import CashLedger
+from app.models.universe import UniverseDailyBar, UniverseSymbol
+from tests.g4_contract_support import DAY, NOTE, financial_rows, migrated_account_db, seed_account, seed_buy, seed_calendar
 
-
-pytestmark = pytest.mark.whitebox
-@pytest.fixture(scope="function")
-def tmp_alembic_db():
-    fd, path = tempfile.mkstemp(suffix=".db", prefix="qa_g4api_")
-    os.close(fd)
-    url = f"sqlite:///{path}"
-    os.environ["ALEMBIC_DATABASE_URL"] = url
-    from alembic.config import Config
-    from alembic import command as ac
-    cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
-    cfg.set_main_option("script_location", str(Path(__file__).resolve().parent.parent / "alembic"))
-    ac.upgrade(cfg, "head")
-    from sqlalchemy import create_engine, text as sqltext
-    from sqlalchemy.orm import sessionmaker
-    engine = create_engine(url)
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    sess = SessionLocal()
-    try:
-        yield sess
-    finally:
-        sess.close()
-        engine.dispose()
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+pytestmark=pytest.mark.whitebox
 
 
-def _seed_portfolio(db, capital=1_000_000.0) -> int:
-    from app.models.portfolio import Portfolio
-    p = Portfolio(
-        name=f"g4_test_{datetime.now().timestamp()}",
-        account_type="simulation",
-        asset_scope="mixed",
-        total_capital=capital,
-        investable_ratio=0.95,
-        cash_reserve_ratio=0.05,
-        benchmark_code="000300",
-        buy_fee_pct=0.00025,
-        sell_fee_pct=0.00025,
-        default_single_position_pct=0.30,
-        is_test=1,
-    )
-    db.add(p)
-    db.flush()
+@pytest.fixture(scope='module',autouse=True)
+def real_schema_before_clock_boundary():
+    # Deferred imports while datetime is frozen can permanently embed
+    # FakeDatetime in Pydantic annotations for later, unrelated HTTP tests.
+    # Build the real full-app schema before crossing the external clock seam.
+    from app.main import app
+    app.openapi()
+
+
+@pytest.fixture
+def mounted(tmp_path,monkeypatch,request):
+    with migrated_account_db(tmp_path,monkeypatch,request.node.nodeid) as db:
+        # Only external time is controlled; actual reports and gates run unchanged.
+        with freeze_time('2026-10-01T00:00:00Z',real_asyncio=True) as clock:
+            app=FastAPI();app.include_router(governance.router,prefix='/api/v1')
+            def isolated_db():
+                try:yield db
+                except Exception:
+                    db.rollback();raise
+            app.dependency_overrides[get_db]=isolated_db
+            p=seed_account(db)
+            with TestClient(app) as client:
+                yield client,db,p,clock
+
+
+def endpoint(p,suffix):
+    return f'/api/v1/portfolios/{p.id}/{suffix}'
+
+
+def get(client,p,suffix,**kwargs):
+    response=client.get(endpoint(p,suffix),**kwargs)
+    assert response.status_code==200,response.text
+    return response.json()
+
+
+def post(client,p,suffix,body,expected=200):
+    response=client.post(endpoint(p,suffix),json=body,params={'X-User':'g4-reviewer'})
+    assert response.status_code==expected,response.text
+    return response.json()
+
+
+def transition(client,p,state,**kwargs):
+    return post(client,p,'transition-state',{'to_state':state,**kwargs})
+
+
+def block(client,p):
+    transition(client,p,'READY',review_note=NOTE)
+    transition(client,p,'RUNNING_AUTO_SIMULATION')
+    transition(client,p,'RECONCILIATION_BLOCKED')
+
+
+def preview(client,p):
+    return get(client,p,'reconciliation-preview',params={'trade_date':DAY.isoformat()})
+
+
+def confirmation(report,**overrides):
+    return {'trade_date':DAY.isoformat(),'acknowledge_all_diffs_cleared':True,'review_note':NOTE,
+        'report_id':report['report_id'],'report_version':report['report_version'],**overrides}
+
+
+def test_g4_api_01_status(mounted):
+    client,db,p,_=mounted
+    result=get(client,p,'status')
+    assert result['current_state']=='PENDING_INITIAL_REVIEW'
+    assert result['portfolio_id']==p.id
+    assert result['allowed_transitions']==['READY','ADMIN_PAUSED']
+    assert result['is_auto_simulation_eligible'] is False
+    assert result['permissions']['allow_new_buys'] is False
+    assert result['admission_checked_at']
+
+
+def test_g4_api_02_reconcile(mounted):
+    client,db,p,_=mounted
+    missing=post(client,p,'reconcile',{'trade_date':DAY.isoformat()})
+    assert missing['status']=='BLOCKED'
+    assert 'DECISION_RUN_NOT_FOUND' in missing['reason_codes']
+    assert missing['last_reconciled_trade_date'] is None
+    seed_buy(db,p)
+    before=financial_rows(db)
+    passed=post(client,p,'reconcile',{'trade_date':DAY.isoformat()})
+    assert passed['status']=='PASSED',passed
+    assert passed['last_reconciled_trade_date']==DAY.isoformat()
+    assert passed['expected_cash']==passed['actual_cash']==989995
+    assert passed['actual_position_count']==passed['expected_position_count']==1
+    assert financial_rows(db)==before
+
+
+def test_g4_api_03_confirm(mounted):
+    client,db,p,_=mounted
+    transition(client,p,'READY',review_note=NOTE)
+    post(client,p,'confirm-reconciliation',confirmation({'report_id':'not-a-report','report_version':'not-a-version'}),428)
+    block(client,p)
+    blocked=preview(client,p)
+    post(client,p,'confirm-reconciliation',confirmation(blocked,acknowledge_all_diffs_cleared=False),400)
+    post(client,p,'confirm-reconciliation',confirmation(blocked),409)
+    seed_buy(db,p)
+    passed=preview(client,p)
+    assert passed['status']=='PASSED',passed
+    before=financial_rows(db)
+    ok=post(client,p,'confirm-reconciliation',confirmation(passed))
+    assert ok['portfolio_now_ready'] is True
+    assert ok['from_state']=='RECONCILIATION_BLOCKED' and ok['to_state']=='READY'
+    assert ok['last_reconciled_trade_date']==DAY.isoformat()
+    assert financial_rows(db)==before
+    audit=get(client,p,'audit-events',params={'action':'DATA_BLOCK_RESOLUTION'})
+    attrs=next(row['attributes'] for row in audit['items'] if row['attributes'].get('confirmation_type')=='RECONCILIATION_CONFIRMED')
+    assert attrs['report_id']==passed['report_id'] and attrs['report_version']==passed['report_version']
+    assert attrs['review_note']==NOTE
+
+
+def test_g4_api_04_transition(mounted):
+    client,db,p,_=mounted
+    transition(client,p,'READY',review_note=NOTE)
+    post(client,p,'transition-state',{'to_state':'DOES_NOT_EXIST'},400)
+    assert transition(client,p,'ADMIN_PAUSED',reason='Review isolated account')['to_state']=='ADMIN_PAUSED'
+    post(client,p,'transition-state',{'to_state':'RUNNING_AUTO_SIMULATION'},409)
+    before=financial_rows(db)
+    post(client,p,'transition-state',{'to_state':'READY'},422)
+    assert get(client,p,'status')['current_state']=='ADMIN_PAUSED'
+    ok=transition(client,p,'READY',review_note=NOTE)
+    assert ok['status']=='OK' and ok['to_state']=='READY'
+    assert financial_rows(db)==before
+
+
+def seed_bars(db,*,region='cn',partial=False):
+    for index in range(20 if partial else 1):
+        symbol=UniverseSymbol(symbol=f'G4-market-{region}-{index}',name='G4 input',asset_type='stock',market='sh',region=region,is_synced=1)
+        db.add(symbol);db.flush()
+        # Match the original 10% partial-day scenario: 20 previous-day bars,
+        # but only 2 on the independently due day. It must remain the due day.
+        dates=[datetime(2026,9,29).date()]
+        if not partial or index<2:dates.append(datetime(2026,9,30).date())
+        if not partial:dates.append(datetime(2026,10,1).date())
+        db.add_all(UniverseDailyBar(universe_symbol_id=symbol.id,trade_date=day,open=10,high=10,low=10,close=10,volume=1) for day in dates)
+    db.commit()
+
+
+def test_g4_api_08a_excludes_today(mounted):
+    """A stored current-day bar cannot make a pre-close session due."""
+    client,db,p,_=mounted
+    seed_calendar(db);seed_bars(db)
+    assert post(client,p,'reconcile',{})['trade_date']=='2026-09-30'
+
+
+def test_g4_api_08b_skips_incomplete_day(mounted):
+    """Legacy ID: incomplete bars must NOT rewind the independently due day."""
+    client,db,p,_=mounted
+    seed_calendar(db);seed_bars(db,partial=True)
+    result=post(client,p,'reconcile',{})
+    assert result['trade_date']=='2026-09-30'
+    assert result['status']=='BLOCKED' and result['last_reconciled_trade_date'] is None
+
+
+def test_g4_api_08c_us_region_does_not_count(mounted):
+    client,db,p,_=mounted
+    seed_calendar(db);seed_bars(db,region='us',partial=True)
+    assert post(client,p,'reconcile',{})['trade_date']=='2026-09-30'
+
+
+def test_g4_api_08d_falls_back_when_universe_empty(mounted):
+    """Legacy ID: empty bars use verified calendar, never natural yesterday."""
+    client,db,p,_=mounted
+    seed_calendar(db,closed=[datetime(2026,9,30).date()])
+    assert post(client,p,'reconcile',{})['trade_date']=='2026-09-29'
+
+
+def test_g4_api_08e_route_uses_default_only_when_payload_omits_date(mounted):
+    client,db,p,_=mounted
+    seed_calendar(db)
+    assert post(client,p,'reconcile',{})['trade_date']=='2026-09-30'
+    explicit='2026-09-28'
+    assert post(client,p,'reconcile',{'trade_date':explicit})['trade_date']==explicit
+
+
+def test_g4_http_confirmation_contract_rejections(mounted):
+    client,db,p,_=mounted
+    block(client,p);seed_buy(db,p)
+    report=preview(client,p);assert report['status']=='PASSED'
+    before=financial_rows(db)
+    for change,status in [
+        ({'report_id':None},422),({'report_version':None},422),
+        ({'acknowledge_all_diffs_cleared':False},400),({'review_note':'short'},422),
+        ({'force_skip':True},400),({'force_skip_re_reconcile':True},400),({'force_rerun_before':False},400),
+    ]:
+        post(client,p,'confirm-reconciliation',confirmation(report,**change),status)
+        assert get(client,p,'status')['current_state']=='RECONCILIATION_BLOCKED'
+        assert financial_rows(db)==before
+
+
+def test_g4_http_stale_and_wrong_report_rejected(mounted):
+    client,db,p,_=mounted
+    block(client,p);seed_buy(db,p)
+    report=preview(client,p);assert report['status']=='PASSED'
+    before=financial_rows(db)
+    for change in ({'report_id':'reconciliation::999999::2026-09-29'},{'report_version':'tampered'}):
+        result=post(client,p,'confirm-reconciliation',confirmation(report,**change),409)
+        assert 'RECONCILIATION_REPORT_CHANGED' in result['detail']
+        assert financial_rows(db)==before
+    # A real, arithmetically consistent new movement still invalidates old consent.
+    db.add(CashLedger(portfolio_id=p.id,entry_type='deposit',amount=100,balance_after=990095,
+        ref_type='manual',note='New isolated evidence after preview',created_at=datetime(2026,9,30,2)))
+    db.commit();after=financial_rows(db)
+    current=preview(client,p)
+    assert current['status']=='PASSED' and current['report_version']!=report['report_version']
+    result=post(client,p,'confirm-reconciliation',confirmation(report),409)
+    assert 'RECONCILIATION_REPORT_CHANGED' in result['detail']
+    assert get(client,p,'status')['last_reconciled_trade_date'] is None
+    assert financial_rows(db)==after
+
+
+def test_g4_http_generic_ready_never_clears_reconciliation(mounted):
+    client,db,p,_=mounted
+    block(client,p);seed_buy(db,p)
+    assert preview(client,p)['status']=='PASSED'
+    before=financial_rows(db)
+    result=post(client,p,'transition-state',{'to_state':'READY','review_note':NOTE},409)
+    assert 'RECONCILIATION_CONFIRMATION_REQUIRED' in result['detail']
+    assert get(client,p,'status')['current_state']=='RECONCILIATION_BLOCKED'
+    assert financial_rows(db)==before
+
+
+def test_g4_http_incomplete_execution_stays_blocked(mounted):
+    client,db,_p,_=mounted
+    for fixture,reason in [({'fill':False},'UNFILLED_PLAN'),({'cash':False},'NAV_BROKEN')]:
+        p=seed_account(db);seed_buy(db,p,**fixture)
+        before=financial_rows(db)
+        result=post(client,p,'reconcile',{'trade_date':DAY.isoformat()})
+        assert result['status']=='BLOCKED' and reason in result['reason_codes']
+        assert result['last_reconciled_trade_date'] is None
+        assert get(client,p,'status')['is_auto_simulation_eligible'] is False
+        assert financial_rows(db)==before
+
+
+@pytest.mark.parametrize('kind',['absent','unproven','incomplete','wrong-source','wrong-actor','future-stamp'])
+def test_g4_http_unknown_calendar_no_fallback(mounted,kind):
+    client,db,p,_=mounted
+    if kind=='unproven':seed_calendar(db,proof=False)
+    elif kind=='incomplete':seed_calendar(db,missing=[DAY])
+    elif kind=='wrong-source':seed_calendar(db,provenance={'source':'unverified-source'})
+    elif kind=='wrong-actor':seed_calendar(db,actor='unverified-import')
+    elif kind=='future-stamp':seed_calendar(db,provenance={'refreshed_at':'2026-10-02T00:00:00Z'})
+    seed_bars(db)
+    before=financial_rows(db)
+    result=post(client,p,'reconcile',{},409)
+    assert result['detail']['error_code']=='RECONCILIATION_CALENDAR_UNKNOWN'
+    assert get(client,p,'status')['current_state']=='PENDING_INITIAL_REVIEW'
+    assert financial_rows(db)==before
+
+
+def test_g4_http_calendar_close_weekend_and_holiday_boundaries(mounted):
+    client,db,p,clock=mounted
+    seed_calendar(db,closed=[datetime(2026,10,2).date()])
+    before=financial_rows(db)
+    # Read-only previews avoid creating an earlier unresolved day in the queue.
+    for now,expected in [('2026-10-01T06:59:59Z','2026-09-30'),
+                         ('2026-10-01T07:00:00Z','2026-10-01'),
+                         ('2026-10-04T08:00:00Z','2026-10-01')]:
+        clock.move_to(now)
+        result=get(client,p,'reconciliation-preview')
+        assert result['trade_date']==expected and result['read_only'] is True
+    assert financial_rows(db)==before
+
+
+def test_g4_http_explicit_date_diagnosis_does_not_invent_calendar_pass(mounted):
+    client,db,p,_=mounted
+    before=financial_rows(db)
+    result=post(client,p,'reconcile',{'trade_date':DAY.isoformat()})
+    assert result['trade_date']==DAY.isoformat() and result['status']=='BLOCKED'
+    assert result['last_reconciled_trade_date'] is None
+    assert financial_rows(db)==before
+
+
+def test_g4_http_confirmation_retains_other_dimensions(mounted):
+    client,db,p,_=mounted
+    block(client,p);seed_buy(db,p)
+    p.status_data='DATA_INCOMPLETE_PAUSED';p.status_model='MODEL_INACTIVE';db.commit()
+    report=preview(client,p);assert report['status']=='PASSED'
+    before=financial_rows(db)
+    result=post(client,p,'confirm-reconciliation',confirmation(report))
     db.refresh(p)
-    return p.id
-
-
-def _seed_symbol(db, code, sid):
-    import sqlalchemy as sa
-    row = db.execute(sa.text("SELECT id FROM symbols WHERE id=:i OR symbol=:c"),
-                     {"i": int(sid), "c": code}).fetchone()
-    if row:
-        return int(row[0] if isinstance(row, tuple) else row._mapping.get("id"))
-    try:
-        db.execute(sa.text(
-            "INSERT INTO symbols(id, symbol, name, asset_type, market, is_active, created_at, updated_at) "
-            "VALUES (:i, :c, :n, 'stock', 'CN', 1, :now, :now)"
-        ), {"i": int(sid), "c": code, "n": f"s_{code}", "now": datetime.now()})
-        db.flush()
-    except Exception:
-        db.rollback()
-    return int(sid)
-
-
-def _seed_strategy_snapshot(db, pid: int) -> str:
-    from app.models.decision_engine import StrategyExecutionSnapshot
-    from sqlalchemy import select as s
-    import hashlib, json
-    sid = f"ss_{pid}"
-    if db.execute(s(StrategyExecutionSnapshot.id).where(StrategyExecutionSnapshot.id == sid)).scalar_one_or_none():
-        return sid
-    clock = json.dumps({"decision_at": "20:30 Asia/Shanghai"}, sort_keys=True)
-    members = json.dumps({"members": []}, sort_keys=True)
-    snap = StrategyExecutionSnapshot(
-        id=sid, snapshot_no=1, portfolio_id=pid,
-        decision_clock_json=clock, member_snapshot_json=members,
-        snapshot_hash=hashlib.sha256((clock + "|" + members).encode()).hexdigest(),
-        effective_from=date.today(), created_by="u_seed",
-    )
-    db.add(snap)
-    db.flush()
-    return sid
-
-
-def _seed_decision_run(db, pid: int, td: date, run_type="auto_simulation", status="SUCCEEDED") -> str:
-    from app.models.decision_engine import DecisionRun as DecisionRunORM
-    ssid = _seed_strategy_snapshot(db, pid)
-    rid = f"dr_g4_{pid}_{td.isoformat()}_{datetime.now().timestamp()}"
-    run = DecisionRunORM(
-        id=rid, portfolio_id=pid, trade_date=td,
-        strategy_snapshot_id=ssid,
-        run_type=run_type, status=status,
-        universe_count=20, member_count=5,
-        decision_at=datetime(td.year, td.month, td.day, 20, 30, tzinfo=timezone.utc),
-        data_cutoff_at=datetime(td.year, td.month, td.day, 20, 0, tzinfo=timezone.utc),
-        execution_at=datetime(td.year, td.month, td.day, 20, 31, tzinfo=timezone.utc),
-    )
-    db.add(run)
-    db.flush()
-    return rid
-
-
-def _seed_evidence(db, rid, pid, sid, td, action, tq, delta):
-    import uuid, json, hashlib
-    from app.models.decision_engine import DecisionEvidence
-    payload = json.dumps({"rid": rid, "sid": sid, "td": td.isoformat(), "action": action}, sort_keys=True)
-    ev = DecisionEvidence(
-        id=f"ev_{uuid.uuid4().hex[:12]}",
-        decision_run_id=rid, strategy_snapshot_id=f"ss_{pid}",
-        portfolio_id=pid, symbol_id=sid, trade_date=td,
-        decision_at=datetime(td.year, td.month, td.day, 20, 30),
-        data_cutoff_at=datetime(td.year, td.month, td.day, 20, 0),
-        execution_at=datetime(td.year, td.month, td.day + 1, 9, 30),
-        action=action, min_lot_size=100,
-        target_quantity=tq, target_qty_delta=delta,
-        content_hash=hashlib.sha256(payload.encode()).hexdigest(),
-    )
-    db.add(ev)
-    db.flush()
-
-
-def _set_position(db, pid, sid, qty):
-    from app.models.portfolio import Position
-    from sqlalchemy import select as s
-    pos = db.execute(s(Position).where(
-        Position.portfolio_id == pid, Position.symbol_id == sid)).scalar_one_or_none()
-    if pos is None:
-        pos = Position(portfolio_id=pid, symbol_id=sid, quantity=qty, avg_cost=0.0,
-                       asset_type="stock", opened_at=date.today())
-        db.add(pos)
-    else:
-        pos.quantity = qty
-    db.flush()
-
-
-@dataclass
-class _TradeLike:
-    symbol_id: int
-    quantity: int
-    side: str
-
-
-def _set_status_via_service(db, pid, to_state, actor="u_test"):
-    from app.services.portfolio_state_machine import transition_portfolio_state
-    transition_portfolio_state(db, pid, to_state, operator_id=actor)
-
-
-# ===========================================================================
-# T_G4_API_01 — GET /portfolios/{pid}/status
-# ===========================================================================
-def test_g4_api_01_status(tmp_alembic_db):
-    db = tmp_alembic_db
-    pid = _seed_portfolio(db)
-    from app.api.routes.portfolio_governance import get_portfolio_status
-
-    res = get_portfolio_status(pid, db)
-    # 新组合：PENDING_INITIAL_REVIEW 或 READY
-    assert res.current_state in {"PENDING_INITIAL_REVIEW", "READY"}
-    assert res.portfolio_id == pid
-    assert isinstance(res.allowed_transitions, list)
-    assert res.is_auto_simulation_eligible == (res.current_state == "READY")
-    # READY→RUN_AUTO_SIM 应允许
-    if res.current_state == "READY":
-        assert "RUNNING_AUTO_SIMULATION" in res.allowed_transitions
-
-
-# ===========================================================================
-# T_G4_API_02 — POST /portfolios/{pid}/reconcile
-# ===========================================================================
-def test_g4_api_02_reconcile(tmp_alembic_db):
-    from app.api.routes.portfolio_governance import (
-        reconcile_portfolio, ReconcileRequest,
-    )
-    db = tmp_alembic_db
-    pid = _seed_portfolio(db)
-    td = date(2025, 1, 14)
-
-    # (a) 无 DR → BLOCKED + DECISION_RUN_NOT_FOUND
-    rep = reconcile_portfolio(pid, ReconcileRequest(trade_date=td), db, "u_api_02")
-    assert rep.status == "BLOCKED"
-    assert any(d.kind == "DECISION_RUN_NOT_FOUND" for d in rep.differences)
-
-    # (b) DR + BUY1000 + Position1000 + Trades1000 → PASSED + last_reconciled_trade_date
-    sid = _seed_symbol(db, "601318", 601318)
-    rid = _seed_decision_run(db, pid, td)
-    _seed_evidence(db, rid, pid, sid, td, "BUY", 1000, 1000)
-    _set_position(db, pid, sid, 1000)
-
-    def tp(_s, _p, _t):
-        return [_TradeLike(symbol_id=sid, quantity=1000, side="BUY")]
-
-    import app.services.portfolio_reconciliation as _prec
-    _orig = _prec.reconcile_trade_date
-
-    def patched(*a, **kw):
-        kw.setdefault("trades_provider", tp)
-        return _orig(*a, **kw)
-
-    _prec.reconcile_trade_date = patched  # type: ignore[attr-defined]
-    try:
-        rep_ok = reconcile_portfolio(pid, ReconcileRequest(trade_date=td), db, "u_api_02")
-    finally:
-        _prec.reconcile_trade_date = _orig  # type: ignore[attr-defined]
-    assert rep_ok.status == "PASSED"
-    assert rep_ok.last_reconciled_trade_date == td
-
-
-# ===========================================================================
-# T_G4_API_03 — POST /portfolios/{pid}/confirm-reconciliation（错误分支 + 成功）
-# ===========================================================================
-def test_g4_api_03_confirm(tmp_alembic_db):
-    from app.api.routes.portfolio_governance import (
-        confirm_portfolio_reconciliation, ConfirmReconciliationRequest,
-    )
-    db = tmp_alembic_db
-    pid = _seed_portfolio(db)
-    td = date(2025, 1, 15)
-
-    # (a) READY 状态 → 428 预条件失败
-    # 先从 PENDING→READY
-    _set_status_via_service(db, pid, "READY")
-    with pytest.raises(HTTPException) as ei:
-        confirm_portfolio_reconciliation(
-            pid, ConfirmReconciliationRequest(
-                trade_date=td, acknowledge_all_diffs_cleared=True,
-            ), db, "u_trader",
-        )
-    assert ei.value.status_code == 428
-
-    # 进入 RECONCILIATION_BLOCKED
-    _set_status_via_service(db, pid, "RUNNING_AUTO_SIMULATION")
-    _set_status_via_service(db, pid, "RECONCILIATION_BLOCKED")
-
-    # (b) ack=False → 400
-    with pytest.raises(HTTPException) as ei_b:
-        confirm_portfolio_reconciliation(
-            pid, ConfirmReconciliationRequest(trade_date=td,
-                                              acknowledge_all_diffs_cleared=False),
-            db, "u_trader",
-        )
-    assert ei_b.value.status_code == 400
-
-    # (c) 重跑对账仍差异（无 DecisionRun → DECISION_RUN_NOT_FOUND）→ 409
-    with pytest.raises(HTTPException) as ei_c:
-        confirm_portfolio_reconciliation(
-            pid, ConfirmReconciliationRequest(trade_date=td,
-                                              acknowledge_all_diffs_cleared=True,
-                                              review_note="已核对成交持仓与资金，所有差异已经修复"),
-            db, "u_trader",
-        )
-    assert ei_c.value.status_code == 409
-
-    # (d) 准备完整对账通过的上下文 → 200 + 推进
-    sid = _seed_symbol(db, "000001", 1)
-    rid = _seed_decision_run(db, pid, td)
-    _seed_evidence(db, rid, pid, sid, td, "BUY", 1000, 1000)
-    _set_position(db, pid, sid, 1000)
-
-    def tp(_s, _p, _t):
-        return [_TradeLike(symbol_id=sid, quantity=1000, side="BUY")]
-
-    import app.services.portfolio_reconciliation as _prec
-    _orig = _prec.reconcile_trade_date
-
-    def patched(*a, **kw):
-        kw.setdefault("trades_provider", tp)
-        return _orig(*a, **kw)
-
-    _prec.reconcile_trade_date = patched  # type: ignore[attr-defined]
-    try:
-        # 先手动把状态改回 RBLOCKED（因为刚才 (c) 调用过内部 transition → 状态可能保持）
-        from app.services.portfolio_state_machine import transition_portfolio_state as tps
-        from app.models.portfolio import Portfolio
-        db.refresh(db.get(Portfolio, pid))
-        # 若当前已 READY（因为 (c) 中 re-reconcile 异常 raise 前 transition 未执行），先回退
-        # 确保测试用例独立：这里强制回 RBLOCKED via READY→RUN→RBLOCKED（合法链）
-        tps(db, pid, "READY", operator_id="u_resetter")
-        tps(db, pid, "RUNNING_AUTO_SIMULATION", operator_id="u_resetter")
-        tps(db, pid, "RECONCILIATION_BLOCKED", operator_id="u_resetter")
-        ok = confirm_portfolio_reconciliation(
-            pid, ConfirmReconciliationRequest(trade_date=td,
-                                              acknowledge_all_diffs_cleared=True,
-                                              review_note="已核对成交持仓与资金，所有差异已经修复"),
-            db, "u_trader",
-        )
-    finally:
-        _prec.reconcile_trade_date = _orig  # type: ignore[attr-defined]
-    assert ok.portfolio_now_ready is True
-    assert ok.from_state == "RECONCILIATION_BLOCKED"
-    assert ok.to_state == "READY"
-    assert ok.last_reconciled_trade_date == td
-
-
-# ===========================================================================
-# T_G4_API_04 — POST /portfolios/{pid}/transition-state
-# ===========================================================================
-def test_g4_api_04_transition(tmp_alembic_db):
-    from app.api.routes.portfolio_governance import (
-        admin_transition_portfolio_state, TransitionStateRequest,
-    )
-    db = tmp_alembic_db
-    pid = _seed_portfolio(db)
-    _set_status_via_service(db, pid, "READY")
-
-    # (a) 非法 to_state → 400
-    with pytest.raises(HTTPException) as ei_a:
-        admin_transition_portfolio_state(
-            pid, TransitionStateRequest(to_state="DOES_NOT_EXIST"),
-            db, "u_admin",
-        )
-    assert ei_a.value.status_code == 400
-
-    # (b) READY→ADMIN_PAUSED：200 OK
-    r_b = admin_transition_portfolio_state(
-        pid, TransitionStateRequest(to_state="ADMIN_PAUSED",
-                                     reason="风控事件，临时冻结"),
-        db, "u_admin",
-    )
-    assert r_b.status == "OK"
-    assert r_b.to_state == "ADMIN_PAUSED"
-
-    # (c) 非法转移 → 409（ADMIN_PAUSED → RUNNING_AUTO_SIMULATION 不允许）
-    with pytest.raises(HTTPException) as ei_c:
-        admin_transition_portfolio_state(
-            pid, TransitionStateRequest(to_state="RUNNING_AUTO_SIMULATION"),
-            db, "u_admin",
-        )
-    assert ei_c.value.status_code == 409
-
-    # (d) 合法链 ADMIN_PAUSED → READY：200 OK
-    r_d = admin_transition_portfolio_state(
-        pid, TransitionStateRequest(to_state="READY"),
-        db, "u_admin",
-    )
-    assert r_d.status == "OK"
-    assert r_d.to_state == "READY"
-
-
-# ===========================================================================
-# T_G4_API_08 — 缺省对账目标日 = 上一个已收盘的交易日
-#
-# 判定口径复用因子域的 `factors.trade_calendar`（universe_daily_bars + region='cn'
-# + 完整度 ≥ 过去 20 日中位数 × 0.9），不查交易日历表 —— A 股节假日不固定
-# （春节/中秋按农历、调休逐年通知），日历跟不上就会把假期算成交易日。
-# ===========================================================================
-import app.api.routes.portfolio_governance as _pgr
-from app.services.portfolio_reconciliation import ReconciliationReport
-
-# 2025 年 9 月的全部工作日（含 9-29 / 9-30 两个收尾交易日）
-_UNIVERSE_DAYS = [
-    date(2025, 9, d) for d in (
-        1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26, 29, 30,
-    )
-]
-
-
-def _seed_universe(db, base_id: int, *, count: int, region: str = "cn") -> list[int]:
-    from app.models.universe import UniverseSymbol
-    ids: list[int] = []
-    for i in range(count):
-        sid = base_id + i
-        db.add(UniverseSymbol(
-            id=sid, symbol=f"U{region}{sid}", name=f"u{sid}",
-            asset_type="stock", market="sh", region=region, is_synced=1,
-        ))
-        ids.append(sid)
-    db.flush()
-    return ids
-
-
-def _seed_universe_bars(db, symbol_ids, days) -> None:
-    from app.models.universe import UniverseDailyBar
-    for sid in symbol_ids:
-        for d in days:
-            db.add(UniverseDailyBar(
-                universe_symbol_id=sid, trade_date=d,
-                open=10.0, high=10.0, low=10.0, close=10.0, volume=1.0,
-            ))
-    db.flush()
-
-
-def test_g4_api_08a_excludes_today(tmp_alembic_db):
-    """今天的数据即使已同步也不算 —— 今天还没走完，拿它当对账目标日等于用未来当基准。"""
-    db = tmp_alembic_db
-    ids = _seed_universe(db, 700000, count=20)
-    _seed_universe_bars(db, ids, _UNIVERSE_DAYS)
-    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 30)
-
-
-def test_g4_api_08b_skips_incomplete_day(tmp_alembic_db):
-    """残缺日要跳过：9-30 只同步到 10% 标的时，退回 9-29。"""
-    db = tmp_alembic_db
-    ids = _seed_universe(db, 700100, count=20)
-    _seed_universe_bars(db, ids, [d for d in _UNIVERSE_DAYS if d != date(2025, 9, 30)])
-    _seed_universe_bars(db, ids[:2], [date(2025, 9, 30)])
-    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 29)
-
-
-def test_g4_api_08c_us_region_does_not_count(tmp_alembic_db):
-    """region 不是 cn 的行情不参与判定。
-
-    线上国庆就是这个形态：A 股 5800+ 标的停更，只剩美股 AAPL 每天一行。
-    这里让 us 数据停在 9-26 —— 若漏掉 region 过滤就会返回 9-26。
-    """
-    db = tmp_alembic_db
-    ids = _seed_universe(db, 700200, count=20, region="us")
-    _seed_universe_bars(db, ids, [d for d in _UNIVERSE_DAYS if d <= date(2025, 9, 26)])
-    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 30)
-
-
-def test_g4_api_08d_falls_back_when_universe_empty(tmp_alembic_db):
-    """完全没有 universe 数据时退回自然日昨天，不让对账接口挂掉。"""
-    db = tmp_alembic_db
-    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 30)
-
-
-def test_g4_api_08e_route_uses_default_only_when_payload_omits_date(
-    tmp_alembic_db, monkeypatch,
-):
-    """不传日期 → 走缺省解析；显式传日期 → 绝不覆盖用户选择。"""
-    sentinel = date(2025, 10, 8)
-    monkeypatch.setattr(_pgr, "_previous_closed_trade_date", lambda db, today=None: sentinel)
-
-    seen: list[date] = []
-
-    def _fake_reconcile(db, portfolio_id, trade_date, **kw):
-        seen.append(trade_date)
-        return ReconciliationReport(
-            portfolio_id=portfolio_id, trade_date=trade_date,
-            decision_run_id=None, status="PASSED",
-        )
-
-    monkeypatch.setattr(_pgr, "reconcile_trade_date", _fake_reconcile)
-
-    db = tmp_alembic_db
-    pid = _seed_portfolio(db)
-
-    _pgr.reconcile_portfolio(pid, _pgr.ReconcileRequest(), db, "u_api_08")
-    assert seen[-1] == sentinel, "缺省应落到上一个已收盘的交易日"
-
-    explicit = date(2025, 9, 15)
-    _pgr.reconcile_portfolio(pid, _pgr.ReconcileRequest(trade_date=explicit), db, "u_api_08")
-    assert seen[-1] == explicit, "显式 trade_date 必须优先于缺省"
+    assert result['portfolio_now_ready'] is False
+    assert p.status_reconciliation=='READY'
+    assert p.status_data=='DATA_INCOMPLETE_PAUSED' and p.status_model=='MODEL_INACTIVE'
+    assert get(client,p,'status')['is_auto_simulation_eligible'] is False
+    assert financial_rows(db)==before
+
+
+def test_g4_http_confirmation_does_not_accept_unreviewed_applied_binding(mounted):
+    client,db,p,_=mounted
+    block(client,p);seed_buy(db,p,snapshot_type='save_and_apply')
+    report=preview(client,p);assert report['status']=='PASSED'
+    before=financial_rows(db)
+    result=post(client,p,'confirm-reconciliation',confirmation(report))
+    assert result['portfolio_now_ready'] is False
+    assert get(client,p,'status')['is_auto_simulation_eligible'] is False
+    assert financial_rows(db)==before
