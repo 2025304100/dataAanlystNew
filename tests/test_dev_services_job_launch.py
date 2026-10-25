@@ -11,6 +11,16 @@ from scripts import dev_services
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.fixture(autouse=True)
+def win32_input_constants(monkeypatch):
+    # Linux does not export these Windows-only subprocess constants. This
+    # fixture supplies the public Win32 inputs while Popen remains a spy.
+    for name, value in (("CREATE_NEW_PROCESS_GROUP", 0x200),
+                        ("DETACHED_PROCESS", 0x8),
+                        ("CREATE_BREAKAWAY_FROM_JOB", 0x01000000)):
+        monkeypatch.setattr(dev_services.subprocess, name, value, raising=False)
+
+
 @pytest.mark.parametrize("in_job,is_job_ok,query_ok,limit_flags,allow_breakaway", [
     (True, True, True, 0x2800, True),
     (True, True, True, 0x2000, False),
@@ -29,7 +39,7 @@ def test_launcher_requests_job_breakaway_only_when_current_job_explicitly_allows
     def limits_query(_job, information_class, output, _size, _returned):
         assert information_class == 9  # JobObjectExtendedLimitInformation
         # Public Win32 ABI: LimitFlags follows two 64-bit time-limit fields.
-        ctypes.cast(output, ctypes.POINTER(wintypes.DWORD))[4] = limit_flags
+        ctypes.cast(output, ctypes.POINTER(ctypes.c_uint32))[4] = limit_flags
         return query_ok
 
     kernel = SimpleNamespace(GetCurrentProcess=Mock(return_value=-1),
