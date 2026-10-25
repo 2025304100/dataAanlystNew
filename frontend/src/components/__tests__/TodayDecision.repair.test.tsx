@@ -420,8 +420,11 @@ describe("TodayDecision 待修复样本交互测试", () => {
     await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalledTimes(2));
     expect(start).toBeDisabled();
     expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+    const settledCheck = await screen.findByRole("button", { name: "重新检查" });
+    await waitFor(() => expect(settledCheck).not.toHaveClass("ant-btn-loading"));
     mockApi.preflightAutoSimulation.mockResolvedValue({ proceed: true, gate: "PASSED", reason_codes: [], trade_date: "2026-07-25" });
-    fireEvent.click(screen.getByRole("button", { name: /重新检查/ }));
+    fireEvent.click(settledCheck);
+    await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(start).toBeEnabled());
     expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
   });

@@ -37,7 +37,7 @@ it('shows missing days and offers a refresh, without an activation choice',async
   expect(await screen.findByText('后续行情尚未齐备，目前有 45 个信号日可以验证，需要 50 个。')).toBeVisible();
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   expect(screen.queryByRole('button',{name:'确认并启用模型'})).not.toBeInTheDocument();
-  expect(screen.getByRole('button',{name:'重新检查'})).toBeEnabled();
+  await waitFor(()=>expect(screen.getByRole('button',{name:'重新检查'})).toBeEnabled());
 });
 
 it('keeps the precise cost blocker when another independent read fails',async()=>{

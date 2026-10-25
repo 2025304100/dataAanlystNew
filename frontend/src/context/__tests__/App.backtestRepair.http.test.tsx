@@ -148,7 +148,7 @@ afterEach(async () => {
 });
 
 function openApp() {
-  return render(<AntdApp><AppProvider><App /></AppProvider></AntdApp>);
+  return render(<AntdApp message={{ duration: 0 }}><AppProvider><App /></AppProvider></AntdApp>);
 }
 
 function completedSingleRun(overrides: Record<string, unknown> = {}) {
@@ -518,6 +518,7 @@ it("retains the submitted record, parameters and summary after a detail read fai
   expect(screen.queryByText(/单标的回测失败/)).not.toBeInTheDocument();
   const postsBeforeRetry = requests.filter((request) => request.url.endsWith("/backtest/run"));
   const writesBeforeRetry = requests.filter((request) => request.method !== "GET").length;
+  await screen.findByText("单标的回测已完成");
   const completionNotices = screen.queryAllByText("单标的回测已完成").length;
   singleDetailReply = async () => json(completedSingleRun({ total_return_pct: 0.25 }));
   fireEvent.click(retry);

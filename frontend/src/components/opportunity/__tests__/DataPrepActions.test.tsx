@@ -62,7 +62,9 @@ describe("DataPrepActions", () => {
   it("后台行情更新时只点击一次，更新完成后自动筛选当前范围", async () => {
     mockContext.syncTask = { id: "background-sync", status: "running", percent: 50 };
     const view = render(<DataPrepActions scope="cn-etf" simpleMode />);
-    fireEvent.click(await screen.findByRole("button", { name: "opportunity.updateAndScreen" }));
+    const start = await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
     expect(await screen.findByText("opportunity.backgroundSyncQueued")).toBeVisible();
     expect(mockApi.startDataPrep).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "opportunity.updatingAndScreening" })).toBeDisabled();
@@ -77,7 +79,9 @@ describe("DataPrepActions", () => {
   it("后台更新中断时说明重试动作，不擅自启动筛选", async () => {
     mockContext.syncTask = { id: "background-sync", status: "running" };
     const view = render(<DataPrepActions simpleMode />);
-    fireEvent.click(await screen.findByRole("button", { name: "opportunity.updateAndScreen" }));
+    const start = await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
     await screen.findByText("opportunity.backgroundSyncQueued");
     mockContext.syncTask = { id: "background-sync", status: "failed" };
     view.rerender(<DataPrepActions simpleMode />);
@@ -89,7 +93,9 @@ describe("DataPrepActions", () => {
   it("等待后台更新时切范围，不把原范围的等待操作带到新范围", async () => {
     mockContext.syncTask = { id: "background-sync", status: "running" };
     const view = render(<DataPrepActions scope="cn-stock" simpleMode />);
-    fireEvent.click(await screen.findByRole("button", { name: "opportunity.updateAndScreen" }));
+    const start = await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
     await screen.findByText("opportunity.backgroundSyncQueued");
     view.rerender(<DataPrepActions scope="cn-etf" simpleMode />);
     await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
@@ -103,7 +109,9 @@ describe("DataPrepActions", () => {
     mockApi.getAsyncTask.mockRejectedValueOnce(new Error("database query failed"));
     const onPrepared = vi.fn();
     render(<DataPrepActions scope="cn-etf" simpleMode onPrepared={onPrepared} />);
-    fireEvent.click(await screen.findByRole("button", { name: "opportunity.updateAndScreen" }));
+    const start = await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
     const retry = await screen.findByRole("button", { name: "opportunity.retry" });
     expect(screen.getByRole("alert")).toHaveTextContent("opportunity.prepTaskReadFailed");
     expect(screen.getByText("database query failed")).not.toBeVisible();
