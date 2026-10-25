@@ -33,6 +33,10 @@ def upgrade():
             expected = sa.String if name == "action" else sa.DateTime
             if column is None or not isinstance(column["type"], expected):
                 raise RuntimeError(f"Unproven binding fidelity column: {table}.{name}")
+            if conn.dialect.name == "mysql" and name != "action" and not isinstance(column["type"], DATETIME):
+                # TIMESTAMP inherits DateTime but carries session-zone conversion.
+                # An unproven type drift must fail before any implicitly committed DDL.
+                raise RuntimeError(f"Unproven binding fidelity column: {table}.{name}")
         definitions[table] = columns
     for table, names in specification.items():
         for name in names:
@@ -41,7 +45,10 @@ def upgrade():
             if name == "action":
                 if old_type.length is None or old_type.length >= 64:
                     continue
-                new_type = sa.String(64)
+                # Preserve per-column charset/collation and dialect options.
+                # A plain String(64) would silently inherit table defaults.
+                new_type = old_type.copy()
+                new_type.length = 64
             elif conn.dialect.name == "mysql" and (getattr(old_type, "fsp", None) or 0) < 6:
                 new_type = DATETIME(fsp=6)
             else:

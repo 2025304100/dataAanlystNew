@@ -234,6 +234,8 @@ def test_binding_precision_upgrade_keeps_history_and_full_audit_actions(isolated
     target=sibling_database(isolated_url,"binding")
     upgrade(target,"wps_0024_085_legacy_dates")
     engine=sa.create_engine(target,hide_parameters=True)
+    with engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE factor_model_audit_logs MODIFY action VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL")
     old_time=datetime(2026,9,1,8,0,1)
     names=("portfolios","portfolio_factor_usages","strategy_execution_snapshots","factor_model_audit_logs")
     def capture():
@@ -253,13 +255,17 @@ def test_binding_precision_upgrade_keeps_history_and_full_audit_actions(isolated
             snapshot=StrategyExecutionSnapshot(id="legacy-snapshot",portfolio_id=p.id,snapshot_no=1,
                 portfolio_factor_usage_id=usage.id,snapshot_hash="old-proof",snapshot_type="save_and_apply",
                 decision_clock_json="{}",member_snapshot_json="[]",effective_from=old_time,created_at=old_time)
-            audit=FactorModelAuditLog(action="legacy-history-is-kept",previous_mode="manual",new_mode="manual",
+            audit=FactorModelAuditLog(action="旧审计-É-A",previous_mode="manual",new_mode="manual",
                 actor="historical-owner",note="完整原文；不能截断或删除旧行",created_at=old_time)
             db.add_all([snapshot,audit]);db.commit()
         before=capture()
         old_indexes={name:sa.inspect(engine).get_indexes(name) for name in names}
+        with engine.connect() as conn:
+            action_metadata=dict(conn.execute(sa.text("SELECT CHARACTER_SET_NAME,COLLATION_NAME,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='factor_model_audit_logs' AND column_name='action'")).mappings().one())
         upgrade(target)
         assert capture()==before
+        with engine.connect() as conn:
+            assert dict(conn.execute(sa.text("SELECT CHARACTER_SET_NAME,COLLATION_NAME,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='factor_model_audit_logs' AND column_name='action'")).mappings().one()) == action_metadata
         assert {name:sa.inspect(engine).get_indexes(name) for name in names}==old_indexes
         with engine.connect() as conn:
             assert conn.scalar(sa.text("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='factor_model_audit_logs' AND column_name='action'")) >= 64
@@ -287,5 +293,22 @@ def test_binding_precision_upgrade_keeps_history_and_full_audit_actions(isolated
         assert after["factor_model_audit_logs"][0]==before["factor_model_audit_logs"][0]
         upgrade(target)
         assert capture()==after
+    finally:
+        engine.dispose()
+
+
+def test_binding_precision_preflight_rejects_timestamp_drift_without_partial_ddl(isolated_url):
+    target = sibling_database(isolated_url, "drift")
+    upgrade(target, "wps_0024_085_legacy_dates")
+    engine = sa.create_engine(target, hide_parameters=True)
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE strategy_execution_snapshots MODIFY effective_from TIMESTAMP NOT NULL")
+        with pytest.raises(RuntimeError, match="Unproven binding fidelity column"):
+            upgrade(target)
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='factor_model_audit_logs' AND column_name='action'")) == 32
+            assert conn.scalar(sa.text("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='portfolio_factor_usages' AND column_name='effective_from'")) == 0
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == "wps_0024_085_legacy_dates"
     finally:
         engine.dispose()
