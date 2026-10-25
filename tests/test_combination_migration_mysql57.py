@@ -221,7 +221,7 @@ def test_applied_0082_receives_0083_compensation_without_changing_member_history
             side="buy", quantity=100, submitted_price=10, review_status=None)).inserted_primary_key[0]
         assert conn.execute(sa.text("SELECT review_status FROM sim_orders WHERE id=:id"), {"id": inserted}).scalar_one() is None
         assert conn.execute(sa.text("SELECT sim_account_id FROM sim_orders WHERE id=:id"), {"id": inserted}).scalar_one() is None
-        assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == "wps_0024_087_binding_precision"
+        assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one() == "wps_0024_088_score_precision"
         with pytest.raises(sa.exc.IntegrityError):
             conn.execute(sql, dict(p=p,s=s,status="active",start=datetime(2026,3,1),end=None,note="duplicate must fail"))
     engine.dispose()
@@ -310,5 +310,98 @@ def test_binding_precision_preflight_rejects_timestamp_drift_without_partial_ddl
             assert conn.scalar(sa.text("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='factor_model_audit_logs' AND column_name='action'")) == 32
             assert conn.scalar(sa.text("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='portfolio_factor_usages' AND column_name='effective_from'")) == 0
             assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == "wps_0024_085_legacy_dates"
+    finally:
+        engine.dispose()
+
+
+def test_score_publication_precision_keeps_every_historical_row_and_new_microsecond(isolated_url):
+    from app.models.symbol import Symbol
+    from app.models.score import Score
+    from tests.test_stage3_factor_binding_contract import _ready_model
+    from tests.admission_display_support import snapshot
+    target=sibling_database(isolated_url,"score")
+    upgrade(target,"wps_0024_087_binding_precision")
+    engine=sa.create_engine(target,hide_parameters=True)
+    with engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE scores MODIFY published_at DATETIME NOT NULL DEFAULT '2026-09-01 08:00:01' COMMENT '原始发布时间 :source 的完整说明', MODIFY first_published_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP")
+    fields=("created_at","published_at","first_published_at","revision_at","factor_data_cutoff_at")
+    old=datetime(2026,9,1,8,0,1)
+    def score(symbol_id,model_id,batch,stamp):
+        return Score(symbol_id=symbol_id,trade_date=stamp.date(),quality_score=60,quality_grade="B",
+            timing_score=60,stage="trend",action="hold",priority_score=60,calc_batch_id=batch,
+            weight_mode="ridge",factor_model_run_id=model_id,factor_set_id="fs-score-old",
+            **{name:stamp for name in fields})
+    try:
+        with Session(engine) as db:
+            symbol=Symbol(symbol="SCOREPRECISION",name="旧评分原文",asset_type="stock",market="SH")
+            db.add(symbol);db.flush();sid=symbol.id
+            model=_ready_model(db,set_id="fs-score-old",model_id="model-score-old")
+            model.created_at=old;model.data_cutoff_at=old
+            db.add(score(sid,model.id,"old-row-kept",old));db.commit()
+        before=snapshot(engine);before.pop("alembic_version")
+        indexes={name:sa.inspect(engine).get_indexes(name) for name in ("scores","factor_model_runs")}
+        meta={(name,c["name"]):{key:c.get(key) for key in ("nullable","default","comment")}
+            for name in indexes for c in sa.inspect(engine).get_columns(name)}
+        upgrade(target)
+        actual_meta={(name,c["name"]):{key:c.get(key) for key in ("nullable","default","comment")}
+            for name in indexes for c in sa.inspect(engine).get_columns(name)}
+        meta[("scores","first_published_at")]["default"]=actual_meta[("scores","first_published_at")]["default"]
+        assert str(meta[("scores","first_published_at")]["default"]).lower()=="current_timestamp(6)"
+        # MySQL displays the same literal with six trailing zero digits after
+        # the precision expansion. Compare its exact instant, not its spelling.
+        key=("scores","published_at")
+        assert datetime.fromisoformat(actual_meta[key]["default"].strip("'")) == datetime.fromisoformat(meta[key]["default"].strip("'"))
+        actual_meta[key]["default"]=meta[key]["default"]
+        assert actual_meta==meta
+        after=snapshot(engine);after.pop("alembic_version")
+        assert after==before,"Migration changed historical rows or fields"
+        assert indexes=={name:sa.inspect(engine).get_indexes(name) for name in indexes}
+        stamp=datetime(2026,10,1,0,0,0,800000)
+        with Session(engine) as db:
+            model=_ready_model(db,set_id="fs-score-new",model_id="model-score-new")
+            model.created_at=stamp;model.data_cutoff_at=stamp
+            value=score(sid,model.id,"precise-new-row",stamp)
+            value.factor_set_id="fs-score-new"
+            db.add(value);db.commit();db.refresh(value);db.refresh(model)
+            assert value.published_at==stamp,"Score publication was rounded, changing same-second admission"
+            assert all(getattr(value,name)==stamp for name in fields)
+            assert model.created_at==stamp and model.data_cutoff_at==stamp
+        current=snapshot(engine)
+        upgrade(target)
+        assert snapshot(engine)==current
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("drift",["timestamp","zero-date"])
+def test_score_precision_preflight_keeps_history_and_ddl_unchanged_on_drift(isolated_url,drift):
+    from tests.admission_display_support import snapshot
+    from tests.test_stage3_factor_binding_contract import _ready_model
+    target=sibling_database(isolated_url,"sdrift")
+    upgrade(target,"wps_0024_087_binding_precision")
+    engine=sa.create_engine(target,hide_parameters=True)
+    try:
+        if drift=="timestamp":
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE scores MODIFY published_at TIMESTAMP NOT NULL")
+        else:
+            with Session(engine) as db:
+                _ready_model(db,set_id="fs-zero-date",model_id="model-zero-date");db.commit()
+            with engine.connect() as conn:
+                old_mode=conn.scalar(sa.text("SELECT @@SESSION.sql_mode"))
+                try:
+                    conn.exec_driver_sql("SET SESSION sql_mode=''")
+                    conn.exec_driver_sql("UPDATE factor_model_runs SET data_cutoff_at='0000-00-00 00:00:00'")
+                    conn.commit()
+                finally:
+                    conn.execute(sa.text("SET SESSION sql_mode=:mode"),{"mode":old_mode})
+                    conn.commit()
+        before=snapshot(engine)
+        with pytest.raises(RuntimeError,match="Unproven Score/model timestamp"):
+            upgrade(target)
+        assert snapshot(engine)==before
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT datetime_precision FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='scores' AND column_name='created_at'"))==0
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version"))=="wps_0024_087_binding_precision"
     finally:
         engine.dispose()

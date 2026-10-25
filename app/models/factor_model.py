@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.mysql import DATETIME as MySQLDateTime
 
 from app.db.base import Base
 
@@ -77,7 +78,7 @@ class FactorModelRun(Base):
     validation_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     validation_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     data_cutoff_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, index=True
+        DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=True, index=True
     )
     feature_versions_json: Mapped[str] = mapped_column(Text, default="{}")
     hyperparameters_json: Mapped[str] = mapped_column(Text, default="{}")
@@ -91,7 +92,7 @@ class FactorModelRun(Base):
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utcnow_naive, index=True
+        DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), default=_utcnow_naive, index=True
     )
     activated_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True

@@ -57,7 +57,7 @@ def migrated_account_db(tmp_path,monkeypatch,nodeid):
         def enforce_fk(connection,_record):
             connection.execute('PRAGMA foreign_keys=ON')
     with engine.connect() as conn:
-        assert conn.scalar(text('SELECT version_num FROM alembic_version'))=='wps_0024_087_binding_precision'
+        assert conn.scalar(text('SELECT version_num FROM alembic_version'))=='wps_0024_088_score_precision'
         if engine.dialect.name=='mysql':
             assert conn.scalar(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE' AND engine<>'InnoDB'"))==0
     try:
@@ -69,7 +69,7 @@ def migrated_account_db(tmp_path,monkeypatch,nodeid):
                 if evidence:
                     folder=Path(evidence)/'g4-fixtures';folder.mkdir(parents=True,exist_ok=True)
                     identity={'nodeid':nodeid,'dialect':engine.dialect.name,'database':engine.url.database,
-                        'revision':'wps_0024_087_binding_precision','table_count':len(inspect(engine).get_table_names()),
+                        'revision':'wps_0024_088_score_precision','table_count':len(inspect(engine).get_table_names()),
                         'financial_rows':financial_rows(db)}
                     (folder/(hashlib.sha256(nodeid.encode()).hexdigest()[:8]+'.json')).write_text(json.dumps(identity,default=str,indent=2),encoding='utf8')
     finally:
