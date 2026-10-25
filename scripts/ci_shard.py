@@ -58,6 +58,12 @@ def collect(marker: str) -> dict[str, int]:
     )
 
     try:
+        if proc.returncode != 0:
+            raise SystemExit(
+                f"[ci_shard] pytest collection failed (marker={marker}, rc={proc.returncode}); "
+                "partial collection cannot define coverage."
+                f"\nstdout:\n{proc.stdout[-8000:]}\nstderr:\n{proc.stderr[-2000:]}"
+            )
         if not collect_file.exists():
             raise SystemExit(
                 f"[ci_shard] 收集没产出文件（marker={marker}, rc={proc.returncode}）。"
@@ -160,7 +166,7 @@ def main() -> int:
     # 失败条目清单，导致“知道红了但不知道哪条红”，ci_digest 也无从提取。
     # -rs：还要把“被跳过”的用例列出来。曾经只能从“绿”判断是否真跑了，
     # 而 importorskip 造成的跳过与“全部通过”在 -q 输出里长得一模一样。
-    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rX", "-rf", "-rs", *bucket]
+    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rXfs", *bucket]
     return subprocess.call(cmd)
 
 

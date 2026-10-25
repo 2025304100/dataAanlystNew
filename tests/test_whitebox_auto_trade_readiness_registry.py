@@ -130,3 +130,31 @@ def test_execution_source_message_describes_blocking_instead_of_legacy_fallback(
     impact = rt.READINESS_FIX_REGISTRY[rt.WARNING_SOURCE_ENV_OVERRIDE]["impact"]
     assert "阻断" in impact
     assert "回退" not in impact
+
+
+@pytest.mark.parametrize("plan_buys, expected", [([{"symbol_id":1,"action":"BUY"}],1),([],0)])
+def test_applied_snapshot_uses_engine_buy_plans_instead_of_legacy_score_action(db_session,monkeypatch,plan_buys,expected):
+    from types import SimpleNamespace
+    from app.models.portfolio import Portfolio
+    from app.models.symbol import Symbol
+    from app.services import auto_trade_dual_run as dual
+    portfolio=Portfolio(name="ridge-hold-is-engine-buy",account_type="simulated",asset_scope="stock",
+        total_capital=100000,investable_ratio=1,cash_reserve_ratio=0,auto_trade_enabled=1)
+    symbol=Symbol(id=1,symbol="600001",market="SH",asset_type="stock",name="fixture")
+    db_session.add_all([portfolio,symbol]);db_session.commit()
+    monkeypatch.setattr(rt,"_validate_rule_fields",lambda rule:(True,None))
+    monkeypatch.setattr(rt,"_list_auto_member_ids",lambda *args:{1})
+    monkeypatch.setattr(rt,"list_members",lambda *args,**kwargs:[])
+    monkeypatch.setattr(rt,"check_data_health",lambda *args,**kwargs:SimpleNamespace(healthy=True))
+    monkeypatch.setattr(dual,"resolve_applied_snapshot_id",lambda *args,**kwargs:"applied-real-contract")
+    observed=[]
+    def capture(*args,**kwargs):
+        observed.append(kwargs)
+        return dual.TradeSet(buys=plan_buys)
+    monkeypatch.setattr(dual,"capture_trade_set_from_new_logic",capture)
+    monkeypatch.setattr(rt,"_symbol_eligible_buy",lambda *args,**kwargs:False) # Genuine Ridge action is hold.
+    result=rt.get_auto_trade_readiness(db_session,portfolio.id)
+    assert result.eligible_buy_count==expected
+    assert result.ready is bool(expected)
+    assert len(observed)==1
+    assert observed[0]["strategy_snapshot_id"]=="applied-real-contract"

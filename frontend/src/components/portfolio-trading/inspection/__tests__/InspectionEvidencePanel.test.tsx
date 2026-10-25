@@ -49,8 +49,8 @@ it("does not end the newer loading state when an older read finishes",async()=>{
 
 it("clears old candidates when the current read fails and recovers with a read-only retry",async()=>{
   show();await screen.findByText("隔离标的1 · TEST1");api.getPortfolioEvidenceSupplements.mockRejectedValueOnce(new Error("当前来源不可读"));
-  fireEvent.click(screen.getByRole("button",{name:"刷新实际补证来源"}));await screen.findByText("当前来源不可读");expect(screen.queryByText("隔离标的1 · TEST1")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button",{name:"刷新实际补证来源"}));expect(await screen.findByText("隔离标的1 · TEST1")).toBeVisible();expect(api.submitPortfolioEvidenceBatch).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole("button",{name:"刷新实际补证来源"}));await screen.findByText("当前来源不可读");expect(screen.queryByText("隔离标的1 · TEST1")).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button",{name:"刷新实际补证来源"}));expect(await screen.findByText("隔离标的1 · TEST1")).toBeVisible();expect(api.submitPortfolioEvidenceBatch).not.toHaveBeenCalled();
 });
 
 it("previews a multi-order batch and sends the exact source hashes only after acknowledgement",async()=>{

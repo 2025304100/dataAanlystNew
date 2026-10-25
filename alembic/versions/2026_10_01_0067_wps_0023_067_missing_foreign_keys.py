@@ -129,7 +129,17 @@ def upgrade() -> None:
 
     created = 0
     skipped = 0
+    inspector = sa.inspect(conn)
+    tables = set(inspector.get_table_names())
     for table, column, ref_table, ref_column, ondelete in _FK_DEFS:
+        # Fresh migration-only installations have not received the frozen
+        # 0080 catch-up yet. That revision creates these objects and their FKs.
+        if table not in tables or ref_table not in tables:
+            skipped += 1
+            continue
+        if column not in {c["name"] for c in inspector.get_columns(table)}:
+            skipped += 1
+            continue
         if column in _existing_fk_columns(conn, table):
             skipped += 1
             continue

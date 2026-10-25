@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Button, Card, Col, Empty, Modal, Popconfirm, Progress, Row, Space, Tag, Tooltip, Typography } from "antd";
+import { Alert, Card, Col, Empty, Modal, Popconfirm, Progress, Row, Space, Tag, Tooltip, Typography } from "antd";
 import {
   AlertOutlined,
   ArrowRightOutlined,
@@ -772,7 +773,7 @@ export default function TodayDecision() {
         }
         extra={
           <Space>
-            <Button
+            <Button mutation
               size="small"
               icon={<ReloadOutlined />}
               onClick={handlePreflight}
@@ -784,7 +785,7 @@ export default function TodayDecision() {
             </Button>
             <Tooltip title={frp13FailReason || "检查通过，点击后会真正创建模拟交易任务。"}>
               <span>
-                <Button
+                <Button mutation
                   size="small"
                   type="primary"
                   danger={Boolean(frp13FailReason)}
@@ -865,6 +866,7 @@ export default function TodayDecision() {
       </Row>
 
       <Card className="decision-health-card" title={<Space><DatabaseOutlined />{t("tdHealthTitle")}</Space>} extra={<Tag color={health?.status === "ok" ? "green" : health?.status === "error" ? "red" : "orange"}>{healthLabel(health)}</Tag>}>
+        <Text type="secondary">{t("tdHealthScope")}</Text>
         <div className="decision-health-grid">
           <div className="decision-health-score">
             <strong style={{ color: healthColor(health) }}>{health?.score ?? "-"}</strong>
@@ -893,7 +895,7 @@ export default function TodayDecision() {
                   message={template("tdHealthMarketGuide", { missing: missingBarCount, outdated: outdatedBarCount })}
                   action={
                     <Space wrap>
-                      <Button size="small" onClick={() => openDataCenter("market")}>{t("tdHealthOpenMarket")}</Button>
+                      <Button size="small" onClick={() => document.getElementById("business-market-repair")?.scrollIntoView?.({ behavior: "smooth", block: "center" })}>{t("tdHealthOpenMarket")}</Button>
                     </Space>
                   }
               />
@@ -913,7 +915,7 @@ export default function TodayDecision() {
             )}
           </Space>
         )}
-        <div className="decision-health-repair">
+        <div className="decision-health-repair" id="business-market-repair">
           <div className="decision-health-repair-head">
             <Space>
               <Text type="secondary">{t("tdRepairSamples")}</Text>
@@ -921,7 +923,7 @@ export default function TodayDecision() {
             </Space>
             <Space>
               <Text type="secondary">{health?.bars.repair_hint}</Text>
-              <Button type="primary" size="small" icon={<ReloadOutlined />} loading={repairAllLoading} disabled={allRepairSamples.length === 0} onClick={() => repairAllSamples(allRepairSamples)}>
+              <Button mutation type="primary" size="small" icon={<ReloadOutlined />} loading={repairAllLoading} disabled={allRepairSamples.length === 0} onClick={() => repairAllSamples(allRepairSamples)}>
                 {t("tdRepairAll")}
               </Button>
             </Space>
@@ -941,7 +943,7 @@ export default function TodayDecision() {
                         {item.latest_trade_date ? `${t("tdLatestBar")}: ${item.latest_trade_date} / ${ageText(item.latest_age_days)}` : t("tdMissingReason")}
                       </Text>
                     </div>
-                    <Button size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
+                    <Button mutation size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
                   </div>
                 ))}
               </div>
@@ -974,13 +976,13 @@ export default function TodayDecision() {
                     okButtonProps={{ danger: true }}
                     onConfirm={cleanupExpiredResults}
                   >
-                    <Button size="small" icon={<ClearOutlined />} loading={discoveryCleanupLoading}>
+                    <Button mutation size="small" icon={<ClearOutlined />} loading={discoveryCleanupLoading}>
                       {t("tdCleanupExpiredResults")} ({health.discovery.expired_results})
                     </Button>
                   </Popconfirm>
                 )}
                 {["failed", "expired"].includes(health?.discovery.latest_task?.status ?? "") && (
-                  <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={discoveryRescanLoading} onClick={rescanDiscovery}>
+                  <Button mutation type="primary" size="small" icon={<PlayCircleOutlined />} loading={discoveryRescanLoading} onClick={rescanDiscovery}>
                     {t("tdRescanDiscovery")}
                   </Button>
                 )}
@@ -1153,7 +1155,7 @@ export default function TodayDecision() {
         footer={(
           <Space>
             <Button onClick={() => setRepairModalOpen(false)}>{t("tdClose")}</Button>
-            <Button type="primary" icon={<ReloadOutlined />} loading={repairAllLoading} onClick={() => repairAllSamples(allRepairSamples)}>
+            <Button mutation type="primary" icon={<ReloadOutlined />} loading={repairAllLoading} onClick={() => repairAllSamples(allRepairSamples)}>
               {t("tdRepairAll")}
             </Button>
           </Space>
@@ -1172,7 +1174,7 @@ export default function TodayDecision() {
                     {item.latest_trade_date ? `${t("tdLatestBar")}: ${item.latest_trade_date} / ${ageText(item.latest_age_days)}` : t("tdMissingReason")}
                   </Text>
                 </div>
-                <Button size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
+                <Button mutation size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
               </div>
             ))}
           </div>

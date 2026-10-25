@@ -29,7 +29,7 @@ afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); });
 it('hides the previous successful ETF result after changing dates without starting another download', async () => {
   handle = async url => url.includes('/scope') ? { ...scope(), latest_task: task('done') }
     : { task: task('done'), report: report(true) };
-  render(<ETFHistoryPanel portfolioId={1} />);
+  render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   await screen.findByText('本次行情已补齐并核对。');
   fireEvent.click(screen.getByText('调整补充日期'));
   fireEvent.change(screen.getByLabelText('ETF历史结束日期'), { target: { value: '2024-01-05' } });
@@ -48,7 +48,7 @@ it('shows missing dates and a failed supplement, then retries the same dates wit
     if (method === 'POST') return { task: task('queued', `task-${++starts}`), report: null };
     return { task: task(starts === 1 ? 'partial' : 'done', `task-${starts}`), report: report(starts > 1) };
   };
-  render(<ETFHistoryPanel portfolioId={1} />);
+  render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   expect(await screen.findByText(/当前组合有1只ETF.*20只ETF/)).toBeVisible();
   expect(screen.getByText('2024-01-03')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: '补充ETF历史数据' }));
@@ -69,7 +69,7 @@ it('reopens an unfinished earlier range and retries those dates instead of silen
     if (url.includes('/scope')) return { ...scope(), start_date: '2021-07-12', end_date: '2026-10-20', latest_task: task('partial') };
     return method === 'POST' ? { task: task('running'), report: null } : { task: task('partial'), report: report() };
   };
-  render(<ETFHistoryPanel portfolioId={1} />);
+  render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   fireEvent.click(await screen.findByRole('button', { name: '重试补充' }));
   await waitFor(() => expect(requests.filter(r => r.method === 'POST')).toHaveLength(1));
   expect(requests.find(r => r.method === 'POST')?.body).toMatchObject({ start_date: '2024-01-02', end_date: '2024-01-04' });
@@ -80,11 +80,11 @@ it('recovers a lost submission after re-entry without starting a second task', a
     if (method === 'POST') throw new TypeError('response lost');
     return url.includes('/scope') ? scope() : { task: task('done'), report: report(true) };
   };
-  const first = render(<ETFHistoryPanel portfolioId={1} />);
+  const first = render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   fireEvent.click(await screen.findByRole('button', { name: '补充ETF历史数据' }));
   await screen.findByText('尚未确认补充是否开始，请先重试读取进度。');
   first.unmount();
-  render(<ETFHistoryPanel portfolioId={1} />);
+  render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   expect(await screen.findByText('本次行情已补齐并核对。')).toBeVisible();
   expect(requests.filter(row => row.method === 'POST')).toHaveLength(1);
   expect(requests.some(row => row.url.includes('/preparations/requests/'))).toBe(true);
@@ -98,7 +98,7 @@ it('keeps the current task after a progress read fails and resumes reading witho
     if (reads === 2) throw new TypeError('read disconnected');
     return { task: task('done'), report: report(true) };
   };
-  render(<ETFHistoryPanel portfolioId={1} />);
+  render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   await screen.findByText('补充进度读取失败，任务可能仍在运行。请重试读取进度。');
   expect(screen.getByRole('button', { name: '补充ETF历史数据' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '重试读取进度' }));
@@ -112,7 +112,7 @@ it('discards a late result after switching portfolios', async () => {
     if (url.includes('/scope')) return url.includes('portfolio_id=2') ? scope(2) : { ...scope(), latest_task: task('running') };
     return new Promise(resolve => { resolveOld = resolve; });
   };
-  const view = render(<ETFHistoryPanel portfolioId={1} />);
+  const view = render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   await waitFor(() => expect(requests.some(row => row.url.includes('/preparations/task-1'))).toBe(true));
   view.rerender(<ETFHistoryPanel portfolioId={2} />);
   await screen.findByText(/159915/);
@@ -126,11 +126,22 @@ it('treats a submission timeout as unconfirmed and preserves the request for rec
     if (init?.method === 'POST') return new Response(JSON.stringify({ detail: '等待超时' }), { status: 408 });
     return new Response(JSON.stringify(scope()), { status: 200 });
   }));
-  render(<ETFHistoryPanel portfolioId={1} />);
+  render(<ETFHistoryPanel portfolioId={1} defaultOpen />);
   const submit = await screen.findByRole('button', { name: '补充ETF历史数据' });
   await waitFor(() => expect(submit).toBeEnabled());
   fireEvent.click(submit);
   expect(await screen.findByText('尚未确认补充是否开始，请先重试读取进度。')).toBeVisible();
   expect(localStorage.getItem('etf-history-request:1')).not.toBeNull();
   expect(submit).toBeDisabled();
+});
+
+it('starts collapsed and expands on demand', async () => {
+  render(<ETFHistoryPanel portfolioId={1} />);
+  expect(screen.queryByRole('button', { name: '补充ETF历史数据' })).not.toBeInTheDocument();
+  expect(screen.getByText(/行情齐全不代表可成交/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '展开' }));
+  expect(await screen.findByRole('button', { name: '补充ETF历史数据' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '收起' }));
+  expect(screen.queryByRole('button', { name: '补充ETF历史数据' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '展开' })).toBeVisible();
 });

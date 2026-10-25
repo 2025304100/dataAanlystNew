@@ -453,8 +453,8 @@ class TestSyncIndexDaily:
         start_year = int(start_arg[:4])
         assert start_year == date.today().year - 5
 
-    def test_sync_skips_invalid_date_row(self, db_session):
-        """某行日期为空/NaN 时跳过，不阻塞其他行。"""
+    def test_sync_rejects_batch_with_invalid_date_before_writing(self, db_session):
+        """缺少日期时整批拒绝，不能截断后把部分结果当作同步成功。"""
         bad_frame = pd.DataFrame(
             [
                 {"日期": "2026-07-14", "开盘": 4000.0, "收盘": 4050.0, "最高": 4080.0, "最低": 3990.0, "成交量": 1000000.0, "成交额": 4.02e9},
@@ -462,15 +462,13 @@ class TestSyncIndexDaily:
             ]
         )
         with patch("app.services.index_data.call_akshare_with_retry", return_value=bad_frame):
-            result = sync_index_daily(
-                db_session, "000300",
-                start_date=date(2026, 7, 14),
-                end_date=date(2026, 7, 16),
-            )
-
-        assert result.received == 2
-        assert result.written == 1
-        assert result.skipped == 1
+            with pytest.raises(ValueError, match="日期"):
+                sync_index_daily(
+                    db_session, "000300",
+                    start_date=date(2026, 7, 14),
+                    end_date=date(2026, 7, 16),
+                )
+        assert db_session.execute(select(IndexPrice)).scalars().all() == []
 
     def test_sync_different_symbols_isolated(self, db_session):
         """不同 symbol 的数据互相隔离。"""

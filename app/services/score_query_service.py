@@ -4,11 +4,11 @@ Q22 强制规则：
   factor_model_run_id = bound_id       # 必须绑定 exact；禁止按 weight_mode/target_code 推导
   AND trade_date <= decision_date     # 绝不用未来 Score
   AND factor_data_cutoff_at <= data_cutoff_at     # 截止时间双重校验
-  每 symbol_id 取最新一条（ROW_NUMBER() OVER partition by symbol order by ... desc）
+  每 symbol_id 取符合时间和成员版本边界的最新一条（MySQL 5.7 兼容）
   published_at 必须存在且 <= data_cutoff_at 才算 PIT_SAFE（否则 NOT_PIT_SAFE）
 
 新增联合索引（SQL 侧由 G0-WP0-2b 迁移脚本提供）：
-  idx_score_fmr_sym_dt ON scores(factor_model_run_id, symbol_id, trade_date)
+  idx_score_fmr_sym_dt ON scores(factor_model_run_id, symbol_id, trade_date, factor_data_cutoff_at, id)
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from app.models.decision_engine import StrategyExecutionSnapshot
 from app.models.index_price import IndexPrice
 from app.models.portfolio import Portfolio
 from app.models.score import Score
+from app.models.symbol import Symbol
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +70,9 @@ def fetch_latest_pit_scores(
         return []
     if not factor_model_run_id:
         raise ValueError("factor_model_run_id 必须显式绑定（Q21方案A/Q22精确契约）")
+    requested_ids = set(symbol_ids)
 
-    # ── 窗口函数：每 symbol 取符合时间边界的最新一条
+    # 每 symbol 取符合时间边界的最新一条
     # 严格模式必须在窗口计算前过滤披露时间。若先选未来修订再过滤，较早但
     # 已经可见的修订会被错误丢弃。
     where = [
@@ -94,84 +96,83 @@ def fetch_latest_pit_scores(
             Score.model_alpha_score >= 0,
             Score.model_alpha_score <= 100,
         ])
-    # 排序优先级：trade_date DESC, factor_data_cutoff_at DESC, id DESC
-    subq = (
-        select(
-            Score,
-            func.row_number().over(
-                partition_by=Score.symbol_id,
-                order_by=(
-                    Score.trade_date.desc(),
-                    Score.factor_data_cutoff_at.desc().nullslast(),
-                    Score.id.desc(),
-                ),
-            ).label("rn"),
-        )
-        .where(and_(*where))
-        .subquery()
-    )
-    stmt = select(subq).order_by(subq.c.symbol_id, subq.c.rn)
+    # The common path performs one indexed top-1 lookup per requested symbol.
+    # A version snapshot can use legacy JSON representations, so preserve its
+    # Python normalization contract while streaming bounded batches instead of
+    # materializing the entire history. Never LIMIT the overall row count: an
+    # older matching revision must remain discoverable.
+    order = (Score.trade_date.desc(), Score.factor_data_cutoff_at.desc(), Score.id.desc())
     if not factor_member_versions:
-        stmt = stmt.where(subq.c.rn == 1)
-    rows = db.execute(stmt).all()
+        latest_id = (select(Score.id).where(and_(*where), Score.symbol_id == Symbol.id)
+                     .order_by(*order).limit(1).correlate(Symbol).scalar_subquery())
+        query = (select(Score).select_from(Symbol).join(Score, Score.id == latest_id)
+                 .where(Symbol.id.in_(requested_ids)))
+    else:
+        query = select(Score).where(and_(*where)).order_by(*order)
+    rows = db.execute(query.execution_options(yield_per=128)).scalars()
 
     results: list[ScoreRow] = []
     seen_symbols: set[int] = set()
     import json as _json
-    for r in rows:
-        if int(r.symbol_id) in seen_symbols:
-            continue
-        if factor_member_versions:
-            from app.services.decision_engine import _normalise_factor_versions
-            if _normalise_factor_versions(r.factor_member_versions_json) != _normalise_factor_versions(factor_member_versions):
+    try:
+        for r in rows:
+            if int(r.symbol_id) in seen_symbols:
                 continue
-        raw_published_at = getattr(r, "published_at", None)
-        pit_flag = "NOT_PIT_SAFE"
-        if raw_published_at is not None:
-            inp = getattr(r, "factor_data_cutoff_at", None)
-            pit_flag = "PIT_SAFE" if raw_published_at <= data_cutoff_at and inp is not None and inp <= data_cutoff_at else "NOT_PIT_SAFE"
-        # Q4.2：严格 PIT 模式下，published_at 为 NULL 或晚于 cutoff 均剔除
-        if require_published_at:
-            if raw_published_at is None:
-                continue
-            if raw_published_at > data_cutoff_at:
-                # 未来披露：NOT_PIT_SAFE，正式 PIT 必须阻断 (Q4.2 / WP0-6a 反例)
-                continue
-        # 分值提取：model_alpha_score 优先（真实模型输出），否则组合股质+时点
-        value: float | None = getattr(r, "model_alpha_score", None)
-        if value is None:
-            fq = getattr(r, "factor_quality_score", None) or 0.0
-            ft = getattr(r, "factor_timing_score", None) or 0.0
-            value = fq * 0.5 + ft * 0.5
-        # 因子贡献：优先 factor_scores_json，其次 dimension_scores_json
-        contribs: dict[str, Any] = {}
-        for col_name in ("factor_scores_json", "dimension_scores_json"):
-            raw = getattr(r, col_name, None)
-            if raw:
-                try:
-                    contribs = _json.loads(raw) if isinstance(raw, str) else dict(raw)
-                    if contribs:
-                        break
-                except Exception:
+            if factor_member_versions:
+                from app.services.decision_engine import _normalise_factor_versions
+                if _normalise_factor_versions(r.factor_member_versions_json) != _normalise_factor_versions(factor_member_versions):
                     continue
-        results.append(ScoreRow(
-            symbol_id=int(r.symbol_id),
-            score_id=int(r.id),
-            score_value=float(value or 0.0),
-            score_rank=None,  # rank 后处理
-            trade_date=r.trade_date,
-            factor_data_cutoff_at=r.factor_data_cutoff_at,
-            published_at=raw_published_at,
-            pit_safe_flag=pit_flag,
-            factor_contributions=contribs,
-            model_alpha_score=getattr(r, "model_alpha_score", None),
-            factor_model_run_id=getattr(r, "factor_model_run_id", None),
-            factor_set_id=getattr(r, "factor_set_id", None),
-            factor_member_versions_json=getattr(r, "factor_member_versions_json", None),
-        ))
-        seen_symbols.add(int(r.symbol_id))
+            raw_published_at = getattr(r, "published_at", None)
+            pit_flag = "NOT_PIT_SAFE"
+            if raw_published_at is not None:
+                inp = getattr(r, "factor_data_cutoff_at", None)
+                pit_flag = "PIT_SAFE" if raw_published_at <= data_cutoff_at and inp is not None and inp <= data_cutoff_at else "NOT_PIT_SAFE"
+            # Q4.2：严格 PIT 模式下，published_at 为 NULL 或晚于 cutoff 均剔除
+            if require_published_at:
+                if raw_published_at is None:
+                    continue
+                if raw_published_at > data_cutoff_at:
+                    # 未来披露：NOT_PIT_SAFE，正式 PIT 必须阻断 (Q4.2 / WP0-6a 反例)
+                    continue
+            # 分值提取：model_alpha_score 优先（真实模型输出），否则组合股质+时点
+            value: float | None = getattr(r, "model_alpha_score", None)
+            if value is None:
+                fq = getattr(r, "factor_quality_score", None) or 0.0
+                ft = getattr(r, "factor_timing_score", None) or 0.0
+                value = fq * 0.5 + ft * 0.5
+            # 因子贡献：优先 factor_scores_json，其次 dimension_scores_json
+            contribs: dict[str, Any] = {}
+            for col_name in ("factor_scores_json", "dimension_scores_json"):
+                raw = getattr(r, col_name, None)
+                if raw:
+                    try:
+                        contribs = _json.loads(raw) if isinstance(raw, str) else dict(raw)
+                        if contribs:
+                            break
+                    except Exception:
+                        continue
+            results.append(ScoreRow(
+                symbol_id=int(r.symbol_id),
+                score_id=int(r.id),
+                score_value=float(value or 0.0),
+                score_rank=None,  # rank 后处理
+                trade_date=r.trade_date,
+                factor_data_cutoff_at=r.factor_data_cutoff_at,
+                published_at=raw_published_at,
+                pit_safe_flag=pit_flag,
+                factor_contributions=contribs,
+                model_alpha_score=getattr(r, "model_alpha_score", None),
+                factor_model_run_id=getattr(r, "factor_model_run_id", None),
+                factor_set_id=getattr(r, "factor_set_id", None),
+                factor_member_versions_json=getattr(r, "factor_member_versions_json", None),
+            ))
+            seen_symbols.add(int(r.symbol_id))
+            if len(seen_symbols) == len(requested_ids):
+                break
+    finally:
+        rows.close()
     # ── 计算 rank（1 = 最高 score_value）
-    results.sort(key=lambda x: x.score_value, reverse=True)
+    results.sort(key=lambda x: (-x.score_value, x.symbol_id))
     for idx, row in enumerate(results, start=1):
         row.score_rank = idx
     return results
@@ -324,6 +325,23 @@ def _classify_level(rate: float) -> str:
         return "FAIL"
 
 
+def _nearest_snapshot(db: Session, portfolio_id: int, start_date: date):
+    """Preserve the nearest-snapshot contract without SQLite date functions.
+
+    Two ordered LIMIT 1 queries bound memory and permit indexed date access.
+    Compare the two timestamps in Python; an equal distance prefers the earlier
+    observation and then the stable snapshot ID.
+    """
+    anchor = datetime.combine(start_date, datetime.min.time())
+    base = select(StrategyExecutionSnapshot).where(StrategyExecutionSnapshot.portfolio_id == portfolio_id)
+    before = db.execute(base.where(StrategyExecutionSnapshot.created_at <= anchor).order_by(
+        StrategyExecutionSnapshot.created_at.desc(), StrategyExecutionSnapshot.id).limit(1)).scalar_one_or_none()
+    after = db.execute(base.where(StrategyExecutionSnapshot.created_at > anchor).order_by(
+        StrategyExecutionSnapshot.created_at.asc(), StrategyExecutionSnapshot.id).limit(1)).scalar_one_or_none()
+    candidates = [item for item in (before, after) if item is not None]
+    return min(candidates, key=lambda item: (abs(item.created_at - anchor), item.created_at, item.id)) if candidates else None
+
+
 def estimate_score_coverage_window(
     db: Session,
     *,
@@ -363,18 +381,7 @@ def estimate_score_coverage_window(
         member_count_from_snapshot = len(member_ids)
     else:
         # 从 StrategyExecutionSnapshot 查 portfolio_id 且 created_at 最接近 start_date 的 1 条
-        snap_stmt = (
-            select(StrategyExecutionSnapshot)
-            .where(StrategyExecutionSnapshot.portfolio_id == portfolio_id)
-            .order_by(
-                func.abs(
-                    func.julianday(StrategyExecutionSnapshot.created_at)
-                    - func.julianday(func.datetime(start_date.isoformat()))
-                )
-            )
-            .limit(1)
-        )
-        snap = db.execute(snap_stmt).scalar_one_or_none()
+        snap = _nearest_snapshot(db, portfolio_id, start_date)
         if snap is None:
             logger.warning(
                 f"[estimate_score_coverage_window] portfolio_id={portfolio_id} 未找到 StrategyExecutionSnapshot，"
@@ -649,18 +656,7 @@ def _fetch_member_ids_from_snapshot(
 ) -> list[int]:
     """与 estimate_score_coverage_window 相同的 member_ids_used 取法。"""
     import json as _json_internal
-    snap_stmt = (
-        select(StrategyExecutionSnapshot)
-        .where(StrategyExecutionSnapshot.portfolio_id == portfolio_id)
-        .order_by(
-            func.abs(
-                func.julianday(StrategyExecutionSnapshot.created_at)
-                - func.julianday(func.datetime(start_date.isoformat()))
-            )
-        )
-        .limit(1)
-    )
-    snap = db.execute(snap_stmt).scalar_one_or_none()
+    snap = _nearest_snapshot(db, portfolio_id, start_date)
     if snap is None:
         return []
     try:
@@ -690,18 +686,7 @@ def _fetch_snapshot_key_members(
     start_date: date,
 ) -> list[int] | None:
     """从最近 snapshot 取 key_members_json（若存在）。"""
-    snap_stmt = (
-        select(StrategyExecutionSnapshot)
-        .where(StrategyExecutionSnapshot.portfolio_id == portfolio_id)
-        .order_by(
-            func.abs(
-                func.julianday(StrategyExecutionSnapshot.created_at)
-                - func.julianday(func.datetime(start_date.isoformat()))
-            )
-        )
-        .limit(1)
-    )
-    snap = db.execute(snap_stmt).scalar_one_or_none()
+    snap = _nearest_snapshot(db, portfolio_id, start_date)
     if snap is None:
         return None
     return _parse_key_members_from_json(getattr(snap, "key_members_json", None))

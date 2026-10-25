@@ -1564,7 +1564,8 @@ def _execute_snapshot_order_plans(
             detail = evidence.rejection_detail if evidence else "原订单尚未完成，与当天的新操作冲突，请先查看原订单。"
             result["rejected_decisions"].append({**item, "rejection_code": "PENDING_ORDER_CONFLICT", "rejection_detail": detail})
             result["errors"].append(detail)
-            db.commit()
+            if not dry_run:
+                db.commit()
             continue
         # 方案B：引擎级治理拒绝（governance_exit_only 下 BUY 被折成 REJECTED +
         # PORTFOLIO_EXECUTION_BLOCKED）不会产生可执行 BUY plan，但必须保留可审计留痕：

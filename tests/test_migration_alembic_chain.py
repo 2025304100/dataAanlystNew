@@ -328,8 +328,17 @@ class TestMigrationExecution:
         assert "api_deprecation_logs" in tables
         engine.dispose()
 
+    # wps_0023_049 起存在 append-only 迁移（downgrade 拒绝执行，保留验收证据），
+    # 从 head 一路降级到 base 结构性不可能。可逆性验证只针对可逆前缀：
+    # 升级到边界（048）再降级到 base。
+    REVERSIBLE_PREFIX_HEAD = "wps_0023_048_factor_audit_logs"
+
     def test_downgrade_drops_new_tables(self, fresh_sqlite_url):
-        """upgrade head 后 downgrade base，验证新建表被删除。"""
+        """upgrade 到可逆边界后 downgrade base，验证前缀内新建表被删除。
+
+        链上 wps_0023_049 / 050 / 073-078 等迁移为 append-only（downgrade 主动
+        raise RuntimeError 保留证据），因此 downgrade-to-base 只在可逆前缀上验证。
+        """
         from alembic import command
 
         cfg = _make_alembic_config(fresh_sqlite_url)
@@ -339,8 +348,8 @@ class TestMigrationExecution:
         Base.metadata.create_all(engine)
         engine.dispose()
 
-        # upgrade（幂等）
-        command.upgrade(cfg, "head")
+        # upgrade（幂等）——只升到可逆边界，不触发 append-only 段
+        command.upgrade(cfg, self.REVERSIBLE_PREFIX_HEAD)
 
         # downgrade 回 base
         command.downgrade(cfg, "base")
@@ -402,7 +411,12 @@ class TestMigrationExecution:
         engine.dispose()
 
     def test_upgrade_downgrade_upgrade_cycle(self, fresh_sqlite_url):
-        """upgrade → downgrade → upgrade 循环，验证可重复执行。"""
+        """upgrade → downgrade → upgrade 循环，验证可重复执行。
+
+        循环限定在可逆前缀（到 REVERSIBLE_PREFIX_HEAD）：append-only 迁移
+        的 downgrade 主动拒绝执行，跨过边界的降级在结构上不可能。第二轮
+        升级继续升到 head，覆盖全链可重复升级。
+        """
         from alembic import command
 
         cfg = _make_alembic_config(fresh_sqlite_url)
@@ -412,13 +426,13 @@ class TestMigrationExecution:
         Base.metadata.create_all(engine)
         engine.dispose()
 
-        # 第一轮 upgrade
-        command.upgrade(cfg, "head")
+        # 第一轮 upgrade（到可逆边界）
+        command.upgrade(cfg, self.REVERSIBLE_PREFIX_HEAD)
 
-        # downgrade
+        # downgrade 到 base（仅前缀段）
         command.downgrade(cfg, "base")
 
-        # 第二轮 upgrade（验证可重复）
+        # 第二轮 upgrade（验证可重复，且能继续穿过 append-only 段到 head）
         command.upgrade(cfg, "head")
 
         # 验证表存在
@@ -428,6 +442,7 @@ class TestMigrationExecution:
         assert "ai_sessions" in tables
         assert "api_deprecation_logs" in tables
         assert "portfolio_reviews" in tables
+        assert "portfolio_members" in tables
         engine.dispose()
 
 

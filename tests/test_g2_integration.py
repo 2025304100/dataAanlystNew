@@ -45,6 +45,8 @@ def _seed_bars(db: "Session", symbol_id: int, days: list[date], *, base: float =
             volume=1000000 + int(i * 1000),
             amount=round(p_close * 1000000, 2),
         ))
+    from tests.historical_backtest_helpers import seed_daily_history
+    seed_daily_history(db, symbol_id, days)
     db.commit()
 
 

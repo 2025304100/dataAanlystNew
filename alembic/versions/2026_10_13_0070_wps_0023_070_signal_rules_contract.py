@@ -69,7 +69,8 @@ def upgrade() -> None:
                 column = columns[name]
                 batch.alter_column(
                     name, existing_type=column["type"], existing_nullable=False,
-                    existing_server_default=column.get("default"), nullable=True,
+                    existing_server_default=(sa.text(column["default"]) if column.get("default") is not None else None),
+                    nullable=True,
                 )
             if add_active:
                 # An intermediate NULL has a safe, distinguishable meaning if

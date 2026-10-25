@@ -17,9 +17,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from app.core.storage_limits import validate_mysql_text
 
-from app.models.portfolio import Position
+from app.models.portfolio import Portfolio, Position
 from app.models.portfolio_member import (
     EXECUTION_MANUAL,
     PortfolioMember,
@@ -32,6 +34,71 @@ from app.models.portfolio_member import (
 def _now_utc() -> datetime:
     """当前 UTC 时间（naive，与项目其他模型一致）。"""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _lock_portfolio(db: Session, portfolio_id: int) -> None:
+    # Admission/lifecycle and simulated orders share this lock. In particular,
+    # a holding cannot arrive between archive's position check and its commit.
+    db.execute(select(Portfolio.id).where(Portfolio.id == portfolio_id).with_for_update())
+
+
+def _locked_member(db: Session, member_id: int) -> PortfolioMember | None:
+    portfolio_id = db.scalar(select(PortfolioMember.portfolio_id).where(PortfolioMember.id == member_id))
+    if portfolio_id is None:
+        return None
+    _lock_portfolio(db, portfolio_id)
+    return db.scalar(select(PortfolioMember).where(PortfolioMember.id == member_id)
+                     .with_for_update().execution_options(populate_existing=True))
+
+
+def _validate_fields(*, status=None, execution_mode=None, source_type=None, priority=None):
+    if status is not None and status not in {STATUS_ACTIVE, STATUS_PAUSED, STATUS_ARCHIVED}:
+        raise ValueError("非法成员状态")
+    if source_type is not None and source_type not in {"legacy_position", "candidate", "observation", "manual"}:
+        raise ValueError("非法成员来源")
+    if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 100):
+        raise ValueError("priority 必须是 0 到 100 的整数")
+    if execution_mode is not None:
+        execution_mode = execution_mode.strip().lower()
+        if execution_mode not in {"manual", "confirm", "auto"}:
+            raise ValueError("非法成员执行模式")
+    return execution_mode
+
+
+def _validate_optional_ids(*values):
+    if any(isinstance(value, bool) for value in values):
+        raise ValueError("成员关联 ID 不能使用布尔值")
+
+
+def _transition_member(db: Session, member: PortfolioMember, status: str, *, force=False) -> None:
+    if status == STATUS_ARCHIVED:
+        if member.effective_to is None:
+            if not force:
+                has_pos, quantity = has_position(db, portfolio_id=member.portfolio_id, symbol_id=member.symbol_id)
+                if has_pos:
+                    raise MemberHasPositionError(member.portfolio_id, member.symbol_id, quantity)
+            member.effective_to = max(_now_utc(), member.effective_from)
+    elif member.effective_to is not None:
+        existing = db.scalar(select(PortfolioMember).where(
+            PortfolioMember.portfolio_id == member.portfolio_id,
+            PortfolioMember.symbol_id == member.symbol_id,
+            PortfolioMember.effective_to.is_(None),
+        ).with_for_update())
+        if existing is not None and existing.id != member.id:
+            raise ValueError(f"已有新的有效成员 (id={existing.id})，不能恢复旧成员 (id={member.id})")
+        member.effective_to = None
+    member.status = status
+
+
+def _commit_member(db: Session) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        message = str(exc.orig)
+        if "portfolio_members" in message and ("Duplicate" in message or "UNIQUE" in message):
+            raise ValueError("成员已存在，同一组合同一标的只能存在一个当前有效成员") from exc
+        raise
 
 
 class MemberHasPositionError(Exception):
@@ -77,7 +144,15 @@ def create_member(
     约束（spec line 199）："同一组合同一标的只能存在一条当前有效成员关系"。
     如果已存在有效成员（effective_to IS NULL），抛出 ValueError。
     """
-    # 检查是否已有有效成员
+    execution_mode = _validate_fields(status=status, execution_mode=execution_mode, source_type=source_type, priority=priority)
+    if isinstance(symbol_id, bool) or not isinstance(symbol_id, int) or symbol_id <= 0:
+        raise ValueError("symbol_id 必须是正整数")
+    _validate_optional_ids(source_id, entry_rule_version_id, exit_rule_version_id)
+    validate_mysql_text(note, field="note")
+    if effective_from is not None and effective_from.tzinfo is not None:
+        effective_from = effective_from.astimezone(timezone.utc).replace(tzinfo=None)
+    _lock_portfolio(db, portfolio_id)
+    # 当前读，不能在 MySQL RR 下复用调用方先前建立的快照。
     existing = db.execute(
         select(PortfolioMember).where(
             and_(
@@ -85,7 +160,7 @@ def create_member(
                 PortfolioMember.symbol_id == symbol_id,
                 PortfolioMember.effective_to.is_(None),
             )
-        )
+        ).with_for_update()
     ).scalars().first()
 
     if existing is not None:
@@ -109,8 +184,12 @@ def create_member(
         note=note,
         created_at=_now_utc(),
     )
+    if status == STATUS_ARCHIVED:
+        # Creation must obey the same holding guard and SCD2 interval contract.
+        member.effective_from = member.effective_from or _now_utc()
+        _transition_member(db, member, status)
     db.add(member)
-    db.commit()
+    _commit_member(db)
     db.refresh(member)
     return member
 
@@ -208,12 +287,15 @@ def update_member(
     仅更新显式传入的非 None 字段（manual_lock / priority 例外，允许显式传入
     False / 0 等假值）。
     """
-    member = db.get(PortfolioMember, member_id)
+    execution_mode = _validate_fields(status=status, execution_mode=execution_mode, priority=priority)
+    _validate_optional_ids(entry_rule_version_id, exit_rule_version_id)
+    validate_mysql_text(note, field="note")
+    member = _locked_member(db, member_id)
     if member is None:
         return None
 
     if status is not None:
-        member.status = status
+        _transition_member(db, member, status)
     if execution_mode is not None:
         member.execution_mode = execution_mode
     if entry_rule_version_id is not None:
@@ -228,7 +310,7 @@ def update_member(
         member.note = note
 
     member.updated_at = _now_utc()
-    db.commit()
+    _commit_member(db)
     return member
 
 
@@ -251,7 +333,7 @@ def has_position(
                 Position.symbol_id == symbol_id,
                 Position.quantity != 0,
             )
-        )
+        ).with_for_update()
     ).scalars().first()
 
     if pos is None:
@@ -284,27 +366,13 @@ def archive_member(
     注：归档只修改 PortfolioMember 记录，不删除 Position（spec line 334
     "成员归档不会误删持仓"）。
     """
-    member = db.get(PortfolioMember, member_id)
+    member = _locked_member(db, member_id)
     if member is None:
         return None
 
-    # 检查持仓（force=False 时）
-    if not force:
-        has_pos, qty = has_position(
-            db,
-            portfolio_id=member.portfolio_id,
-            symbol_id=member.symbol_id,
-        )
-        if has_pos:
-            raise MemberHasPositionError(
-                member.portfolio_id, member.symbol_id, qty
-            )
-
-    # 归档：设置 effective_to + status=archived（不物理删除）
-    member.effective_to = _now_utc()
-    member.status = STATUS_ARCHIVED
+    _transition_member(db, member, STATUS_ARCHIVED, force=force)
     member.updated_at = _now_utc()
-    db.commit()
+    _commit_member(db)
     return member
 
 
@@ -325,25 +393,13 @@ def restore_member(db: Session, *, member_id: int) -> PortfolioMember | None:
     如果同一组合同标的已有新的有效成员，抛出 ValueError
     （参照 spec line 199 唯一性约束）。
     """
-    member = db.get(PortfolioMember, member_id)
+    member = _locked_member(db, member_id)
     if member is None:
         return None
 
-    # 检查是否已有新的有效成员
-    existing = get_active_member(
-        db,
-        portfolio_id=member.portfolio_id,
-        symbol_id=member.symbol_id,
-    )
-    if existing is not None and existing.id != member.id:
-        raise ValueError(
-            f"已有新的有效成员 (id={existing.id})，不能恢复旧成员 (id={member_id})"
-        )
-
-    member.effective_to = None
-    member.status = STATUS_ACTIVE
+    _transition_member(db, member, STATUS_ACTIVE)
     member.updated_at = _now_utc()
-    db.commit()
+    _commit_member(db)
     return member
 
 

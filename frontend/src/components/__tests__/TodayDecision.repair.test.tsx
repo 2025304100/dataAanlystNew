@@ -13,7 +13,8 @@
 // - mock AppContext / api.client / i18n / antd message
 // - 不调用真实后端 API
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { enterReadOnlyMode } from "../../test/acceptance";
+import { act, render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
   mockContext: {
@@ -181,6 +182,19 @@ function makeDataHealth(count: number, options: MakeDataHealthOptions = {}): Dat
 }
 
 describe("TodayDecision 待修复样本交互测试", () => {
+  it("keeps repair actions disabled in read-only mode without disabling refresh", async () => {
+    mockApi.getDataHealth.mockResolvedValue(makeDataHealth(3));
+    const restore = await enterReadOnlyMode();
+    const view = render(<TodayDecision />);
+    try {
+      const button = (await screen.findByText("tdRepairAll")).closest("button")!;
+      expect(button).toBeDisabled(); fireEvent.click(button);
+      for (const repair of await screen.findAllByText("tdRepair")) expect(repair.closest("button")).toBeDisabled();
+      expect(mockApi.repairAllSymbolMarketData).not.toHaveBeenCalled();
+      expect(mockApi.repairSymbolMarketData).not.toHaveBeenCalled();
+      expect(screen.getByText("tdRefresh").closest("button")).toBeEnabled();
+    } finally { view.unmount(); await restore(); }
+  });
   beforeEach(() => {
     // 显式逐个 reset，避免 vi.clearAllMocks 把未在 beforeEach 中重新赋默认值的 mock（getPortfolioStatus 等）清空
     mockContext.setActiveTab.mockClear();
@@ -247,9 +261,22 @@ describe("TodayDecision 待修复样本交互测试", () => {
   });
 
   it("starts a real simulation task only after checks and shows the task rather than claiming completion", async () => {
+    let finishLoading!: () => void;
+    mockContext.loadWorkbench.mockImplementationOnce(() => new Promise<void>((resolve) => { finishLoading = resolve; }));
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /执行预检|检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    // AntD loading buttons remain DOM-enabled but ignore clicks. Hold the real
+    // initial load pending so this contract cannot depend on machine timing.
+    await waitFor(() => expect(check).toHaveClass("ant-btn-loading"));
+    expect(check).toBeEnabled();
+    fireEvent.click(check);
+    expect(mockApi.preflightAutoSimulation).not.toHaveBeenCalled();
+    expect(mockApi.startAutoSimulation).not.toHaveBeenCalled();
+    await act(async () => { finishLoading(); });
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     expect(mockApi.startAutoSimulation).not.toHaveBeenCalled();
     fireEvent.click(check);
     const start = await screen.findByRole("button", { name: /进入自动推演 \/ Shadow|开始模拟交易/ });
@@ -273,7 +300,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     try {
       const view = render(<TodayDecision />);
       const check = await screen.findByRole("button", { name: /执行预检|检查能否开始/ });
-      await waitFor(() => expect(check).toBeEnabled());
+      await waitFor(() => {
+        expect(check).toBeEnabled();
+        expect(check).not.toHaveClass("ant-btn-loading");
+      });
       fireEvent.click(check);
       await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalled());
       expect(mockApi.preflightAutoSimulation.mock.calls[0][1]).toMatchObject({ trade_date: expectedDate });
@@ -285,7 +315,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     mockApi.preflightAutoSimulation.mockResolvedValue({ proceed: false, trade_date: "2026-07-24", skip_reason: "SCHEDULE_DATE_MISMATCH", skip_detail: "请按北京时间重新检查" } as any);
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     expect(await screen.findByText("交易日期与北京时间不一致")).toBeVisible();
     expect(screen.queryByText("SCHEDULE_DATE_MISMATCH")).not.toBeInTheDocument();
@@ -301,7 +334,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     mockApi.startAutoSimulation.mockRejectedValueOnce({ status_code: 409, detail: { title_zh: "组合状态已改变", detail_zh: "请重新检查" } });
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     const start = screen.getByRole("button", { name: /开始模拟交易/ });
     await waitFor(() => expect(start).toBeEnabled());
@@ -320,7 +356,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     mockApi.getAsyncTask.mockResolvedValue({ id: "sim-task-1", status, percent: 100, message: "任务记录", errors: [] });
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     const start = screen.getByRole("button", { name: /开始模拟交易/ });
     await waitFor(() => expect(start).toBeEnabled());
@@ -336,7 +375,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     mockApi.getAsyncTask.mockRejectedValueOnce(new Error("network down"));
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     const start = screen.getByRole("button", { name: /开始模拟交易/ });
     await waitFor(() => expect(start).toBeEnabled());
@@ -357,7 +399,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     mockApi.getAsyncTask.mockResolvedValueOnce({ id: "sim-task-1", status, percent: 100, message: "任务记录", errors: [] });
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     const start = screen.getByRole("button", { name: /开始模拟交易/ });
     await waitFor(() => expect(start).toBeEnabled());
@@ -381,7 +426,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     } as any);
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     const start = screen.getByRole("button", { name: /开始模拟交易/ });
     await waitFor(() => expect(start).toBeEnabled());
@@ -396,7 +444,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
     mockApi.getAsyncTask.mockResolvedValue({ id: "sim-task-1", status: "done", percent: 100, message: "完成", errors: [] });
     render(<TodayDecision />);
     const check = await screen.findByRole("button", { name: /检查能否开始/ });
-    await waitFor(() => expect(check).toBeEnabled());
+    await waitFor(() => {
+      expect(check).toBeEnabled();
+      expect(check).not.toHaveClass("ant-btn-loading");
+    });
     fireEvent.click(check);
     const start = screen.getByRole("button", { name: /开始模拟交易/ });
     await waitFor(() => expect(start).toBeEnabled());
@@ -406,8 +457,11 @@ describe("TodayDecision 待修复样本交互测试", () => {
     await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalledTimes(2));
     expect(start).toBeDisabled();
     expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
+    const settledCheck = await screen.findByRole("button", { name: /重新检查/ });
+    await waitFor(() => expect(settledCheck).not.toHaveClass("ant-btn-loading"));
     mockApi.preflightAutoSimulation.mockResolvedValue({ proceed: true, gate: "PASSED", reason_codes: [], trade_date: "2026-07-25" });
-    fireEvent.click(screen.getByRole("button", { name: /重新检查/ }));
+    fireEvent.click(settledCheck);
+    await waitFor(() => expect(mockApi.preflightAutoSimulation).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(start).toBeEnabled());
     expect(mockApi.startAutoSimulation).toHaveBeenCalledOnce();
   });

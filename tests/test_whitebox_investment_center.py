@@ -122,17 +122,21 @@ def test_create_portfolio_simulated_seeds_cash_ledger(db_session):
 
 
 def test_create_portfolio_real_account_no_cash_ledger(db_session):
-    """【P1-3 API 测试】create_portfolio 对 real 账户不注入资金流水。"""
+    """【P1-3 API 测试】create_portfolio 对真实账户不注入资金流水。
+
+    前端契约：真实账户在 API 层取值 "manual"（CreatePortfolioModal
+    type==="real" → account_type="manual"），"real" 不是线上取值。
+    """
     payload = PortfolioCreate(
         name="QA-Real",
-        account_type="real",
+        account_type="manual",
         total_capital=200_000,
         investable_ratio=0.9,
         cash_reserve_ratio=0.1,
     )
 
     result = create_portfolio(payload, db=db_session)
-    assert result.account_type == "real"
+    assert result.account_type == "manual"
 
     ledgers = db_session.query(CashLedger).filter(CashLedger.portfolio_id == result.id).all()
     assert len(ledgers) == 0
@@ -393,3 +397,65 @@ def test_create_sim_order_portfolio_not_found_raises_404(db_session):
     with pytest.raises(HTTPException) as exc:
         create_sim_order(99999, payload, db=db_session)
     assert exc.value.status_code == 404
+
+
+# ----------------------------------------------------------------------------
+# 8. T-D4 订单入口门禁：手动买单在阻断组合被拒，风险退出卖单不受影响
+# ----------------------------------------------------------------------------
+
+def _make_blocked_portfolio(db_session, name="阻断组合") -> Portfolio:
+    p = _make_portfolio(db_session, name=name)
+    p.status_reconciliation = "RECONCILIATION_BLOCKED"
+    db_session.commit()
+    db_session.refresh(p)
+    return p
+
+
+def test_create_sim_order_buy_blocked_on_reconciliation_blocked_portfolio(db_session):
+    """【T-D4 回归】对账阻断（block_level=6）组合的手动买单必须被门禁拒绝。
+
+    修复前：手动 sim-orders 不经过 order_entry_gate_check，阻断组合仍可买入。
+    修复后：409 + ORDER_ENTRY_BLOCKED 语义，且不产生订单/成交/现金变动。
+    """
+    portfolio = _make_blocked_portfolio(db_session)
+    sym = _make_symbol(db_session, symbol="600012")
+    payload = SimOrderCreate(symbol_id=sym.id, side="buy", quantity=100, price=10.0)
+    cash_before = (
+        db_session.query(CashLedger).filter(CashLedger.portfolio_id == portfolio.id).count()
+    )
+    with pytest.raises(HTTPException) as exc:
+        create_sim_order(portfolio.id, payload, db=db_session)
+    assert exc.value.status_code == 409
+    detail = exc.value.detail
+    assert isinstance(detail, dict)
+    assert detail["error_code"] == "COMPOSITE_BLOCK_LEVEL_TOO_HIGH"
+    assert "新买单已被禁止" in detail["user_message"]
+    # fail-closed：不产生订单、成交与新的资金流水
+    assert (
+        db_session.query(SimOrder).filter(SimOrder.portfolio_id == portfolio.id).count() == 0
+    )
+    assert (
+        db_session.query(SimTrade).filter(SimTrade.portfolio_id == portfolio.id).count() == 0
+    )
+    assert (
+        db_session.query(CashLedger).filter(CashLedger.portfolio_id == portfolio.id).count()
+        == cash_before
+    )
+
+
+def test_create_sim_order_sell_still_allowed_on_blocked_portfolio(db_session):
+    """【T-D4 回归】阻断组合的手动风险退出卖单不受买单门禁影响。"""
+    from app.models.portfolio import Position
+
+    portfolio = _make_blocked_portfolio(db_session, name="阻断组合-卖出")
+    sym = _make_symbol(db_session, symbol="600013")
+    db_session.add(
+        Position(portfolio_id=portfolio.id, symbol_id=sym.id, quantity=1000, avg_cost=10.0, asset_type="stock")
+    )
+    db_session.commit()
+    payload = SimOrderCreate(
+        symbol_id=sym.id, side="sell", quantity=100, price=10.0, enforce_rules=False
+    )
+    result = create_sim_order(portfolio.id, payload, db=db_session)
+    assert result.order.side == "sell"
+    assert result.order.filled_quantity == 100

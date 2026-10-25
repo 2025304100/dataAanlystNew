@@ -83,6 +83,12 @@ def test_overview_reads_real_external_tables(db_session):
 
 
 def test_start_creates_persisted_observable_task(db_session, monkeypatch):
+    class TradingDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 23)
+
+    monkeypatch.setattr(service, "date", TradingDate)
     created_threads: list[_DeferredThread] = []
     symbol = Symbol(symbol="600001", name="Plan Test", asset_type="stock", market="sh")
     watchlist = Watchlist(name="sync-test", list_type="manual")

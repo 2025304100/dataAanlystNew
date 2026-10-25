@@ -100,7 +100,9 @@ describe("AI factor draft confirmation contract", () => {
     fireEvent.click(await screen.findByRole("button", { name: /aiDraftConfirmCreate$/ }));
     await waitFor(() => expect(notices.error).toHaveBeenCalledWith("retryable failure"));
     expect(props.onClose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /aiDraftConfirmCreate$/ }));
+    const retry = screen.getByRole("button", { name: /aiDraftConfirmCreate$/ });
+    await waitFor(() => expect(retry).toBeEnabled());
+    fireEvent.click(retry);
     await waitFor(() => expect(props.onCreated).toHaveBeenCalledWith("created_factor", 99));
     const expected = { ...payload("draft_1"), code: "edited_factor" };
     expect(apiMock.confirmAIDraft).toHaveBeenNthCalledWith(1, 1, expected);

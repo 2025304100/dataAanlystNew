@@ -205,14 +205,19 @@ def sync_market_valuation_snapshot(
                 valuation.raw_json = json.dumps(row.to_dict(), ensure_ascii=False, default=str)
             synced.add(symbol.id)
             continue
-        valuation.pe_ttm = pe_ttm
-        valuation.pb = pb
-        valuation.total_market_cap = total_market_cap
-        valuation.circulating_market_cap = circulating_market_cap
-        valuation.industry = symbol.industry
-        valuation.industry_pe_percentile = None
-        valuation.pe_history_percentile = None
-        valuation.pe_score = calc_pe_score(pe_ttm, None, None)
+        for field, observed in {
+            "pe_ttm": pe_ttm, "pb": pb, "total_market_cap": total_market_cap,
+            "circulating_market_cap": circulating_market_cap,
+        }.items():
+            if observed is not None:
+                setattr(valuation, field, observed)
+        # This provider does not supply percentiles; absence is not a deletion.
+        if symbol.industry and not valuation.industry:
+            valuation.industry = symbol.industry
+        observed_score = calc_pe_score(valuation.pe_ttm, valuation.pe_history_percentile,
+                                       valuation.industry_pe_percentile)
+        if observed_score is not None:
+            valuation.pe_score = observed_score
         valuation.source = "eastmoney:valuation_daily"
         valuation.raw_json = json.dumps(row.to_dict(), ensure_ascii=False, default=str)
         synced.add(symbol.id)
@@ -329,14 +334,16 @@ def _upsert_valuation_history_row(
             existing.raw_json = json.dumps(valuation_data, ensure_ascii=False, default=str)
         db.flush()
         return existing
-    existing.pe_ttm = valuation_data.get("pe_ttm")
-    existing.pb = valuation_data.get("pb")
-    existing.total_market_cap = valuation_data.get("total_market_cap")
-    existing.circulating_market_cap = valuation_data.get("circulating_market_cap")
-    existing.industry = industry
-    existing.industry_pe_percentile = None
-    existing.pe_history_percentile = None
-    existing.pe_score = calc_pe_score(existing.pe_ttm, None, None)
+    for field in ("pe_ttm", "pb", "total_market_cap", "circulating_market_cap"):
+        observed = _safe_float(valuation_data.get(field))
+        if observed is not None:
+            setattr(existing, field, observed)
+    if industry and not existing.industry:
+        existing.industry = industry
+    observed_score = calc_pe_score(existing.pe_ttm, existing.pe_history_percentile,
+                                  existing.industry_pe_percentile)
+    if observed_score is not None:
+        existing.pe_score = observed_score
     existing.source = "akshare:stock_value_em"
     existing.raw_json = json.dumps(valuation_data, ensure_ascii=False, default=str)
     db.flush()

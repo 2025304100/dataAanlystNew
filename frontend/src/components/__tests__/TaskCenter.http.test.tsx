@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { App } from 'antd';
 import { AppProvider } from '../../context/AppContext';
 import TaskCenter from '../TaskCenter';
+vi.mock('../ai/ExplainButton', () => ({ default: () => null }));
 
 const record = { id: 'flow-history', source: 'async', task_type: 'external_sync_capital_flow', status: 'done',
   stage: 'done', percent: 100, processed: 20, total: 20, ok_count: 20, failed_count: 0,
@@ -27,6 +28,37 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); });
 const openPage = () => render(<App><AppProvider><TaskCenter /></AppProvider></App>);
+
+it('shows an explicit zero-unit holiday skip without calling it successful or inventing skipped units', async () => {
+  history = async () => json({ tasks: [{ ...record, total: 0, processed: 0, ok_count: 0,
+    message: '所选日期范围均为 A 股休市日，无需更新',
+    result: { outcome: 'skipped', success: 0, skipped: 0, failed: 0, records: 0, skip_reason: 'market_closed' } }] });
+  openPage();
+  expect(await screen.findByText('已跳过，未新增数据')).toBeVisible();
+  expect(screen.getByText('成功 0 / 跳过 0 / 失败 0')).toBeVisible();
+  fireEvent.click(screen.getByText('同步资金流'));
+  expect(await screen.findByText('所选日期范围均为 A 股休市日，无需更新')).toBeVisible();
+  expect(calls.every(call => call.method === 'GET')).toBe(true);
+});
+
+it('shows partial success while keeping failed tasks available for retry filtering', async () => {
+  history = async () => json({ tasks: [{ ...record, status: 'failed', ok_count: 5549, failed_count: 6,
+    total: 5555, processed: 5555, result: { outcome: 'partial_success', success: 5549, skipped: 0, failed: 6 } }] });
+  openPage();
+  expect(await screen.findByText('部分完成')).toBeVisible();
+  expect(screen.getByText('成功 5549 / 跳过 0 / 失败 6')).toBeVisible();
+  expect(screen.getByText('已处理 5555/5555')).toBeVisible();
+  expect(calls.every(call => call.method === 'GET')).toBe(true);
+});
+
+it('exposes mass skips instead of presenting processed counts as coverage', async () => {
+  history = async () => json({ tasks: [{ ...record, total: 1642, processed: 1642, ok_count: 11,
+    result: { outcome: 'success', success: 11, skipped: 1631, failed: 0 } }] });
+  openPage();
+  expect(await screen.findByText('成功 11 / 跳过 1631 / 失败 0')).toBeVisible();
+  expect(screen.getByText('超过一半已跳过，请核对覆盖与跳过原因')).toBeVisible();
+  expect(calls.every(call => call.method === 'GET')).toBe(true);
+});
 
 it('keeps task records visible when runtime statistics fail and retries only those statistics', async () => {
   observation = async () => json({ detail: 'statistics unavailable' }, 503);
@@ -73,7 +105,9 @@ it('keeps existing records after a refresh failure and clears only the recovered
   await screen.findByText('同步资金流');
   history = async () => json({ detail: 'history offline' }, 503);
   observation = async () => json({ detail: 'statistics offline' }, 503);
-  fireEvent.click(screen.getByRole('button', { name: /刷新/ }));
+  const refresh = screen.getByRole('button', { name: /刷新/ });
+  await waitFor(() => expect(refresh).toBeEnabled());
+  fireEvent.click(refresh);
   expect(await screen.findByText('任务记录暂时读不到')).toBeVisible();
   expect(await screen.findByText('运行统计暂时读不到')).toBeVisible();
   expect(screen.getByText('同步资金流')).toBeVisible();

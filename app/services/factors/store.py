@@ -559,16 +559,81 @@ import atexit as _wh_atexit
 
 _WH_POOLS = dict()
 _WH_POOLS_GUARD = _PATH_LOCKS_GUARD
+_EXTERNAL_WORKER_PATHS: set[str] = set()
+_WORKER_HANDOFF = threading.Condition(_WH_POOLS_GUARD)
+
+
+def warehouse_resource_budget() -> dict[str, int]:
+    """Explicit DuckDB limits shared by parent previews and isolated workers."""
+    try:
+        memory_mb = int(os.environ.get("FACTOR_WAREHOUSE_MEMORY_MB", "2048"))
+        threads = int(os.environ.get("FACTOR_WAREHOUSE_THREADS", "2"))
+    except ValueError as exc:
+        raise ValueError("Factor warehouse memory/thread budget must be integers") from exc
+    if not 32 <= memory_mb <= 65536 or not 1 <= threads <= 32:
+        raise ValueError("Factor warehouse memory budget must be 32..65536 MB and threads 1..32")
+    return {"memory_mb": memory_mb, "threads": threads}
+
+
+@contextmanager
+def external_warehouse_worker(path, *, timeout_seconds=30, wait_for_worker=False):
+    """Hand one warehouse to a child, without closing unrelated warehouses.
+
+    Existing users finish under their pool lock. New Web readers receive an
+    explicit busy error instead of opening a competing DuckDB writer handle.
+    The parent reopens lazily after the child has exited.
+    """
+    key = str(Path(path).resolve())
+    with _WORKER_HANDOFF:
+        if key in _EXTERNAL_WORKER_PATHS:
+            # A child can commit its terminal task receipt just before its
+            # supervisor stops descendants and releases the writer handle.
+            # A subsequent queued worker waits for that release; Web readers
+            # and callers without explicit handoff intent still fail busy.
+            if not wait_for_worker or not _WORKER_HANDOFF.wait_for(
+                lambda: key not in _EXTERNAL_WORKER_PATHS, timeout=timeout_seconds
+            ):
+                raise FactorWarehouseUnavailable("Factor warehouse is owned by an isolated worker; handoff unavailable")
+        _EXTERNAL_WORKER_PATHS.add(key)
+        pool = _WH_POOLS.get(key)
+    try:
+        if pool is not None:
+            if not pool["lock"].acquire(timeout=timeout_seconds):
+                raise FactorWarehouseUnavailable("Factor warehouse is busy; isolated worker did not take ownership")
+            try:
+                for attr in ("ro", "rw"):
+                    connection = pool.get(attr)
+                    if connection is not None:
+                        connection.close()
+                        pool[attr] = None
+                with _WH_POOLS_GUARD:
+                    _WH_POOLS.pop(key, None)
+            finally:
+                pool["lock"].release()
+        yield
+    finally:
+        with _WORKER_HANDOFF:
+            _EXTERNAL_WORKER_PATHS.discard(key)
+            _WORKER_HANDOFF.notify_all()
 
 
 def _get_or_create_shared_connections(path):
     key = str(path.resolve())
     with _WH_POOLS_GUARD:
+        if key in _EXTERNAL_WORKER_PATHS:
+            raise FactorWarehouseUnavailable("Factor warehouse is owned by an isolated worker; retry when the task finishes")
         pool = _WH_POOLS.get(key)
         if pool is None:
+            budget = warehouse_resource_budget()
             ddb = _load_duckdb()
             path.parent.mkdir(parents=True, exist_ok=True)
             rw = ddb.connect(str(path), read_only=False)
+            try:
+                rw.execute("SET memory_limit = ?", [f"{budget['memory_mb']}MB"])
+                rw.execute("SET threads = ?", [budget["threads"]])
+            except Exception:
+                rw.close()
+                raise
             ro = None
             if path.exists():
                 try: ro = ddb.connect(str(path), read_only=True)
@@ -644,6 +709,7 @@ class FactorWarehouse:
         self._pool_ref = _get_or_create_shared_connections(self.path)
 
     def __enter__(self):
+        self._pool_ref = _get_or_create_shared_connections(self.path)
         self._pool_ref["lock"].acquire()
         return self
 
@@ -660,8 +726,9 @@ class FactorWarehouse:
     # Guard: serialize via per-path RLock so threads share conns safely.
     @contextmanager
     def connection(self, *, read_only: bool = False):
-        if not getattr(self, "_pool_ref", None):
-            self._pool_ref = _get_or_create_shared_connections(self.path)
+        # Reacquire by path: a supervised process may have released the old
+        # pool between requests, and stale instances must reopen safely.
+        self._pool_ref = _get_or_create_shared_connections(self.path)
         if not read_only:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         if read_only and not self.path.exists():

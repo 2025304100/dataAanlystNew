@@ -38,6 +38,9 @@ def turnover_client(db_session, tmp_path, monkeypatch):
         app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
     monkeypatch.setattr(pipeline_task, "_start_worker", lambda task_id, runner: runner(task_id))
+    # Dispatch is external; keep the real pipeline in the fixture process so input adapters apply.
+    monkeypatch.setattr(pipeline_task, "_run_factor_pipeline_process",
+        lambda task_id, **kwargs: pipeline_task._run_factor_pipeline(task_id))
     with TestClient(app) as client:
         yield client
 

@@ -72,6 +72,8 @@ class FactorModelOptionBrief(BaseModel):
     factor_model_run_id: str
     factor_set_id: str | None = None
     trained_at: datetime | None = None
+    sample_count: int | None = None
+    data_cutoff_at: datetime | None = None
     gate_policy_version: str | None = None
     # G1-WP15：仅 research UI 可显示 production 门禁阈值外的模型
     passes_production_gate: bool = False

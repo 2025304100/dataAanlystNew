@@ -68,7 +68,9 @@ def cn_history_instrument(code: str) -> dict[str, str]:
     sh_etf_prefixes = ('510', '512', '513', '515', '516', '517', '518', '526',
                       '530', '551', '560', '561', '562', '563', '565', '566',
                       '567', '581', '587', '588', '589')
-    is_etf = (code.startswith(sh_etf_prefixes) or code.startswith('159')
+    # SZSE expanded ETF allocation to 158000-158999 in August 2023.
+    # https://www.szse.cn/marketServices/technicalservice/notice/t20230825_602945.html
+    is_etf = (code.startswith(sh_etf_prefixes) or code.startswith(('158', '159'))
               or '511000' <= code <= '511599' or '520500' <= code <= '520999')
     asset_type = "etf" if is_etf else "stock"
     prefixed = resolve_cn_prefixed_symbol(code, None, asset_type)

@@ -1,7 +1,16 @@
 """组合成员 Schema（WP4.4）。"""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
+from app.core.storage_limits import validate_mysql_text
+
+# 与 app/models/portfolio_member.py 的 STATUS_*/EXECUTION_*/SOURCE_* 常量保持一致。
+# API 层收紧为 Literal，非法值直接 422，避免脏状态写进 SCD2 成员表。
+MemberStatus = Literal["active", "paused", "archived"]
+MemberExecutionMode = Literal["manual", "confirm", "auto"]
+MemberSourceType = Literal["legacy_position", "candidate", "observation", "manual"]
 
 
 class PortfolioMemberRead(BaseModel):
@@ -32,31 +41,48 @@ class PortfolioMemberRead(BaseModel):
     latest_signal_action: str | None = None
 
 
-class PortfolioMemberCreate(BaseModel):
+class _MemberWrite(BaseModel):
+    @field_validator("source_id", "entry_rule_version_id", "exit_rule_version_id", mode="before", check_fields=False)
+    @classmethod
+    def _reject_boolean_identity(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("成员关联 ID 不能使用布尔值")
+        return value
+
+    @field_validator("note", check_fields=False)
+    @classmethod
+    def _note_storage_limit(cls, value):
+        return validate_mysql_text(value, field="note")
+
+
+class PortfolioMemberCreate(_MemberWrite):
     """组合成员创建请求。"""
 
-    symbol_id: int
-    status: str = Field("active", description="active/paused/archived")
-    execution_mode: str = Field("manual", description="manual/confirm/auto")
-    source_type: str = Field("manual", description="legacy_position/candidate/observation/manual")
+    symbol_id: int = Field(..., strict=True, gt=0)
+    status: MemberStatus = Field("active")
+    # execution_mode 留在路由层校验：历史契约对 " confirm " 等写法返回 503
+    # CAPABILITY_BLOCKED（见 test_unavailable_confirmation_mode_*），Literal 会
+    # 把它提前变成 422，改变既定行为。
+    execution_mode: str = Field("manual")
+    source_type: MemberSourceType = Field("manual")
     source_id: int | None = None
     entry_rule_version_id: int | None = None
     exit_rule_version_id: int | None = None
     effective_from: str | None = None
     manual_lock: bool = False
-    priority: int = Field(0, ge=0, le=100)
+    priority: int = Field(0, strict=True, ge=0, le=100)
     note: str | None = None
 
 
-class PortfolioMemberUpdate(BaseModel):
+class PortfolioMemberUpdate(_MemberWrite):
     """组合成员更新请求。"""
 
-    status: str | None = None
+    status: MemberStatus | None = None
     execution_mode: str | None = None
     entry_rule_version_id: int | None = None
     exit_rule_version_id: int | None = None
     manual_lock: bool | None = None
-    priority: int | None = None
+    priority: int | None = Field(None, strict=True, ge=0, le=100)
     note: str | None = None
 
 
@@ -94,6 +120,9 @@ class MemberHasPositionErrorSchema(BaseModel):
 
 
 __all__ = [
+    "MemberStatus",
+    "MemberExecutionMode",
+    "MemberSourceType",
     "PortfolioMemberRead",
     "PortfolioMemberCreate",
     "PortfolioMemberUpdate",

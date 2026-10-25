@@ -158,6 +158,8 @@ def test_strategy_options_only_expose_active_ready_model_and_its_factor_set(db_s
     options = get_factor_usage_options(db_session, portfolio.id)
 
     assert [item.factor_model_run_id for item in options.factor_models] == [active.id]
+    assert options.factor_models[0].sample_count == active.sample_count
+    assert options.factor_models[0].data_cutoff_at == active.data_cutoff_at
     assert options.factor_models[0].factor_set_id == "fs-stage3-active"
     assert [item.factor_set_id for item in options.factor_sets] == ["fs-stage3-active"]
     assert not options.blocking_reasons
@@ -536,8 +538,9 @@ def test_retired_runtime_model_cannot_expose_its_score_scope(db_session):
     assert rows == []
 
 
-def test_score_api_rejects_model_factor_set_mismatch_before_calculation(db_session):
-    """The public Score endpoint cannot create an untraceable model/set pair."""
+@pytest.mark.parametrize("requested_set", ["fs-stage3-score-api", "fs-stage3-score-api-other"])
+def test_score_api_requires_pipeline_for_any_model_scoring_without_writes(db_session, requested_set):
+    """The manual Score endpoint rejects both matching and mismatched model sets."""
     from app.api.routes.scores import calculate_scores
     from app.schemas.score import ScoreCalculationRequest
 
@@ -548,6 +551,7 @@ def test_score_api_rejects_model_factor_set_mismatch_before_calculation(db_sessi
         db_session, set_id="fs-stage3-score-api-other", model_id="model-stage3-score-api-other"
     )
     _activate(db_session, model.id)
+    before = list(db_session.execute(select(Score.__table__)).all())
 
     with pytest.raises(HTTPException) as error:
         calculate_scores(
@@ -556,13 +560,14 @@ def test_score_api_rejects_model_factor_set_mismatch_before_calculation(db_sessi
                 trade_date=date(2026, 8, 21),
                 weight_mode="ridge",
                 factor_model_run_id=model.id,
-                factor_set_id="fs-stage3-score-api-other",
+                factor_set_id=requested_set,
             ),
             db_session,
         )
 
     assert error.value.status_code == 422
-    assert "MODEL_FACTOR_SET_MISMATCH" in str(error.value.detail)
+    assert "MODEL_SCORING_PIPELINE_REQUIRED" in str(error.value.detail)
+    assert list(db_session.execute(select(Score.__table__)).all()) == before
 
 
 def test_model_train_api_rejects_non_frozen_factor_set_in_every_mode(db_session):

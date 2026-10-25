@@ -1,0 +1,50 @@
+{
+  "schema_version": "turnover-phase2-quadratic-basis-v1",
+  "status": "definition_locked_before_quadratic_return_performance",
+  "created_at_utc": "2026-10-16",
+  "hypothesis": "A joint linear model over original raw TS-Z20 and its square may express a U/inverted-U response; changing alpha for only one feature cannot add this shape.",
+  "basis_construction": "The square is formed from the raw per-symbol TS-Z20 before either basis has independent same-date MAD/zscore postprocessing. It is not the square of v3 normalized_value.",
+  "params": {},
+  "direction": "nonlinear",
+  "postprocess": {
+    "winsorize": {"method": "mad", "mad_multiplier": 3.0},
+    "zscore": {"ddof": 0},
+    "missing_policy": "exclude"
+  },
+  "basis": {
+    "turnover_z20_v3": {
+      "formula_expr": "iif(count(turnover_rate - turnover_rate, 20) == 20, iif(stddev(turnover_rate, 20) > 1e-8, (turnover_rate - mean(turnover_rate, 20)) / stddev(turnover_rate, 20), 0), None)",
+      "source": "Existing frozen v3; preserve factor version and active pointer"
+    },
+    "turnover_z20_squared": {
+      "formula_expr": "iif(count(turnover_rate - turnover_rate, 20) == 20 and stddev(turnover_rate, 20) > 1e-8, ((turnover_rate - mean(turnover_rate, 20)) / stddev(turnover_rate, 20)) ** 2, iif(count(turnover_rate - turnover_rate, 20) == 20, 0, None))",
+      "execution_plan_hash": "cb9d3d11a4fdb558",
+      "compiler_version": "dsl-2.0.0",
+      "ast_depth": 6,
+      "function_call_count": 5,
+      "node_count": 50,
+      "max_lookback": 20,
+      "source_mapping": {"table": "raw_daily_bars", "field": "turnover_rate"}
+    }
+  },
+  "domain_contract": {
+    "complete_window": "Exactly 20 finite turnover observations including current; count(T-T,20) rejects missing and +/-Infinity observations",
+    "dispersion": "Same v3 population stddev: std > 1e-8 uses Z; otherwise a complete finite window returns 0, preserving the existing near-zero threshold",
+    "missing": "An incomplete/nonfinite window returns None; exclude must preserve this through degenerate cross-sectional normalization",
+    "negative_and_zero": "Same v3 finite-value domain: zeros and negative finite values are not newly rejected; the current source has no negative turnover",
+    "observation_clock": "20 actual ordered bars per symbol, not 20 exchange sessions; no synthesized observations",
+    "unit_scaling": "Positive constant unit scaling cancels when both scaled stddev values remain above the unchanged 1e-8 numerical guard; mixed historical units are not repaired",
+    "future_data": "No future reference; adding future bars cannot change earlier raw or normalized values",
+    "cross_section": "Per-date full universe MAD(3) then zscore(ddof=0); valid constant/singleton inputs map to 0 while missing positions remain missing unless explicit impute_zero"
+  },
+  "research_limits": [
+    "Exactly one new basis function and one predeclared joint model hypothesis, no results-driven feature budget expansion.",
+    "Original single-feature v3 remains the benchmark on the same finite joined samples.",
+    "Use rank target, equal-date weights, the original four alphas and purged training-only selection; production gates stay unchanged.",
+    "The already observed outer 50 dates are a development comparison, not a new blind holdout.",
+    "The earlier abs-log/persistence/intraday feasibility proposals are not evaluated against returns in this phase."
+  ],
+  "return_performance_evaluated": false,
+  "real_models_trained": 0,
+  "activation_authorized": false
+}

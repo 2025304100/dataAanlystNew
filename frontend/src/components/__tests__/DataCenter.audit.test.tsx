@@ -16,8 +16,23 @@ const mockApi = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({ api: mockApi }));
 
 import DataCenter from "../DataCenter";
+import { enterReadOnlyMode } from "../../test/acceptance";
 
 describe("data-center factor-input entry and tab persistence", () => {
+  it("disables a persisted recheck in read-only mode while leaving read-only checks available", async () => {
+    const restore = await enterReadOnlyMode();
+    localStorage.setItem("settings_data_center_tab", "coverage");
+    const view = render(<DataCenter />);
+    try {
+      const button = await screen.findByRole("button", { name: "重新检查本地数据" });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute("title", expect.stringContaining("只读验收"));
+      fireEvent.click(button);
+      expect(mockApi.refreshExternalDataQualitySnapshots).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "检查源表关键字段" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "重新读取状态" })).toBeEnabled();
+    } finally { view.unmount(); await restore(); }
+  });
   beforeEach(() => {
     window.localStorage.clear();
     mockApi.getExternalDataCoverage.mockReset().mockResolvedValue({ datasets: [] });

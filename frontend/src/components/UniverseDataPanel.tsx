@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Card, Button, Collapse, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, Table, message, Input, Popconfirm } from "antd";
+import { Card, Collapse, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, Table, message, Input, Popconfirm } from "antd";
 import type { IndexSyncTaskRead } from "../api/client";
 import {
   PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined,
@@ -8,6 +9,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "../api/client";
 import { t } from "../i18n";
+import UniverseHealthDashboard, { type UniverseQuality } from "./UniverseHealthDashboard";
 
 // P0.6：初始化 scope 选项
 const INIT_SCOPE_OPTIONS = [
@@ -97,6 +99,7 @@ interface UniverseStats {
   };
   latest_synced_at: string | null;
   is_empty: boolean;
+  quality?: UniverseQuality;
 }
 
 // scope 映射（i18n key）
@@ -1306,7 +1309,8 @@ export default function UniverseDataPanel() {
             action={<Button loading={loading} onClick={() => void refreshStats()}>重试读取行情状态</Button>}
             style={{ marginBottom: 12 }}
           />}
-          <Card title={t("universeStatsTitle")} size="small" style={{ marginBottom: 16 }} loading={loading && !stats}>
+          <Card title={t("universeStatsTitle")} size="small" style={{ marginBottom: 16 }} loading={loading && !stats}
+            extra={<Tooltip title="重新读取本地统计，不下载行情"><Button size="small" loading={loading} onClick={() => void refreshStats()}>刷新统计</Button></Tooltip>}>
             {stats ? (
               <>
                 {stats.is_empty && (
@@ -1319,132 +1323,7 @@ export default function UniverseDataPanel() {
                     style={{ marginBottom: 12 }}
                   />
                 )}
-                <Row gutter={16}>
-                  <Col span={6}>
-                    <Statistic title={t("universeTotalSymbols")} value={stats.total_symbols} />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title={t("universeSyncedSymbols")} value={stats.synced_symbols} valueStyle={{ color: "#52c41a" }} />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title={t("universeFailedSymbols")} value={stats.failed_symbols} valueStyle={{ color: stats.failed_symbols > 0 ? "#ff4d4f" : undefined }} />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title={t("universeTotalBars")} value={stats.total_bars} />
-                  </Col>
-                </Row>
-
-                {(Boolean(stats.freshness) || [stats.by_scope, stats.by_board, stats.by_type].some((items) => Object.keys(items || {}).length > 0)) && <Collapse
-                  size="small"
-                  style={{ marginTop: 12 }}
-                  items={[{ key: "statistics", label: "查看行情统计明细", children: <>
-                {/* 按 scope 覆盖率 */}
-                {stats.by_scope && Object.keys(stats.by_scope).length > 0 && (
-                  <div style={{ marginTop: 16 }}>
-                    <p style={{ fontWeight: 500, marginBottom: 8, color: "var(--text-primary, #333)" }}>
-                      {t("universeHealthByScope")}
-                    </p>
-                    <Row gutter={[8, 8]}>
-                      {Object.entries(stats.by_scope).map(([scope, data]) => (
-                        <Col key={scope} xs={12} sm={6}>
-                          <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{scopeLabel(scope)}</div>
-                            <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>
-                              {data.synced}<span style={{ fontSize: 12, color: "var(--text-muted, #888)", fontWeight: 400 }}> / {data.total}</span>
-                            </div>
-                            <Progress
-                              percent={data.coverage}
-                              size="small"
-                              status={data.coverage >= 100 ? "success" : data.coverage >= 50 ? "active" : "exception"}
-                              format={(p) => `${p}%`}
-                              style={{ marginTop: 4, marginBottom: 0 }}
-                            />
-                          </div>
-                        </Col>
-                      ))}
-                    </Row>
-                  </div>
-                )}
-
-                {/* 数据新鲜度分布 */}
-                {stats.freshness && (
-                  <div style={{ marginTop: 16 }}>
-                    <p style={{ fontWeight: 500, marginBottom: 8, color: "var(--text-primary, #333)" }}>
-                      {t("universeHealthFreshness")}
-                      <Tooltip title={t("universeHealthFreshnessTip")}>
-                        <QuestionCircleOutlined style={{ marginLeft: 6, color: "var(--text-muted, #bfbfbf)", fontSize: 12 }} />
-                      </Tooltip>
-                    </p>
-                    <Row gutter={[8, 8]}>
-                      {[
-                        { key: "today", label: t("universeFreshnessToday"), color: "#52c41a" },
-                        { key: "1_3_days", label: t("universeFreshness1_3"), color: "#1890ff" },
-                        { key: "3_7_days", label: t("universeFreshness3_7"), color: "#faad14" },
-                        { key: "over_7_days", label: t("universeFreshnessOver7"), color: "#ff4d4f" },
-                        { key: "no_data", label: t("universeFreshnessNoData"), color: "#8c8c8c" },
-                      ].map(({ key, label, color }) => (
-                        <Col key={key} xs={12} sm={8} md={4} xl={4}>
-                          <div style={{ padding: "6px 10px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{label}</div>
-                            <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color }}>{stats.freshness![key as keyof typeof stats.freshness]}</div>
-                          </div>
-                        </Col>
-                      ))}
-                    </Row>
-                  </div>
-                )}
-
-                {/* 按板块统计（仅 A股股票有 board） */}
-                {stats.by_board && Object.keys(stats.by_board).length > 0 && (
-                  <div style={{ marginTop: 16 }}>
-                    <p style={{ fontWeight: 500, marginBottom: 8, color: "var(--text-primary, #333)" }}>
-                      {t("universeHealthByBoard")}
-                      <Tooltip title={t("universeHealthByBoardTip")}>
-                        <QuestionCircleOutlined style={{ marginLeft: 6, color: "var(--text-muted, #bfbfbf)", fontSize: 12 }} />
-                      </Tooltip>
-                    </p>
-                    <Row gutter={[8, 8]}>
-                      {Object.entries(stats.by_board).map(([board, data]) => (
-                        <Col key={board} xs={12} sm={6}>
-                          <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{boardLabel(board)}</div>
-                            <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>
-                              {data.synced}<span style={{ fontSize: 12, color: "var(--text-muted, #888)", fontWeight: 400 }}> / {data.total}</span>
-                            </div>
-                            <Progress
-                              percent={data.coverage}
-                              size="small"
-                              status={data.coverage >= 100 ? "success" : data.coverage >= 50 ? "active" : "exception"}
-                              format={(p) => `${p}%`}
-                              style={{ marginTop: 4, marginBottom: 0 }}
-                            />
-                          </div>
-                        </Col>
-                      ))}
-                    </Row>
-                  </div>
-                )}
-
-                {stats.by_type && Object.keys(stats.by_type).length > 0 && (
-                  <Row gutter={16} style={{ marginTop: 12 }}>
-                    {Object.entries(stats.by_type).map(([type, data]) => (
-                      <Col key={type} span={8}>
-                        <Statistic
-                          title={type === "stock" ? t("universeTypeStock") : type === "etf" ? t("universeTypeEtf") : type}
-                          value={data.synced}
-                          suffix={`/ ${data.total}`}
-                        />
-                      </Col>
-                    ))}
-                  </Row>
-                )}
-                  </> }]}
-                />}
-                {stats.latest_synced_at && (
-                  <p style={{ marginTop: 12, color: "var(--text-muted, #888)", fontSize: 12 }}>
-                    {t("universeLatestSync")}：{new Date(stats.latest_synced_at).toLocaleString()}
-                  </p>
-                )}
+                <UniverseHealthDashboard stats={stats} />
               </>
             ) : null}
           </Card>
@@ -1487,7 +1366,7 @@ export default function UniverseDataPanel() {
                 >
                   刷新状态
                 </Button>
-                <Button
+                <Button mutation
                   size="small"
                   icon={<CloudSyncOutlined />}
                   onClick={() => handleSyncIndexPrices(false)}
@@ -1496,7 +1375,7 @@ export default function UniverseDataPanel() {
                 >
                   同步选中
                 </Button>
-                <Button
+                <Button mutation
                   size="small"
                   icon={<PlayCircleOutlined />}
                   onClick={() => handleSyncIndexPrices(true)}
@@ -1758,7 +1637,7 @@ export default function UniverseDataPanel() {
                   title: "操作", key: "action", width: 150, fixed: "right" as const,
                   render: (_, r) => (
                     <Space size={2}>
-                      <Button
+                      <Button mutation
                         size="small"
                         icon={<CloudSyncOutlined />}
                         onClick={() => {
@@ -2014,7 +1893,7 @@ export default function UniverseDataPanel() {
                 </Space>
                 <Space wrap>
                   {!smartIsRunning && (
-                    <Button
+                    <Button mutation
                       type="primary"
                       icon={<PlayCircleOutlined />}
                       onClick={handleSmartStart}
@@ -2025,7 +1904,7 @@ export default function UniverseDataPanel() {
                     </Button>
                   )}
                   {smartIsRunning && (
-                    <Button
+                    <Button mutation
                       danger
                       icon={<StopOutlined />}
                       onClick={handleSmartCancel}
@@ -2054,7 +1933,7 @@ export default function UniverseDataPanel() {
             }
             extra={
               incrIsRunning ? (
-                <Button
+                <Button mutation
                   danger
                   icon={<StopOutlined />}
                   onClick={handleIncrCancel}
@@ -2063,7 +1942,7 @@ export default function UniverseDataPanel() {
                   {incrCancelling ? t("universeCanceling") : t("universeIncrementalCancel")}
                 </Button>
               ) : (
-                <Button
+                <Button mutation
                   type="primary"
                   icon={<PlayCircleOutlined />}
                   onClick={handleIncrStart}
@@ -2296,7 +2175,7 @@ export default function UniverseDataPanel() {
                 </Space>
                 <Space wrap>
                   {!isRunning && !canRetry && (
-                    <Button
+                    <Button mutation
                       type="primary"
                       icon={<PlayCircleOutlined />}
                       onClick={handleStart}
@@ -2307,7 +2186,7 @@ export default function UniverseDataPanel() {
                     </Button>
                   )}
                   {canRetry && (
-                    <Button
+                    <Button mutation
                       type="primary"
                       icon={<ReloadOutlined />}
                       onClick={handleRetry}
@@ -2318,7 +2197,7 @@ export default function UniverseDataPanel() {
                     </Button>
                   )}
                   {isRunning && (
-                    <Button
+                    <Button mutation
                       danger
                       icon={<StopOutlined />}
                       onClick={handleCancel}
@@ -2370,7 +2249,7 @@ export default function UniverseDataPanel() {
             )}
             <Space>
               {!industryIsRunning && (
-                <Button
+                <Button mutation
                   type="primary"
                   icon={<CloudSyncOutlined />}
                   onClick={handleIndustryStart}
@@ -2381,7 +2260,7 @@ export default function UniverseDataPanel() {
                 </Button>
               )}
               {industryIsRunning && (
-                <Button danger icon={<StopOutlined />} onClick={handleIndustryCancel} loading={industryCancelling}>
+                <Button mutation danger icon={<StopOutlined />} onClick={handleIndustryCancel} loading={industryCancelling}>
                   {t("universeIndustryBackfillCancel")}
                 </Button>
               )}
@@ -2547,7 +2426,7 @@ export default function UniverseDataPanel() {
                     style={{ width: 80 }}
                   />
                   {!bfIsRunning && (
-                    <Button
+                    <Button mutation
                       type="primary"
                       icon={<PlayCircleOutlined />}
                       onClick={handleBfStart}
@@ -2558,7 +2437,7 @@ export default function UniverseDataPanel() {
                     </Button>
                   )}
                   {bfIsRunning && (
-                    <Button
+                    <Button mutation
                       danger
                       icon={<StopOutlined />}
                       onClick={handleBfCancel}
@@ -2745,7 +2624,7 @@ export default function UniverseDataPanel() {
                     style={{ width: 80 }}
                   />
                   {!repairIsRunning && (
-                    <Button
+                    <Button mutation
                       type="default"
                       icon={<PlayCircleOutlined />}
                       onClick={handleRepairStart}
@@ -2756,7 +2635,7 @@ export default function UniverseDataPanel() {
                     </Button>
                   )}
                   {repairIsRunning && (
-                    <Button
+                    <Button mutation
                       danger
                       icon={<StopOutlined />}
                       onClick={handleRepairCancel}

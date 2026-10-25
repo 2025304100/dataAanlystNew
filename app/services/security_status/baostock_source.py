@@ -69,10 +69,59 @@ def capture_history(request: dict, directory: Path, progress: Callable[[int, str
             process.wait(timeout=5)
 
 
+def _install_proxy_tunnel() -> None:
+    """受限网络下经 HTTP CONNECT 代理隧道连接 baostock 数据端口。
+
+    部分网络丢弃 baostock 私有协议端口（TCP 10030）的直连出站，而本地
+    代理上游可达（2026-10-24 实测：直连超时、80 端口正常、代理 CONNECT
+    10030 返回 200）。仅当环境变量 ``BAOSTOCK_PROXY=host:port`` 设置时启用，
+    未设置时零行为变化；钩子只在本抓取子进程内生效，仅拦截目标端口 10030
+    的 connect（先连代理并发送 CONNECT，建立隧道后 send/recv 透明复用）。
+    """
+    proxy = (os.environ.get("BAOSTOCK_PROXY") or "").strip()
+    if not proxy:
+        return
+    proxy_host, _, proxy_port_text = proxy.partition(":")
+    if not proxy_host or not proxy_port_text.isdigit():
+        raise SourceDownloadError(
+            f"BAOSTOCK_PROXY 配置无效：{proxy!r}（应为 host:port，如 127.0.0.1:7897）"
+        )
+    proxy_port = int(proxy_port_text)
+    original_connect = socket.socket.connect
+
+    def tunneled_connect(self, address):
+        try:
+            target_port = int(address[1])
+        except (TypeError, ValueError, IndexError):
+            target_port = -1
+        if target_port != 10030:
+            return original_connect(self, address)
+        original_connect(self, (proxy_host, proxy_port))
+        self.settimeout(30)
+        target = f"{address[0]}:{address[1]}"
+        self.sendall(f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n".encode("ascii"))
+        response = b""
+        while b"\r\n\r\n" not in response:
+            chunk = self.recv(4096)
+            if not chunk:
+                raise SourceDownloadError("代理隧道建立失败：代理关闭了连接")
+            response += chunk
+            if len(response) > 8192:
+                raise SourceDownloadError("代理隧道建立失败：代理响应头过长")
+        status_line = response.split(b"\r\n", 1)[0].decode("ascii", "ignore")
+        if " 200 " not in status_line:
+            raise SourceDownloadError(f"代理隧道建立失败：{status_line[:120]}")
+        # 隧道已建立；交还阻塞模式，整体时限由父进程预算控制
+        self.settimeout(None)
+
+    socket.socket.connect = tunneled_connect
+
+
 def _capture_worker(directory: Path) -> int:
     # The SDK uses a module-global socket. Keeping it in a child process also
     # bounds its EOF/reconnect loops without changing application networking.
     socket.setdefaulttimeout(8)
+    _install_proxy_tunnel()
     request = json.loads((directory / "source-request.json").read_text(encoding="utf-8"))
     capture = {"provider": "baostock", "sdk_version": "0.9.4", "queries": [], "complete": False}
     _save(directory / "capture.json", capture)

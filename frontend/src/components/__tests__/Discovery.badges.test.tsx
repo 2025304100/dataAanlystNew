@@ -47,6 +47,7 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
   },
   mockApi: {
     getLatestDiscoveryCandidates: vi.fn(async () => [] as any[]),
+    getDiscoveryScopeStats: vi.fn(async (scope: string) => ({ scope, total_symbols: 0, cached_symbols: 0, active_symbols: 0 })),
     getDataHealth: vi.fn(async () => ({ bars: { coverage_pct: 95 } })),
     getCustomIndicators: vi.fn(async () => [] as any[]),
     getDiscoveryPlans: vi.fn(async () => [] as any[]),
@@ -82,6 +83,7 @@ vi.mock("../../i18n", () => ({
   enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
+  regionLongLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",
   setLocale: () => {},
 }));
@@ -183,6 +185,7 @@ function makeCandidateRelationships(symbolId: number) {
 describe("Discovery OpportunityStatusBadges 接入测试", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mockContext.discoveryTask = null;
     mockContext.discoveryScopeStats = null;
     mockContext.newsSnapshot = null;

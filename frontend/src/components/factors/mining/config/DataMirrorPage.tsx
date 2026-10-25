@@ -3,6 +3,7 @@ import { t } from "../../../../i18n";
 import { dataMirrorApi } from "../../../../api/dataMirror";
 import type { DataMirrorStatus, DataMirrorTask } from "../../../../api/dataMirror";
 import { normalizeBackendError } from "../../../../utils/errorRender";
+import { useAcceptanceMode, acceptanceMutationReason } from "../../../../utils/acceptanceMode";
 
 /**
  * 数据中心 · 历史行情镜像管理页（C2，设计 §10.1）。
@@ -77,6 +78,7 @@ function plainText(s?: string | null): string {
 }
 
 export default function DataMirrorPage() {
+  const acceptance = useAcceptanceMode();
   const [status, setStatus] = useState<DataMirrorStatus | null>(null);
   const [tasks, setTasks] = useState<DataMirrorTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,6 +114,7 @@ export default function DataMirrorPage() {
   }, [load]);
 
   const create = async () => {
+    if (acceptanceMutationReason()) return;
     setBusy(true);
     setCreateErr(null);
     try {
@@ -134,6 +137,7 @@ export default function DataMirrorPage() {
   };
 
   const cancel = async (taskId: string) => {
+    if (acceptanceMutationReason()) return;
     setBusy(true);
     try {
       await dataMirrorApi.cancelTask(taskId);
@@ -254,8 +258,9 @@ export default function DataMirrorPage() {
               type="button"
               className="mining-pool-btn primary"
               data-mirror-create
-              disabled={busy || warehouseDown}
-              title={warehouseDown ? t("dataMirrorUnavailableHint") : undefined}
+              disabled={busy || warehouseDown || acceptance.blocked}
+              title={acceptance.blocked ? acceptance.reason : warehouseDown ? t("dataMirrorUnavailableHint") : undefined}
+              aria-description={acceptance.blocked ? acceptance.reason : undefined}
               onClick={() => void create()}
             >
               {t("dataMirrorCreate")}
@@ -364,7 +369,8 @@ export default function DataMirrorPage() {
                           type="button"
                           className="mining-pool-btn"
                           data-mirror-cancel={task.task_id}
-                          disabled={busy}
+                          disabled={busy || acceptance.blocked}
+                          title={acceptance.blocked ? acceptance.reason : undefined}
                           onClick={() => void cancel(task.task_id)}
                         >
                           {t("dataMirrorCancel")}

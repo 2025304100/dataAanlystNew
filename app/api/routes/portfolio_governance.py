@@ -83,6 +83,7 @@ from app.services.portfolio_state_machine import (
     confirm_reconciliation_fixed,
     transition_portfolio_state,
     _get_status as _psm_get_status,
+    _set_status as _psm_set_status,
 )
 
 router = APIRouter(tags=["portfolio-governance"])
@@ -251,6 +252,8 @@ class PortfolioStatusResponse(BaseModel):
     last_reconciled_trade_date: date | None = None
     allowed_transitions: list[str] = Field(default_factory=list)
     is_auto_simulation_eligible: bool = False
+    permissions: dict[str, bool | None] | None = None
+    admission_checked_at: datetime | None = None
 
 
 class StateTransitionResponse(BaseModel):
@@ -327,10 +330,12 @@ def confirm_portfolio_model_binding(
         # Clear only the legacy MODEL_INACTIVE state. ADMIN_PAUSED, initial
         # review, interruption and every independent dimension stay intact.
         if from_state == "MODEL_INACTIVE":
-            transition_portfolio_state(
-                db, portfolio_id, "READY", operator_id=actor,
-                correlation_id=corr, reason="本人确认接受模型与策略变更",
-            )
+            # This reviewed operation accepts only the binding. A generic READY
+            # transition also asks to clear independent reconciliation gates.
+            # Move the redundant legacy lock to its remaining blocked state;
+            # persisted dimensions and all real-time execution checks stay active.
+            reconciliation = getattr(p.status_reconciliation, "value", p.status_reconciliation)
+            _psm_set_status(db, p, "RECONCILIATION_BLOCKED" if reconciliation == "RECONCILIATION_BLOCKED" else "READY")
         to_state = _psm_get_status(db, p)
         event = write_audit_event(
             db, "FACTOR_USAGE_APPLIED", portfolio_id=portfolio_id,
@@ -375,14 +380,19 @@ def get_portfolio_status(
     db: Session = Depends(get_db),
 ) -> PortfolioStatusResponse:
     p = _load_portfolio(db, portfolio_id)
-    current = _psm_get_status(db, p)
+    from app.services.portfolio_inspection_runtime import get_portfolio_runtime_inspection
+    runtime = get_portfolio_runtime_inspection(db, portfolio_id)
+    current = runtime["current_state"]
     return PortfolioStatusResponse(
         portfolio_id=portfolio_id,
         current_state=current,
         last_decision_trade_date=p.last_decision_trade_date,
         last_reconciled_trade_date=p.last_reconciled_trade_date,
         allowed_transitions=_allowed_transitions_from(current),
-        is_auto_simulation_eligible=(current == "READY"),
+        is_auto_simulation_eligible=(runtime["permissions"]["allow_new_buys"] is True
+                                     and runtime["permissions"]["allow_auto_recovery"] is True),
+        permissions=runtime["permissions"],
+        admission_checked_at=runtime["generated_at"],
     )
 
 

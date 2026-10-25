@@ -216,8 +216,9 @@ def test_precision_revision_retains_correction_audit_in_single_head_lineage():
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["wps_0023_072_verified_input_precision"]
-    assert scripts.get_revision(scripts.get_current_head()).down_revision == (
+    assert len(scripts.get_heads()) == 1
+    assert "wps_0023_072_verified_input_precision" in {rev.revision for rev in scripts.walk_revisions()}
+    assert scripts.get_revision("wps_0023_072_verified_input_precision").down_revision == (
         "wps_0023_071_market_bar_correction_audit"
     )
     assert scripts.get_revision("wps_0023_071_market_bar_correction_audit").down_revision == (

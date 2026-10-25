@@ -33,7 +33,7 @@ it('starts with an empty independent list and saves twenty pasted codes without 
     if (method === 'PUT') { expect(body.expected_list_sha256).toBe('a'.repeat(64)); saved = true; }
     return scope(saved ? codes : []);
   };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   expect(input).toHaveValue('');
   expect(screen.getByRole('button', { name: '准备历史数据' })).toBeDisabled();
@@ -54,7 +54,7 @@ it('keeps a successful save when the following date check fails and retries only
     if (saved && failCheck) throw new TypeError('check offline');
     return scope(saved ? codes : []);
   };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   await waitFor(() => expect(input).toBeEnabled());
   fireEvent.change(input, { target: { value: codes.join('，') } });
@@ -72,7 +72,7 @@ it('keeps a successful save when the following date check fails and retries only
 });
 
 it('restores unsubmitted codes and dates after leaving the page without saving or downloading', async () => {
-  const view = render(<ETFTrainingHistoryPanel />);
+  const view = render(<ETFTrainingHistoryPanel defaultOpen />);
   const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   await waitFor(() => expect(input).toBeEnabled());
   fireEvent.change(input, { target: { value: codes.join('，') } });
@@ -80,7 +80,7 @@ it('restores unsubmitted codes and dates after leaving the page without saving o
   fireEvent.change(screen.getByLabelText('训练历史开始日期'), { target: { value: '2023-01-03' } });
   fireEvent.change(screen.getByLabelText('训练历史结束日期'), { target: { value: '2024-01-05' } });
   view.unmount();
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   const restored = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   await waitFor(() => expect(restored).toHaveValue(codes.join('，')));
   expect(screen.getByLabelText('训练历史开始日期')).toHaveValue('2023-01-03');
@@ -107,7 +107,7 @@ it('summarizes a partial batch and puts missing dates first without treating the
       error: index === 19 ? '缺少1个交易日的原始价或前复权价，请重试准备。' : sharedError })) };
   handle = async url => url.includes('/scope') ? { ...scope(codes), latest_task: task('partial') }
     : { task: task('partial'), report: partial };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   expect(await screen.findByRole('status', { name: 'ETF准备结果汇总' })).toHaveTextContent('本次共20只ETF，19只行情日期齐全，1只日期需补齐或核实。');
   const rows = screen.getAllByRole('row').slice(1);
   expect(rows.map(row => within(row).getAllByRole('cell')[0].textContent)).toEqual([codes[19], ...codes.slice(0, 19)]);
@@ -126,7 +126,7 @@ it('keeps complete dates separate from the failed validation and preserves an ET
       error: index === 19 ? '原始价和前复权价未能对应，请核对来源。' : sharedError })) };
   handle = async url => url.includes('/scope') ? { ...scope(codes), latest_task: task('failed') }
     : { task: task('failed'), report: failed };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   expect(await screen.findByRole('status', { name: 'ETF准备结果汇总' })).toHaveTextContent('20只行情日期齐全；整份资料仍未核对通过。');
   expect(screen.getByText(sharedError)).toBeVisible();
   const firstRow = screen.getAllByRole('row')[1];
@@ -142,7 +142,7 @@ it.each([null, 0])('does not infer complete dates from downloaded rows when the 
     common_trade_date_count: null, errors: ['交易日期还没有核实。'] };
   handle = async url => url.includes('/scope') ? { ...scope(codes), latest_task: task('partial') }
     : { task: task('partial'), report: unconfirmed };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   expect(await screen.findByRole('status', { name: 'ETF准备结果汇总' })).toHaveTextContent('0只行情日期齐全，20只日期需补齐或核实。');
   expect(screen.queryByText('所查范围没有缺失日期')).not.toBeInTheDocument();
   expect(screen.queryByText('所查日期已核对')).not.toBeInTheDocument();
@@ -153,7 +153,7 @@ it.each([null, 0])('does not infer complete dates from downloaded rows when the 
 it('hides the previous batch summary when the ETF codes have not been saved', async () => {
   handle = async url => url.includes('/scope') ? { ...scope(codes), latest_task: task('done') }
     : { task: task('done'), report: report(true) };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   expect(await screen.findByRole('status', { name: 'ETF准备结果汇总' })).toHaveTextContent('20只行情日期齐全。');
   expect(screen.getByText('这份清单的历史数据已准备并核对。')).toBeVisible();
   fireEvent.change(screen.getByRole('textbox', { name: 'ETF训练代码' }), { target: { value: codes.slice(1).join('\n') } });
@@ -168,7 +168,7 @@ it('hides the previous batch summary when the ETF codes have not been saved', as
 
 it.each(['codes', 'dates'])('opens and focuses the requested %s input after the history page has loaded', async target => {
   localStorage.setItem('etf-training-history:focus', target);
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(target === 'codes' ? screen.getByRole('textbox', { name: 'ETF训练代码' })
     : screen.getByLabelText('训练历史结束日期')).toHaveFocus());
   if (target === 'dates') expect(screen.getByText('调整准备日期').closest('details')).toHaveAttribute('open');
@@ -177,7 +177,7 @@ it.each(['codes', 'dates'])('opens and focuses the requested %s input after the 
 });
 
 it('focuses the date section on an already mounted page without refreshing its input', async () => {
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   await waitFor(() => expect(input).toBeEnabled());
   fireEvent.change(input, { target: { value: '510300，159915' } });
@@ -191,7 +191,7 @@ it('focuses the date section on an already mounted page without refreshing its i
 it('shows the saved list when the local input record is damaged and does not submit it', async () => {
   localStorage.setItem('etf-training-history:input:v1', '{broken input');
   handle = async () => scope(['510300']);
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue('510300'));
   expect(screen.getByText('之前未保存的输入暂时读不到，当前显示已保存清单。')).toBeVisible();
   expect(calls.every(call => call.method === 'GET')).toBe(true);
@@ -202,7 +202,7 @@ it('keeps cached invalid dates editable after the server rejects the range inste
     codes: codes.join('\n'), start: '2099-01-02', end: '2099-01-04' }));
   handle = async url => url.includes('start_date=2099-01-02')
     ? new Response(JSON.stringify({ detail: '请选择已经结束的日期。' }), { status: 400 }) : scope(codes);
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toBeEnabled());
   expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue(codes.join('\n'));
   expect(screen.getByLabelText('训练历史开始日期')).toHaveValue('2099-01-02');
@@ -213,13 +213,13 @@ it('keeps cached invalid dates editable after the server rejects the range inste
 });
 
 it('keeps another page saved list and retains the older unsubmitted input for reading', async () => {
-  const view = render(<ETFTrainingHistoryPanel />);
+  const view = render(<ETFTrainingHistoryPanel defaultOpen />);
   const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   await waitFor(() => expect(input).toBeEnabled());
   fireEvent.change(input, { target: { value: codes.join('，') } });
   view.unmount();
   handle = async () => ({ ...scope(['159915']), list_sha256: 'd'.repeat(64) });
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue('159915'));
   expect(screen.getByText('其他页面已修改清单，当前显示已保存内容。之前未保存的输入保留在下方。')).toBeVisible();
   fireEvent.click(screen.getByText('查看之前未保存的内容'));
@@ -234,14 +234,14 @@ it('restores the acknowledged save with a read after re-entry without submitting
     if (saved && failCheck) throw new TypeError('check offline');
     return scope(saved ? codes : []);
   };
-  const view = render(<ETFTrainingHistoryPanel />);
+  const view = render(<ETFTrainingHistoryPanel defaultOpen />);
   const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
   await waitFor(() => expect(input).toBeEnabled());
   fireEvent.change(input, { target: { value: codes.join('，') } });
   fireEvent.click(screen.getByRole('button', { name: '保存清单并检查' }));
   await screen.findByText('清单已保存，日期检查未完成，请重试检查。');
   view.unmount(); failCheck = false;
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue(codes.join('\n')));
   expect(screen.getByRole('button', { name: '保存清单并检查' })).toBeDisabled();
   await waitFor(() => expect(screen.getByRole('button', { name: '准备历史数据' })).toBeEnabled());
@@ -256,7 +256,7 @@ it('keeps the original request dates ahead of cached inputs while recovering an 
     request_id: '1'.repeat(32), start_date: '2024-01-02', end_date: '2024-01-04', expected_scope_sha256: 'c'.repeat(64),
   } }));
   handle = async url => url.includes('/scope') ? scope(codes) : { task: task('running'), report: null };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue(codes.join('\n')));
   expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toBeDisabled();
   expect(screen.getByLabelText('训练历史开始日期')).toHaveValue('2024-01-02');
@@ -271,7 +271,7 @@ it('shows a local input save failure without clearing the input or silently savi
     return original.call(this, key, value);
   });
   try {
-    render(<ETFTrainingHistoryPanel />);
+    render(<ETFTrainingHistoryPanel defaultOpen />);
     const input = await screen.findByRole('textbox', { name: 'ETF训练代码' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: '510300' } });
@@ -288,7 +288,7 @@ it('prepares twenty ETFs and displays common dates and a missing reason before r
     if (method === 'POST') { starts++; return { task: task(), report: null }; }
     return { task: task(starts === 1 ? 'partial' : 'done'), report: report(starts > 1) };
   };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   const start = await screen.findByRole('button', { name: '准备历史数据' });
   await waitFor(() => expect(start).toBeEnabled());
   fireEvent.click(start);
@@ -312,14 +312,14 @@ it('recovers a lost preparation response after re-entry without submitting anoth
     if (method === 'POST') throw new TypeError('response lost');
     return { task: task('done'), report: report(true) };
   };
-  const view = render(<ETFTrainingHistoryPanel />);
+  const view = render(<ETFTrainingHistoryPanel defaultOpen />);
   const start = await screen.findByRole('button', { name: '准备历史数据' });
   await waitFor(() => expect(start).toBeEnabled());
   fireEvent.click(start);
   await screen.findByText('尚未确认准备是否开始，请先重试读取进度。');
   expect(screen.getByRole('button', { name: '准备历史数据' })).toBeDisabled();
   view.unmount();
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   expect(await screen.findByText('这份清单的历史数据已准备并核对。')).toBeVisible();
   expect(calls.filter(call => call.method === 'POST')).toHaveLength(1);
   expect(calls.some(call => call.url.includes('/preparations/requests/'))).toBe(true);
@@ -332,7 +332,7 @@ it('keeps submission blocked when the browser cannot read the previous preparati
     return original.call(this, key);
   });
   try {
-    render(<ETFTrainingHistoryPanel />);
+    render(<ETFTrainingHistoryPanel defaultOpen />);
     expect(await screen.findByText(/无法读取本地准备记录/)).toBeVisible();
     expect(screen.getByRole('button', { name: '准备历史数据' })).toBeDisabled();
     expect(calls.some(call => call.method === 'POST')).toBe(false);
@@ -347,13 +347,13 @@ it('retries an unreceived request with the original parameters after re-entry', 
     if (method === 'POST' && ++attempts === 1) throw new TypeError('request never arrived');
     return { task: task('done'), report: report(true) };
   };
-  const first = render(<ETFTrainingHistoryPanel />);
+  const first = render(<ETFTrainingHistoryPanel defaultOpen />);
   const start = await screen.findByRole('button', { name: '准备历史数据' });
   await waitFor(() => expect(start).toBeEnabled());
   fireEvent.click(start);
   await screen.findByText('尚未确认准备是否开始，请先重试读取进度。');
   first.unmount();
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   fireEvent.click(await screen.findByRole('button', { name: '重试准备' }));
   await screen.findByText('这份清单的历史数据已准备并核对。');
   const posts = calls.filter(call => call.method === 'POST');
@@ -369,7 +369,7 @@ it('keeps a running job after a progress read failure and resumes reading withou
     if (reads === 2) throw new TypeError('disconnected');
     return { task: task('done'), report: report(true) };
   };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await screen.findByText('准备进度读取失败，任务可能仍在运行。请重试读取进度。');
   expect(screen.getByRole('button', { name: '准备历史数据' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '重试读取进度' }));
@@ -380,7 +380,7 @@ it('keeps a running job after a progress read failure and resumes reading withou
 it('shows a failed initial read as an error with a retry instead of an empty list', async () => {
   let failed = true;
   handle = async () => { if (failed) throw new TypeError('offline'); return scope(codes); };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await screen.findByText('ETF训练清单或准备记录暂时读不到，请点“读取已保存清单”重试。');
   expect(screen.getByRole('button', { name: '准备历史数据' })).toBeDisabled();
   failed = false;
@@ -396,7 +396,7 @@ it('does not display an older completed preparation as the result of a changed l
   } }));
   handle = async url => url.includes('/scope') ? { ...scope(['159915']), list_sha256: 'd'.repeat(64) }
     : { task: { ...task('done'), message: 'ETF训练历史数据已准备并核对，可以返回训练页面检查。' }, report: report(true) };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue('159915'));
   expect(await screen.findByText('上次任务已结束，训练清单后来有修改，请按当前清单重新检查。')).toBeVisible();
   expect(screen.queryByText('ETF训练历史数据已准备并核对，可以返回训练页面检查。')).not.toBeInTheDocument();
@@ -414,7 +414,7 @@ it('checks a changed date range locally and hides the older result without downl
       expected_trade_date_count: changed ? 4 : 3, common_start_date: '2024-01-02',
       common_end_date: changed ? '2024-01-05' : '2024-01-04' };
   };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await screen.findByText('这份清单的历史数据已准备并核对。');
   expect(screen.getByRole('status', { name: 'ETF准备结果汇总' })).toBeVisible();
   fireEvent.click(screen.getByText('调整准备日期'));
@@ -436,7 +436,7 @@ it('returns prepared history to the ETF training checks without submitting train
     training_dataset: training,
     common_trade_date_count: 284, expected_trade_date_count: 284, common_start_date: '2024-01-02',
     common_end_date: '2025-01-31' });
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   fireEvent.click(await screen.findByRole('button', { name: '查看训练条件' }));
   expect(localStorage.getItem('settings_active_section')).toBe('factor-center');
   expect(localStorage.getItem('settings_factor_center_subtab')).toBe('model');
@@ -452,7 +452,7 @@ it('returns the completed preparation even when the saved scope points to later 
     ? { ...scope(codes), dataset_id: 'later-range', latest_task: task('done'),
         training_dataset: { ...prepared, dataset_id: 'later-range', end_date: '2025-01-31' } }
     : { task: task('done'), report: { ...report(true), training: prepared } };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   expect(await screen.findByText('这份清单的历史数据已准备并核对。')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: '查看训练条件' }));
   expect(JSON.parse(localStorage.getItem('factor-etf-training:open')!).selection).toEqual({
@@ -463,7 +463,7 @@ it('returns the completed preparation even when the saved scope points to later 
 
 it('asks for a reread when the prepared file identity is missing instead of opening another dataset', async () => {
   handle = async () => ({ ...scope(codes), dataset_id: 'checked-twenty' });
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   fireEvent.click(await screen.findByRole('button', { name: '查看训练条件' }));
   expect(await screen.findByText('本次资料记录不完整，请先读取已保存清单，仍无法读取时重新准备历史数据。')).toBeVisible();
   expect(localStorage.getItem('factor-etf-training:open')).toBeNull();
@@ -478,7 +478,7 @@ it('waits for an older running list before allowing a preparation for the curren
   let finished = false;
   handle = async url => url.includes('/scope') ? { ...scope(['159915']), list_sha256: 'd'.repeat(64) }
     : { task: task(finished ? 'done' : 'running'), report: finished ? report(true) : null };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await screen.findByText('上次清单的历史数据还在准备，请稍后读取进度。当前清单尚未检查。');
   expect(screen.getByRole('button', { name: '准备历史数据' })).toBeDisabled();
   expect(screen.getByRole('textbox', { name: 'ETF训练代码' })).toHaveValue('159915');
@@ -495,7 +495,7 @@ it('keeps changed dates unconfirmed after a check fails and lets the user retry 
     if (url.includes('end_date=2024-01-05') && failCheck) throw new TypeError('coverage offline');
     return { ...scope(codes), end_date: url.includes('end_date=2024-01-05') ? '2024-01-05' : '2024-01-04' };
   };
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('button', { name: '准备历史数据' })).toBeEnabled());
   fireEvent.click(screen.getByText('调整准备日期'));
   fireEvent.change(screen.getByLabelText('训练历史结束日期'), { target: { value: '2024-01-05' } });
@@ -513,7 +513,7 @@ it('labels a slow local date check without showing a download in progress', asyn
   let finishCheck: ((value: any) => void) | undefined;
   handle = async url => url.includes('end_date=2024-01-05')
     ? new Promise(resolve => { finishCheck = resolve; }) : scope(codes);
-  render(<ETFTrainingHistoryPanel />);
+  render(<ETFTrainingHistoryPanel defaultOpen />);
   await waitFor(() => expect(screen.getByRole('button', { name: '准备历史数据' })).toBeEnabled());
   fireEvent.click(screen.getByText('调整准备日期'));
   fireEvent.change(screen.getByLabelText('训练历史结束日期'), { target: { value: '2024-01-05' } });
@@ -523,4 +523,13 @@ it('labels a slow local date check without showing a download in progress', asyn
   expect(calls.some(call => call.method !== 'GET')).toBe(false);
   await act(async () => finishCheck?.({ ...scope(codes), end_date: '2024-01-05' }));
   expect(screen.queryByText('正在检查本地已有行情的日期…')).not.toBeInTheDocument();
+});
+
+it('starts collapsed and expands to the training form', async () => {
+  render(<ETFTrainingHistoryPanel />);
+  expect(screen.queryByLabelText('ETF训练代码')).not.toBeInTheDocument();
+  expect(await screen.findByText(/清单有0只ETF/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '展开' }));
+  expect(await screen.findByLabelText('ETF训练代码')).toBeVisible();
+  expect(screen.getByRole('button', { name: '收起' })).toBeVisible();
 });

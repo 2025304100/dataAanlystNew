@@ -68,9 +68,17 @@ def _decode_compressed_history(encoded: str) -> list[dict]:
 
     # Never evaluate the response. `call` serializes the compressed string as
     # a value passed to the locally installed decoder's function d.
-    with MiniRacer() as decoder:
-        decoder.eval(hk_js_decode, timeout_sec=3, max_memory=128 * 1024 * 1024)
-        return decoder.call("d", encoded, timeout_sec=5, max_memory=128 * 1024 * 1024)
+    decoder = MiniRacer()
+    try:
+        # Both the AKShare dependency (0.6) and maintained MiniRacer accept
+        # millisecond timeouts. The older runtime has no context-manager API.
+        decoder.eval(hk_js_decode, timeout=3000, max_memory=128 * 1024 * 1024)
+        return decoder.call("d", encoded, timeout=5000, max_memory=128 * 1024 * 1024)
+    finally:
+        close = getattr(decoder, "close", None)
+        if close is not None:
+            close()
+        del decoder
 
 
 @lru_cache(maxsize=1)

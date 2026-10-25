@@ -18,10 +18,15 @@ FIELDS={
 def upgrade():
     conn=op.get_bind()
     if conn.dialect.name!='mysql':return  # SQLite REAL already stores binary64.
+    tables=set(sa.inspect(conn).get_table_names())
     for table,fields in FIELDS.items():
+        if table not in tables:
+            continue  # Frozen 0080 creates missing tables with DOUBLE inputs.
         columns={c['name']:c for c in sa.inspect(conn).get_columns(table)}
         clauses=[]
         for field in fields:
+            if field not in columns:
+                continue  # Frozen 0080 supplies columns absent from older shapes.
             c=columns[field];name=str(c['type']).upper()
             if name.startswith('DOUBLE'):continue
             if not name.startswith('FLOAT'):raise RuntimeError('Unexpected input numeric type')

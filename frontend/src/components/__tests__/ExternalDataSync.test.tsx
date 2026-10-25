@@ -171,6 +171,7 @@ vi.mock("antd", async () => {
 vi.mock("../../api/client", () => ({ api: mockApi }));
 
 import ExternalDataSync, { formatDate } from "../ExternalDataSync";
+import { enterReadOnlyMode } from "../../test/acceptance";
 import { AppContext } from "../../context/AppContext";
 
 function renderWithWatchlist() {
@@ -237,6 +238,24 @@ async function enterHistoricalRange(start: string, end: string) {
 }
 
 describe("ExternalDataSync dashboard", () => {
+  it("disables sync and repair intents in read-only mode and still refreshes the overview", async () => {
+    const restore = await enterReadOnlyMode();
+    const view = render(<ExternalDataSync />);
+    try {
+      await waitFor(() => expect(mockApi.getExternalDataOverview).toHaveBeenCalled());
+      await waitFor(() => expect(document.querySelectorAll('[data-acceptance-mutation="true"]').length).toBeGreaterThan(4));
+      for (const button of document.querySelectorAll('[data-acceptance-mutation="true"]')) {
+        expect(button).toBeDisabled(); fireEvent.click(button);
+      }
+      expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
+      expect(mockApi.repairExternalDataGaps).not.toHaveBeenCalled();
+      const before = mockApi.getExternalDataOverview.mock.calls.length;
+      const refresh = screen.getByRole("button", { name: "extDashboardRefresh" });
+      await waitFor(() => expect(refresh).toBeEnabled());
+      fireEvent.click(refresh);
+      await waitFor(() => expect(mockApi.getExternalDataOverview.mock.calls.length).toBeGreaterThan(before));
+    } finally { view.unmount(); await restore(); }
+  });
   let confirmSpy: any;
   afterEach(() => {
     confirmSpy?.mockRestore();

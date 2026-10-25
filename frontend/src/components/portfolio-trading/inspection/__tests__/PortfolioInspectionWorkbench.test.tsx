@@ -59,6 +59,12 @@ afterEach(()=>{cleanup();stopSubmissionRuntime();});
 function openPage() { return render(<PortfolioInspectionWorkbench portfolioId={1} renderDualRun={() => <p>实际双跑能力</p>} />); }
 function otherTabChanged(pid=1){fireEvent(window,new StorageEvent("storage",{key:`${INSPECTION_CHANGE_KEY}${pid}`,newValue:JSON.stringify({version:1,id:crypto.randomUUID(),source:"other-tab",portfolioId:pid,at:Date.now()})}));}
 
+async function recheckCurrentEvidence() {
+  const button = await screen.findByRole("button", { name: "重新检测" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
+
 it("waits for a valid portfolio identity before mounting any backend observer",async()=>{
   const view=render(<PortfolioInspectionWorkbench portfolioId={0} renderDualRun={()=>null}/>);
   expect(screen.getByRole("status")).toHaveTextContent("正在确定当前组合");expect(mockApi.getPortfolioInspectionRuntime).not.toHaveBeenCalled();expect(mockApi.previewPortfolioReconciliation).not.toHaveBeenCalled();
@@ -513,7 +519,7 @@ it("uses server-generated AI context and never executes arbitrary model suggesti
   expect(mockApi.analysePortfolioInspection).toHaveBeenCalledWith(1, expect.not.objectContaining({message:expect.anything()}));
   expect(screen.queryByRole("button", {name:"查看依据与正式处理入口"})).not.toBeInTheDocument();
   expect(mockApi.submitPortfolioInspectionRepair).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", {name:"重新检测"}));
+  await recheckCurrentEvidence();
   expect(await screen.findByText(/本次建议需要重新分析/)).toBeVisible();
 });
 
@@ -523,7 +529,7 @@ it("does not revive an old AI suggestion that finishes after a newer same-portfo
   openPage(); fireEvent.click(screen.getByRole("button", {name:"AI 辅助"})); fireEvent.click(screen.getByRole("button", {name:"分析当前阻断"}));
   await waitFor(() => expect(mockApi.analysePortfolioInspection).toHaveBeenCalledTimes(1));
   mockApi.getPortfolioInspectionDiagnostics.mockResolvedValue(diagnostics("newer-evidence"));
-  fireEvent.click(screen.getByRole("button", {name:"重新检测"}));
+  await recheckCurrentEvidence();
   await waitFor(() => expect(mockApi.getPortfolioInspectionDiagnostics).toHaveBeenCalledTimes(2));
   await act(async () => resolveAI({response:{answer:"旧事实的分析",evidence:[],warnings:[],suggested_actions:[{action_type:"PREVIEW_DATA_REPAIR",description:"旧计划"}],metadata:{available_actions:[{action_type:"PREVIEW_DATA_REPAIR"}]}}}));
   expect(await screen.findByText(/本次建议需要重新分析/)).toBeVisible();
@@ -654,7 +660,7 @@ function guidedRuntime(dataProof = "data-proof-1") {
 it("renders server nonapplicability and reopens only the proof that changed",async()=>{
   mockApi.getPortfolioInspectionRuntime.mockResolvedValue(guidedRuntime());openPage();fireEvent.click(await screen.findByRole("button",{name:"开始恢复引导"}));
   expect(screen.getByRole("button",{name:/确认运行绑定.*本次不适用/})).toBeVisible();
-  mockApi.getPortfolioInspectionRuntime.mockResolvedValue(guidedRuntime("data-proof-2"));fireEvent.click(screen.getByRole("button",{name:"重新检测"}));
+  mockApi.getPortfolioInspectionRuntime.mockResolvedValue(guidedRuntime("data-proof-2"));await recheckCurrentEvidence();
   await waitFor(()=>expect(screen.getByRole("button",{name:/批量修复数据.*依据变化，需重检/})).toBeVisible());
   fireEvent.click(screen.getByRole("button",{name:/批量修复数据/}));expect(screen.getByText("本步来源或依据已变化")).toBeVisible();
   fireEvent.click(screen.getByRole("button",{name:"重新核实本步依据"}));await waitFor(()=>expect(screen.getByRole("button",{name:/批量修复数据.*已满足/})).toBeVisible());

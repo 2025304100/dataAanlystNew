@@ -581,6 +581,8 @@ def _run_dual_trade_inner(
         db,
         portfolio_id=portfolio_id,
         for_schedule=for_schedule,
+        strategy_snapshot_id=resolved_snapshot_id,
+        trade_date=trade_date,
     )
     readiness_dict = readiness_to_dict(readiness)
     merged_warnings = list(readiness.warnings) + extra_warnings
@@ -721,30 +723,50 @@ def _run_dual_trade_inner(
         else:
             # 新来源（member_source）结构：sell_decisions / buy_decisions / rejected_decisions / executed_orders
             def _to_plan_item(decision: dict[str, Any], side: str) -> dict[str, Any]:
+                from app.models.symbol import Symbol
+                from app.models.sim_account import SimOrder
+                symbol_id = int(decision.get("symbol_id") or 0)
+                symbol = db.get(Symbol, symbol_id) if symbol_id else None
+                plan_id = decision.get("order_plan_id")
+                order = db.scalar(select(SimOrder).where(
+                    SimOrder.portfolio_id == portfolio_id,
+                    SimOrder.client_order_key == str(plan_id))) if plan_id else None
+                quantity = decision.get("quantity")
+                price = decision.get("ref_price")
+                if price is None:
+                    price = decision.get("intended_price")
                 item: dict[str, Any] = {
-                    "symbol_id": int(decision.get("symbol_id") or 0),
-                    "symbol": str(decision.get("symbol") or ""),
-                    "name": str(decision.get("name") or ""),
+                    "symbol_id": symbol_id,
+                    "symbol": str(decision.get("symbol") or (symbol.symbol if symbol else "")),
+                    "name": str(decision.get("name") or (symbol.name if symbol else "")),
                     "action": str(decision.get("action") or side),
                     "stage": decision.get("stage"),
-                    "ref_price": float(decision.get("ref_price") or 0),
-                    "executed": bool(decision.get("executed") or False),
-                    "order_id": decision.get("order_id"),
-                    "filled_price": decision.get("filled_price"),
-                    "fee": decision.get("fee"),
+                    "ref_price": float(price or 0),
+                    "executed": bool(order and float(order.filled_quantity or 0) > 0),
+                    "order_id": order.id if order else decision.get("order_id"),
+                    "filled_price": order.filled_price if order else decision.get("filled_price"),
+                    "fee": order.fee if order else decision.get("fee"),
                     "reason": decision.get("reason"),
                     "rejection_code": decision.get("rejection_code"),
                     "rejection_detail": decision.get("rejection_detail"),
                     "decision": decision.get("decision"),
+                    "order_plan_id": plan_id,
+                    "evidence_id": decision.get("evidence_id"),
+                    "quantity": quantity,
+                    "signal_date": decision.get("signal_date"),
+                    "execution_date": decision.get("execution_date"),
+                    "reason_code": decision.get("reason_code"),
+                    "status": order.status if order else None,
+                    "filled_quantity": order.filled_quantity if order else None,
                 }
                 if side == "sell":
                     item["held_quantity"] = decision.get("held_quantity")
-                    item["sell_quantity"] = decision.get("sell_quantity")
+                    item["sell_quantity"] = decision.get("sell_quantity", quantity)
                 else:
                     item["can_open"] = decision.get("can_open")
                     item["blocked_reasons"] = list(decision.get("blocked_reasons") or [])
-                    item["recommended_amount"] = decision.get("recommended_amount")
-                    item["buy_quantity"] = decision.get("buy_quantity")
+                    item["recommended_amount"] = decision.get("recommended_amount", float(quantity)*float(price) if quantity is not None and price is not None else None)
+                    item["buy_quantity"] = decision.get("buy_quantity", quantity)
                 return item
 
             result["sells"] = [

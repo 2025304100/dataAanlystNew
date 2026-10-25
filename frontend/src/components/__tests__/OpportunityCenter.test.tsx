@@ -117,7 +117,9 @@ describe("OpportunityCenter 组件测试", () => {
 
   it("机会中心从一个更新按钮直接完成筛选，不要求先选同步方式", async () => {
     render(<OpportunityCenter />);
-    fireEvent.click(await screen.findByRole("button", { name: "opportunity.updateAndScreen" }));
+    const start = await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
     expect(await screen.findByText("opportunity.prepCompleted")).toBeVisible();
     expect(mockApi.startDataPrep).toHaveBeenCalledWith({ scope: "cn-stock", trigger_fast_scan_after_ready: true });
     expect(screen.queryByRole("button", { name: "opportunity.runIncrementalSync" })).not.toBeInTheDocument();

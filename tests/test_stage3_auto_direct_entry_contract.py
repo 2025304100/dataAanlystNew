@@ -104,9 +104,13 @@ def test_auto_trade_response_schema_preserves_resolved_snapshot_id():
         "errors": [],
         "executed_at": "2026-08-21T20:30:00+00:00",
         "strategy_snapshot_id": "stage3-auto-response-snapshot",
+        "execution_result": {"executed_orders":[{"order_plan_id":"original-plan", "order_id":7,
+            "filled_quantity":400,"status":"filled"}],"pending_orders":[]},
     })
 
     assert response.strategy_snapshot_id == "stage3-auto-response-snapshot"
+    assert response.buys == []
+    assert response.execution_result["executed_orders"][0]["order_id"] == 7
 
 
 def test_real_dual_run_never_executes_legacy_source_when_member_source_is_disabled(
@@ -154,3 +158,18 @@ def test_real_dual_run_never_executes_legacy_source_when_member_source_is_disabl
         blocker.code for blocker in error.value.blockers
     }
     assert legacy_execution_calls == []
+
+
+def test_pending_conflict_dry_run_never_commits_the_readiness_transaction(db_session,monkeypatch):
+    from datetime import date
+    from app.services import decision_engine, auto_trade_member_source as member_source
+    portfolio=_portfolio(db_session);snapshot=_applied_snapshot(db_session,portfolio.id);db_session.commit()
+    plan=SimpleNamespace(symbol_id=1,action="REJECTED",target_quantity=0,intended_price=None,
+        reason_code="PENDING_ORDER_CONFLICT",evidence_id="pending-conflict-evidence",order_plan_id="pending-conflict-plan",
+        signal_date=date(2026,10,21),execution_date=date(2026,10,22))
+    monkeypatch.setattr(decision_engine.default_engine,"evaluate",lambda *args,**kwargs:
+        SimpleNamespace(decision_run_id="pending-conflict-run",order_plans=[plan]))
+    monkeypatch.setattr(db_session,"commit",lambda:pytest.fail("Readiness/dry-run must retain its caller transaction and locks"))
+    result=member_source.execute_member_source(db_session,portfolio_id=portfolio.id,
+        strategy_snapshot_id=snapshot.id,trade_date=date(2026,10,21),dry_run=True)
+    assert result['rejected_decisions'][0]['rejection_code']=='PENDING_ORDER_CONFLICT'

@@ -65,47 +65,46 @@ def test_financial_scope_is_bounded_and_cn_only(db_session):
 
 
 def test_financial_report_worker_records_completed_task(db_session):
+    from freezegun import freeze_time
+    from app.main import app
+    app.openapi()
     _seed_watchlist(db_session)
-    task = create_async_task(
-        "financial_report_sync",
-        {"source": "watchlist", "limit": 20},
-    )
-    with patch(
-        "app.services.financial_report_task.sync_symbol_financial_reports",
-        return_value=8,
-    ):
+    task=create_async_task("financial_report_sync",{"source":"watchlist","limit":20})
+    rows=[dict(SECUCODE="600519.SH",REPORT_DATE=period,NOTICE_DATE="2026-10-21",
+               ROEJQ=18.2,PARENT_NETPROFIT=100,TOTAL_OPERATE_INCOME=200)
+          for period in ("2024-03-31","2024-06-30","2024-09-30","2024-12-31",
+                         "2025-03-31","2025-06-30","2025-09-30","2025-12-31")]
+    with freeze_time('2026-10-21T08:00:00Z'), patch(
+            "app.services.financial_provider.fetch_financial_rows",return_value=rows):
         _run_financial_report_task(task.id)
-
-    result = get_async_task(task.id)
-    assert result is not None
-    assert result.status == "done"
-    assert result.ok_count == 1
-    assert result.failed_count == 0
-    assert result.result["records"] == 8
+    result=get_async_task(task.id)
+    assert result is not None and result.status=="done", result
+    assert result.ok_count==1 and result.failed_count==0
+    assert result.result["records"]==8
+    from app.models.financial_report import StockFinancialReport
+    assert db_session.query(StockFinancialReport).count()==8
 
 
 def test_lhb_worker_records_completed_task(db_session):
-    task = create_async_task(
-        "lhb_institution_sync", {"lookback_days": 3}
-    )
-    summary = LhbInstitutionSyncResult(
-        start_date=date(2026, 7, 13),
-        end_date=date(2026, 7, 15),
-        received=12,
-        written=12,
-        unmatched=0,
-    )
-    with patch(
-        "app.services.lhb_institution_task.sync_lhb_institution_trades",
-        return_value=summary,
-    ):
+    import pandas as pd
+    from freezegun import freeze_time
+    from app.main import app
+    from app.models.market_data import MarketCalendar
+    app.openapi()
+    symbols=[Symbol(symbol=str(600501+i),name="isolated LHB",asset_type="stock",market="sh") for i in range(12)]
+    db_session.add_all(symbols+[MarketCalendar(trade_date=date(2026,10,21),is_trading_day=1)])
+    db_session.commit()
+    frame=pd.DataFrame([{"代码":symbol.symbol,"上榜日期":"2026-10-21","买方机构数":3,"卖方机构数":2,
+        "机构买入总额":900,"机构卖出总额":400,"机构买入净额":500,"市场总成交额":10000,
+        "机构净买额占总成交额比":5,"换手率":2.5,"上榜原因":"isolated provider input"} for symbol in symbols])
+    task=create_async_task("lhb_institution_sync",{"lookback_days":3})
+    with freeze_time('2026-10-21T08:00:00Z'), patch("app.services.lhb_data.call_akshare_with_retry",return_value=frame):
         _run_lhb_institution_task(task.id)
-
-    result = get_async_task(task.id)
-    assert result is not None
-    assert result.status == "done"
-    assert result.ok_count == 12
-    assert result.result["written"] == 12
+    result=get_async_task(task.id)
+    assert result is not None and result.status=="done", result
+    assert result.ok_count==12 and result.result["written"]==12
+    from app.models.lhb_institution_trade import LhbInstitutionTrade
+    assert db_session.query(LhbInstitutionTrade).count()==12
 
 
 def test_scheduled_payloads_are_bounded():

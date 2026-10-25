@@ -1,3 +1,4 @@
+import usePortfolioAdmission, {refreshPortfolioAdmission} from "../../../hooks/usePortfolioAdmission";
 import {AcceptanceButton as Button,AcceptanceModal as Modal} from './AcceptanceControls';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Checkbox, Input } from "antd";
@@ -107,6 +108,7 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
   const [items, setItems] = useState<ActionItemsResponse | null>(null);
   const [status, setStatus] = useState<PortfolioStatusResponse | null>(null);
   const [runtime, setRuntime] = useState<InspectionRuntime | null>(null);
+  const admission=usePortfolioAdmission(portfolioId);
   const [diagnostics, setDiagnostics] = useState<PortfolioInspectionDiagnostics | null>(null);
   const [binding, setBinding] = useState<ModelBindingReviewResponse | null>(null);
   const [report, setReport] = useState<ReconciliationResponse | null>(null);
@@ -166,7 +168,7 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
     setLoading(true);
     const results = await Promise.allSettled([
       Promise.resolve().then(() => api.getPortfolioActionItems(portfolioId, { for_schedule: true })).then(v => checkedResponse(v, portfolioId, x => Array.isArray(x.items))), Promise.resolve().then(() => api.getPortfolioStatus(portfolioId)).then(v => checkedResponse(v, portfolioId, x => typeof x.current_state === "string")),
-      Promise.resolve().then(() => api.getPortfolioInspectionRuntime(portfolioId)).then(v => checkedResponse(v, portfolioId, x => x.permissions && x.recovery_summary && Array.isArray(x.recovery_summary.checks) && x.capability_reasons)), Promise.resolve().then(() => api.getPortfolioInspectionDiagnostics(portfolioId)).then(v => checkedResponse(v, portfolioId, x => Array.isArray(x.symbols) && Array.isArray(x.evidence) && x.repair_plan)),
+      Promise.resolve().then(() => refreshPortfolioAdmission(portfolioId)).then(v => checkedResponse(v, portfolioId, x => x.permissions && x.recovery_summary && Array.isArray(x.recovery_summary.checks) && x.capability_reasons)), Promise.resolve().then(() => api.getPortfolioInspectionDiagnostics(portfolioId)).then(v => checkedResponse(v, portfolioId, x => Array.isArray(x.symbols) && Array.isArray(x.evidence) && x.repair_plan)),
       Promise.resolve().then(() => api.getPortfolioModelBindingReview(portfolioId)).then(v => checkedResponse(v, portfolioId, x => typeof x.can_confirm === "boolean")), Promise.resolve().then(() => tradeDate ? api.previewPortfolioReconciliation(portfolioId,tradeDate) : api.previewPortfolioReconciliation(portfolioId)).then(v => checkedResponse(v, portfolioId, x => typeof x.trade_date === "string" && (!tradeDate||x.trade_date===tradeDate) && Array.isArray(x.items))),
       Promise.resolve().then(() => api.getPortfolioInspectionJob(portfolioId)).then(v => checkedResponse(v, portfolioId, x => typeof x.enabled === "boolean" && x.queue && Array.isArray(x.queue.days) && Array.isArray(x.queue.limitations))),
     ]);
@@ -286,11 +288,11 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
   const currentBlockers=blockers.filter(group=>group.panel!=="reconciliation");
   const executionGroup=groups.find(group=>group.panel==="reconciliation");
   const pendingDays=queue?.days.filter(day=>!day.history_only&&!["PASSED","NOT_DUE"].includes(day.status)).length ?? null;
-  const canBuy = runtime?.permissions.allow_new_buys;
+  const canBuy = admission.view.kind === "allowed";
   const waiting = runtime?.recovery_summary.phase?.startsWith("WAITING") || report?.work_state?.startsWith("waiting");
   const noReview = runtime?.recovery_summary.recommended_action === "NONE";
-  const unknown = Boolean(errors.runtime || errors.actions) || !runtime;
-  const title = loading && !runtime ? "正在核实当前运行条件" : unknown ? "当前交易状态待核实" : canBuy ? "当前运行条件已满足" : waiting && !blockers.length ? "等待运行条件到期" : runtime.recovery_summary.can_confirm ? "阻断已清除，等待本人审核" : "新买入已暂停";
+  const unknown = admission.view.kind === "unknown" || admission.view.kind === "checking";
+  const title = admission.view.title;
   const open = (target: Panel, guided = false, asDetail=false) => { if(!panel)returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; clearDetailOverlay(); setWriteError(null); if (target === "ai" && !guided) { setAIScope(null); setAIStale(true); } if (target === "guide") { guideDraft.current = "guide"; setStep(firstStep()); } else if (!guided && panel!=="guide") guideDraft.current = null; if(asDetail&&target!==panel){setSeenPanels(previous=>previous.includes(target)?previous:[...previous,target]);setLayers(previous=>[...previous,target]);}else setPanel(target); };
   const close = (surface:Panel|null=panel) => {
     const trail=currentLayers.current;
@@ -490,13 +492,13 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
     {crossTabStale&&!panel&&<InspectionStaleNotice loading={loading} onReload={()=>void load()}/>}
     <header className="pi-page-head"><div><h2><Compass size={20}/>检查与对账</h2><p>修复当前数据、审核运行状态；执行对账与操作记录分别管理</p></div><div><Button type="text" icon={<CircleHelp size={15}/>} onClick={() => open("help")}>页面说明</Button><Button type="text" icon={<Sparkles size={15}/>} onClick={() => open("ai")}>AI 辅助</Button></div></header>
     <section className={`pi-hero ${canBuy === true && !unknown ? "pi-hero-ok" : ""}`}><div>{canBuy === true && !unknown ? <ShieldCheck size={28}/> : <ShieldAlert size={28}/>}<div><h1>{title}</h1><p>{unknown ? "结果读取不完整，不能把未知显示成正常运行。" : blockers.length ? `${blockers.length} 类运行条件待处理。当前数据与状态在下方处理，执行历史在“执行与对账”中核实。` : "实际权限与所需材料由服务端判定，详情可查看完整依据。"}</p></div></div><div className="pi-hero-actions"><Button type="primary" disabled={loading && !runtime} icon={<ArrowRight size={15}/>} onClick={() => open(waiting && !blockers.length ? "job" : "guide")}>{canBuy === true ? "查看运行依据" : waiting && !blockers.length ? "查看等待进度" : "开始恢复引导"}</Button></div></section>
-    <div className="pi-capabilities">{([['allow_new_buys','新买入'],['allow_auto_recovery','自动恢复'],['allow_risk_exits','风险退出']] as const).map(([key,label]) => <span key={key}>{label}<b className={runtime?.permissions[key] === true ? "pi-ok-text" : "pi-warning-text"}>{runtime?.permissions[key] === true ? "允许" : runtime?.permissions[key] === false ? "不允许" : "未知"}</b></span>)}<Button type="text" icon={<RefreshCw size={14}/>} loading={loading} onClick={() => void load()}>重新检测</Button></div>
+    <div className="pi-capabilities">{([['allow_new_buys','新买入'],['allow_auto_recovery','自动恢复'],['allow_risk_exits','风险退出']] as const).map(([key,label]) => <span key={key} aria-label={label+"权限"}>{label}<b className={!admission.loading && !admission.error && admission.runtime?.permissions[key] === true ? "pi-ok-text" : "pi-warning-text"}>{admission.loading || admission.error ? "未知" : admission.runtime?.permissions[key] === true ? "允许" : admission.runtime?.permissions[key] === false ? "不允许" : "未知"}</b></span>)}<Button type="text" icon={<RefreshCw size={14}/>} loading={loading} onClick={() => void load()}>重新检测</Button></div>
     {errors.actions && <div className="pi-callout pi-error" role="alert"><strong>待办读取失败</strong><p>{errors.actions}</p><Button onClick={() => void load()}>重试读取</Button></div>}
     <section aria-label="数据修复与状态审核模块">
       {repairRecovery&&<div className="pi-callout pi-warning"><strong>有一笔原修复请求需要核查</strong><p>原请求标识已保留。先找回原任务或核实结果，不重复提交；不会恢复旧勾选。</p><Button onClick={()=>navigate('settings:data-center:inspection-repair')}>查看原请求与任务</Button></div>}
       <div className="pi-section-head"><div><h3>数据修复与状态审核</h3><p className="pi-muted">处理当前行情、指标、评分和运行绑定，再审核实际运行权限。</p></div><div className="pi-module-actions"><Button onClick={()=>open("data")}>打开数据修复</Button><Button onClick={()=>{open("guide");setStep(3);}}>运行状态审核</Button></div></div>
       <div className="pi-task-list">{currentBlockers.map((group,i) => <article className="pi-task-row" key={group.key}><span className="pi-task-number">{i+1}</span><div><h3>{group.title}</h3><p>{group.impact}</p><small>{group.panel === "data" ? "补齐缺口 → 逐对象重检 → 查看结果" : group.panel === "binding" ? "核实当前模型与策略绑定 → 本人审核" : group.details[0]}</small></div><div className="pi-task-actions"><Button onClick={() => {if(group.panel==="data")open("data");else{open("guide");setStep(group.panel==="binding"?2:firstStep());}}}>{group.panel === "data" ? "整合查看与批量处理" : group.panel === "binding" ? "审核策略绑定" : "查看处理依据"}</Button></div></article>)}</div>
-      {!loading && !errors.actions && !currentBlockers.length && <div className="pi-empty"><CheckCircle2 size={22}/><div><strong>{canBuy === true ? "当前没有需要处理的阻断" : "当前数据与绑定暂无修复待办"}</strong><p>运行审核仍需核实完整条件，执行对账结果在下方独立管理。</p></div></div>}
+      {!loading && !unknown && !errors.actions && !currentBlockers.length && <div className="pi-empty"><CheckCircle2 size={22}/><div><strong>{canBuy === true ? "当前没有需要处理的阻断" : "当前数据与绑定暂无修复待办"}</strong><p>运行审核仍需核实完整条件，执行对账结果在下方独立管理。</p></div></div>}
     </section>
     <InspectionExecutionEntry pendingDays={pendingDays} earliestDate={report?.trade_date??executionGroup?.items[0]?.trade_date} verifiedThrough={queue?.verified_through} needsReview={check("reconciliation")?.passed!==true} error={jobError} onOpen={()=>{const date=selectedTradeDate??executionGroup?.items[0]?.trade_date;if(date)void inspectDay(date);else open("reconciliation");}} onJob={()=>open("job")}/>
     <footer className="pi-secondary"><span>操作记录</span><Button type="text" icon={<History size={16}/>} onClick={()=>{setHistoryOrigin(null);setHistoryContext(undefined);open("history");}}>审计记录</Button><small>按标的、交易日回看处理与审核</small></footer>

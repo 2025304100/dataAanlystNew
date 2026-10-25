@@ -5,13 +5,37 @@ on:
     # 为什么要带上 main_work*：实际发生过——闸门逻辑（分片表达式、marker、依赖钉版本）都在工作
     # 分支上改，但触发列表只有 main/master，于是这些改动**从未被 CI 跑过**，
     # “推上去让 CI 验证”根就不成立。工作分支必须有真实反馈，否则闸门改动只能靠本地跑。
-    branches: [main, master, "main_work*"]
+    branches: [main, master, "main_work*", "codex/*"]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, "main_work*"]
   # 允许在 Actions 页面手动跑指定分支（临时验证/不消耗额度的情况下按需跑）
   workflow_dispatch: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
+  governance-contracts-required:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: G4 HTTP contracts and inspection recovery, no skips or missing cases
+        run: python scripts/verify_g4_contracts.py --evidence-dir tmp/g4-contract-ci
+      - name: Preserve G4 evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-contract-evidence
+          path: tmp/g4-contract-ci
+          if-no-files-found: error
+
   # ── 后端白盒测试（无需后端运行）4 片并行 ────────────────────
   # 为什么分片：单 job 跑全量 whitebox 要 47~56 分钟，是整个流水线的长板。
   # 为什么不手写路径清单：清单会过期，新目录没被任何一条覆盖就是**静默漏测**
@@ -96,7 +120,7 @@ jobs:
       # 用 env_gap 必须写清理由并进台账，禁止拿它藏真 bug（区别于 xfail：那会慢慢变成没测）。
       - name: Run slow / env-gap whitebox tests - non-blocking
         continue-on-error: true
-        run: pytest -m "whitebox and (slow or env_gap)" -q --tb=short -rX -rf
+        run: pytest -m "whitebox and (slow or env_gap)" -q --tb=short -rXf
       - name: VectorBT with numba JIT enabled (opt-in path - non-blocking)
         # 产品默认走非 JIT（上方 job env），阻断道测的就是那条路。
         # 但 scripts/backtest_vectorbt.py --enable-numba 是公开可选，而在当前 numba
@@ -122,7 +146,7 @@ jobs:
       - name: Install dependencies
         run: cd frontend && npm ci
       - name: Run frontend tests
-        run: cd frontend && npm test
+        run: cd frontend && npm test -- --maxWorkers=2 --minWorkers=1
 
   # ── 后端黑盒测试（需启动后端）────────────────────────────
   backend-blackbox:
@@ -200,7 +224,7 @@ jobs:
           REQUIRE_LIVE_BACKEND: "1"
         run: |
           set -o pipefail
-          pytest -m blackbox --tb=short -q -rX -rf 2>&1 | tee /tmp/ci-blackbox.log
+          pytest -m blackbox --tb=short -q -rXf 2>&1 | tee /tmp/ci-blackbox.log
       - name: Publish failure digest
         if: failure()
         run: python scripts/ci_digest.py /tmp/ci-blackbox.log || true
@@ -308,7 +332,7 @@ jobs:
           # -s 不是风格问题：pytest 默认是 **fd 级**捕获，用例里发的 ::notice
           # （用于上报“预检模态阻塞导航”是否正在发生）会被一并吞掉，
           # annotation 根本不会生成——实测无 -s 时两条探测行都不输出。
-          pytest tests/e2e/ -m e2e -s --tb=short -q -rX -rf 2>&1 | tee /tmp/ci-e2e.log
+          pytest tests/e2e/ -m e2e -s --tb=short -q -rXf 2>&1 | tee /tmp/ci-e2e.log
       - name: Publish failure digest
         if: failure()
         run: python scripts/ci_digest.py /tmp/ci-e2e.log || true

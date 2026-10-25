@@ -33,6 +33,9 @@ const pendingResponses: Array<(response: Response) => void> = [];
 const symbol = { id: 11, symbol: "510300", name: "测试ETF", asset_type: "etf", market: "sh", region: "cn" };
 
 beforeEach(() => {
+  // Startup can publish before the scoped message bridge is installed. Keep
+  // both real AntD channels visible so expiry cannot mask duplicate notices.
+  message.config({ duration: 0 });
   localStorage.clear(); sessionStorage.clear(); setLocale("zh-CN"); requests.length = 0;
   precheck = clearPrecheck;
   oldHistory = false;
@@ -143,12 +146,13 @@ it("carries the single-symbol repair range and missing type and returns to the s
 afterEach(async () => {
   cleanup();
   await act(async () => { for (const resolve of pendingResponses.splice(0)) resolve(json({ detail: "测试已结束" }, 503)); message.destroy(); });
+  message.config({ duration: 3 });
   vi.useRealTimers();
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 
 function openApp() {
-  return render(<AntdApp><AppProvider><App /></AppProvider></AntdApp>);
+  return render(<AntdApp message={{ duration: 0 }}><AppProvider><App /></AppProvider></AntdApp>);
 }
 
 function completedSingleRun(overrides: Record<string, unknown> = {}) {
@@ -518,6 +522,7 @@ it("retains the submitted record, parameters and summary after a detail read fai
   expect(screen.queryByText(/单标的回测失败/)).not.toBeInTheDocument();
   const postsBeforeRetry = requests.filter((request) => request.url.endsWith("/backtest/run"));
   const writesBeforeRetry = requests.filter((request) => request.method !== "GET").length;
+  await screen.findByText("单标的回测已完成");
   const completionNotices = screen.queryAllByText("单标的回测已完成").length;
   singleDetailReply = async () => json(completedSingleRun({ total_return_pct: 0.25 }));
   fireEvent.click(retry);

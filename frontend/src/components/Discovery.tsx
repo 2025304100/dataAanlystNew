@@ -168,11 +168,11 @@ function normalizeOperator(operator: IndicatorOperator | string | undefined, val
   return valueType === "number" ? "gte" : "eq";
 }
 
-function makeEmptyFilter(defaultIndicatorKey?: string): IndicatorFilter {
+function makeEmptyFilter(defaultIndicatorKey?: string, valueType?: string): IndicatorFilter {
   return {
     id: makeId("filter"),
     indicator_key: defaultIndicatorKey,
-    operator: defaultIndicatorKey ? "gte" : "eq",
+    operator: normalizeOperator(undefined, valueType),
     number_value: 0,
     boolean_value: true,
   };
@@ -203,7 +203,7 @@ function normalizePlan(
 ): IndicatorPlan {
   const filters = Array.isArray(plan?.filters) && plan?.filters.length
     ? plan.filters.map((filter) => normalizeFilter(filter, indicatorMap))
-    : [makeEmptyFilter(fallbackIndicatorKey)];
+    : [makeEmptyFilter(fallbackIndicatorKey, fallbackIndicatorKey ? indicatorMap[fallbackIndicatorKey]?.value_type : undefined)];
   return {
     id: typeof plan?.id === "number" ? plan.id : 0,
     name: typeof plan?.name === "string" ? plan.name : "",
@@ -590,14 +590,14 @@ export default function Discovery({
     if (draft) {
       const draftFilters = Array.isArray(draft.filters) && draft.filters.length
         ? draft.filters.map((filter) => normalizeFilter(filter, indicatorMap, defaultIndicatorKey))
-        : [makeEmptyFilter(defaultIndicatorKey)];
+        : [makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)];
       setIndicatorFilters(draftFilters);
       setFilterLogic(draft.logic === "OR" ? "OR" : "AND");
       setPoolTab(POOL_TABS.includes(draft.pool_tab as PoolTab) ? (draft.pool_tab as PoolTab) : "actionable");
       setPlanName(typeof draft.name === "string" ? draft.name : "");
       setSelectedPlanId(typeof draft.selected_plan_id === "number" ? draft.selected_plan_id : undefined);
     } else {
-      setIndicatorFilters([makeEmptyFilter(defaultIndicatorKey)]);
+      setIndicatorFilters([makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)]);
     }
 
     setFilterStateReady(true);
@@ -617,7 +617,7 @@ export default function Discovery({
   useEffect(() => {
     if (!filterStateReady || !customIndicators.length) return;
     setIndicatorFilters((prev) => {
-      const next = prev.length ? prev : [makeEmptyFilter(defaultIndicatorKey)];
+      const next = prev.length ? prev : [makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)];
       return next.map((filter) => normalizeFilter(filter, indicatorMap, defaultIndicatorKey));
     });
   }, [customIndicators.length, defaultIndicatorKey, filterStateReady, indicatorMap]);
@@ -734,15 +734,15 @@ export default function Discovery({
   }, []);
 
   const handleAddFilter = useCallback(() => {
-    setIndicatorFilters((prev) => [...prev, makeEmptyFilter(defaultIndicatorKey)]);
-  }, [defaultIndicatorKey]);
+    setIndicatorFilters((prev) => [...prev, makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)]);
+  }, [defaultIndicatorKey, indicatorMap]);
 
   const handleRemoveFilter = useCallback((filterId: string) => {
     setIndicatorFilters((prev) => {
-      if (prev.length <= 1) return [makeEmptyFilter(defaultIndicatorKey)];
+      if (prev.length <= 1) return [makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)];
       return prev.filter((filter) => filter.id !== filterId);
     });
-  }, [defaultIndicatorKey]);
+  }, [defaultIndicatorKey, indicatorMap]);
 
   const handleIndicatorChange = useCallback((filterId: string, indicatorKey?: string) => {
     updateFilter(filterId, (filter) => {
@@ -787,7 +787,7 @@ export default function Discovery({
       setSelectedPlanId(undefined);
       setPlanName("");
       setFilterLogic("AND");
-      setIndicatorFilters([makeEmptyFilter(defaultIndicatorKey)]);
+      setIndicatorFilters([makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)]);
       return;
     }
     const plan = savedPlans.find((item) => item.id === planId);
@@ -817,8 +817,8 @@ export default function Discovery({
     setSelectedPlanId(undefined);
     setPlanName("");
     setFilterLogic("AND");
-    setIndicatorFilters([makeEmptyFilter(defaultIndicatorKey)]);
-  }, [defaultIndicatorKey]);
+    setIndicatorFilters([makeEmptyFilter(defaultIndicatorKey, defaultIndicatorKey ? indicatorMap[defaultIndicatorKey]?.value_type : undefined)]);
+  }, [defaultIndicatorKey, indicatorMap]);
 
   const handleStart = useCallback(async () => {
     // WP-S-FIX.3: 只检查 discovery 相关能力（market_data / scoring / discovery），

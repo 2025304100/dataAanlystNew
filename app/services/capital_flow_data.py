@@ -28,6 +28,7 @@ from app.models.symbol import Symbol
 from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
 from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
+from app.services.capital_flow_history_provider import fetch_capital_flow_history
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ def _fetch_individual_fund_flow_history(
     market = _market_prefix(symbol)
     try:
         with _proxy_bypass(), quiet_akshare_output():
-            df = call_akshare_with_retry(ak.stock_individual_fund_flow, stock=code, market=market, api_key="stock_individual_fund_flow", db=db, max_attempts=2)
+            df = call_akshare_with_retry(fetch_capital_flow_history, stock=code, market=market, api_key="stock_individual_fund_flow", db=db, max_attempts=2)
         if df is None or df.empty:
             return []
         # 列名：日期、收盘价、涨跌幅、主力净流入-净额、主力净流入-净占比、

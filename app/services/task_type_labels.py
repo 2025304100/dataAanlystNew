@@ -46,6 +46,9 @@ TASK_TYPE_LABELS_ZH: dict[str, str] = {
     "external_api_probe": "接口探测",
     "external_data_sync": "外部数据同步",
     # 组合交易
+    "portfolio_data_repair": "组合数据补证",
+    "portfolio_reconciliation": "组合账目核对",
+    "universe_field_repair": "行情字段补证",
     "portfolio_auto_trade": "组合自动交易",
     "portfolio_auto_simulation": "组合模拟交易",
     "portfolio_equity_snapshot": "组合权益快照",

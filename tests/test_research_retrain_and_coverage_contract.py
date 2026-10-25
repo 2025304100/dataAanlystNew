@@ -94,7 +94,7 @@ def test_worker_rejects_reviewed_manifest_change_before_warehouse_creation(monke
     from app.services.factors.trusted_history_training import load_training_dataset
     from app.services import market_history_evidence as evidence
     days = tuple(pd.bdate_range('2024-01-02', periods=310).date)
-    dataset = SimpleNamespace(calendar=days, manifest_sha256='b' * 64, identity={'research_only': True})
+    dataset = SimpleNamespace(calendar=days, symbols=('600001',), manifest_sha256='b' * 64, identity={'research_only': True, 'asset_type':'stock'})
     monkeypatch.setattr(evidence, 'load_trusted_history_dataset', lambda _: dataset)
     payload = FactorPipelineCreate(trusted_history_dataset_id='trusted-original', train_model=True,
         materialize_scores=False, mirror_only=False, hyperparameters_json={
@@ -119,11 +119,11 @@ def test_overview_reports_real_rows_and_separates_observation_only_mean(monkeypa
         reasons=['ep_ttm:stale'], warehouse_available=True, latest_bar_date='2026-10-16',
         calc_batch_id='frozen-default-batch', status='degraded'))
     overview = facade.get_score_runtime_overview()
-    assert overview.active_factor_coverage_count == 8  # backward compatible aggregate
-    assert overview.active_factor_avg_coverage == .5
+    assert overview.active_factor_coverage_count == 7  # backward compatible aggregate
+    assert overview.active_factor_avg_coverage == pytest.approx(4 / 7)
     assert overview.model_factor_coverage_count == 5 and overview.model_factor_avg_coverage == .8
     assert overview.latest_factor_date == '2026-10-14'
     assert overview.latest_trade_date == '2026-10-16'
     assert overview.health_status == 'degraded' and overview.health_reasons == ['ep_ttm:stale']
-    assert len(overview.factor_coverage) == 8
+    assert len(overview.factor_coverage) == 7
     assert sum(row['model_enabled'] for row in overview.factor_coverage) == 5

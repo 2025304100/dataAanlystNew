@@ -34,9 +34,9 @@ def upgrade() -> None:
         'portfolio_reviews',
         Column('id', Integer, primary_key=True, autoincrement=True),
         Column('portfolio_id', Integer, nullable=False),
-        Column('review_type', String(32), nullable=False),
-        Column('review_date', String(32), nullable=False),
-        Column('title', String(256), nullable=False),
+        Column('review_type', String(32), nullable=True),
+        Column('review_date', String(32), nullable=True),
+        Column('title', String(256), nullable=True),
         Column('content', Text, nullable=True),
         Column('metrics_json', Text, nullable=True),
         Column('action_items_json', Text, nullable=True),
@@ -44,7 +44,7 @@ def upgrade() -> None:
         Column('reviewed_by', String(128), nullable=True),
         Column('reviewed_at', DateTime, nullable=True),
         Column('created_at', DateTime, nullable=False),
-        Column('updated_at', DateTime, nullable=False),
+        Column('updated_at', DateTime, nullable=True),
     )
     op.create_index('ix_portfolio_reviews_portfolio_id', 'portfolio_reviews', ['portfolio_id'])
     op.create_index('ix_portfolio_reviews_review_type', 'portfolio_reviews', ['review_type'])

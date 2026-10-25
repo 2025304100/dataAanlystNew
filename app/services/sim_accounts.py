@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from math import floor
 
 from fastapi import HTTPException
-from sqlalchemy import desc, func, select
+from sqlalchemy import bindparam, desc, func, select, text
 from sqlalchemy.orm import Session
 
 from app.models.daily_bar import DailyBar
@@ -25,6 +25,25 @@ from app.services.market_rules import (
 from app.services.portfolio_asset_scope import ensure_symbol_in_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _require_transactional_order_storage(db: Session) -> None:
+    if db.get_bind().dialect.name != "mysql":
+        return
+    tables = {"portfolios", "positions", "sim_orders", "sim_trades", "cash_ledger"}
+    statement = text(
+        "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN :tables"
+    ).bindparams(bindparam("tables", expanding=True))
+    engines = dict(db.execute(statement, {"tables": sorted(tables)}).all())
+    unsafe = sorted(name for name in tables if str(engines.get(name, "")).lower() != "innodb")
+    if unsafe:
+        raise HTTPException(status_code=503, detail={
+            "error_code": "ORDER_STORAGE_ENGINE_UNSAFE",
+            "user_message": "下单所需数据表未全部使用 InnoDB，无法保证行锁及账务回滚；请先完成数据库迁移核验。",
+            "impact": "本次下单未执行，没有修改订单、成交、持仓或资金。",
+            "unsafe_tables": unsafe,
+        })
 
 
 def _round_money(value: float) -> float:
@@ -60,8 +79,9 @@ def latest_price_for_symbol(db: Session, symbol_id: int) -> float | None:
 def ensure_sim_account_seed(db: Session, portfolio: Portfolio) -> None:
     if portfolio.account_type != "simulated":
         return
+    db.execute(select(Portfolio.id).where(Portfolio.id == portfolio.id).with_for_update())
     existing = db.execute(
-        select(CashLedger.id).where(CashLedger.portfolio_id == portfolio.id).limit(1)
+        select(CashLedger.id).where(CashLedger.portfolio_id == portfolio.id).limit(1).with_for_update()
     ).scalar_one_or_none()
     if existing is not None:
         return
@@ -81,13 +101,12 @@ def ensure_sim_account_seed(db: Session, portfolio: Portfolio) -> None:
     db.flush()
 
 
-def cash_balance(db: Session, portfolio_id: int) -> float:
-    balance = db.execute(
-        select(CashLedger.balance_after)
+def cash_balance(db: Session, portfolio_id: int, *, current_read: bool = False) -> float:
+    statement = (select(CashLedger.balance_after)
         .where(CashLedger.portfolio_id == portfolio_id)
         .order_by(desc(CashLedger.id))
-        .limit(1)
-    ).scalar_one_or_none()
+        .limit(1))
+    balance = db.execute(statement.with_for_update() if current_read else statement).scalar_one_or_none()
     return _round_money(balance or 0.0)
 
 
@@ -100,7 +119,7 @@ def append_cash_ledger(
     ref_id: int | None = None,
     note: str | None = None,
 ) -> CashLedger:
-    next_balance = _round_money(cash_balance(db, portfolio_id) + amount)
+    next_balance = _round_money(cash_balance(db, portfolio_id, current_read=True) + amount)
     entry = CashLedger(
         portfolio_id=portfolio_id,
         entry_type=entry_type,
@@ -125,6 +144,7 @@ def _upsert_position(
 ) -> tuple[Position | None, float | None]:
     position = db.execute(
         select(Position).where(Position.portfolio_id == portfolio.id, Position.symbol_id == symbol.id)
+        .with_for_update().execution_options(populate_existing=True)
     ).scalars().first()
 
     realized_pnl = None
@@ -232,6 +252,7 @@ def place_sim_order(
     # 组合级串行化（R6）：同一组合的并发下单必须串行，避免读到过期持仓/现金而超卖或超支。
     # MySQL/InnoDB 通过 SELECT ... FOR UPDATE 行锁实现；SQLite 写事务本身串行、且该子句被
     # 方言忽略（等价空操作）。真并发一致性仍需 MySQL 现场实验验证。
+    _require_transactional_order_storage(db)
     db.execute(
         select(Portfolio.id).where(Portfolio.id == portfolio.id).with_for_update()
     )
@@ -247,6 +268,20 @@ def place_sim_order(
             assert_account_sources_checked_for_buy(db, portfolio.id)
         except CoverageError as exc:
             raise HTTPException(exc.status_code, detail={"error_code": exc.code, "message": str(exc)}) from exc
+        # T-D4 订单入口门禁与自动交易链同口径：阻断（block_level>=3）组合
+        # 禁止新买单；手动风险退出卖单不经过此门（UI 语义：新买单禁止/风险退出允许）。
+        from app.services.portfolio_status import order_entry_gate_check
+        # The route may already have established an InnoDB RR snapshot before
+        # acquiring the portfolio lock. A plain SELECT would still see that
+        # old snapshot even after a concurrent blocker committed.
+        gate = order_entry_gate_check(db, portfolio.id, "BUY", current_read=True)
+        if not gate.allowed:
+            raise HTTPException(status_code=409, detail={
+                "error_code": gate.rejection_reason_code or "ORDER_ENTRY_BLOCKED",
+                "user_message": "组合当前处于阻断状态，新买单已被禁止；风险退出卖单不受影响。请先到「检查与对账」处理。",
+                "impact": "没有创建订单，也没有改动持仓与现金。",
+                "block_reason": gate.block_reason,
+            })
     ensure_sim_account_seed(db, portfolio)
 
     normalized_quantity = normalize_order_quantity(symbol, quantity)
@@ -301,15 +336,16 @@ def place_sim_order(
             portfolio_id=portfolio.id,
             enforce_t_plus_1=True,
             enforce_price_limit=True,
+            current_read=True,
         )
 
-    if side == "buy" and cash_balance(db, portfolio.id) < filled_amount + fee:
+    if side == "buy" and cash_balance(db, portfolio.id, current_read=True) < filled_amount + fee:
         raise HTTPException(status_code=400, detail={
             "error_code": "INSUFFICIENT_SIM_CASH",
             "title_zh": "模拟现金不足",
             "detail_zh": (
                 f"需要 {round(filled_amount + fee, 2)}（含费用），"
-                f"可用现金 {cash_balance(db, portfolio.id)}。"
+                f"可用现金 {cash_balance(db, portfolio.id, current_read=True)}。"
             ),
         })
 
@@ -450,6 +486,8 @@ def apply_sim_order_fill(
     if order.status not in {"partial", "pending", "pending_retry"}:
         raise ValueError(f"order is not retryable: {order.status}")
 
+    _require_transactional_order_storage(db)
+    db.execute(select(Portfolio.id).where(Portfolio.id == portfolio.id).with_for_update())
     ensure_sim_account_seed(db, portfolio)
     normalized_quantity = normalize_order_quantity(symbol, quantity)
     if normalized_quantity <= 0:
@@ -467,13 +505,13 @@ def apply_sim_order_fill(
         })
     fee = _round_money(float(fee_override))
     filled_amount = _round_money(normalized_quantity * fill_price)
-    if side == "buy" and cash_balance(db, portfolio.id) < filled_amount + fee:
+    if side == "buy" and cash_balance(db, portfolio.id, current_read=True) < filled_amount + fee:
         raise HTTPException(status_code=400, detail={
             "error_code": "INSUFFICIENT_SIM_CASH",
             "title_zh": "模拟现金不足",
             "detail_zh": (
                 f"重试成交需要 {round(filled_amount + fee, 2)}（含费用），"
-                f"可用现金 {cash_balance(db, portfolio.id)}。"
+                f"可用现金 {cash_balance(db, portfolio.id, current_read=True)}。"
             ),
         })
 

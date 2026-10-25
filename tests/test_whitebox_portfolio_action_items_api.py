@@ -205,83 +205,94 @@ def test_real_execution_prerequisites_use_applied_snapshots_and_the_emergency_sw
 
 
 def test_real_candidate_with_fresh_hold_signal_waits_without_changing_execution_readiness(db_session, monkeypatch):
-    import json
-    from datetime import datetime, timezone
-    from app.models.daily_bar import DailyBar
-    from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSnapshot
-    from app.models.portfolio import Portfolio, PortfolioRule
-    from app.models.portfolio_candidate import PortfolioCandidate
-    from app.models.scheduled_task import ScheduledTask
-    from app.models.score import Score
-    from app.models.scoring_config import ScoringConfig
-    from app.models.symbol import Symbol
-    from app.services.auto_trade_readiness import get_auto_trade_readiness
-    from tests.test_stage3_factor_binding_contract import _activate, _ready_model
-    from tests.test_portfolio_inspection import _calendar, NOW
+    from freezegun import freeze_time
+    from app.main import app
+    from tests.test_portfolio_inspection import NOW
+    app.openapi()
+    with freeze_time(NOW.isoformat(), real_asyncio=True):
+        import json
+        from datetime import datetime, timezone
+        from app.models.daily_bar import DailyBar
+        from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSnapshot
+        from app.models.portfolio import Portfolio, PortfolioRule
+        from app.models.portfolio_candidate import PortfolioCandidate
+        from app.models.scheduled_task import ScheduledTask
+        from app.models.score import Score
+        from app.models.scoring_config import ScoringConfig
+        from app.models.symbol import Symbol
+        from app.services.auto_trade_readiness import get_auto_trade_readiness
+        from tests.test_stage3_factor_binding_contract import _activate, _ready_model
+        from tests.test_portfolio_inspection import _calendar, NOW
 
-    now = NOW.replace(tzinfo=None)
-    monkeypatch.setattr("app.services.auto_trade_safety._now_utc_naive", lambda: now)
-    _calendar(db_session)
-    monkeypatch.setenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED", "true")
-    portfolio = Portfolio(
-        name="waiting-fresh-candidate", account_type="simulated", auto_trade_enabled=1,
-        total_capital=100000, investable_ratio=1, cash_reserve_ratio=0,
-        last_decision_trade_date=now.date(), last_reconciled_trade_date=now.date(),
-    )
-    symbol = Symbol(symbol="WAITING-HOLD", name="Waiting", market="SH", asset_type="stock")
-    db_session.add_all([portfolio, symbol])
-    config = ScoringConfig(asset_type="stock", preset_key="waiting-actual", name="等待信号实际配置",
-        version=1, is_active=1, config_json=json.dumps({"dimensions": [{"key": "trend", "enabled": True,
-            "factors": [{"key": "trend_score", "source": "builtin"}]}]}))
-    db_session.add(config)
-    db_session.flush()
-    model = _ready_model(db_session, set_id="fs-waiting", model_id="model-waiting")
-    _activate(db_session, model.id)
-    usage = PortfolioFactorUsage(
-        id="waiting-usage", portfolio_id=portfolio.id,
-        factor_model_run_id=model.id, factor_set_id="fs-waiting",
-        status="active", run_mode="production_sim", pit_mode="strict_pit_safe",
-        effective_from=now, content_hash="waiting-usage-hash",
-    )
-    db_session.add(usage)
-    db_session.flush()
-    db_session.add_all([
-        PortfolioCandidate(portfolio_id=portfolio.id, symbol_id=symbol.id),
-        PortfolioRule(
-            portfolio_id=portfolio.id, rule_name="valid-rule", is_active=1,
-            max_single_position_pct=0.3, max_sector_position_pct=0.6,
-            max_stock_position_pct=1, max_etf_position_pct=1,
-            max_loss_per_trade_pct=0.1, max_open_positions=10,
-            stage_limits_json='{"stock":{"trend":0.3}}',
-        ),
-        ScheduledTask(name="waiting-schedule", task_type="portfolio_auto_trade", enabled=1),
-        DailyBar(
-            symbol_id=symbol.id, trade_date=now.date(), created_at=now,
-            open=10, high=11, low=9, close=10, volume=100000,
-        ),
-        Score(
-            symbol_id=symbol.id, trade_date=now.date(), created_at=now,
-            quality_score=70, quality_grade="B", timing_score=50,
-            stage="trend", action="hold", priority_score=60,
-            published_at=now, weight_mode="ridge", factor_model_run_id=model.id, factor_set_id="fs-waiting",
-            scoring_config_id=config.id, scoring_config_version=config.version,
-            scoring_config_snapshot_json=config.config_json,
-        ),
-        StrategyExecutionSnapshot(
-            id="waiting-applied-snapshot", portfolio_id=portfolio.id,
-            portfolio_factor_usage_id=usage.id, factor_model_run_id=model.id, factor_set_id="fs-waiting",
-            decision_clock_json="{}", member_snapshot_json="[]", snapshot_type="save_and_apply",
-            snapshot_hash="b" * 64, effective_from=now,
-        ),
-    ])
-    db_session.commit()
-    actual_readiness = get_auto_trade_readiness(db_session, portfolio.id, for_schedule=True)
-    assert actual_readiness.ready is False
-    assert {issue.code for issue in actual_readiness.blockers} == {"NO_TRADEABLE_RANGE"}
-    out = pai.build_portfolio_action_items(db_session, portfolio.id)
-    assert out["summary"]["ready"] is False
-    assert out["summary"]["execution_state"] == "waiting_signal"
-    assert out["summary"]["waiting_for_signal"] is True
-    assert out["summary"]["blockers"] == 0
-    assert "NO_TRADEABLE_RANGE" not in {item["code"] for item in out["items"]}
-    assert any(item["code"] == "NO_BUY_SIGNALS_TODAY" and item["severity"] == "info" for item in out["items"])
+        now = NOW.replace(tzinfo=None)
+        monkeypatch.setattr("app.services.auto_trade_safety._now_utc_naive", lambda: now)
+        _calendar(db_session)
+        monkeypatch.setenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED", "true")
+        portfolio = Portfolio(
+            name="waiting-fresh-candidate", account_type="simulated", auto_trade_enabled=1, status_model="MODEL_INACTIVE",
+            total_capital=100000, investable_ratio=1, cash_reserve_ratio=0,
+            last_decision_trade_date=now.date(), last_reconciled_trade_date=now.date(),
+        )
+        symbol = Symbol(symbol="WAITING-HOLD", name="Waiting", market="SH", asset_type="stock")
+        db_session.add_all([portfolio, symbol])
+        config = ScoringConfig(asset_type="stock", preset_key="waiting-actual", name="等待信号实际配置",
+            version=1, is_active=1, config_json=json.dumps({"dimensions": [{"key": "trend", "enabled": True,
+                "factors": [{"key": "trend_score", "source": "builtin"}]}]}))
+        db_session.add(config)
+        db_session.flush()
+        model = _ready_model(db_session, set_id="fs-waiting", model_id="model-waiting")
+        _activate(db_session, model.id)
+        usage = PortfolioFactorUsage(
+            id="waiting-usage", portfolio_id=portfolio.id,
+            factor_model_run_id=model.id, factor_set_id="fs-waiting",
+            status="active", run_mode="production_sim", pit_mode="strict_pit_safe",
+            effective_from=now, content_hash="waiting-usage-hash",
+        )
+        db_session.add(usage)
+        db_session.flush()
+        db_session.add_all([
+            PortfolioCandidate(portfolio_id=portfolio.id, symbol_id=symbol.id),
+            PortfolioRule(
+                portfolio_id=portfolio.id, rule_name="valid-rule", is_active=1,
+                max_single_position_pct=0.3, max_sector_position_pct=0.6,
+                max_stock_position_pct=1, max_etf_position_pct=1,
+                max_loss_per_trade_pct=0.1, max_open_positions=10,
+                stage_limits_json='{"stock":{"trend":0.3}}',
+            ),
+            ScheduledTask(name="waiting-schedule", task_type="portfolio_auto_trade", enabled=1),
+            DailyBar(
+                symbol_id=symbol.id, trade_date=now.date(), created_at=now,
+                open=10, high=11, low=9, close=10, volume=100000,
+            ),
+            Score(
+                symbol_id=symbol.id, trade_date=now.date(), created_at=now,
+                quality_score=70, quality_grade="B", timing_score=50,
+                stage="trend", action="hold", priority_score=60,
+                published_at=now, weight_mode="ridge", factor_model_run_id=model.id, factor_set_id="fs-waiting",
+                scoring_config_id=config.id, scoring_config_version=config.version,
+                scoring_config_snapshot_json=config.config_json,
+            ),
+            StrategyExecutionSnapshot(
+                id="waiting-applied-snapshot", portfolio_id=portfolio.id,
+                portfolio_factor_usage_id=usage.id, factor_model_run_id=model.id, factor_set_id="fs-waiting",
+                decision_clock_json="{}", member_snapshot_json="[]", snapshot_type="save_and_apply",
+                snapshot_hash="b" * 64, effective_from=now,
+            ),
+        ])
+        db_session.commit()
+        from app.api.routes import portfolio_governance as governance
+        governance.admin_transition_portfolio_state(portfolio.id, governance.TransitionStateRequest(
+            to_state="READY", review_note="本人已核验模拟账户与策略，完成首次组合审核"), db_session, "owner")
+        governance.confirm_portfolio_model_binding(portfolio.id, governance.ConfirmModelBindingRequest(
+            snapshot_id="waiting-applied-snapshot", model_run_id=model.id, ack=True,
+            review_note="本人已核验当前真实模型和策略范围，同意接受绑定"), db_session, "owner")
+        actual_readiness = get_auto_trade_readiness(db_session, portfolio.id, for_schedule=True)
+        assert actual_readiness.ready is False
+        assert {issue.code for issue in actual_readiness.blockers} == {"NO_TRADEABLE_RANGE"}
+        out = pai.build_portfolio_action_items(db_session, portfolio.id)
+        assert out["summary"]["ready"] is False
+        assert out["summary"]["execution_state"] == "waiting_signal"
+        assert out["summary"]["waiting_for_signal"] is True
+        assert out["summary"]["blockers"] == 0, out["items"]
+        assert "NO_TRADEABLE_RANGE" not in {item["code"] for item in out["items"]}
+        assert any(item["code"] == "NO_BUY_SIGNALS_TODAY" and item["severity"] == "info" for item in out["items"])

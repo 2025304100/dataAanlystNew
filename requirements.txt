@@ -88,6 +88,7 @@ python-multipart>=0.0.9
 
 # --- Test dependencies ---
 pytest>=8.0.0
+freezegun==1.5.5  # External clock boundary for migrated G4 HTTP contracts
 httpx>=0.27.0           # TestClient transport for FastAPI
 
 # Playwright must be pinned to an EXACT version: it is bound 1:1 to the browser

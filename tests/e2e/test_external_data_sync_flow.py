@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 
 from tests._e2e_settle import settle
+from tests._e2e_navigation import click_named
+from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
 
@@ -20,12 +22,12 @@ SETTINGS_TAB_LABELS = ("设置", "Settings")
 # 外部数据同步已不再是独立的设置项：它现在坐在
 # 「设置 → 数据中心 → 因子输入」Tab 下（DataCenter.tsx L155），
 # 旧的 `settings-external` 容器与「外部数据」导航项已不存在。
-EXTERNAL_NAV_LABELS = ("数据中心", "Data Center")
-FACTOR_INPUT_TAB_LABELS = ("因子输入",)
-EXTERNAL_SECTION_TITLE_LABELS = ("外部数据同步", "External Data Sync")
+EXTERNAL_NAV_LABELS = ("数据管理", "Data Center")
+FACTOR_INPUT_TAB_LABELS = ("其他数据",)
+EXTERNAL_SECTION_TITLE_LABELS = ("财报和其他数据", "External Data Sync")
 SOURCE_WATCHLIST_LABELS = ("当前观察池", "Watchlist")
 SOURCE_POSITIONS_LABELS = ("持仓", "Positions")
-SOURCE_ALL_LABELS = ("全量已同步标的", "All")
+SOURCE_ALL_LABELS = ("已保存行情的全部股票和 ETF", "All")
 SYNC_FUNDAMENTAL_LABELS = ("同步股票估值", "Sync Stock Valuation")
 SYNC_CAPITAL_FLOW_LABELS = ("同步资金流", "Sync Capital Flow")
 SYNC_ETF_LABELS = ("同步 ETF 指标", "Sync ETF Indicators")
@@ -35,37 +37,19 @@ EXPECTED_SYNC_BUTTON_COUNT = 3
 
 
 def _click_view_tab(page, labels):
-    """通过文本切换主 Tab，返回首个可见的 Tab locator。"""
-    for label in labels:
-        tab = page.locator(f"button.view-tab:has-text('{label}')").first
-        if tab.is_visible():
-            tab.click()
-            settle(page, 1500)
-            return tab
-    return None
+    return click_named(page.locator("nav.view-tabs"), labels)
 
 
 def _click_settings_nav(page, labels):
-    """点击设置页左侧 nav 切换到指定 section。"""
-    for label in labels:
-        nav = page.locator(f".settings-nav-item:has-text('{label}')").first
-        if nav.is_visible():
-            nav.click()
-            settle(page, 1500)
-            return nav
-    return None
+    return click_named(page.locator(".settings-sidebar"), labels)
 
 
 def _goto_external_data_sync(page):
     """切换到 设置 → 数据中心 → 「因子输入」Tab（外部数据同步现在的归属）。"""
     _click_view_tab(page, SETTINGS_TAB_LABELS)
     _click_settings_nav(page, EXTERNAL_NAV_LABELS)
-    for label in FACTOR_INPUT_TAB_LABELS:
-        tab = page.get_by_role("tab", name=label, exact=True).first
-        if tab.count() > 0 and tab.is_visible():
-            tab.click()
-            break
-    page.wait_for_timeout(2000)
+    click_named(page.locator("[data-settings-content='settings-data-center']"), FACTOR_INPUT_TAB_LABELS, role="tab")
+    expect(page.locator(".external-data-sync-section")).to_be_visible(timeout=20000)
 
 
 def test_external_data_sync_section_visible(page):

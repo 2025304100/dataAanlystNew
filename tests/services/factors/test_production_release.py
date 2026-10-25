@@ -36,7 +36,9 @@ def release_candidate(turnover_client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(execution, 'EXECUTION_ROOT', root / 'executions')
     monkeypatch.setattr(journal, 'JOURNAL_ROOT', root / 'journals')
     monkeypatch.setattr(evidence, 'REPORT_ROOT', root / 'reports')
-    boundary = datetime.now(timezone.utc).astimezone(journal.EXCHANGE_ZONE).date()
+    # The external clock is fixed to a synthetic Wednesday. A real Sunday
+    # cannot be the last business session in this deterministic receipt fixture.
+    boundary = datetime(2026, 10, 21, tzinfo=timezone.utc).date()
     # A weekday boundary with 310 preceding sessions and 55 following sessions.
     days = tuple(pd.bdate_range(end=boundary, periods=310).date)
     assert days[-1] == boundary
@@ -50,6 +52,15 @@ def release_candidate(turnover_client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(admission, 'datetime', Clock)
     monkeypatch.setattr(cost, 'datetime', Clock)
     monkeypatch.setattr(journal, '_now', lambda: clock[0])
+    from app.models import factor_model
+    from app.services.factors import (pipeline_task, ridge_model, trusted_history_training,
+        production_candidate_task, factor_engine, target_engine, training_input_snapshot, store)
+    # Patch the external clock in real model defaults and training as well.
+    # Preserve real date types used by the receipt's strict input contract.
+    for clock_owner in (factor_model, pipeline_task, ridge_model, trusted_history_training,
+                        input_replay, execution, production_candidate_task, factor_engine,
+                        target_engine, training_input_snapshot, store):
+        monkeypatch.setattr(clock_owner, 'datetime', Clock)
     from app.services.security_status import local_import
     from app.api.routes import security_status
     monkeypatch.setattr(local_import, 'datetime', Clock)
@@ -114,6 +125,13 @@ def release_candidate(turnover_client, db_session, tmp_path, monkeypatch):
     assert review['can_freeze'], review
     frozen = admission.freeze_production_admission(db_session, parent_id, bundle_id=training,
         expected_identity_sha256=review['identity_sha256'])
+    from app.models.factor_model import FactorModelRun
+    parent = db_session.get(FactorModelRun, parent_id)
+    assert frozen['frozen_plan']['identity']['observed_through'] == str(boundary), {
+        'protocol': frozen['frozen_plan']['identity']['observed_through'],
+        'created_at': str(parent.created_at), 'data_cutoff_at': str(parent.data_cutoff_at),
+        'validation_end_date': str(parent.validation_end_date),
+    }
     plan_id = frozen['frozen_plan']['plan_id']
     # This router fixture does not expose portfolio CRUD; create the input boundary record.
     from app.models.portfolio import Portfolio

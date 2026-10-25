@@ -1,0 +1,107 @@
+{
+  "schema_version": "turnover-optimization-feature-candidates-v1",
+  "locked_date": "2026-10-16",
+  "market_performance_evaluated": false,
+  "direction_selection": "training-only; coefficients learned without outer-holdout labels",
+  "candidates": {
+    "A": {
+      "name": "log relative turnover 20 observations",
+      "formula_expr": "iif(count(turnover_rate - turnover_rate, 20) == 20 and lowest(turnover_rate, 20) >= 0 and turnover_rate > 0, log(turnover_rate / mean(turnover_rate, 20)), None)",
+      "params": {},
+      "direction": "nonlinear",
+      "postprocess": {
+        "winsorize": {
+          "method": "mad",
+          "mad_multiplier": 3.0
+        },
+        "zscore": {
+          "ddof": 0
+        },
+        "missing_policy": "exclude"
+      },
+      "source_mapping": {
+        "table": "raw_daily_bars",
+        "fields": [
+          "turnover_rate"
+        ]
+      },
+      "execution_plan_hash": "deb9600645004a0c",
+      "compiler_version": "dsl-2.0.0",
+      "ast_depth": 6,
+      "function_call_count": 4,
+      "node_count": 35,
+      "data_dependencies": {
+        "fields": [
+          "turnover_rate"
+        ],
+        "functions": [
+          "count",
+          "log",
+          "lowest",
+          "mean"
+        ],
+        "source_tables": [
+          "raw_daily_bars"
+        ],
+        "max_lookback": 20,
+        "point_in_time_fields": [],
+        "unknown_names": []
+      }
+    },
+    "B": {
+      "name": "log relative turnover x previous-observation price change",
+      "formula_expr": "iif(count(turnover_rate - turnover_rate, 20) == 20 and lowest(turnover_rate, 20) >= 0 and turnover_rate > 0 and count(close - close, 2) == 2 and lowest(close, 2) > 0, log(turnover_rate / mean(turnover_rate, 20)) * pct_change(close, 1), None)",
+      "params": {},
+      "direction": "nonlinear",
+      "postprocess": {
+        "winsorize": {
+          "method": "mad",
+          "mad_multiplier": 3.0
+        },
+        "zscore": {
+          "ddof": 0
+        },
+        "missing_policy": "exclude"
+      },
+      "source_mapping": {
+        "table": "raw_daily_bars",
+        "fields": [
+          "close",
+          "turnover_rate"
+        ]
+      },
+      "execution_plan_hash": "60df9e41e229bada",
+      "compiler_version": "dsl-2.0.0",
+      "ast_depth": 6,
+      "function_call_count": 7,
+      "node_count": 58,
+      "data_dependencies": {
+        "fields": [
+          "close",
+          "turnover_rate"
+        ],
+        "functions": [
+          "count",
+          "log",
+          "lowest",
+          "mean",
+          "pct_change"
+        ],
+        "source_tables": [
+          "raw_daily_bars"
+        ],
+        "max_lookback": 20,
+        "point_in_time_fields": [],
+        "unknown_names": []
+      }
+    }
+  },
+  "limits": [
+    "No predictive value claimed by compiler or worked examples.",
+    "20 means per-symbol actual bar observations, not 20 exchange sessions.",
+    "B pct_change(close,1) uses previous actual observation; resumption gaps may span market sessions.",
+    "A uniform positive unit multiplier cancels; historical mixed-unit records are not repaired.",
+    "Current zero turnover is excluded; historical zeros are allowed only inside a complete finite nonnegative window.",
+    "Normalization uses each full-market date cross-section; max_symbols output truncation does not define universe."
+  ]
+}

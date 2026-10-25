@@ -32,11 +32,15 @@ pytestmark = pytest.mark.whitebox
 
 
 @pytest.fixture(autouse=True)
-def trading_session(monkeypatch):
-    # These task/locking tests exercise an open session, independent of the
-    # machine date. Closed/missing-calendar behavior has public API tests in
-    # test_valuation_sync_request_budget.py.
-    monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
+def trading_session(db_session, monkeypatch):
+    from app.main import app
+    app.openapi()
+    from tests.g4_contract_support import seed_calendar
+    seed_calendar(db_session)
+    from freezegun import freeze_time
+    # Clock input and a complete calendar: real market-session guards stay active.
+    with freeze_time('2026-10-21T08:00:00Z', real_asyncio=True):
+        yield
 
 
 class _DeferredThread:
@@ -105,8 +109,8 @@ def test_lhb_long_backfill_is_split_into_bounded_windows(db_session, monkeypatch
     monkeypatch.setattr(lhb_data, "sync_lhb_institution_trades", fake_sync)
     service._run_external_sync_task(task.id, "lhb", payload)
 
-    assert [start for start, _ in calls] == [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 4)]
-    assert [end for _, end in calls] == [date(2026, 1, 31), date(2026, 3, 3), date(2026, 3, 31)]
+    assert [start for start, _ in calls] == [date(2026, 1, 27), date(2026, 2, 27), date(2026, 3, 30)]
+    assert [end for _, end in calls] == [date(2026, 2, 26), date(2026, 3, 29), date(2026, 3, 31)]
     assert all((end - start).days + 1 <= 31 for start, end in calls)
     final = service.get_external_sync_task(task.id)
     assert final is not None and final.status == "done"

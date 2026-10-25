@@ -28,8 +28,23 @@ vi.mock("../../../../api/dataMirror", () => ({
 import { dataMirrorApi } from "../../../../api/dataMirror";
 import { ApiError } from "../../../../api/client";
 import DataMirrorPage, { humanBytes, humanSeconds } from "./DataMirrorPage";
+import { enterReadOnlyMode } from "../../../../test/acceptance";
 
 describe("DataMirrorPage（C2）", () => {
+  it("disables create and cancel in read-only mode while keeping refresh available", async () => {
+    const restore = await enterReadOnlyMode();
+    const view = render(<DataMirrorPage />);
+    try {
+      await waitFor(() => expect(document.querySelector('[data-mirror-cancel="t-1"]')).toBeTruthy());
+      const create = document.querySelector('[data-mirror-create]')!;
+      const cancel = document.querySelector('[data-mirror-cancel="t-1"]')!;
+      expect(create).toBeDisabled(); expect(cancel).toBeDisabled();
+      const before = [vi.mocked(dataMirrorApi.createTask).mock.calls.length, vi.mocked(dataMirrorApi.cancelTask).mock.calls.length];
+      fireEvent.click(create); fireEvent.click(cancel);
+      expect([vi.mocked(dataMirrorApi.createTask).mock.calls.length, vi.mocked(dataMirrorApi.cancelTask).mock.calls.length]).toEqual(before);
+      expect(document.querySelector('[data-mirror-refresh]')).toBeEnabled();
+    } finally { view.unmount(); await restore(); }
+  });
   it("渲染状态与任务列表", async () => {
     render(<DataMirrorPage />);
     await waitFor(() => {

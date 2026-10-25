@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Checkbox, Input, Space, Table, Typography } from "antd";
+import { Alert, Checkbox, Input, Space, Table, Typography } from "antd";
 import { api, type SecurityStatusCoverage, type SecurityStatusImportInput, type SecurityStatusImportPreview, type SecurityStatusTemplate } from "../api/client";
 
 const EMPTY_SOURCE = { source_name: "", source_reference: "", source_version: "", updated_at: "" };
@@ -128,7 +129,7 @@ export default function SecurityStatusImportPanel() {
         <label>资料注明的更新时间（北京时间）<Input type="datetime-local" aria-label="资料注明的更新时间（北京时间）" value={source.updated_at} disabled={importing} onChange={(event) => changeSource("updated_at", event.target.value)} /></label>
       </div>
       <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>请填写原资料的更新时间，不能用今天的上传时间代替。</Typography.Paragraph>
-      <Button onClick={() => void checkFile()} loading={checking} disabled={!ready || importing}>检查文件</Button>
+      <Button mutation onClick={() => void checkFile()} loading={checking} disabled={!ready || importing}>检查文件</Button>
     </>}
     {fileError && <Alert type="error" showIcon message={fileError} style={{ marginTop: 12 }} />}
     {success && <Alert type="success" showIcon message={success} description="已有记录已更新。回到回测页重新检查资料；这里不会自动启动回测或交易。" style={{ marginTop: 12 }} />}
@@ -143,7 +144,7 @@ export default function SecurityStatusImportPanel() {
         ]} />
         <Space wrap style={{ marginTop: 12 }}>
           <Checkbox checked={confirmed} disabled={importing} onChange={(event) => setConfirmed(event.target.checked)}>我已核对资料来源和历史日期</Checkbox>
-          <Button type="primary" disabled={!confirmed} loading={importing} onClick={() => void importFile()}>导入记录</Button>
+          <Button mutation type="primary" disabled={!confirmed} loading={importing} onClick={() => void importFile()}>导入记录</Button>
         </Space>
       </>}
     </div>}

@@ -125,7 +125,7 @@ TASK_DEFINITIONS: dict[str, dict] = {
     # P2-3：自动交易执行（基于评分+候选池+风控自动触发模拟买卖）
     "portfolio_auto_trade": {
         "name": "组合自动交易",
-        "description": "每日收盘前对所有已开启 auto_trade_enabled 的模拟组合执行一次自动买卖评估与下单",
+        "description": "默认每日 20:35 在策略决策时点后评估已开启接管的模拟组合，按不可变计划在下一交易日撮合",
         "default_payload": {"dry_run": False, "buy_candidate_limit": 10},
     },
     "alert_evaluation": {
@@ -277,12 +277,13 @@ DEFAULT_SCHEDULES = (
         "payload": TASK_DEFINITIONS["index_daily_sync"]["default_payload"],
         "enabled": True,
     },
-    # P2-3：每日自动交易（A 股 14:55 收盘前 5 分钟执行，避免与 15:00 收盘冲突）
+    # Default DecisionEngine clock: data cutoff 20:00, decision 20:30.
+    # Existing schedules are retained for explicit review, never rewritten by seeding.
     {
         "name": "每日组合自动交易",
         "task_type": "portfolio_auto_trade",
         "frequency": "daily",
-        "time_of_day": "14:55",
+        "time_of_day": "20:35",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["portfolio_auto_trade"]["default_payload"],
         "enabled": False,

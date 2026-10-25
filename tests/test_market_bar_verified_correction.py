@@ -124,6 +124,10 @@ def test_unsafe_or_unreviewed_plan_is_rejected(db_session, bad):
 ])
 def test_unit_contract_survives_both_sql_writers(db_session, provider, endpoint, tag):
     bars = seed(db_session)
+    # This case updates the same verified source; source replacement remains separately forbidden.
+    for bar in bars:
+        bar.source = tag
+    db_session.commit()
     frame = pd.DataFrame([dict(trade_date=date(2026, 8, 7), open=40.13, high=43.29,
         low=39.44, close=43.07, volume=111038800, amount=None, turnover_rate=None)])
     frame.attrs["history_contract"] = dict(provider=provider, endpoint=endpoint,
@@ -131,7 +135,7 @@ def test_unit_contract_survives_both_sql_writers(db_session, provider, endpoint,
     assert _upsert_bars(db_session, bars[0].symbol_ref, frame) == (0, 1)
     assert _upsert_universe_bars(db_session, bars[1].universe_symbol_id, frame) == (0, 1)
     db_session.flush(); db_session.expire_all()
-    assert all(b.source == tag and b.volume == 111038800 and b.amount is None for b in bars)
+    assert all(b.source == tag and b.volume == 111038800 and b.amount == 1541975676 and b.turnover_rate == 2.42 for b in bars)
 
 
 def test_unmarked_history_never_claims_new_contract_and_bad_marker_fails_closed(db_session):

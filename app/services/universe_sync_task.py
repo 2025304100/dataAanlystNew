@@ -1577,12 +1577,17 @@ def _run_universe_range_repair(
 
         db = SessionFactory()
         try:
-            final_status = "cancelled" if _is_cancelled(task_id) else "done"
-            final_stage = "cancelled" if final_status == "cancelled" else "done"
-            final_message = (
-                "Range repair completed" if final_status == "done"
-                else "Range repair task cancelled"
-            )
+            results = list(result_summary.values())
+            failed = bool(errors) or any(int(item.get("failed", 0) or 0) or
+                int(item.get("processed", 0) or 0) < int(item.get("total", 0) or 0) for item in results)
+            succeeded = sum(int(item.get("ok", 0) or 0) for item in results)
+            final_status = "cancelled" if _is_cancelled(task_id) else "failed" if failed else "done"
+            final_stage = final_status
+            outcome = ("cancelled" if final_status == "cancelled" else
+                       "partial_success" if failed and succeeded else "failed" if failed else
+                       "success" if succeeded else "skipped")
+            result_summary.update(outcome=outcome, errors=errors)
+            final_message = f"Range repair {outcome}; inspect failures and unprocessed IDs"
             final_updates: dict[str, Any] = {
                 "status": final_status,
                 "stage": final_stage,

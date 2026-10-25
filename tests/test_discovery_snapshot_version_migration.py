@@ -27,7 +27,7 @@ def test_snapshot_version_upgrade_keeps_history_and_refuses_lossy_downgrade(tmp_
                 "(2,'cn_stock','2026-10-19','ready','2026-10-19','2026-10-19')"))
             connection.execute(text("INSERT INTO discovery_score_snapshot_items "
                 "(snapshot_id,universe_symbol_id,created_at) VALUES (1,10,'2026-10-19')"))
-        command.upgrade(config, "head")
+        command.upgrade(config, "wps_0023_073_discovery_snapshot_versions")
         with engine.begin() as connection:
             connection.execute(text("UPDATE discovery_score_snapshots SET status='superseded' WHERE id=2"))
             connection.execute(text("INSERT INTO discovery_score_snapshots "

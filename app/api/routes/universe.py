@@ -4,7 +4,7 @@ import asyncio
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -66,6 +66,19 @@ class UniverseRangeRepairRequest(BaseModel):
         description="target scopes (cn-stock/cn-etf/us-stock/us-etf), None means all",
     )
     sync_limit: int = Field(default=0, ge=0, le=10000, description="max symbols to process in one repair run")
+
+
+class UniverseFieldRepairRequest(BaseModel):
+    """Explicit universe IDs and dates; preview is the default operation."""
+
+    symbol_ids: list[StrictInt] = Field(min_length=1, max_length=100)
+    start_date: date
+    end_date: date
+    fields: list[str] = Field(min_length=1, max_length=3)
+    apply: bool = False
+    expected_preview_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    model_config = {"extra": "forbid"}
 
 class UniverseStatsRead(BaseModel):
     """基础数据健康度。"""
@@ -221,6 +234,18 @@ def cancel_smart_sync():
 
 
 # —— Range Repair API ——
+
+
+@router.post("/universe/field-repair")
+def repair_fields(payload: UniverseFieldRepairRequest, db: Session = Depends(get_db)):
+    """Preview/compensate existing NULL fields without changing other history."""
+    from app.services.universe_field_repair import repair_universe_fields
+    try:
+        return repair_universe_fields(db, **payload.model_dump())
+    except ValueError as exc:
+        message = str(exc)
+        status = 409 if message.startswith("preview_changed") else 503 if "requires_innodb" in message else 422
+        raise HTTPException(status_code=status, detail=message) from exc
 
 
 @router.post("/universe/range-repair", response_model=AsyncTaskRead)
@@ -541,11 +566,14 @@ async def sync_index_prices(
     看到截图里的『提交同步任务失败: 请求超时』。
     直接执行 ~30ms 对 event loop 无感知（单次点击，非流式/高频接口）。
     """
-    return index_prices_sync_task.create_index_prices_sync_task(
-        symbols=payload.symbols,
-        history_days=int(payload.history_days),
-        end_date=payload.end_date,
-    )
+    try:
+        return index_prices_sync_task.create_index_prices_sync_task(
+            symbols=payload.symbols,
+            history_days=int(payload.history_days),
+            end_date=payload.end_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/index-prices/sync-tasks/{task_id}", response_model=AsyncTaskRead)

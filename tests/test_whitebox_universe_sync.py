@@ -313,7 +313,7 @@ def test_incremental_worker_uses_metadata_and_increments_cached_bar_count(monkey
 
     def fake_fetch(symbol: UniverseSymbol, start_date: date, end_date: date) -> pd.DataFrame:
         calls.append((start_date, end_date))
-        return pd.DataFrame([{"trade_date": date(2026, 7, 31), "close": 10.5}])
+        return pd.DataFrame([{"trade_date": date(2026, 7, 31), "open": 10, "high": 11, "low": 9, "close": 10.5}])
 
     monkeypatch.setattr(universe_sync, "_fetch_universe_history", fake_fetch)
 
@@ -493,12 +493,12 @@ def test_repair_one_universe_symbol_clamps_range_and_upserts_chunks(monkeypatch,
         calls.append((start_date, end_date))
         if (start_date, end_date) == (date(2026, 1, 3), date(2026, 1, 4)):
             return pd.DataFrame([
-                {"trade_date": date(2026, 1, 3), "close": 30.0},
-                {"trade_date": date(2026, 1, 4), "close": 40.0},
+                {"trade_date": date(2026, 1, 3), "open": 30.0, "high": 30.0, "low": 30.0, "close": 30.0},
+                {"trade_date": date(2026, 1, 4), "open": 40.0, "high": 40.0, "low": 40.0, "close": 40.0},
             ])
         if (start_date, end_date) == (date(2026, 1, 5), date(2026, 1, 5)):
             return pd.DataFrame([
-                {"trade_date": date(2026, 1, 5), "close": 50.0},
+                {"trade_date": date(2026, 1, 5), "open": 50.0, "high": 50.0, "low": 50.0, "close": 50.0},
             ])
         raise AssertionError(f"unexpected repair chunk: {(start_date, end_date)}")
 

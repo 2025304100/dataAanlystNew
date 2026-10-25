@@ -300,10 +300,10 @@ def upgrade() -> None:
     op.create_table(
         'tail_accumulation_snapshots',
         Column('id', Integer, primary_key=True, autoincrement=True),
-        Column('snapshot_date', String(32), nullable=False),
+        Column('snapshot_date', String(32), nullable=True),
         Column('symbol', String(32), nullable=False),
-        Column('accumulation_days', Integer, nullable=False),
-        Column('accumulation_score', Float, nullable=False),
+        Column('accumulation_days', Integer, nullable=True),
+        Column('accumulation_score', Float, nullable=True),
         Column('price_change_pct', Float, nullable=True),
         Column('volume_change_pct', Float, nullable=True),
         Column('institution_presence', Integer, nullable=True),

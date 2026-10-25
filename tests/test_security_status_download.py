@@ -55,7 +55,10 @@ def test_default_scope_includes_current_members_and_remaining_holdings(download_
     scope = response.json()
     assert [s["symbol"] for s in scope["symbols"]] == ["600000", "600165", "601456"]
     assert scope["can_download"] is True
-    assert date.fromisoformat(scope["end_date"]) < datetime.now(timezone.utc).date()
+    # 下载窗口按北京时间截到"昨日"。用 UTC 日期比较在北京 00:00-08:00 会误判
+    # （北京昨日 == UTC 今日），这里用上海时区当日做边界兼容。
+    from zoneinfo import ZoneInfo
+    assert date.fromisoformat(scope["end_date"]) < datetime.now(ZoneInfo("Asia/Shanghai")).date()
     assert 364 <= (date.fromisoformat(scope["end_date"]) - date.fromisoformat(scope["start_date"])).days <= 365
     assert scope["latest_task"] is None
 

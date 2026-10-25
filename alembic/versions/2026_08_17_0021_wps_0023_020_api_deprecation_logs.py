@@ -32,21 +32,10 @@ def upgrade() -> None:
     op.create_index('ix_api_deprecation_logs_endpoint', 'api_deprecation_logs', ['endpoint'])
     op.create_index('ix_api_deprecation_logs_created_at', 'api_deprecation_logs', ['created_at'])
 
-    op.create_table(
-        'data_sync_plans',
-        Column('id', Integer, primary_key=True, autoincrement=True),
-        Column('plan_name', String(128), nullable=False, unique=True),
-        Column('data_type', String(32), nullable=False),
-        Column('source_type', String(32), nullable=False),
-        Column('cron_expression', String(64), nullable=False),
-        Column('enabled', Integer, nullable=False, server_default='1'),
-        Column('config_json', Text, nullable=True),
-        Column('last_sync_at', DateTime, nullable=True),
-        Column('next_sync_at', DateTime, nullable=True),
-        Column('last_sync_status', String(16), nullable=True),
-        Column('created_at', DateTime, nullable=False),
-        Column('updated_at', DateTime, nullable=False),
-    )
+    from sqlalchemy import inspect
+    if not inspect(op.get_bind()).has_table('data_sync_plans'):
+        from app.db.migration_schema_v80 import create_frozen_table
+        create_frozen_table(op.get_bind(), 'data_sync_plans')
     op.create_index('ix_data_sync_plans_data_type', 'data_sync_plans', ['data_type'])
     op.create_index('ix_data_sync_plans_source_type', 'data_sync_plans', ['source_type'])
     op.create_index('ix_data_sync_plans_enabled', 'data_sync_plans', ['enabled'])
@@ -74,9 +63,10 @@ def downgrade() -> None:
     op.drop_index('ix_data_quality_snapshots_snapshot_date', table_name='data_quality_snapshots')
     op.drop_table('data_quality_snapshots')
 
-    op.drop_index('ix_data_sync_plans_enabled', table_name='data_sync_plans')
-    op.drop_index('ix_data_sync_plans_source_type', table_name='data_sync_plans')
-    op.drop_index('ix_data_sync_plans_data_type', table_name='data_sync_plans')
+    available = {i['name'] for i in inspect(op.get_bind()).get_indexes('data_sync_plans')}
+    for name in ('ix_data_sync_plans_enabled', 'ix_data_sync_plans_source_type', 'ix_data_sync_plans_data_type'):
+        if name in available:
+            op.drop_index(name, table_name='data_sync_plans')
     op.drop_table('data_sync_plans')
 
     op.drop_index('ix_api_deprecation_logs_created_at', table_name='api_deprecation_logs')

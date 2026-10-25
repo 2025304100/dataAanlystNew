@@ -72,8 +72,18 @@ it('keeps market statistics errors in place with a read-only retry and hides the
   expect(await screen.findByText('行情数据状态暂时读不到')).toBeVisible();
   expect(screen.getByText('statistics offline')).not.toBeVisible();
   statsStatus = async () => json(stats);
-  fireEvent.click(screen.getByRole('button', { name: '重试读取行情状态' }));
+  fireEvent.click(await screen.findByRole('button', { name: '重试读取行情状态' }));
   await waitFor(() => expect(screen.queryByText('行情数据状态暂时读不到')).not.toBeInTheDocument());
+  expect(calls.every(call => call.method === 'GET')).toBe(true);
+});
+
+it('refreshes local dashboard statistics without downloading or registering work', async () => {
+  render(<App><UniverseDataPanel /></App>);
+  const button = await screen.findByRole('button', { name: '刷新统计' });
+  await waitFor(() => expect(button).toBeEnabled());
+  const before = calls.filter(call => call.url.includes('/universe/stats')).length;
+  fireEvent.click(button);
+  await waitFor(() => expect(calls.filter(call => call.url.includes('/universe/stats')).length).toBeGreaterThan(before));
   expect(calls.every(call => call.method === 'GET')).toBe(true);
 });
 

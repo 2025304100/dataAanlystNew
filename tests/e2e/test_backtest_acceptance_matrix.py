@@ -29,6 +29,7 @@ import httpx
 import pytest
 
 from conftest import BACKEND_URL, FRONTEND_URL
+from tests._e2e_navigation import click_named
 
 
 pytestmark = pytest.mark.e2e
@@ -109,13 +110,7 @@ def _run_for_first_portfolio(predicate, *, reason: str) -> dict[str, Any]:
 
 
 def _click_one(page, labels: tuple[str, ...], *, role: str = "button") -> None:
-    for label in labels:
-        candidate = page.get_by_role(role, name=label, exact=True).first
-        if candidate.is_visible():
-            candidate.click()
-            return
-    # Keep failures actionable when a translation or selector changes.
-    pytest.fail(f"未找到可见控件：{' / '.join(labels)}")
+    click_named(page, labels, role=role)
 
 
 def _assert_visible_text(page, labels: tuple[str, ...]) -> None:

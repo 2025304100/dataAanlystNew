@@ -184,6 +184,8 @@ def check_t_plus_1(
     symbol_id: int,
     sell_quantity: float,
     today: date | None = None,
+    *,
+    current_read: bool = False,
 ) -> tuple[bool, str | None]:
     """检查卖出是否违反 T+1 规则（当日买入当日不可卖）。
 
@@ -203,27 +205,16 @@ def check_t_plus_1(
     if today is None:
         today = datetime.now(timezone.utc).replace(tzinfo=None).date()
 
-    # 查询今日买入的成交量
-    today_buys = db.execute(
-        select(SimTrade.quantity)
-        .where(
-            SimTrade.portfolio_id == portfolio_id,
-            SimTrade.symbol_id == symbol_id,
-            SimTrade.side == "buy",
-        )
-    ).scalars().all()
-
     # SimTrade 没有 trade_date 字段，用 created_at 日期匹配
     # 重新查询带 created_at 的完整记录
-    today_buy_records = db.execute(
-        select(SimTrade.quantity, SimTrade.created_at)
+    buy_statement = (select(SimTrade.quantity, SimTrade.created_at)
         .where(
             SimTrade.portfolio_id == portfolio_id,
             SimTrade.symbol_id == symbol_id,
             SimTrade.side == "buy",
         )
-        .order_by(desc(SimTrade.id))
-    ).all()
+        .order_by(desc(SimTrade.id)))
+    today_buy_records = db.execute(buy_statement.with_for_update() if current_read else buy_statement).all()
 
     today_bought_qty = 0.0
     for qty, created_at in today_buy_records:
@@ -239,12 +230,13 @@ def check_t_plus_1(
         return (True, None)
 
     # 查询当前持仓总量
-    position = db.execute(
-        select(Position).where(
+    position_statement = select(Position).where(
             Position.portfolio_id == portfolio_id,
             Position.symbol_id == symbol_id,
         )
-    ).scalars().first()
+    if current_read:
+        position_statement = position_statement.with_for_update().execution_options(populate_existing=True)
+    position = db.execute(position_statement).scalars().first()
 
     if position is None:
         return (False, "无持仓，无法卖出")
@@ -273,6 +265,7 @@ def validate_market_rules(
     enforce_t_plus_1: bool = True,
     enforce_price_limit: bool = True,
     today: date | None = None,
+    current_read: bool = False,
 ) -> None:
     """综合校验市场规则，违反时抛 HTTPException。
 
@@ -301,6 +294,6 @@ def validate_market_rules(
                 raise HTTPException(status_code=400, detail=reason)
 
     if enforce_t_plus_1 and side == "sell":
-        can_sell, reason = check_t_plus_1(db, portfolio_id, symbol.id, quantity, today=today)
+        can_sell, reason = check_t_plus_1(db, portfolio_id, symbol.id, quantity, today=today, current_read=current_read)
         if not can_sell:
             raise HTTPException(status_code=400, detail=reason)

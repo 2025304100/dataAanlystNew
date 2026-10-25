@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -75,9 +77,28 @@ def _to_prefixed_symbol(symbol: str) -> str:
     - 深证指数（399 开头）→ sz 前缀，如 399001 → sz399001
     - 其他（沪深300/上证等）→ sh 前缀，如 000300 → sh000300
     """
+    validate_index_symbol(symbol)
+    return f"sz{symbol}" if symbol.startswith("399") else f"sh{symbol}"
+
+
+def validate_index_symbol(symbol: str) -> str:
+    """Validate transport format, not asset identity (index/stock codes overlap)."""
     if not symbol:
         raise ValueError("symbol is required")
-    return f"sz{symbol}" if symbol.startswith("399") else f"sh{symbol}"
+    if not isinstance(symbol, str) or re.fullmatch(r"[0-9]{6}", symbol) is None:
+        raise ValueError("指数代码必须为六位数字；自定义指数需先核实交易所及来源")
+    return symbol
+
+
+def _observed_number(value, *, required: bool = False) -> float | None:
+    if value is None or pd.isna(value):
+        if required:
+            raise ValueError("指数关键价格缺失")
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0 or (required and number == 0):
+        raise ValueError("指数数值无效")
+    return number
 
 
 def _empty_frame() -> pd.DataFrame:
@@ -285,8 +306,7 @@ def sync_index_daily(
     Returns:
         IndexSyncResult：含 received/written/skipped 统计
     """
-    if not symbol:
-        raise ValueError("symbol is required")
+    validate_index_symbol(symbol)
 
     end = end_date or date.today()
     # 默认回补 5 年（指数日线历史可回溯，首次同步会拉一次大量数据）
@@ -298,6 +318,22 @@ def sync_index_daily(
         return IndexSyncResult(
             symbol=symbol, received=0, written=0, skipped=0, date_range=(None, None)
         )
+
+    # Validate the whole response before touching any existing row. Do not
+    # silently truncate an invalid response into a seemingly successful batch.
+    for incoming in frame.itertuples(index=False):
+        raw_day = getattr(incoming, "trade_date", None)
+        if raw_day is None or raw_day == "" or pd.isna(raw_day):
+            raise ValueError("指数响应缺少日期，整批未写入")
+        incoming_day = pd.Timestamp(raw_day).date()
+        if not start <= incoming_day <= end:
+            raise ValueError("指数日期超出请求范围，整批未写入")
+        open_, high, low, close = [_observed_number(getattr(incoming, field, None), required=True)
+                                   for field in ("open", "high", "low", "close")]
+        if not low <= min(open_, close) <= max(open_, close) <= high:
+            raise ValueError("指数 OHLC 边界异常，整批未写入")
+        for field in ("volume", "amount"):
+            _observed_number(getattr(incoming, field, None))
 
     written = 0
     skipped = 0
@@ -319,17 +355,20 @@ def sync_index_daily(
                 # pandas Timestamp or datetime
                 trade_date = pd.Timestamp(raw_date).date()
 
+            if not start <= trade_date <= end:
+                raise ValueError("指数日期超出请求范围")
+            open_ = _observed_number(getattr(row, "open", None), required=True)
+            high = _observed_number(getattr(row, "high", None), required=True)
+            low = _observed_number(getattr(row, "low", None), required=True)
+            close = _observed_number(getattr(row, "close", None), required=True)
+            volume = _observed_number(getattr(row, "volume", None))
+            amount = _observed_number(getattr(row, "amount", None))
+            if not low <= min(open_, close) <= max(open_, close) <= high:
+                raise ValueError("指数 OHLC 边界异常")
             if first_date is None or trade_date < first_date:
                 first_date = trade_date
             if last_date is None or trade_date > last_date:
                 last_date = trade_date
-
-            open_ = float(getattr(row, "open", 0) or 0)
-            high = float(getattr(row, "high", 0) or 0)
-            low = float(getattr(row, "low", 0) or 0)
-            close = float(getattr(row, "close", 0) or 0)
-            volume = getattr(row, "volume", None)
-            amount = getattr(row, "amount", None)
 
             existing = db.execute(
                 select(IndexPrice).where(

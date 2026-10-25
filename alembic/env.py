@@ -364,43 +364,38 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _run_on_connection(connection) -> None:
+    dialect_name = connection.dialect.name
+    if dialect_name == "sqlite":
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    if dialect_name == "mysql":
+        # Some MySQL 5.7 servers default to MyISAM. Change only this migration
+        # session so new tables retain transactions and foreign keys.
+        connection.exec_driver_sql("SET default_storage_engine=InnoDB")
+    _ensure_version_table_width(connection)
+    connection.commit()
+    context.configure(connection=connection, target_metadata=target_metadata,
+                      compare_type=True, render_as_batch=True)
+    with context.begin_transaction():
+        context.run_migrations()
+    connection.commit()
+
+
 def run_migrations_online() -> None:
     _install_idempotent_operations_patch()
+    # The deployment guard supplies an already verified live connection. Do
+    # not resolve another URL, reopen DNS, or fall back to a local app config.
+    verified_connection = config.attributes.get("connection")
+    if verified_connection is not None:
+        _run_on_connection(verified_connection)
+        return
     db_url = _apply_db_url_from_env_or_settings()
-    ini_section = config.get_section(config.config_ini_section, {}) or {}
-    ini_section = dict(ini_section)
+    ini_section = dict(config.get_section(config.config_ini_section, {}) or {})
     ini_section["sqlalchemy.url"] = db_url
-    connectable = engine_from_config(
-        ini_section,
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
+    connectable = engine_from_config(ini_section, prefix="sqlalchemy.", poolclass=pool.NullPool)
     _attach_sqlite_pragmas(connectable)
-
     with connectable.connect() as connection:
-        dialect_name = connection.dialect.name
-        if dialect_name == "sqlite":
-            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        if dialect_name == "mysql":
-            # 实测：有些 MySQL 实例的 default_storage_engine 是 MyISAM（本机 5.7 就是），
-            # 那么从空库重放建出来的表全是 MyISAM：没有事务、外键直接被丢弃，
-            # 与生产库（gpfx 全部 InnoDB、136 个外键生效）完全不是一个形状；
-            # 还会先在 VARCHAR(255) 索引上撞 1071（MyISAM 索引上限 1000 字节）。
-            # 只改本次会话，不动服务器配置。
-            connection.exec_driver_sql("SET default_storage_engine=InnoDB")
-        # 先保证版本表列宽能装下 revision id，否则 MySQL 上会在迁移中途 1406。
-        _ensure_version_table_width(connection)
-        connection.commit()
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-            render_as_batch=True,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
-        connection.commit()
+        _run_on_connection(connection)
 
 
 if context.is_offline_mode():

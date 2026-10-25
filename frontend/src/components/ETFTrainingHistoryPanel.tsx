@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Input, Progress, Space, Table, Typography } from 'antd';
+import { Alert, Input, Progress, Space, Table, Tooltip, Typography } from 'antd';
 import { api, ApiError, type ETFTrainingList, type ETFTrainingListScope, type ETFTrainingPreparationInput, type ETFTrainingPreparationRead } from '../api/client';
 import { ETF_HISTORY_FOCUS_EVENT, openETFTrainingChecks, readETFTrainingSelection, type ETFHistoryFocus } from '../utils/etfTrainingNavigation';
 
@@ -45,7 +46,7 @@ function MissingDates({ values }: { values: string[] | null }) {
     <summary>查看全部 {values.length} 个缺失日期</summary>{values.join('、')}</details>}</>;
 }
 
-export default function ETFTrainingHistoryPanel() {
+export default function ETFTrainingHistoryPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const [scope, setScope] = useState<ETFTrainingListScope | null>(null);
   const [savedList, setSavedList] = useState<ETFTrainingList | null>(null);
   const [codes, setCodes] = useState('');
@@ -58,6 +59,7 @@ export default function ETFTrainingHistoryPanel() {
   const [olderDraft, setOlderDraft] = useState<InputDraft | null>(null);
   const [focusTarget, setFocusTarget] = useState<ETFHistoryFocus | null>(null);
   const [datesOpen, setDatesOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const section = useRef<HTMLElement | null>(null);
   const [result, setResult] = useState<ETFTrainingPreparationRead | null>(null);
   const [unknown, setUnknown] = useState(false);
@@ -173,6 +175,7 @@ export default function ETFTrainingHistoryPanel() {
   }, []);
   useEffect(() => {
     if (!focusTarget || !scope || reading || busy || running || unknown || pending) return;
+    if (!open) { setOpen(true); return; }
     if (focusTarget === 'dates' && !datesOpen) { setDatesOpen(true); return; }
     const input = section.current?.querySelector<HTMLTextAreaElement | HTMLInputElement>(focusTarget === 'codes'
       ? 'textarea[aria-label="ETF训练代码"]' : 'input[aria-label="训练历史结束日期"]');
@@ -182,7 +185,7 @@ export default function ETFTrainingHistoryPanel() {
     if (document.activeElement !== input) return;
     try { localStorage.removeItem(ETF_HISTORY_FOCUS_EVENT); } catch { /* Repeating focus is harmless. */ }
     setFocusTarget(null);
-  }, [focusTarget, scope, reading, busy, running, unknown, pending, datesOpen]);
+  }, [focusTarget, scope, reading, busy, running, unknown, pending, datesOpen, open]);
   const keepInputs = (listSha256: string, nextCodes: string, nextDates: { start: string; end: string }) => {
     try {
       localStorage.setItem(draftKey, JSON.stringify({ version: 1, list_sha256: listSha256, codes: nextCodes, ...nextDates }));
@@ -302,6 +305,11 @@ export default function ETFTrainingHistoryPanel() {
   const resultSummary = report && !running && !inputsDirty && !unknown
     ? `本次共${rows.length}只ETF，${completeDates}只行情日期齐全${completeDates < rows.length
       ? `，${rows.length - completeDates}只日期需补齐或核实。` : report.prepared ? '。' : '；整份资料仍未核对通过。'}` : null;
+  const collapsedSummary = error || notice || draftWarning
+    || (running && task ? `正在准备历史数据 ${Math.round(task.percent)}%` : '')
+    || resultSummary
+    || (scope ? `${scope.training_message}${coverage?.common_trade_date_count != null
+      ? ` 共同覆盖${coverage.common_trade_date_count}个交易日。` : ''}` : reading ? '正在读取ETF训练清单…' : '');
   const rowReason = (row: HistoryRow) => {
     if (!report) return row.reason || '所查日期已核对';
     if (!datesComplete(row)) return row.reason || '行情日期暂不能确认，请查看缺失日期和准备结果。';
@@ -322,8 +330,19 @@ export default function ETFTrainingHistoryPanel() {
   };
 
   return <section ref={section} aria-label="ETF训练清单和历史数据" style={{ padding: 16, marginBottom: 20, border: '1px solid var(--pt-border, #303846)', borderRadius: 8 }}>
-    <Typography.Title level={5} style={{ marginTop: 0 }}>ETF训练清单和历史数据</Typography.Title>
-    <Typography.Paragraph type="secondary">训练用的ETF单独保存在这里，不随顶部组合切换。填写代码后准备历史数据，再检查共同日期和缺失原因。</Typography.Paragraph>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 10 : 0 }}>
+      <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 0 }}>ETF训练清单和历史数据</Typography.Title>
+      <Tooltip title="训练用的ETF单独保存在这里，不随顶部组合切换。这里只准备历史数据，不会训练新模型或改动组合；历史停牌、ST和逐日涨跌停资料不全时，成交回测仍不能运行。">
+        <span style={{ color: '#98a2b3', fontSize: 12, cursor: 'help' }}>说明</span>
+      </Tooltip>
+      <button type="button" onClick={() => setOpen(value => !value)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: 'var(--accent, #2f7a6b)', cursor: 'pointer', fontSize: 13 }}>
+        {open ? '收起' : '展开'}
+      </button>
+    </div>
+    {!open && collapsedSummary && <Typography.Text type={error ? 'danger' : 'secondary'}
+      style={{ display: 'block', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      title={collapsedSummary}>{collapsedSummary}</Typography.Text>}
+    {open && <>
     {reading && <p role="status">正在读取ETF训练清单…</p>}
     {checkingDates && <p role="status">正在检查本地已有行情的日期…</p>}
     {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 8 }} />}
@@ -333,14 +352,14 @@ export default function ETFTrainingHistoryPanel() {
       <p>原填写日期：{olderDraft.start || '未填写'} 至 {olderDraft.end || '未填写'}</p>
       <pre style={{ whiteSpace: 'pre-wrap' }}>{olderDraft.codes}</pre>
     </details>}
-    <label>ETF代码 <Input.TextArea aria-label="ETF训练代码" value={codes} rows={3} maxLength={2000}
+    <label>ETF代码 <Input.TextArea aria-label="ETF训练代码" value={codes} rows={2} maxLength={2000}
       placeholder="粘贴六位ETF代码，用空格、逗号或换行分开" disabled={reading || busy || running || unknown || !!pending || !scope} onChange={event => editInputs(event.target.value, dates)} /></label>
-    <Typography.Paragraph type="secondary" style={{ marginTop: 6 }}>可保存最多{scope?.max_symbols ?? 50}只ETF，重复代码只保留一次。训练仍需至少20只ETF、共同覆盖至少274个交易日。</Typography.Paragraph>
+    <Typography.Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>最多{scope?.max_symbols ?? 50}只，重复代码只保留一次；训练至少20只且共同覆盖至少274个交易日。</Typography.Text>
     <Space wrap style={{ marginBottom: 12 }}>
-      <Button type={dirty ? 'primary' : 'default'} onClick={() => void save()} loading={busy && !checkingDates} disabled={reading || running || unknown || !scope || !dirty}>保存清单并检查</Button>
+      <Button mutation type={dirty ? 'primary' : 'default'} onClick={() => void save()} loading={busy && !checkingDates} disabled={reading || running || unknown || !scope || !dirty}>保存清单并检查</Button>
       {savedList && <Button type="primary" loading={checkingDates} disabled={reading || busy || running || unknown || dirty || !!pending}
         onClick={() => void checkDates()}>重试检查</Button>}
-      <Button type={!dirty && !dateDirty ? 'primary' : 'default'} loading={busy && !checkingDates} disabled={reading || busy || running || unknown || dirty || dateDirty || !scope?.can_prepare || !dates.start || !dates.end || dates.start > dates.end}
+      <Button mutation type={!dirty && !dateDirty ? 'primary' : 'default'} loading={busy && !checkingDates} disabled={reading || busy || running || unknown || dirty || dateDirty || !scope?.can_prepare || !dates.start || !dates.end || dates.start > dates.end}
         onClick={() => void prepare()}>{task && !running && task.status !== 'done' || pending && !unknown ? '重试准备' : '准备历史数据'}</Button>
       {(unknown || error && task) && <Button type="primary" disabled={busy || reading} onClick={() => void recover()}>重试读取进度</Button>}
       <Button disabled={reading || busy || running || unknown} onClick={() => void load()}>读取已保存清单</Button>
@@ -376,6 +395,6 @@ export default function ETFTrainingHistoryPanel() {
         { title: '原因', render: (_, row) => rowReason(row) },
       ]} />}
     </>}
-    <Typography.Paragraph type="secondary" style={{ margin: '10px 0 0' }}>这里只准备历史数据，不会训练新模型或改动组合。历史停牌、ST和逐日涨跌停资料不全时，成交回测仍不能运行。</Typography.Paragraph>
+    </>}
   </section>;
 }

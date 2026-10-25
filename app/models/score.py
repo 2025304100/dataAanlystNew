@@ -2,15 +2,19 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.mysql import DATETIME as MySQLDateTime
 
 from app.db.base import Base
 
 
 class Score(Base):
     __tablename__ = "scores"
-    __table_args__ = (UniqueConstraint("symbol_id", "trade_date", "calc_batch_id", name="uq_score_symbol_date_batch"),)
+    __table_args__ = (
+        UniqueConstraint("symbol_id", "trade_date", "calc_batch_id", name="uq_score_symbol_date_batch"),
+        Index("idx_score_fmr_sym_dt", "factor_model_run_id", "symbol_id", "trade_date", "factor_data_cutoff_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol_id: Mapped[int] = mapped_column(ForeignKey("symbols.id", ondelete="CASCADE"), index=True)
@@ -51,7 +55,7 @@ class Score(Base):
         String(64), nullable=True, index=True
     )
     factor_data_cutoff_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
+        DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=True
     )
     # WP7-05: Score 解释追溯字段
     # factor_set_id: 该 Score 对应的 FactorSet ID（manual 模式为 None）
@@ -77,21 +81,21 @@ class Score(Base):
         Float, nullable=True
     )
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), default=lambda: datetime.now(timezone.utc))
 
     # -- G0-WP0-2b / Q4 PIT: disclosure timestamps --
     # WP0-6 TR-06.5 升级：published_at NOT NULL（migration 033 已对历史行回填 created_at）
     published_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, index=True,
+        DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=False, index=True,
         default=lambda: datetime.now(timezone.utc),
         comment="First publication datetime (UTC naive DB). Backfill = created_at if missing.",
     )
     first_published_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=True,
         comment="First-ever publish of this fact (audit)",
     )
     revision_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True,
+        DateTime().with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=True,
         comment="Latest revision time of this fact; published_at may be backdated",
     )
     pit_flag: Mapped[str] = mapped_column(

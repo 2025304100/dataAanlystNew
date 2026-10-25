@@ -167,7 +167,13 @@ def upgrade() -> None:
 
     created = 0
     skipped = 0
+    tables = set(sa.inspect(conn).get_table_names())
     for table, name, cond in _CHECK_DEFS:
+        if table not in tables:
+            # Pure migration installs receive this table in the frozen 0080
+            # catch-up, which includes its declared checks.
+            skipped += 1
+            continue
         if name in _existing_check_names(conn, table):
             skipped += 1
             continue
