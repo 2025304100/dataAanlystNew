@@ -28,7 +28,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qsl
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -82,14 +82,21 @@ def _mysql_parts_from_url(url: str) -> dict[str, Any] | None:
     u = make_url(url)
     if u.get_backend_name() != "mysql":
         return None
-    if set(u.query) - {"charset"}:
-        raise ValueError("MySQL client tools support host/port URL targets with charset only; query connection overrides are forbidden")
+    query = parse_qsl(urlparse(url).query, keep_blank_values=True)
+    if set(key for key, _ in query) - {"charset", "ssl_disabled"}:
+        raise ValueError("MySQL client tools forbid query connection routing overrides")
+    ssl_flags = [value for key, value in query if key == "ssl_disabled"]
+    if ssl_flags and (len(ssl_flags) != 1 or ssl_flags[0] not in {"true", "1"}):
+        # SQLAlchemy forwards URL strings to PyMySQL; even "false" is truthy.
+        # Only explicit disabling has an unambiguous native-client equivalent.
+        raise ValueError("ssl_disabled must be exactly true or 1; omit it for default TLS")
     return {
         "host": u.host or "127.0.0.1",
         "port": int(u.port or 3306),
         "user": u.username or "",
         "password": u.password or "",
         "database": u.database or "",
+        "client_transport_args": ["--ssl-mode=DISABLED"] if ssl_flags else [],
     }
 
 
@@ -194,7 +201,7 @@ def backup_mysql(db_url: str, out_dir: Path, mysqldump: str) -> BackupArtifact:
     dst_file = f"backup_mysql_{parts['database']}_{ts}.sql"
     dst = out_dir / dst_file
 
-    cmd = [mysqldump_bin]
+    cmd = [mysqldump_bin, *parts["client_transport_args"]]
     cmd += ["--host", parts["host"], "--port", str(parts["port"])]
     if parts["user"]:
         cmd += ["-u", parts["user"]]

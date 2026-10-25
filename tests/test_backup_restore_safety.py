@@ -92,9 +92,12 @@ def test_mysql_restore_refuses_existing_tables_even_with_legacy_force_option(tmp
     assert clients == [], "Existing tables must be rejected before mysql imports any bytes"
 
 
-def test_mysql_backup_and_restore_decode_url_credentials_at_client_boundary(tmp_path, monkeypatch):
+@pytest.mark.parametrize("ssl_disabled", [None, "true", "1"])
+def test_mysql_backup_and_restore_decode_url_credentials_at_client_boundary(tmp_path, monkeypatch, ssl_disabled):
     import sqlalchemy
     url = "mysql+pymysql://test%40user:p%40ss%25word@127.0.0.1/codex_combination_restore"
+    if ssl_disabled is not None:
+        url += "?ssl_disabled=" + ssl_disabled
     monkeypatch.setattr(sqlalchemy, "create_engine", lambda *a, **k: DatabaseBoundary("codex_combination_restore"))
     calls = []
     def client(command, **kwargs):
@@ -115,6 +118,7 @@ def test_mysql_backup_and_restore_decode_url_credentials_at_client_boundary(tmp_
         assert command[command.index("-u") + 1] == "test@user"
         assert environment["MYSQL_PWD"] == "p@ss%word"
         assert all("p@ss%word" not in argument for argument in command)
+        assert ("--ssl-mode=DISABLED" in command) == (ssl_disabled is not None)
 
 
 @pytest.mark.parametrize("via_env", [False, True])
@@ -163,3 +167,11 @@ def test_mysql_restore_rejects_query_routing_that_client_does_not_support(tmp_pa
         "mysql+pymysql://user:pw@127.0.0.1/codex_combination_restore?unix_socket=/different/mysql.sock",
         "mysql", False, False, False) != 0
     assert not clients
+
+
+@pytest.mark.parametrize("value", ["false", "0", "unknown", ""])
+def test_mysql_backup_rejects_ambiguous_ssl_flags_before_native_client(tmp_path, monkeypatch, value):
+    monkeypatch.setattr(db_backup.subprocess, "run", lambda *a, **k: pytest.fail("Client ran before URL validation"))
+    with pytest.raises(ValueError):
+        db_backup.backup_mysql("mysql+pymysql://user:pw@127.0.0.1/codex_combination_restore?ssl_disabled=" + value,
+                               tmp_path, "mysqldump")

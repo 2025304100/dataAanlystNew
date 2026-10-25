@@ -69,19 +69,9 @@ def _sqlite_path_from_url(url: str) -> Path | None:
 
 
 def _mysql_parts_from_url(url: str) -> dict | None:
-    from sqlalchemy.engine import make_url
-    u = make_url(url)
-    if u.get_backend_name() != "mysql":
-        return None
-    if set(u.query) - {"charset"}:
-        raise ValueError("MySQL client tools do not support URL query connection overrides")
-    return {
-        "host": u.host or "127.0.0.1",
-        "port": int(u.port or 3306),
-        "user": u.username or "",
-        "password": u.password or "",
-        "database": u.database or "",
-    }
+    # One URL contract for SQLAlchemy's identity check and both native clients.
+    from scripts.db_backup import _mysql_parts_from_url as parse_client_target
+    return parse_client_target(url)
 
 
 def _current_alembic_head(db_url: str) -> str | None:
@@ -232,7 +222,7 @@ def restore_mysql(
         return 0
 
     mysql_exe = shutil.which(mysql_bin) or mysql_bin
-    cmd = [mysql_exe, "--default-character-set=utf8mb4"]
+    cmd = [mysql_exe, *parts["client_transport_args"], "--default-character-set=utf8mb4"]
     cmd += ["--host", parts["host"], "--port", str(parts["port"])]
     if parts["user"]:
         cmd += ["-u", parts["user"]]
