@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -10,7 +10,10 @@ from app.db.base import Base
 
 class Score(Base):
     __tablename__ = "scores"
-    __table_args__ = (UniqueConstraint("symbol_id", "trade_date", "calc_batch_id", name="uq_score_symbol_date_batch"),)
+    __table_args__ = (
+        UniqueConstraint("symbol_id", "trade_date", "calc_batch_id", name="uq_score_symbol_date_batch"),
+        Index("idx_score_fmr_sym_dt", "factor_model_run_id", "symbol_id", "trade_date", "factor_data_cutoff_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol_id: Mapped[int] = mapped_column(ForeignKey("symbols.id", ondelete="CASCADE"), index=True)

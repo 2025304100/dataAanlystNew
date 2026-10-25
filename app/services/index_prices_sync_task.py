@@ -37,7 +37,7 @@ def _default_symbols(symbols: list[str] | None) -> list[str]:
     """与 universe.py 逻辑一致：None → 默认 5 大基准。"""
     DEFAULT_5 = ["000300", "000905", "399006", "000016", "000688"]
     if symbols:
-        return list(symbols)
+        return list(dict.fromkeys(index_data.validate_index_symbol(symbol) for symbol in symbols))
     return list(DEFAULT_5)
 
 

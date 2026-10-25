@@ -1,7 +1,7 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  Button,
   Checkbox,
   Collapse,
   DatePicker,
@@ -1175,7 +1175,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
           <Space direction="vertical" size={6}>
             <Tooltip title={disabledReason || undefined}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Button
+                <Button mutation
                   type="primary"
                   icon={<SyncOutlined spin={startingDataset === row.dataset || Boolean(taskForDataset(row.dataset))} />}
                   loading={startingDataset === row.dataset}
@@ -1195,7 +1195,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
               </span>
             </Tooltip>
             {repairable && settingsOpen ? (
-              <Button
+              <Button mutation
                 size="small"
                 loading={repairingDataset === row.dataset}
                 disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || historyCapabilityPending || Boolean(historyRangeIssue) || spanExceedsLimit || ((syncMode !== "backfill" || !dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
@@ -1206,7 +1206,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
             ) : null}
             {row.dataset === "fundamental" && settingsOpen ? (
               <Tooltip title={`${t("extFullValuationHistoryHint")} 此操作会重新获取全部股票的历史估值，并更新已有记录。`}>
-                <Button
+                <Button mutation
                   size="small"
                   disabled={controlsDisabled || !historyCapabilitiesReady || Boolean(taskForDataset("fundamental"))}
                   onClick={() => void runSync("fundamental", {
@@ -1222,7 +1222,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
               </Tooltip>
             ) : null}
             {resumableTask && row.latest_task ? (
-              <Button
+              <Button mutation
                 size="small"
                 loading={taskActionLoading === "retry"}
                 disabled={controlsDisabled || taskActionLoading === "retry"}
@@ -1301,8 +1301,8 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
                 {statusTag(task)}
                 <Tag>{taskPolicyLabel(task)}</Tag>
                 <Typography.Text type="secondary">{taskRange(task)}</Typography.Text>
-                {running ? <Button size="small" danger loading={taskActionLoading === "cancel"} disabled={task.cancel_requested} onClick={() => void cancelActiveTask(task)}>{task.cancel_requested ? "正在停止" : "停止更新"}</Button> : null}
-                {!running && taskCanResume(task) ? <Button size="small" type="primary" loading={taskActionLoading === "retry"} onClick={() => void resumeTaskFromCursor(task)}>继续上次更新</Button> : null}
+                {running ? <Button mutation size="small" danger loading={taskActionLoading === "cancel"} disabled={task.cancel_requested} onClick={() => void cancelActiveTask(task)}>{task.cancel_requested ? "正在停止" : "停止更新"}</Button> : null}
+                {!running && taskCanResume(task) ? <Button mutation size="small" type="primary" loading={taskActionLoading === "retry"} onClick={() => void resumeTaskFromCursor(task)}>继续上次更新</Button> : null}
               </Space>
               <Typography.Text type="secondary">{taskProgressText(task)}</Typography.Text>
             </div>
@@ -1389,7 +1389,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
 
         {showScoringRefresh && <Space size={8} wrap align="center" style={{ marginLeft: "auto" }}>
           <Tooltip title={`当前评分仅支持 A 股股票。${scoringScopeIssue ?? `仅同步外部数据不会自动刷新评分；此操作会计算输入，在真实模型已启用且数据齐全时生成模型评分，并保留任务证据。${syncMode === "backfill" ? "按右侧所选日期范围重算。" : "默认重算最近约 11 天。"}为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。未启用模型或输入不足时会明确说明未生成或仅部分生成评分。`}`}>
-            <Button
+            <Button mutation
               aria-label="刷新评分"
               type="primary"
               ghost
@@ -1573,7 +1573,7 @@ export default function ExternalDataSync({ showScoringRefresh = true, draftStora
         ) : undefined}
         action={(
           <Space size={4} wrap>
-            <Button loading={startingDataset === syncError.dataset} disabled={controlsDisabled || Boolean(taskForDataset(syncError.dataset))} onClick={syncError.retry}>重试这次更新</Button>
+            <Button mutation loading={startingDataset === syncError.dataset} disabled={controlsDisabled || Boolean(taskForDataset(syncError.dataset))} onClick={syncError.retry}>重试这次更新</Button>
             <Button type="link" size="small" onClick={() => setSyncErrorDetailOpen((open) => !open)}>
               {syncErrorDetailOpen ? "收起详情" : "查看详情"}
             </Button>

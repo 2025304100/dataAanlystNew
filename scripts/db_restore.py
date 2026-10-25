@@ -7,15 +7,20 @@ is piped through `mysql` client.
 
 Usage (SQLite):
     python scripts/db_restore.py --manifest ./backups/backup_sqlite_*.manifest.json \\
-        [--db-url sqlite:///.../app.db] [--no-hash-check] [--dry-run]
+        --db-url sqlite:///.../app.db [--dry-run]
 
 Usage (MySQL):
     python scripts/db_restore.py --manifest ./backups/backup_mysql_*.manifest.json \\
+        --db-url mysql+pymysql://user:password@host/new_empty_schema \\
         [--mysql /usr/bin/mysql] [--dry-run]
+
+An explicit --db-url or DB_RESTORE_TARGET_URL is mandatory. Actual SHA256
+verification cannot be bypassed. MySQL restoration refuses all nonempty target
+schemas, including when the legacy SQLite force option is supplied.
 
 Exit codes:
     0 ok, 1 args/manifest error, 2 hash mismatch, 3 DB access error,
-    4 irreversible revision applied and no --force-rewrite-over-0026.
+    4 unsafe/nonempty target, or SQLite irreversible revision without explicit force.
 """
 from __future__ import annotations
 
@@ -24,11 +29,11 @@ import datetime as _dt
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -64,15 +69,18 @@ def _sqlite_path_from_url(url: str) -> Path | None:
 
 
 def _mysql_parts_from_url(url: str) -> dict | None:
-    u = urlparse(url)
-    if u.scheme not in ("mysql", "mysql+pymysql", "mysql+mysqlconnector"):
+    from sqlalchemy.engine import make_url
+    u = make_url(url)
+    if u.get_backend_name() != "mysql":
         return None
+    if set(u.query) - {"charset"}:
+        raise ValueError("MySQL client tools do not support URL query connection overrides")
     return {
-        "host": u.hostname or "127.0.0.1",
+        "host": u.host or "127.0.0.1",
         "port": int(u.port or 3306),
         "user": u.username or "",
         "password": u.password or "",
-        "database": u.path.lstrip("/") or "",
+        "database": u.database or "",
     }
 
 
@@ -93,10 +101,14 @@ def _current_alembic_head(db_url: str) -> str | None:
 
 def _validate_hashes(manifest: dict, backup_path: Path, no_hash_check: bool) -> tuple[bool, str]:
     if no_hash_check:
-        return True, "skipped (--no-hash-check)"
+        return False, "--no-hash-check is no longer permitted; restore requires SHA256 verification"
     errors: list[str] = []
     expect_md5 = manifest.get("md5")
     expect_sha = manifest.get("sha256")
+    if not isinstance(expect_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expect_sha):
+        return False, "manifest must contain a valid 64-digit SHA256"
+    if expect_md5 is not None and (not isinstance(expect_md5, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", expect_md5)):
+        return False, "manifest MD5 is malformed"
     if expect_md5:
         actual = _hash_file(backup_path, "md5")
         if actual.lower() != expect_md5.lower():
@@ -108,7 +120,7 @@ def _validate_hashes(manifest: dict, backup_path: Path, no_hash_check: bool) -> 
     if errors:
         return False, "; ".join(errors)
     check = [s for s in ("md5", "sha256") if manifest.get(s)]
-    return True, f"OK ({', '.join(check)})" if check else "no hashes in manifest"
+    return True, f"OK ({', '.join(check)})"
 
 
 # ---------------------------------------------------------------------------
@@ -173,8 +185,14 @@ def restore_mysql(
     mysql_bin: str, dry_run: bool, no_hash_check: bool,
     force_rewrite_over_0026: bool,
 ) -> int:
-    parts = _mysql_parts_from_url(db_url)
-    assert parts is not None
+    try:
+        parts = _mysql_parts_from_url(db_url)
+    except Exception:
+        sys.stderr.write("[restore] Invalid/unsupported explicit MySQL URL; no import executed.\n")
+        return 1
+    if parts is None:
+        sys.stderr.write("[restore] Explicit target must use a MySQL URL.\n")
+        return 1
 
     ok, msg = _validate_hashes(manifest, backup_path, no_hash_check)
     if not ok:
@@ -182,17 +200,31 @@ def restore_mysql(
         return 2
     print(f"[restore] hash validation : {msg}")
 
-    live_rev = _current_alembic_head(db_url)
-    backup_rev = manifest.get("alembic_version")
-    if live_rev == IRREVERSIBLE_REVISION and backup_rev != IRREVERSIBLE_REVISION:
-        if not force_rewrite_over_0026:
-            sys.stderr.write(
-                f"[restore] REFUSE: live DB is at irreversible revision "
-                f"{IRREVERSIBLE_REVISION} but backup is at {backup_rev!r}.\n"
-                f"          Pass --force-rewrite-over-0026 to permit regressive restore.\n"
-            )
-            return 4
-        print(f"[restore] overwriting live 0026 DB (--force-rewrite-over-0026)")
+    # A mysqldump contains DROP TABLE statements. Its target must be a newly
+    # provisioned empty schema, never a live DB selected by implicit config.
+    # The legacy force option cannot bypass this rule. Writers must remain
+    # stopped for the entire restore; MySQL DDL cannot roll back an import.
+    if not parts["database"]:
+        sys.stderr.write("[restore] MySQL target must explicitly name a database.\n")
+        return 1
+    from sqlalchemy import create_engine, text
+    engine = create_engine(db_url, hide_parameters=True)
+    try:
+        with engine.connect() as connection:
+            actual = connection.exec_driver_sql("SELECT DATABASE()").scalar_one()
+            if actual != parts["database"]:
+                sys.stderr.write("[restore] REFUSE: actual database differs from the explicit target.\n")
+                return 4
+            existing = connection.execute(text("SELECT TABLE_NAME FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA=:database LIMIT 1"), {"database": actual}).first()
+            if existing:
+                sys.stderr.write("[restore] REFUSE: MySQL target contains tables/views; restore requires a fresh empty schema.\n")
+                return 4
+    except Exception as exc:
+        sys.stderr.write(f"[restore] Target identity/emptiness check failed ({type(exc).__name__}); no import executed.\n")
+        return 3
+    finally:
+        engine.dispose()
 
     if dry_run:
         print(f"[restore] DRY-RUN: would pipe {backup_path} through {mysql_bin} "
@@ -200,7 +232,7 @@ def restore_mysql(
         return 0
 
     mysql_exe = shutil.which(mysql_bin) or mysql_bin
-    cmd = [mysql_exe]
+    cmd = [mysql_exe, "--default-character-set=utf8mb4"]
     cmd += ["--host", parts["host"], "--port", str(parts["port"])]
     if parts["user"]:
         cmd += ["-u", parts["user"]]
@@ -208,6 +240,7 @@ def restore_mysql(
     cmd += ["--database", parts["database"]]
 
     env = os.environ.copy()
+    env.pop("MYSQL_PWD", None)
     if parts["password"]:
         env["MYSQL_PWD"] = parts["password"]
 
@@ -230,12 +263,12 @@ def restore_mysql(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="G0 DB restore with hash + irreversible guard")
     p.add_argument("--manifest", required=True, help="Path to *.manifest.json produced by db_backup.py")
-    p.add_argument("--db-url", default=None, help="Override target DATABASE_URL. Default uses DATABASE_URL env or settings.")
+    p.add_argument("--db-url", default=None, help="Explicit restore target; alternatively set DB_RESTORE_TARGET_URL. No application URL fallback.")
     p.add_argument("--mysql", default="mysql", help="Path to mysql client executable (MySQL only).")
-    p.add_argument("--no-hash-check", action="store_true", help="Bypass MD5/SHA256 validation (unsafe).")
+    p.add_argument("--no-hash-check", action="store_true", help="Retired option: always rejected; SHA256 is mandatory.")
     p.add_argument("--dry-run", action="store_true", help="Do validation steps, but do not actually restore.")
     p.add_argument("--force-rewrite-over-0026", action="store_true",
-                   help=f"Permit restoring a pre-{IRREVERSIBLE_REVISION} backup onto a DB that has already applied the irreversible DROP.")
+                   help="SQLite legacy revision override only; never permits MySQL nonempty target overwrite.")
     args = p.parse_args(argv)
 
     manifest_path = Path(args.manifest).resolve()
@@ -263,9 +296,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"Backup file referenced by manifest not found: {backup_path}\n")
         return 1
 
-    # Resolve target DB URL
-    from app.core.config import settings
-    db_url: str = args.db_url or os.getenv("DATABASE_URL") or settings.database_url
+    # Restore never inherits a live application's implicit database target.
+    db_url = args.db_url or os.getenv("DB_RESTORE_TARGET_URL")
+    if not db_url:
+        sys.stderr.write("[restore] Explicit --db-url or DB_RESTORE_TARGET_URL is required; application database defaults are forbidden.\n")
+        return 1
 
     dialect = manifest.get("dialect", "sqlite")
     print(f"[restore] manifest   : {manifest_path}")

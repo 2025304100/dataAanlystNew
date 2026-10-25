@@ -87,13 +87,18 @@ def test_new_auto_simulation_entry_passes_latest_snapshot_to_decision_engine(
         snapshot_id="stage3-auto-entry-latest",
         snapshot_no=1,
     )
+    from app.models.symbol import Symbol
+    db_session.add(Symbol(id=901,symbol="600901",name="Public plan identity",market="SH",asset_type="stock"))
+    db_session.commit()
     observed: dict[str, object] = {}
 
     def fake_execute(_db, **kwargs):
         observed.update(kwargs)
         return {
             "portfolio_id": portfolio.id,
-            "buy_decisions": [],
+            "buy_decisions": [{"symbol_id":901,"action":"BUY","quantity":300,
+                "intended_price":12.5,"order_plan_id":"public-plan-1","evidence_id":"public-evidence-1",
+                "signal_date":"2026-10-20","execution_date":"2026-10-21","reason_code":"MODEL_BUY"}],
             "sell_decisions": [],
             "signal_decisions": [],
             "rejected_decisions": [],
@@ -113,7 +118,7 @@ def test_new_auto_simulation_entry_passes_latest_snapshot_to_decision_engine(
         "app.services.auto_trade_member_source.run_idempotent_member_source",
         side_effect=fake_execute,
     ):
-        run_dual_trade(
+        response = run_dual_trade(
             db_session,
             portfolio_id=portfolio.id,
             dry_run=True,
@@ -122,6 +127,13 @@ def test_new_auto_simulation_entry_passes_latest_snapshot_to_decision_engine(
 
     assert observed["strategy_snapshot_id"] == latest.id
     assert observed["trade_date"] is not None
+    from app.schemas.portfolio import AutoTradeResult
+    buy=AutoTradeResult(**response).buys[0]
+    assert (buy.symbol,buy.name,buy.ref_price,buy.buy_quantity)==("600901","Public plan identity",12.5,300)
+    assert buy.order_plan_id=="public-plan-1" and buy.evidence_id=="public-evidence-1"
+    assert buy.quantity==300 and buy.recommended_amount==3750
+    assert buy.signal_date.isoformat()=="2026-10-20" and buy.execution_date.isoformat()=="2026-10-21"
+    assert buy.executed is False and buy.order_id is None
 
 
 def test_new_auto_simulation_fails_closed_without_an_applied_snapshot(

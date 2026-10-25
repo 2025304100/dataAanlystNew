@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import and_, func, select
@@ -418,6 +418,8 @@ def get_auto_trade_readiness(
     portfolio_id: int,
     *,
     for_schedule: bool = False,
+    strategy_snapshot_id: str | None = None,
+    trade_date: date | None = None,
 ) -> AutoTradeReadinessResult:
     """计算单个组合的自动交易就绪状态。
 
@@ -530,6 +532,24 @@ def get_auto_trade_readiness(
             active_members_map[int(m.symbol_id)] = []
         active_members_map[int(m.symbol_id)].append(m)
 
+    # Applied strategies decide from their pinned model/Score and risk context.
+    # Ridge Score.action is a legacy display field (usually "hold"); it must
+    # neither veto a real engine BUY nor admit a plan the engine rejected.
+    from app.services.auto_trade_dual_run import resolve_applied_snapshot_id, capture_trade_set_from_new_logic
+    snapshot_id = resolve_applied_snapshot_id(db, portfolio_id=portfolio_id,
+        strategy_snapshot_id=strategy_snapshot_id)
+    planned_buy_ids: set[int] | None = None
+    if snapshot_id is not None:
+        planned_buy_ids = set()
+        try:
+            plans = capture_trade_set_from_new_logic(db, portfolio_id=portfolio_id,
+                strategy_snapshot_id=snapshot_id, trade_date=trade_date)
+            planned_buy_ids = {int(item["symbol_id"]) for item in plans.buys
+                if item.get("action") == "BUY" and item.get("symbol_id") is not None}
+        except Exception:
+            logger.exception("Applied strategy readiness evaluation failed portfolio_id=%s", portfolio_id)
+            blockers.append(_blocker(BLOCKER_STRATEGY_BINDING_INVALID,
+                "已应用策略无法完成只读执行计划核验，请检查模型、评分与策略依据"))
     eligible_buy_count = 0
     fresh_symbol_count = 0
     symbols_with_data_scope: set[int] = set()
@@ -544,12 +564,12 @@ def get_auto_trade_readiness(
         }
         version_id = next((v for v in member_version_ids if v), None)
         # eligible buy
-        if _symbol_eligible_buy(
+        if (symbol_id in planned_buy_ids if planned_buy_ids is not None else _symbol_eligible_buy(
             db,
             portfolio_id=portfolio_id,
             symbol_id=symbol_id,
             entry_rule_version_id=version_id,
-        ):
+        )):
             eligible_buy_count += 1
         # 数据新鲜度：只要任一 K线+评分 healthy 即认为该符号属于 fresh
         health = check_data_health(db, symbol_id=symbol_id, rule_version_id=version_id, portfolio_id=portfolio_id)

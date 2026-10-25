@@ -78,15 +78,18 @@ def _sqlite_path_from_url(url: str) -> Path | None:
 
 
 def _mysql_parts_from_url(url: str) -> dict[str, Any] | None:
-    u = urlparse(url)
-    if u.scheme not in ("mysql", "mysql+pymysql", "mysql+mysqlconnector"):
+    from sqlalchemy.engine import make_url
+    u = make_url(url)
+    if u.get_backend_name() != "mysql":
         return None
+    if set(u.query) - {"charset"}:
+        raise ValueError("MySQL client tools support host/port URL targets with charset only; query connection overrides are forbidden")
     return {
-        "host": u.hostname or "127.0.0.1",
+        "host": u.host or "127.0.0.1",
         "port": int(u.port or 3306),
         "user": u.username or "",
         "password": u.password or "",
-        "database": u.path.lstrip("/") or "",
+        "database": u.database or "",
     }
 
 
@@ -195,11 +198,9 @@ def backup_mysql(db_url: str, out_dir: Path, mysqldump: str) -> BackupArtifact:
     cmd += ["--host", parts["host"], "--port", str(parts["port"])]
     if parts["user"]:
         cmd += ["-u", parts["user"]]
-    if parts["password"]:
-        # NOTE: passing pw on cmd line leaks it via /proc; acceptable for
-        # controlled backup scripts per G0 spec T2. Prefer MYSQL_PWD env.
-        cmd += [f"--password={parts['password']}"]
-    cmd += ["--single-transaction", "--routines", "--triggers", parts["database"]]
+    # Password is passed only in the child environment, never process arguments.
+    cmd += ["--single-transaction", "--routines", "--triggers", "--events", "--hex-blob",
+            "--default-character-set=utf8mb4", "--set-gtid-purged=OFF", parts["database"]]
 
     try:
         mv = subprocess.run(
@@ -213,6 +214,7 @@ def backup_mysql(db_url: str, out_dir: Path, mysqldump: str) -> BackupArtifact:
         mv = ""
 
     env = os.environ.copy()
+    env.pop("MYSQL_PWD", None)
     if parts["password"]:
         env["MYSQL_PWD"] = parts["password"]
     with dst.open("wb") as f:

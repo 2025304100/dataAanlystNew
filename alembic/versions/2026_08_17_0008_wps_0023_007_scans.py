@@ -73,7 +73,9 @@ def upgrade() -> None:
     op.create_table(
         'sim_orders',
         Column('id', Integer, primary_key=True, autoincrement=True),
-        Column('sim_account_id', Integer, ForeignKey('sim_accounts.id', ondelete='CASCADE'), nullable=False),
+        # Retain legacy linkage without requiring a fabricated account ID from
+        # current writers, which use the portfolio account contract.
+        Column('sim_account_id', Integer, ForeignKey('sim_accounts.id', ondelete='CASCADE'), nullable=True),
         Column('portfolio_id', Integer, nullable=False),
         Column('symbol_id', Integer, ForeignKey('symbols.id', ondelete='CASCADE'), nullable=False),
         Column('side', String(16), nullable=False),

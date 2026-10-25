@@ -13,6 +13,7 @@
 // - mock AppContext / api.client / i18n / antd message
 // - 不调用真实后端 API
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { enterReadOnlyMode } from "../../test/acceptance";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
@@ -181,6 +182,19 @@ function makeDataHealth(count: number, options: MakeDataHealthOptions = {}): Dat
 }
 
 describe("TodayDecision 待修复样本交互测试", () => {
+  it("keeps repair actions disabled in read-only mode without disabling refresh", async () => {
+    mockApi.getDataHealth.mockResolvedValue(makeDataHealth(3));
+    const restore = await enterReadOnlyMode();
+    const view = render(<TodayDecision />);
+    try {
+      const button = (await screen.findByText("tdRepairAll")).closest("button")!;
+      expect(button).toBeDisabled(); fireEvent.click(button);
+      for (const repair of screen.getAllByText("tdRepair")) expect(repair.closest("button")).toBeDisabled();
+      expect(mockApi.repairAllSymbolMarketData).not.toHaveBeenCalled();
+      expect(mockApi.repairSymbolMarketData).not.toHaveBeenCalled();
+      expect(screen.getByText("tdRefresh").closest("button")).toBeEnabled();
+    } finally { view.unmount(); await restore(); }
+  });
   beforeEach(() => {
     // 显式逐个 reset，避免 vi.clearAllMocks 把未在 beforeEach 中重新赋默认值的 mock（getPortfolioStatus 等）清空
     mockContext.setActiveTab.mockClear();

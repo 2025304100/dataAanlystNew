@@ -302,6 +302,7 @@ def list_portfolios(
 
 @router.post("/portfolios", response_model=PortfolioRead)
 def create_portfolio(payload: PortfolioCreate, db: Session = Depends(get_db)):
+    _validate_key_members(db, payload.key_members_json, payload.asset_scope)
     # 同名查重（与 watchlists 保持一致的 409 语义）
     existing = db.execute(select(Portfolio).where(Portfolio.name == payload.name)).scalars().first()
     if existing is not None:
@@ -326,6 +327,7 @@ def create_portfolio(payload: PortfolioCreate, db: Session = Depends(get_db)):
         sell_fee_pct=payload.sell_fee_pct,
         benchmark_code=payload.benchmark_code,
         default_single_position_pct=payload.default_single_position_pct,
+        key_members_json=json.dumps(payload.key_members_json) if payload.key_members_json is not None else None,
     )
     db.add(portfolio)
     db.commit()
@@ -346,6 +348,10 @@ def update_portfolio(portfolio_id: int, payload: PortfolioUpdate, db: Session = 
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    if "key_members_json" in payload.model_fields_set or payload.asset_scope is not None:
+        keys = payload.key_members_json if "key_members_json" in payload.model_fields_set else json.loads(portfolio.key_members_json or "null")
+        _validate_key_members(db, keys, payload.asset_scope or portfolio.asset_scope)
 
     # 名称查重（排除自身）
     if payload.name is not None and payload.name != portfolio.name:
@@ -404,10 +410,24 @@ def update_portfolio(portfolio_id: int, payload: PortfolioUpdate, db: Session = 
         portfolio.benchmark_code = payload.benchmark_code
     if payload.default_single_position_pct is not None:
         portfolio.default_single_position_pct = payload.default_single_position_pct
+    # None and [] both mean the default whole-portfolio scope, but remain
+    # distinguishable in the API. Omission must retain the existing selection.
+    if "key_members_json" in payload.model_fields_set:
+        portfolio.key_members_json = json.dumps(payload.key_members_json) if payload.key_members_json is not None else None
 
     db.commit()
     db.refresh(portfolio)
     return portfolio
+
+
+def _validate_key_members(db: Session, symbol_ids: list[int] | None, asset_scope: str) -> None:
+    # These are global symbol IDs, not portfolio-member row IDs. A new
+    # portfolio has no members yet, so require valid in-scope symbols only.
+    from app.services.portfolio_asset_scope import ensure_symbol_ids_in_scope
+    try:
+        ensure_symbol_ids_in_scope(db, Portfolio(asset_scope=asset_scope), symbol_ids or [])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.delete("/portfolios/{portfolio_id}")
@@ -1022,13 +1042,23 @@ def _require_portfolio_member(db: Session, portfolio_id: int, member_id: int):
     return member
 
 
-def _require_supported_execution_mode(execution_mode: str | None) -> None:
-    if str(execution_mode or "").strip().lower() == "confirm":
+def _require_supported_execution_mode(execution_mode: str | None) -> str | None:
+    if execution_mode is None:
+        return None  # PATCH explicit null retains the existing mode.
+    value = execution_mode.strip().lower()
+    if value == "confirm":
         raise HTTPException(status_code=503, detail={
             "error_code": "CAPABILITY_BLOCKED",
             "user_message": "目前不支持确认后成交，请使用仅提醒模式。",
             "impact": "没有保存本次修改，也不会创建订单。",
         })
+    if value not in {"manual", "auto"}:
+        raise HTTPException(status_code=422, detail={
+            "error_code": "VALIDATION_ERROR",
+            "user_message": f"execution_mode 仅支持 manual/auto（收到：{execution_mode!r}）。",
+            "impact": "没有保存本次修改，也不会创建订单。",
+        })
+    return value
 
 
 def _member_read(db: Session, member) -> PortfolioMemberRead:
@@ -1159,7 +1189,7 @@ def create_portfolio_member(
     symbol = db.get(Symbol, payload.symbol_id)
     if portfolio is None or symbol is None:
         raise HTTPException(status_code=404, detail="Portfolio or symbol not found")
-    _require_supported_execution_mode(payload.execution_mode)
+    execution_mode = _require_supported_execution_mode(payload.execution_mode)
     try:
         ensure_symbol_in_scope(portfolio, symbol)
     except ValueError as exc:
@@ -1170,7 +1200,7 @@ def create_portfolio_member(
             portfolio_id=portfolio_id,
             symbol_id=payload.symbol_id,
             status=payload.status,
-            execution_mode=payload.execution_mode,
+            execution_mode=execution_mode,
             source_type=payload.source_type,
             source_id=payload.source_id,
             entry_rule_version_id=payload.entry_rule_version_id,
@@ -1181,8 +1211,33 @@ def create_portfolio_member(
             note=payload.note,
         )
         return PortfolioMemberRead(**_member_to_dict(member, symbol_obj=symbol))
+    except MemberHasPositionError as exc:
+        raise HTTPException(status_code=409, detail=MemberHasPositionErrorSchema(
+            portfolio_id=exc.portfolio_id, symbol_id=exc.symbol_id,
+            quantity=exc.quantity, message=str(exc),
+        ).model_dump()) from exc
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        message = str(e)
+        if message.startswith("成员已存在"):
+            # 结构化 409：直接指出冲突成员，next_actions 不再误导性地指向 readiness。
+            from app.models.portfolio_member import PortfolioMember as _PortfolioMember
+            existing = db.execute(
+                select(_PortfolioMember).where(
+                    _PortfolioMember.portfolio_id == portfolio_id,
+                    _PortfolioMember.symbol_id == payload.symbol_id,
+                    _PortfolioMember.effective_to.is_(None),
+                ).with_for_update().execution_options(populate_existing=True)
+            ).scalars().first()
+            raise HTTPException(status_code=409, detail={
+                "error_code": "MEMBER_ALREADY_EXISTS",
+                "user_message": f"该标的已是组合成员（id={existing.id if existing else '?'}，"
+                                f"status={existing.status if existing else '?'}）。"
+                                "如需调整执行模式请使用更新；如需重新加入请先归档。",
+                "impact": "本次创建未执行。",
+                "existing_member_id": existing.id if existing else None,
+                "existing_member_status": existing.status if existing else None,
+            }) from e
+        raise HTTPException(status_code=409, detail=message) from e
 
 
 @router.patch(
@@ -1198,18 +1253,26 @@ def update_portfolio_member(
 ) -> PortfolioMemberRead:
     """更新组合成员字段（WP4.4）。"""
     _require_portfolio_member(db, portfolio_id, member_id)
-    _require_supported_execution_mode(payload.execution_mode)
-    member = update_member(
-        db,
-        member_id=member_id,
-        status=payload.status,
-        execution_mode=payload.execution_mode,
-        entry_rule_version_id=payload.entry_rule_version_id,
-        exit_rule_version_id=payload.exit_rule_version_id,
-        manual_lock=payload.manual_lock,
-        priority=payload.priority,
-        note=payload.note,
-    )
+    execution_mode = _require_supported_execution_mode(payload.execution_mode)
+    try:
+        member = update_member(
+            db,
+            member_id=member_id,
+            status=payload.status,
+            execution_mode=execution_mode,
+            entry_rule_version_id=payload.entry_rule_version_id,
+            exit_rule_version_id=payload.exit_rule_version_id,
+            manual_lock=payload.manual_lock,
+            priority=payload.priority,
+            note=payload.note,
+        )
+    except MemberHasPositionError as exc:
+        raise HTTPException(status_code=409, detail=MemberHasPositionErrorSchema(
+            portfolio_id=exc.portfolio_id, symbol_id=exc.symbol_id,
+            quantity=exc.quantity, message=str(exc),
+        ).model_dump()) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
     return _member_read(db, member)
@@ -1262,7 +1325,10 @@ def pause_portfolio_member(
 ) -> PortfolioMemberRead:
     """暂停组合成员（WP4.4，仅停止买入，卖出规则继续）。"""
     _require_portfolio_member(db, portfolio_id, member_id)
-    member = pause_member(db, member_id=member_id)
+    try:
+        member = pause_member(db, member_id=member_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
     return _member_read(db, member)

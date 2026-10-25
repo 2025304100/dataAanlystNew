@@ -707,6 +707,9 @@ def start_external_gap_repair(
             "source": "all",
             "mode": "backfill",
             "sync_policy": "missing",
+            # A frozen stock/date gap selection does not authorize unrelated
+            # northbound market-wide snapshots.
+            "include_northbound": False,
             "start_date": start_date,
             "end_date": end_date,
             "lookback_days": (end_date - start_date).days + 1,

@@ -736,6 +736,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
                 or detail_dict.get("detail_zh")
                 or detail_dict.get("message")
                 or detail_dict.get("detail")
+                or detail_dict.get("error_message")
                 or ""
             ),
             str(detail_dict.get("suggestion") or ""),

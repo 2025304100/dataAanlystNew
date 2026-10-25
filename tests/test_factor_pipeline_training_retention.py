@@ -16,7 +16,7 @@ pytestmark = pytest.mark.whitebox
 
 @pytest.mark.parametrize("materialize_scores", [False, True, None],
                          ids=["scores_false", "scores_true", "scores_default"])
-def test_nonpublishing_training_preserves_history_but_general_refresh_still_prunes(
+def test_training_and_general_refresh_preserve_all_unrelated_history(
     turnover_client, db_session, tmp_path, materialize_scores,
 ):
     from app.models.score import Score
@@ -69,8 +69,15 @@ def test_nonpublishing_training_preserves_history_but_general_refresh_still_prun
         "created_at": old_time + timedelta(days=index),
     } for index in range(32)])
 
+    def all_old_targets():
+        with warehouse.connection(read_only=True) as conn:
+            return conn.execute("SELECT * FROM factor_targets WHERE calc_batch_id LIKE 'unrelated-target-%' ORDER BY calc_batch_id").fetchall()
+    all_targets_before=all_old_targets()
+    assert len(all_targets_before)==32
     before_history = client.get(f"/api/v1/scores/history/{symbol_ids[0]}?limit=100").json()
     assert len(before_history) == 32
+    from sqlalchemy import text
+    original_rows=[dict(r) for r in db_session.execute(text("SELECT * FROM scores ORDER BY id")).mappings()]
     before_runtime = client.get("/api/v1/factor-models/runtime").json()
     before_target, _, _ = warehouse.get_target_panel("unrelated-target-00")
     assert len(before_target) == 1
@@ -91,6 +98,7 @@ def test_nonpublishing_training_preserves_history_but_general_refresh_still_prun
     assert result["completion_status"] == "AWAITING_MODEL_ACTIVATION"
     assert result["trained_model_auto_activated"] is False
     assert client.get("/api/v1/factor-models/runtime").json() == before_runtime
+    assert [dict(r) for r in db_session.execute(text("SELECT * FROM scores ORDER BY id")).mappings()]==original_rows
     model = client.get(f"/api/v1/factor-models/{result['model']['model_run_id']}").json()
     assert model["status"] == "validated" and model["activated_at"] is None
     assert client.get(f"/api/v1/scores/history/{symbol_ids[0]}?limit=100").json() == before_history
@@ -100,8 +108,8 @@ def test_nonpublishing_training_preserves_history_but_general_refresh_still_prun
         "status": "SKIPPED", "reason": "TRAINING_ONLY_NON_PUBLISHING",
     }
 
-    # The guard is narrowly scoped: an ordinary refresh must still execute
-    # the existing global score/warehouse retention policy.
+    # A routine refresh is not explicit archival authorization. It must retain
+    # all 32 historical batches, including unreferenced score/target rows.
     refreshed = client.post("/api/v1/scoring/tasks", json={
         "train_model": False, "materialize_scores": False,
         "start_date": days[0].isoformat(), "end_date": days[-1].isoformat(),
@@ -110,10 +118,11 @@ def test_nonpublishing_training_preserves_history_but_general_refresh_still_prun
     refreshed_task = client.get(f"/api/v1/scoring/tasks/{refreshed.json()['id']}").json()
     assert refreshed_task["status"] == "done", refreshed_task
     retention = refreshed_task["result"]["batch_retention"]
-    assert retention["score_rows_deleted"] == 2
-    assert "unrelated-target-00" in retention["deleted_batch_ids"]
+    assert retention == {"status":"SKIPPED","reason":"HISTORY_PRESERVATION_REQUIRED"}
     history = client.get(f"/api/v1/scores/history/{symbol_ids[0]}?limit=100").json()
-    assert history == before_history[:30]
+    assert history == before_history
     removed_target, _, _ = warehouse.get_target_panel("unrelated-target-00")
-    assert removed_target.empty
+    assert removed_target.equals(before_target)
+    assert all_old_targets()==all_targets_before
     assert client.get("/api/v1/factor-models/runtime").json() == before_runtime
+    assert [dict(r) for r in db_session.execute(text("SELECT * FROM scores ORDER BY id")).mappings()]==original_rows

@@ -109,9 +109,9 @@ def test_mysql_public_repair_compares_old_payload_null_safely_before_any_assignm
     assert assignments.startswith("created_at = CASE WHEN "), sql
     comparison = assignments.split(" END", 1)[0]
     for field in ("open", "high", "low", "close", "volume", "amount", "turnover_rate", "source"):
-        assert f"universe_daily_bars.{field} <=> VALUES({field})" in comparison, sql
+        assert f"universe_daily_bars.{field} <=> coalesce(VALUES({field}), universe_daily_bars.{field})" in comparison, sql
     assert "THEN universe_daily_bars.created_at ELSE" in comparison, sql
-    assert ", open = VALUES(open)" in assignments, sql
+    assert ", open = coalesce(VALUES(open), universe_daily_bars.open)" in assignments, sql
     assert "trade_date =" not in assignments and "universe_symbol_id =" not in assignments
 
 
@@ -132,9 +132,13 @@ def test_nullable_payload_transitions_preserve_availability_truth(
     response = provider_frame(**{raw_column: incoming})
     monkeypatch.setattr(market_data.ak, "stock_zh_a_hist", lambda **_kwargs: response.copy(deep=True))
     row = run_repair(db, symbol)
-    assert (row.created_at == OLD) if transition == "null_to_null" else (row.created_at > OLD)
+    assert (row.created_at > OLD) if transition == "null_to_value" else (row.created_at == OLD)
     if incoming is None:
-        assert getattr(row, field) is None
+        if transition == "value_to_null":
+            expected = {"volume": 111038800, "amount": 4656185449, "turnover_rate": 4.66}[field]
+            assert getattr(row, field) == expected
+        else:
+            assert getattr(row, field) is None
     else:
         expected = {"volume": 111038800, "amount": 4656185449, "turnover_rate": 4.66}[field]
         assert getattr(row, field) == expected

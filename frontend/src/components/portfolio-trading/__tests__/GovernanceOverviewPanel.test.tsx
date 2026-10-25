@@ -91,13 +91,13 @@ describe("治理 · 待办总览", () => {
     expect(mockSetActiveTab).toHaveBeenCalledWith("settings");
   });
 
-  it("快捷动作：去每日对账 / 调整运行状态 / 查审计记录", async () => {
+  it("快捷动作：去每日对账 / 调整运行状态 / 查看操作记录", async () => {
     const onNavigate = vi.fn();
     render(<GovernanceOverviewPanel portfolioId={1} onNavigate={onNavigate} />);
     await screen.findByText("对账差异阻塞");
     fireEvent.click(screen.getByRole("button", { name: "去每日对账" }));
     fireEvent.click(screen.getByRole("button", { name: "调整运行状态" }));
-    fireEvent.click(screen.getByRole("button", { name: "查审计记录" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看操作记录" }));
     expect(onNavigate.mock.calls.flat()).toEqual(
       expect.arrayContaining(["governance:reconciliation", "governance:state", "governance:audit"]),
     );

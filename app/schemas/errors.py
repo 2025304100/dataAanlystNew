@@ -189,6 +189,27 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "retryable": True,
         "next_actions": [{"label": "重试", "action_type": "retry"}],
     },
+    "MEMBER_ALREADY_EXISTS": {
+        "user_message": "该标的已是组合成员，请查看或编辑现有成员",
+        "impact": "本次创建未执行，原成员及历史记录保持完整",
+        "retryable": False,
+        "next_actions": [{"label": "查看并编辑现有成员", "action_type": "view_details"}],
+    },
+    "ORDER_STORAGE_ENGINE_UNSAFE": {
+        "user_message": "下单数据表不支持可靠事务，请先核验数据库存储引擎",
+        "impact": "本次下单未执行，没有修改订单、成交、持仓或资金",
+        "retryable": False,
+        "next_actions": [{"label": "核验数据库迁移及 InnoDB 引擎", "action_type": "view_details"}],
+    },
+    "FACTOR_MEMORY_BUDGET_EXCEEDED": {
+        "user_message": "因子计算内存预算不足，原训练窗口没有自动缩小",
+        "impact": "本次训练未完成，未替换已有模型或评分",
+        "retryable": True,
+        "next_actions": [{
+            "label": "调整内存预算，或新建训练规格后重新训练和准入审核",
+            "action_type": "configure",
+        }],
+    },
     "BUSINESS_BLOCKED": {
         "user_message": "当前业务条件未满足，操作被阻止",
         "impact": "本次操作未执行，请按下方提示修复后重试",

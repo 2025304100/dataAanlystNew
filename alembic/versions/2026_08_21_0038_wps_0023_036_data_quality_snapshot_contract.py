@@ -124,6 +124,7 @@ def _ensure_quality_snapshot_contract() -> None:
                     existing_type=columns["id"]["type"],
                     type_=sa.String(64),
                     existing_nullable=bool(columns["id"].get("nullable")),
+                    autoincrement=False,
                 )
             for name in (
                 "snapshot_date",

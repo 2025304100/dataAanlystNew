@@ -2101,7 +2101,7 @@ export const api = {
     requestJson<any | null>(`${API}/universe/industry-backfill/status`),
   cancelUniverseIndustryBackfill: () =>
     requestJson<any>(`${API}/universe/industry-backfill/cancel`, { method: "POST" }),
-  getUniverseStats: () => requestJson<any>(`${API}/universe/stats`),
+  getUniverseStats: () => requestJson<any>(`${API}/universe/stats`, { timeoutMs: 60000 }),
 
   // ── 指数日线同步（回测基准曲线数据：index_prices 表）──
   listIndexPrices: (symbol: string, params?: { start_date?: string; end_date?: string; limit?: number }) => {
@@ -2544,6 +2544,14 @@ export const api = {
     requestJson<ExternalDataOverview>(`${API}/external-data/overview`),
   getExternalDataCoverage: () =>
     requestJson<ExternalDataCoverage>(`${API}/external-data/coverage`),
+  getSourceFieldIntegrity: (asOf?: string) => requestJson<{ as_of: string;
+    window_start?: string; timezone?: string; window_basis?: string; expected_latest_date?: string | null;
+    sources?: Array<{ table: string; label: string; latest_date: string | null;
+      latest_date_as_of: string | null; cache_latest_date: string | null; warnings: string[] }>;
+    fields: Array<{
+    table: string; field: string; total: number; nonnull: number; missing: number;
+    coverage_pct: number | null; start_date: string | null; end_date: string | null; note: string;
+  }> }>(`${API}/external-data/source-field-integrity${asOf ? `?as_of=${encodeURIComponent(asOf)}` : ""}`),
   getExternalDataSyncCoverage: () =>
     requestJson<ExternalDataSyncCoverage>(`${API}/external-data/sync-coverage`),
   getExternalDataQualitySnapshots: () =>

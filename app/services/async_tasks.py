@@ -303,6 +303,8 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
     top_error_code = None
     if errors and isinstance(errors[0], dict):
         top_error_code = errors[0].get("error_code")
+    from app.services.task_outcomes import external_sync_result
+
     return {
         "id": task.id,
         "task_type": task.task_type,
@@ -315,7 +317,7 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
         "ok_count": task.ok_count,
         "failed_count": task.failed_count,
         "current_item": task.current_item,
-        "result": _json_loads(task.result_json, None),
+        "result": external_sync_result(task, _json_loads(task.result_json, None)),
         "errors": errors[-20:],
         "error_code": top_error_code,
         "created_at": _as_utc(task.created_at),
@@ -526,6 +528,13 @@ def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
         task.status = "failed"
         task.stage = "interrupted"
         task.message = "Backend restarted before task completed"
+        if task.task_type.startswith("external_sync_"):
+            task.message += (
+                f"；已处理 {task.processed or 0}/{task.total or 0}，"
+                f"成功 {task.ok_count or 0}，失败 {task.failed_count or 0}。"
+                "已提交数据保留，请在其他数据中继续上次更新并检查缺口。"
+            )
+            task.suggested_action = "在其他数据中继续上次更新；仅重试失败和未完成分区，然后检查源表关键字段。"
         task.finished_at = interrupted_at
         task.updated_at = interrupted_at
         task.is_terminal_locked = 1

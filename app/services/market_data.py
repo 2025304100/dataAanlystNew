@@ -405,16 +405,36 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
     rows = _dedupe_history_rows(frame)
     if not rows:
         return inserted, updated
+    # Reject a broken batch before touching any ORM object.
+    import math
 
+    for row in rows:
+        prices = [float(row[field]) for field in ("open", "high", "low", "close")]
+        if any(not math.isfinite(value) or value <= 0 for value in prices):
+            raise ValueError("行情响应缺少有效 OHLC，整批未写入")
+        open_, high, low, close = prices
+        if not low <= min(open_, close) <= max(open_, close) <= high:
+            raise ValueError("行情响应 OHLC 边界异常，整批未写入")
+        for field in ("volume", "amount", "turnover_rate"):
+            value = row.get(field)
+            if value is not None and not pd.isna(value) and (not math.isfinite(float(value)) or float(value) < 0):
+                raise ValueError(f"行情响应 {field} 无效，整批未写入")
+
+    # Serialize writers by instrument; then use a current read for source checks.
+    db.execute(select(Symbol.id).where(Symbol.id == symbol.id).with_for_update())
     # 批量查询已存在的日期，避免行级 N+1
     trade_dates = [r["trade_date"] for r in rows]
     existing_bars = db.execute(
         select(DailyBar).where(
             DailyBar.symbol_id == symbol.id,
             DailyBar.trade_date.in_(trade_dates),
-        )
+        ).with_for_update().execution_options(populate_existing=True)
     ).scalars().all()
     existing_map = {bar.trade_date: bar for bar in existing_bars}
+    from app.services.history_source_guard import require_compatible_history_source
+    for row in rows:
+        if row["trade_date"] in existing_map:
+            require_compatible_history_source(existing_map[row["trade_date"]], row, source)
 
     for row in rows:
         trade_date = row["trade_date"]
@@ -445,6 +465,9 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
             inserted += 1
         else:
             updated += 1
+            volume = volume if volume is not None else existing.volume
+            amount = amount if amount is not None else existing.amount
+            turnover_rate = turnover_rate if turnover_rate is not None else existing.turnover_rate
             # daily_bars is currently a single-version table.  When a source
             # correction changes the payload, ``created_at`` becomes the
             # availability time of that replacement value.  Strict PIT

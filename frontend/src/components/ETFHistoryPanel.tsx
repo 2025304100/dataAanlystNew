@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Input, Progress, Space, Table, Typography } from 'antd';
+import { Alert, Input, Progress, Space, Table, Tooltip, Typography } from 'antd';
 import { api, ApiError, type ETFHistoryInput, type ETFHistoryRead, type ETFHistoryScope } from '../api/client';
 import { AppContext } from '../context/AppContext';
 
@@ -19,7 +20,7 @@ function Dates({ values, complete }: { values: string[] | null; complete: string
   return <><span>{values.slice(0, 6).join('、')}</span>{values.length > 6 && <details><summary>查看全部 {values.length} 个日期</summary>{values.join('、')}</details>}</>;
 }
 
-export default function ETFHistoryPanel({ portfolioId: selectedId }: { portfolioId?: number | null }) {
+export default function ETFHistoryPanel({ portfolioId: selectedId, defaultOpen = false }: { portfolioId?: number | null; defaultOpen?: boolean }) {
   const context = useContext(AppContext);
   const portfolioId = selectedId === undefined ? context?.portfolioId ?? null : selectedId;
   const [scope, setScope] = useState<ETFHistoryScope | null>(null);
@@ -31,6 +32,7 @@ export default function ETFHistoryPanel({ portfolioId: selectedId }: { portfolio
   const [pending, setPending] = useState<ETFHistoryInput | null>(null);
   const [unknown, setUnknown] = useState(false);
   const [pollVersion, setPollVersion] = useState(0);
+  const [open, setOpen] = useState(defaultOpen);
   const generation = useRef(0), working = useRef(false), selected = useRef(portfolioId);
   selected.current = portfolioId;
   const current = useCallback((id: number, token: number) => selected.current === id && generation.current === token, []);
@@ -123,8 +125,23 @@ export default function ETFHistoryPanel({ portfolioId: selectedId }: { portfolio
   const dateDirty = !!checkedDates && (dates.start !== checkedDates.start_date || dates.end !== checkedDates.end_date);
   const rows = dateDirty ? [] : report ? report.symbols : validScope?.symbols ?? [];
   return <section aria-label="ETF历史数据" style={{ marginBottom: 20, padding: 16, border: '1px solid var(--pt-border, #303846)', borderRadius: 8 }}>
-    <Typography.Title level={5} style={{ marginTop: 0 }}>ETF历史数据</Typography.Title>
-    <Typography.Paragraph type="secondary">补充当前组合中ETF的历史行情，核对原始价、前复权价和已有分红公告。下载期间可以继续使用其他页面。</Typography.Paragraph>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 10 : 0 }}>
+      <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 0 }}>ETF历史数据</Typography.Title>
+      <Tooltip title="补充当前组合中ETF的历史行情，核对原始价、前复权价和已有分红公告。行情齐全不代表可以成交，交易资料不完整时成交回测仍不能运行；补充行情不会训练或启用模型，也不会改动账户。">
+        <span style={{ color: '#98a2b3', fontSize: 12, cursor: 'help' }}>说明</span>
+      </Tooltip>
+      <button type="button" onClick={() => setOpen(value => !value)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: 'var(--accent, #2f7a6b)', cursor: 'pointer', fontSize: 13 }}>
+        {open ? '收起' : '展开'}
+      </button>
+    </div>
+    <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2, marginBottom: open ? 8 : 0 }}>
+      行情齐全不代表可成交；交易资料不完整时，成交回测仍不能运行。
+    </Typography.Text>
+    {!open && error && <Typography.Text type="danger" style={{ display: 'block', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={error}>{error}</Typography.Text>}
+    {!open && !error && validScope && <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+      {validScope.portfolio_name} · {dates.start} 至 {dates.end}{running ? ' · 正在补充' : task && task.status === 'done' && !dateDirty ? ' · 本次行情已补齐' : ''}
+    </Typography.Text>}
+    {open && <>
     {portfolioId === null ? <p>请先在顶部选择组合。</p> : reading ? <p role="status">正在读取ETF历史数据…</p> : validScope && <p>{validScope.portfolio_name} · {dates.start} 至 {dates.end}</p>}
     {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 8 }} />}
     {validScope?.reasons.map(reason => <p key={reason}>{reason}</p>)}
@@ -132,7 +149,7 @@ export default function ETFHistoryPanel({ portfolioId: selectedId }: { portfolio
     {!dateDirty && validScope && <p>{validScope.training_message}</p>}
     {dateDirty && !running && <p>日期已修改，请按新日期补充历史数据。</p>}
     <Space wrap style={{ marginBottom: 12 }}>
-      <Button type="primary" loading={busy} disabled={!validScope?.can_prepare || reading || running || busy || unknown || !dates.start || !dates.end || dates.start > dates.end}
+      <Button mutation type="primary" loading={busy} disabled={!validScope?.can_prepare || reading || running || busy || unknown || !dates.start || !dates.end || dates.start > dates.end}
         onClick={() => void submit()}>{task && !running && task.status !== 'done' || pending && !unknown ? '重试补充' : '补充ETF历史数据'}</Button>
       {(unknown || (error && task)) && <Button disabled={busy} onClick={() => void recover()}>重试读取进度</Button>}
       {!running && <Button disabled={busy || reading || portfolioId === null} onClick={() => void load()}>重新读取</Button>}
@@ -152,6 +169,6 @@ export default function ETFHistoryPanel({ portfolioId: selectedId }: { portfolio
       { title: '缺失日期', render: (_, row) => <Dates values={row.missing_trade_dates} complete="所查范围没有缺失日期" /> },
       { title: '检查结果', render: (_, row) => 'error' in row ? row.error || '原始价和前复权价已核对' : <Dates values={row.unreviewed_dates} complete="已有历史资料已核对" /> },
     ]} />}
-    <Typography.Paragraph type="secondary" style={{ marginTop: 10, marginBottom: 0 }}>行情齐全不代表可以成交。交易资料不完整时，成交回测仍不能运行；补充行情不会训练或启用模型，也不会改动账户。</Typography.Paragraph>
+    </>}
   </section>;
 }

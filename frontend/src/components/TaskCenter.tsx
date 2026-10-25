@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Tooltip, Typography } from "antd";
+import { Alert, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Tooltip, Typography } from "antd";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -50,6 +51,24 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
 
 function isExternalSyncTask(taskType: string): boolean {
   return taskType.startsWith("external_sync_");
+}
+
+function displayStatus(task: UnifiedTask): string {
+  if (!isExternalSyncTask(task.task_type)) return task.status;
+  if (task.result?.outcome === "partial_success") return "partial";
+  if (task.result?.outcome === "skipped") return "skipped";
+  if (task.result?.outcome === "failed") return "failed";
+  return task.status;
+}
+
+function ExternalResult({ task }: { task: UnifiedTask }) {
+  if (!isExternalSyncTask(task.task_type)) return null;
+  const result = task.result || {};
+  const skipped = Number(result.skipped ?? 0);
+  return <Space wrap>
+    <span>成功 {result.success ?? task.ok_count} / 跳过 {skipped} / 失败 {result.failed ?? task.failed_count}</span>
+    {task.total > 0 && skipped / task.total > 0.5 && <Tag color="warning">超过一半已跳过，请核对覆盖与跳过原因</Tag>}
+  </Space>;
 }
 
 function formatDuration(sec?: number): string {
@@ -212,7 +231,7 @@ export default function TaskCenter() {
     if (filter === "all") return tasks;
     if (filter === "active") return tasks.filter((task) => ["running", "queued"].includes(task.status));
     if (filter === "failed") return tasks.filter((task) => task.status === "failed");
-    if (filter === "partial") return tasks.filter((task) => task.status === "partial");
+    if (filter === "partial") return tasks.filter((task) => displayStatus(task) === "partial");
     if (filter === "external") return tasks.filter((task) => isExternalSyncTask(task.task_type));
     return tasks.filter((task) => task.task_type === filter);
   }, [tasks, filter]);
@@ -227,12 +246,13 @@ export default function TaskCenter() {
     const icon = STATUS_ICONS[status] || null;
     return (
       <Tag color={color} icon={icon}>
-        {t(`taskStatus_${status}`) || status}
+        {status === "skipped" ? "已跳过，未新增数据" : t(`taskStatus_${status}`) || status}
       </Tag>
     );
   };
 
   const renderTaskDetail = (task: UnifiedTask) => {
+    const shownStatus = displayStatus(task);
     const progressPct = Math.round(task.percent);
     const hasErrors = task.errors && task.errors.length > 0;
     const duration = task.duration_sec;
@@ -254,7 +274,7 @@ export default function TaskCenter() {
                 </Tag>
               </Tooltip>
             ) : abortable && (
-              <Button
+              <Button mutation
                 danger
                 icon={<PoweroffOutlined />}
                 loading={isAborting}
@@ -282,7 +302,7 @@ export default function TaskCenter() {
         <div className="task-detail-section">
           <div className="task-detail-row">
             <span className="task-detail-label">{t("taskProgress")}</span>
-            <Progress percent={progressPct} size="small" style={{ flex: 1, marginLeft: 12 }} strokeColor={task.status === "partial" ? "#d97706" : undefined} status={task.status === "failed" ? "exception" : task.status === "partial" ? "normal" : task.status === "done" ? "success" : "active"} />
+            <Progress percent={progressPct} size="small" style={{ flex: 1, marginLeft: 12 }} strokeColor={shownStatus === "partial" ? "#d97706" : undefined} status={shownStatus === "failed" ? "exception" : shownStatus === "partial" || shownStatus === "skipped" ? "normal" : shownStatus === "done" ? "success" : "active"} />
           </div>
           <div className="task-detail-row">
             <span className="task-detail-label">{t("taskProcessed")}</span>
@@ -295,6 +315,7 @@ export default function TaskCenter() {
               <Tag color="red">{t("taskFailed")}: {task.failed_count}</Tag>
             </Space>
           </div>
+          <ExternalResult task={task} />
           {duration != null && (
             <div className="task-detail-row">
               <span className="task-detail-label">{t("taskDuration")}</span>
@@ -484,7 +505,7 @@ export default function TaskCenter() {
                     }}
                   >
                     <div className="task-list-item-main">
-                      {statusTag(task.status)}
+                      {statusTag(displayStatus(task))}
                       {tLocked && (
                         <Tag color="red" icon={<LockOutlined />} style={{ border: "1px dashed #b42318" }}>
                           {t("taskTerminalLocked")}
@@ -496,7 +517,8 @@ export default function TaskCenter() {
                       <span className="task-list-item-stage">{enumLabel("taskStage", task.stage)}</span>
                     </div>
                     <div className="task-list-item-meta">
-                      <span>{task.processed}/{task.total}</span>
+                      <span>已处理 {task.processed}/{task.total}</span>
+                      <ExternalResult task={task} />
                       <span className="task-list-item-time">{formatTime(task.created_at)}</span>
                     </div>
                   </div>

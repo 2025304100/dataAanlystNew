@@ -710,7 +710,11 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
       : statusColor === "waitingSignal"
       ? t("repairDrawer.pillWaitingForSignal")
       : statusColor === "notReady"
-      ? template("repairDrawer.pillPending", { n: blockerCount })
+      ? // 聚合尚未返回（首屏/轮询失败）时 blockerCount 恒为 0，
+        // 不能把"未加载"渲染成"0 项待处理"误导用户，回退到未知态文案。
+        loaded
+        ? template("repairDrawer.pillPending", { n: blockerCount })
+        : t("portfolioTrading.autotrade.unknown")
       : statusColor === "enabledOnly"
       ? t("portfolioTrading.autotrade.enabledOnly")
       : t("portfolioTrading.autotrade.unknown");

@@ -82,7 +82,9 @@ def upgrade() -> None:
     # ── 2) sim_orders 扩展列 ──
     if _table_exists("sim_orders"):
         so_new_cols = [
-            ("review_status", String(32), "'NONE'", False),
+            # Ordinary orders have no review. Do not invent NONE/APPROVED or
+            # impose a legacy NOT NULL constraint on the runtime NULL contract.
+            ("review_status", String(32), None, True),
             ("review_by", String(128), None, True),
             ("reviewed_at", DateTime, None, True),
             ("review_deadline_at", DateTime, None, True),
@@ -137,62 +139,19 @@ def upgrade() -> None:
             op.create_check_constraint(
                 "ck_sim_orders_review_status_values",
                 "sim_orders",
-                "review_status IN ('NONE','PENDING','APPROVED','REJECTED','ESCALATED')",
+                "review_status IN ('NONE','PENDING','APPROVED','REJECTED','ESCALATED','PENDING_REVIEW','TIMED_OUT_CANCELLED')",
             )
         except Exception:
             pass
 
     # ── 3) backtest_trades 表创建 ──
     if not _table_exists("backtest_trades"):
-        op.create_table(
-            "backtest_trades",
-            Column("id", BigInteger().with_variant(Integer, "sqlite"),
-                   primary_key=True, autoincrement=True),
-            Column("backtest_run_id", BigInteger().with_variant(Integer, "sqlite"),
-                   ForeignKey("backtest_runs.id", ondelete="CASCADE"),
-                   nullable=False, index=True),
-            Column("symbol_id", Integer, nullable=False, index=True),
-            Column("trade_date", Date, nullable=False, index=True),
-            Column("decision_at", DateTime, nullable=False),
-            Column("execution_at", DateTime, nullable=True, index=True),
-            Column("side", String(8), nullable=False),
-            Column("action", String(32), nullable=True),
-            Column("quantity", Float, nullable=False),
-            Column("price", Float, nullable=False),
-            Column("notional", Float, nullable=True),
-            Column("commission", Float, nullable=True, server_default="0"),
-            Column("tax", Float, nullable=True, server_default="0"),
-            Column("slippage_bps", Float, nullable=True),
-            Column("intended_entry_price", Float, nullable=True),
-            Column("entry_rejection_reason", String(256), nullable=True),
-            Column("position_before", Float, nullable=True),
-            Column("position_after", Float, nullable=True),
-            Column("pct_of_portfolio", Float, nullable=True),
-            Column("matched", Integer, nullable=False, server_default="1"),
-            Column("match_note", String(256), nullable=True),
-            Column("legacy_fallback_flag", Integer, nullable=False, server_default="0"),
-            Column("manual_price_flag", Integer, nullable=False, server_default="0"),
-            Column("pit_safe_flag", String(16), nullable=True,
-                   server_default="UNKNOWN"),
-            Column("order_id_before_fill", BigInteger().with_variant(Integer, "sqlite"),
-                   nullable=True, index=True),
-            Column("decision_evidence_id", String(64),
-                   ForeignKey("decision_evidence.id", ondelete="SET NULL"),
-                   nullable=True, index=True),
-            Column("exit_evidence_id", String(64),
-                   ForeignKey("decision_evidence.id", ondelete="SET NULL"),
-                   nullable=True, index=True),
-            Column("created_at", DateTime, nullable=False),
-            Column("updated_at", DateTime, nullable=False),
-            CheckConstraint(
-                "side IN ('BUY','SELL')",
-                name="ck_backtest_trades_side_values",
-            ),
-            CheckConstraint(
-                "pit_safe_flag IN ('PIT_SAFE','NOT_PIT_SAFE','UNKNOWN')",
-                name="ck_backtest_trades_pit_safe_flag_values",
-            ),
-        )
+        # The old BIGINT FK referenced backtest_runs.id INTEGER and could not
+        # be created on MySQL 5.7. It also described an obsolete fill schema,
+        # whose required columns prevented the current lot ORM from inserting.
+        # A frozen definition keeps historical replay deterministic.
+        from app.db.migration_schema_v80 import create_frozen_table
+        create_frozen_table(op.get_bind(), "backtest_trades")
         try:
             op.create_index(
                 "ix_backtest_trades_run_date_symbol",

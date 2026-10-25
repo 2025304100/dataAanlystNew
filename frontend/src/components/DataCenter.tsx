@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button, AcceptanceNotice } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Modal, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Modal, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { DatabaseOutlined } from "@ant-design/icons";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../api/client";
 import ExternalDataSync from "./ExternalDataSync";
 import TaskCenter from "./TaskCenter";
+import SourceFieldIntegrity from "./SourceFieldIntegrity";
 import UniverseDataPanel from "./UniverseDataPanel";
 import DataMirrorPage from "./factors/mining/config/DataMirrorPage";
 import SecurityStatusImportPanel from "./SecurityStatusImportPanel";
@@ -140,7 +142,7 @@ function CoverageDiagnostics() {
       <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
         查看本地已有数据的日期、缺失情况和最近更新失败原因。“重新检查”只检查本地数据，不会重新下载。
       </Typography.Paragraph>
-      <Button onClick={() => void refreshQuality()} loading={loading}>重新检查本地数据</Button>
+      <Button mutation onClick={() => void refreshQuality()} loading={loading}>重新检查本地数据</Button>
     </Space>
     <Table<CoverageRow> rowKey={(row) => `${row.dataset}:${row.field}`} columns={columns} dataSource={rows} pagination={false} size="middle" scroll={{ x: 1455 }} locale={{ emptyText: "还没有检查结果。先到“其他数据”更新需要的数据，再回这里检查。" }} />
     <Modal title={`历次检查：${FIELD_LABELS[historyField || ""] || historyField || ""}`} open={historyField !== null} footer={null} onCancel={() => { ++historyRequest.current; setHistoryField(null); setQualityHistory(null); }} width={760}>
@@ -197,6 +199,7 @@ export default function DataCenter({ backtestRepair }: { backtestRepair?: Backte
   }, []);
 
   return <section data-testid="data-center" style={{ width: "100%" }}>
+    <AcceptanceNotice compact />
     <div style={{ marginBottom: 14 }}>
       <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
         <DatabaseOutlined style={{ color: "#1677ff", marginRight: 8 }} />数据管理
@@ -211,7 +214,7 @@ export default function DataCenter({ backtestRepair }: { backtestRepair?: Backte
       { key: "coverage", label: "数据检查", children: <><SecurityStatusDownloadPanel
         portfolioId={backtestRepair?.portfolioId}
         requestedRange={backtestRepair ? { start: backtestRepair.startDate, end: backtestRepair.endDate } : undefined}
-      /><SecurityStatusImportPanel /><CoverageDiagnostics /></> },
+      /><SecurityStatusImportPanel /><SourceFieldIntegrity /><CoverageDiagnostics /></> },
       { key: "tasks", label: "更新记录", children: <TaskCenter /> },
       { key: "mirror", label: "本地副本", children: <DataMirrorPage /> },
     ]} />

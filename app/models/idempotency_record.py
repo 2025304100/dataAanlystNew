@@ -1,7 +1,7 @@
 """幂等执行记录（保证任何入口同一操作不重复执行，WP0-2 TR-02.6 + FR-P0-3 双重契约兼容）。
 
 双模式兼容：
-  - idempotency_key 仍是主键（业务幂等键）；
+  - id 为自增代理主键；idempotency_key 为唯一业务幂等键；
   - 新增 request_hash / response_json（TR-02.6 需要，对应参数冲突校验与原响应返回）：
     老字段 result_json → WP0-2 统一别名 response_json（同表两列共存，老代码不破坏）；
     request_hash 从 nullable 变为 NOT NULL（服务层在写入时保证）。
@@ -39,6 +39,21 @@ class IdempotencyRecord(Base):
     entity_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True,
         comment="已创建实体ID（重复请求返回此实体，不重复创建）",
+    )
+    # Retained legacy fields are dual-written so pure-migration and create_all
+    # databases have the same insertion contract without deleting old evidence.
+    resource_type: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="general",
+        default=lambda context: context.get_current_parameters().get("entity_type") or "general",
+    )
+    resource_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True,
+        default=lambda context: context.get_current_parameters().get("entity_id"),
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="SUCCEEDED", server_default="SUCCEEDED")
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+        default=lambda context: context.get_current_parameters().get("expire_at"),
     )
 
     # ═════════════════════════════════════════════════════════════════════════

@@ -35,6 +35,16 @@ function renderStrategy() {
   });
 }
 
+it.each([
+  {sample_count: 25000, data_cutoff_at: "2026-10-20T08:00:00", expected: /样本=25,000，数据截止=2026-10-20 08:00/},
+  {sample_count: undefined, data_cutoff_at: undefined, expected: /样本=—，数据截止=—/},
+])("模型摘要保留真实训练证据，缺失证据不显示伪造零样本 $sample_count", async ({sample_count,data_cutoff_at,expected}) => {
+  mockApi.getFactorUsageOptions.mockResolvedValue({...OPTIONS, factor_models: [{...OPTIONS.factor_models[0],sample_count,data_cutoff_at}]});
+  renderStrategy();
+  await pickOption(/validatedFactorModelLabel|已验证因子模型/, /真实模型/);
+  expect(await screen.findByText(expected)).toBeInTheDocument();
+});
+
 /** antd Select：通过 combobox 的可访问名定位，mousedown 打开后按文本点选 */
 async function pickOption(comboboxName: RegExp, optionMatch: RegExp | string) {
   const combobox = screen.getByRole("combobox", { name: comboboxName });

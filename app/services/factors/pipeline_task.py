@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
+from functools import partial
 import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -422,7 +423,7 @@ def _cancelled(task_id: str) -> bool:
     cancel_db = SessionLocal()
     try:
         task = cancel_db.get(AsyncTaskRecord, task_id)
-        return task is not None and task.status == 'cancelled'
+        return task is not None and (task.status == 'cancelled' or bool(task.cancel_requested))
     finally:
         cancel_db.close()
 
@@ -436,6 +437,7 @@ def _touch_task_heartbeat(task_id: str) -> bool:
         if task is None or task.status != 'running':
             return False
         task.updated_at = _now()
+        task.heartbeat_at = task.updated_at
         heartbeat_db.commit()
         return True
     finally:
@@ -878,8 +880,30 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate, *,
     else:
         task, created = create_async_task(TASK_TYPE, payload.model_dump(), force_new=True), True
     if start_worker and created:
-        _start_worker(task.id, _run_factor_pipeline)
+        # The registered thread only supervises a process. Native DuckDB/BLAS
+        # failures cannot take the Web interpreter down with the calculation.
+        _start_worker(task.id, partial(_run_factor_pipeline_process, session_factory=get_session_local()))
     return task.model_dump()
+
+
+def _run_factor_pipeline_process(task_id: str, *, session_factory) -> None:
+    from app.services.factors.pipeline_process import supervise_factor_pipeline, _finish
+    # Capture the factory once; runtime DB switching must never redirect an
+    # already dispatched child's business writes or its supervisor updates.
+    factory = session_factory
+    try:
+        with factory() as db:
+            config = get_factor_system_config(db)
+        supervise_factor_pipeline(task_id, session_factory=factory, warehouse_path=config.warehouse_path)
+    except Exception:
+        # Do not escape to _start_worker's legacy global-factory error path:
+        # it could target a different database after runtime rebinding.
+        try:
+            _finish(factory, task_id, 'failed', 'FACTOR_WORKER_LAUNCH_FAILED',
+                    '独立训练进程初始化失败；任务数据库及原始训练参数保持不变')
+        except Exception:
+            logger.exception('Cannot persist factor supervisor failure in the original database for task %s', task_id)
+        logger.exception('Factor process supervisor failed for task %s', task_id)
 
 
 def _classify_pipeline_error(exc: Exception, stage: str):
@@ -891,6 +915,11 @@ def _classify_pipeline_error(exc: Exception, stage: str):
     lower = msg.lower()
     if isinstance(exc, FactorSevenError):
         return exc.error_code, exc.detail_zh
+    if isinstance(exc, MemoryError) or 'outofmemory' in lower or 'out of memory' in lower:
+        return (
+            'FACTOR_MEMORY_BUDGET_EXCEEDED',
+            '训练计算超出内存预算，任务已失败；原始窗口未自动缩小，也未启用未完成模型，请调整资源后重新运行',
+        )
     # 参数/配置校验类（不可重试）
     if isinstance(exc, (ValueError,)):
         if 'trusted_history' in lower:
@@ -1001,7 +1030,10 @@ def _run_factor_pipeline(task_id: str) -> None:
             mirror_start_date=effective_start_date,
             latest_bar_date=latest_bar_date,
         )
-        results: dict = {}
+        from app.services.factors.store import warehouse_resource_budget
+        results: dict = {"resource_budget": warehouse_resource_budget(),
+                         "requested_window_days": payload.window_days,
+                         "requested_validation_days": payload.validation_days}
         if trusted_dataset is not None:
             results['trusted_history_dataset'] = trusted_dataset.identity
         if frozen_universe is not None:
@@ -1255,12 +1287,22 @@ def _run_factor_pipeline(task_id: str) -> None:
                 if not training_coverage['accepted_dates']:
                     raise ValueError('insufficient_frozen_factor_coverage_for_training')
                 training_dates = tuple(training_coverage['accepted_dates'])
+            results['training_request'] = {
+                'window_days': payload.window_days,
+                'validation_days': payload.validation_days,
+                'data_cutoff_date': str(payload.data_cutoff_date or effective_end_date or date.today()),
+                'accepted_trade_date_count': len(training_dates) if training_dates is not None else None,
+                'factor_calc_batch_id': factors.calc_batch_id,
+                'target_calc_batch_id': targets.calc_batch_id,
+                'automatically_resized': False,
+            }
             _set_task(
                 db,
                 task_id,
                 stage='train',
                 percent=70,
                 message='Training and validating Ridge candidate',
+                result_json=json.dumps(results, ensure_ascii=False, default=str),
             )
             current_stage = 'train'
             # _set_task refreshes its row after commit; do not hand its idle
@@ -1345,33 +1387,20 @@ def _run_factor_pipeline(task_id: str) -> None:
             }
         # Training never publishes scores, including callers that request or
         # default materialize_scores=True. It must not delete unrelated score
-        # or warehouse history. Non-training tasks retain the existing policy.
+        # or warehouse history. Ordinary refreshes preserve that history too.
         if payload.train_model:
             results['batch_retention'] = {
                 'status': 'SKIPPED',
                 'reason': 'TRAINING_ONLY_NON_PUBLISHING',
             }
         else:
-            try:
-                score_retention = _prune_unreferenced_scores(db)
-                db.commit()
-                protected = retention_protected_batch_ids(db, score_retention)
-                results['batch_retention'] = warehouse.prune_calculation_batches(
-                    protected_batch_ids=protected,
-                )
-                results['batch_retention']['protected_batch_ids'] = protected
-                results['batch_retention']['score_rows_deleted'] = score_retention['score_rows_deleted']
-            except Exception as cleanup_exc:
-                logger.warning(
-                    'Factor batch retention cleanup skipped for %s: %s',
-                    task_id,
-                    cleanup_exc,
-                    exc_info=True,
-                )
-                results['batch_retention'] = {
-                    'status': 'SKIPPED',
-                    'reason': str(cleanup_exc),
-                }
+            # Publishing/refreshing is not authorization to erase score or
+            # calculation history. Retention is a separate archival operation
+            # requiring verified backups; preserve every existing row here.
+            results['batch_retention'] = {
+                'status': 'SKIPPED',
+                'reason': 'HISTORY_PRESERVATION_REQUIRED',
+            }
         results['runtime'] = runtime.to_dict()
         results['trained_model_auto_activated'] = False
         scores_skipped = results.get('scoring_bridge', {}).get('status') == 'SKIPPED'

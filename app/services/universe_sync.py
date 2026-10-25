@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 import logging
+import math
 import time
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -554,15 +555,17 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
 
     trade_dates = [r["trade_date"] for r in rows]
 
-    # 前置查询已有记录的日期（用于精确计数 inserted/updated）
-    existing_dates = set(
-        db.execute(
-            select(UniverseDailyBar.trade_date).where(
-                UniverseDailyBar.universe_symbol_id == universe_symbol_id,
-                UniverseDailyBar.trade_date.in_(trade_dates),
-            )
-        ).scalars().all()
-    )
+    # Lock the instrument before reading old values, so concurrent fallback
+    # writers cannot pass a stale source check and relabel the same row.
+    db.execute(select(UniverseSymbol.id).where(UniverseSymbol.id == universe_symbol_id).with_for_update())
+    existing_bars = db.execute(
+        select(UniverseDailyBar).where(
+            UniverseDailyBar.universe_symbol_id == universe_symbol_id,
+            UniverseDailyBar.trade_date.in_(trade_dates),
+        ).with_for_update().execution_options(populate_existing=True)
+    ).scalars().all()
+    existing_map = {bar.trade_date: bar for bar in existing_bars}
+    existing_dates = set(existing_map)
     inserted = sum(1 for r in rows if r["trade_date"] not in existing_dates)
     updated = len(rows) - inserted
 
@@ -582,20 +585,38 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
         }
         for row in rows
     ]
+    # Validate the entire response before any write. A partial provider row
+    # must not erase existing OHLC or create a new unusable candle.
+    for row in values:
+        prices = [row[field] for field in ("open", "high", "low", "close")]
+        if any(value is None or not math.isfinite(value) or value <= 0 for value in prices):
+            raise ValueError("行情响应缺少有效 OHLC，整批未写入")
+        if not row["low"] <= min(row["open"], row["close"]) <= max(row["open"], row["close"]) <= row["high"]:
+            raise ValueError("行情响应 OHLC 边界异常，整批未写入")
+        for field in ("volume", "amount", "turnover_rate"):
+            if row[field] is not None and (not math.isfinite(row[field]) or row[field] < 0):
+                raise ValueError(f"行情响应 {field} 无效，整批未写入")
+
+    from app.services.history_source_guard import require_compatible_history_source
+    for row in values:
+        if row["trade_date"] in existing_map:
+            require_compatible_history_source(existing_map[row["trade_date"]], row, source)
 
     dialect_name = db.get_bind().dialect.name if db.get_bind() else ""
     if dialect_name == "mysql":
         # MySQL：单条 INSERT ... ON DUPLICATE KEY UPDATE 完成批量 upsert
         stmt = mysql_insert(UniverseDailyBar).values(values)
+        replacements = {field: func.coalesce(stmt.inserted[field], getattr(UniverseDailyBar, field))
+                        for field in payload_fields}
         unchanged = and_(*(
-            getattr(UniverseDailyBar, field).is_not_distinct_from(stmt.inserted[field])
+            getattr(UniverseDailyBar, field).is_not_distinct_from(replacements[field])
             for field in payload_fields
         ))
         # MySQL evaluates assignments left-to-right. Compare the old payload
         # before any data column is replaced; <=> also detects NULL transitions.
         stmt = stmt.on_duplicate_key_update([
             ("created_at", case((unchanged, UniverseDailyBar.created_at), else_=observed_at)),
-            *((field, stmt.inserted[field]) for field in payload_fields),
+            *((field, replacements[field]) for field in payload_fields),
         ])
         db.execute(stmt)
     else:
@@ -610,6 +631,9 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
         for row in values:
             trade_date = row["trade_date"]
             existing = existing_map.get(trade_date)
+            if existing is not None:
+                row = {**row, **{field: getattr(existing, field)
+                                for field in payload_fields if row[field] is None}}
             if existing is None:
                 existing = UniverseDailyBar(
                     universe_symbol_id=universe_symbol_id, trade_date=trade_date
@@ -1742,6 +1766,8 @@ def repair_universe_bars_batch(
     updated_total = 0
     empty_chunks_total = 0
     failed_ids: list[int] = []
+    failures: list[dict] = []
+    completed_ids: set[int] = set()
     consecutive_failures = 0
     circuit_broken = False
     CIRCUIT_BREAKER_CONSECUTIVE_FAILS = 50
@@ -1750,23 +1776,22 @@ def repair_universe_bars_batch(
         nonlocal processed, ok_count, failed_count, skipped_count
         nonlocal inserted_total, updated_total, empty_chunks_total, consecutive_failures
         processed += 1
+        completed_ids.add(uid)
+        inserted_total += int(result.get("inserted", 0) or 0)
+        updated_total += int(result.get("updated", 0) or 0)
+        empty_chunks_total += int(result.get("empty_chunks", 0) or 0)
         status = result.get("status")
         if status == "ok":
             ok_count += 1
             consecutive_failures = 0
-            inserted_total += int(result.get("inserted", 0) or 0)
-            updated_total += int(result.get("updated", 0) or 0)
-            empty_chunks_total += int(result.get("empty_chunks", 0) or 0)
         elif status == "skipped":
             skipped_count += 1
             consecutive_failures = 0
-            inserted_total += int(result.get("inserted", 0) or 0)
-            updated_total += int(result.get("updated", 0) or 0)
-            empty_chunks_total += int(result.get("empty_chunks", 0) or 0)
         else:
             failed_count += 1
             consecutive_failures += 1
             failed_ids.append(uid)
+            failures.append({"symbol_id": uid, **result})
         if progress_callback:
             progress_callback(processed, total, ok_count, failed_count)
 
@@ -1842,6 +1867,10 @@ def repair_universe_bars_batch(
         "inserted": inserted_total,
         "updated": updated_total,
         "empty_chunks": empty_chunks_total,
+        "failed_ids": failed_ids,
+        "failures": failures,
+        "unprocessed_ids": [uid for uid in pending_ids if uid not in completed_ids],
+        "circuit_broken": circuit_broken,
     }
 
 def get_universe_stats(db: Session) -> dict:
@@ -1852,6 +1881,7 @@ def get_universe_stats(db: Session) -> dict:
     - freshness：数据新鲜度分布（今日最新/1-3天/3-7天/7天以上）
     - by_scope：按 region+asset_type 维度的覆盖率
     """
+    from app.services.universe_health import coverage_percent, read_universe_quality
     total_symbols = db.execute(select(func.count(UniverseSymbol.id))).scalar_one()
     synced_symbols = db.execute(
         select(func.count(UniverseSymbol.id)).where(UniverseSymbol.is_synced == 1)
@@ -1861,7 +1891,8 @@ def get_universe_stats(db: Session) -> dict:
             UniverseSymbol.sync_failed >= SYNC_FAILED_THRESHOLD
         )
     ).scalar_one()
-    total_bars = db.execute(select(func.count(UniverseDailyBar.id))).scalar_one()
+    quality = read_universe_quality(db)
+    total_bars = quality["stored_bar_rows"]
 
     # 按 asset_type 分组统计
     by_type = {}
@@ -1915,7 +1946,7 @@ def get_universe_stats(db: Session) -> dict:
         by_scope[scope_key] = {
             "total": int(cnt),
             "synced": int(synced_cnt or 0),
-            "coverage": round(int(synced_cnt or 0) / int(cnt) * 100, 1) if cnt else 0,
+            "coverage": coverage_percent(int(synced_cnt or 0), int(cnt)),
         }
 
     # 按板块（board）维度统计覆盖率（仅 A股股票有 board 字段）
@@ -1933,7 +1964,7 @@ def get_universe_stats(db: Session) -> dict:
         by_board[board] = {
             "total": int(cnt),
             "synced": int(synced_cnt or 0),
-            "coverage": round(int(synced_cnt or 0) / int(cnt) * 100, 1) if cnt else 0,
+            "coverage": coverage_percent(int(synced_cnt or 0), int(cnt)),
         }
 
     return {
@@ -1948,6 +1979,7 @@ def get_universe_stats(db: Session) -> dict:
         "freshness": freshness,  # P2.3：新鲜度分布
         "latest_synced_at": latest_synced.isoformat() if latest_synced else None,
         "is_empty": total_symbols == 0,
+        "quality": quality,
     }
 
 

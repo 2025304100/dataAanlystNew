@@ -183,7 +183,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
           setFactorSets(options.factor_sets.map((set) => ({ id: set.factor_set_id, label: set.name, status: set.status, member_count: set.member_count, frozen_at: set.frozen_at ?? null, created_at: null, is_active_for_model_run_ids: [], description: null })));
           setFactorModelRuns(options.factor_models.filter((model) => model.production_eligible === true).map((model) => {
             const set = options.factor_sets.find((item) => item.factor_set_id === model.factor_set_id);
-            return { id: model.factor_model_run_id, name: model.model_name || model.display_name || model.factor_model_run_id, status: "validated", validation_ic: model.sample_out_rank_ic ?? null, sample_count: model.sample_count ?? 0, data_cutoff_at: model.data_cutoff_at ?? null, factorset_id: model.factor_set_id, factorset_label: set?.name ?? null, factorset_member_count: set?.member_count ?? null, created_at: model.trained_at ?? null };
+            return { id: model.factor_model_run_id, name: model.model_name || model.display_name || model.factor_model_run_id, status: "validated", validation_ic: model.sample_out_rank_ic ?? null, sample_count: model.sample_count ?? Number.NaN, data_cutoff_at: model.data_cutoff_at ?? null, factorset_id: model.factor_set_id, factorset_label: set?.name ?? null, factorset_member_count: set?.member_count ?? null, created_at: model.trained_at ?? null };
           }));
         } else {
           setFactorModelRuns([]);

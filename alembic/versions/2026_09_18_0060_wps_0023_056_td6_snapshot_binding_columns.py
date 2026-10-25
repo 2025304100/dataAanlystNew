@@ -70,7 +70,7 @@ _TARGET_COLUMNS = [
         "VARCHAR(64) NOT NULL DEFAULT ''",
         "VARCHAR(64) NULL",
         "VARCHAR(64) NOT NULL",
-        "''",
+        "",
     ),
 ]
 
@@ -107,14 +107,20 @@ def upgrade() -> None:
 
     for name, sqlite_ddl, my_null_ddl, my_notnull_ddl, backfill in _TARGET_COLUMNS:
         if name in cols:
-            continue
+            if is_sqlite or "NOT NULL" not in my_notnull_ddl:
+                continue
+            current = next(c for c in sa.inspect(conn).get_columns(_TABLE) if c["name"] == name)
+            if not current["nullable"]:
+                continue
         if is_sqlite:
             op.execute(f'ALTER TABLE "{_TABLE}" ADD COLUMN "{name}" {sqlite_ddl}')
         else:
             # MySQL 三段式：nullable 加列 -> 回填 -> MODIFY NOT NULL
-            op.execute(f"ALTER TABLE `{_TABLE}` ADD COLUMN `{name}` {my_null_ddl}")
+            if name not in cols:
+                op.execute(f"ALTER TABLE `{_TABLE}` ADD COLUMN `{name}` {my_null_ddl}")
             if backfill is not None:
-                op.execute(f"UPDATE `{_TABLE}` SET `{name}` = {backfill} WHERE `{name}` IS NULL")
+                conn.execute(sa.text(f"UPDATE `{_TABLE}` SET `{name}` = :backfill WHERE `{name}` IS NULL"),
+                             {"backfill": backfill})
             op.execute(f"ALTER TABLE `{_TABLE}` MODIFY COLUMN `{name}` {my_notnull_ddl}")
 
     have_idx = _existing_indexes(conn)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import date, datetime
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Boolean
+from sqlalchemy.dialects.mysql import DATETIME
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -80,7 +81,10 @@ class SecurityStatusDaily(Base):
         comment="状态来源：akshare / tdx / raw_universe / inferred / unknown",
     )
     source_updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime,
+        # 微秒精度必须保留：CSV 导入回执以完整时间戳做行↔回执一致性校验
+        # （local_import._same_source / _status_fingerprint）。MySQL DATETIME 默认
+        # 截断到秒导致校验恒 False（BUG-17），与迁移 0082 一并收紧到 DATETIME(6)。
+        DateTime().with_variant(DATETIME(fsp=6), "mysql"),
         nullable=True,
         comment="源数据的更新时间戳",
     )

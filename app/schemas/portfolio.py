@@ -1,8 +1,43 @@
 import json as _json
-from datetime import datetime
-from typing import Any, Literal
+import sys
+from datetime import date, datetime
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.core.storage_limits import validate_mysql_text
+
+
+# Preserve zero-capital portfolios and each ratio's independent meaning. The
+# capital ceiling only prevents overflow when money is converted to cents.
+CapitalAmount = Annotated[float, Field(ge=0, le=sys.float_info.max / 100, allow_inf_nan=False)]
+Ratio = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+PortfolioName = Annotated[str, Field(min_length=1, max_length=128)]
+BenchmarkCode = Annotated[str, Field(min_length=1, max_length=32)]
+KeyMemberId = Annotated[int, Field(gt=0, strict=True)]
+
+
+class _PortfolioWrite(BaseModel):
+    @field_validator("key_members_json", check_fields=False)
+    @classmethod
+    def _unique_key_members(cls, value):
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("关键成员标的 ID 不能重复")
+        if value is not None:
+            validate_mysql_text(_json.dumps(value), field="key_members_json")
+        return value
+
+    @field_validator("name", "benchmark_code", mode="before", check_fields=False)
+    @classmethod
+    def _trim_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("total_capital", "investable_ratio", "cash_reserve_ratio", "buy_fee_pct",
+                     "sell_fee_pct", "default_single_position_pct", mode="before", check_fields=False)
+    @classmethod
+    def _reject_boolean_number(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("金额和比例不能使用布尔值")
+        return value
 
 
 def _parse_json_text_field(v: Any) -> Any:
@@ -16,49 +51,51 @@ def _parse_json_text_field(v: Any) -> Any:
     return v
 
 
-class PortfolioCreate(BaseModel):
-    name: str
-    account_type: str
+class PortfolioCreate(_PortfolioWrite):
+    name: PortfolioName
+    # 合法值与前端 CreatePortfolioModal 一致：simulated（模拟）/ manual（真实手动账户）。
+    # 模拟交易、自动交易、权益快照等链路都只认 simulated，脏值会导致后续行为不可预期。
+    account_type: Literal["simulated", "manual"]
     asset_scope: Literal["stock", "etf", "mixed"] = "mixed"
-    total_capital: float
-    investable_ratio: float
-    cash_reserve_ratio: float
-    currency: str = "CNY"
+    total_capital: CapitalAmount
+    investable_ratio: Ratio
+    cash_reserve_ratio: Ratio
+    currency: str = Field("CNY", pattern=r"^[A-Z]{3}$")
     is_default: bool = False
     auto_trade_enabled: bool = False
     # P1-FIX: 创建组合补充字段（前端曾只存本地状态未提交）
     # 佣金：ratio（0.00025 = 0.025%）
-    buy_fee_pct: float = 0.00025
-    sell_fee_pct: float = 0.00025
+    buy_fee_pct: Ratio = 0.00025
+    sell_fee_pct: Ratio = 0.00025
     # 基准指数代码，如 000300 / 000905 / 399006 等
-    benchmark_code: str = "000300"
+    benchmark_code: BenchmarkCode = "000300"
     # 默认单票仓位上限 ratio，例如 0.3 = 30%
-    default_single_position_pct: float = 0.30
+    default_single_position_pct: Ratio = 0.30
     # Q5.3: 关键成员 symbol_id 列表；None/空=全组合默认关键
-    key_members_json: list[int] | None = None
+    key_members_json: list[KeyMemberId] | None = None
 
 
-class PortfolioUpdate(BaseModel):
+class PortfolioUpdate(_PortfolioWrite):
     """组合部分更新（PUT）。
 
     所有字段可选，仅更新传入的字段。
     account_type 不允许修改（避免模拟账户与普通账户切换导致数据不一致）。
     """
-    name: str | None = None
+    name: PortfolioName | None = None
     asset_scope: Literal["stock", "etf", "mixed"] | None = None
-    total_capital: float | None = None
-    investable_ratio: float | None = None
-    cash_reserve_ratio: float | None = None
-    currency: str | None = None
+    total_capital: CapitalAmount | None = None
+    investable_ratio: Ratio | None = None
+    cash_reserve_ratio: Ratio | None = None
+    currency: str | None = Field(None, pattern=r"^[A-Z]{3}$")
     is_default: bool | None = None
     auto_trade_enabled: bool | None = None
     # P1-FIX: 允许增量更新补充字段
-    buy_fee_pct: float | None = None
-    sell_fee_pct: float | None = None
-    benchmark_code: str | None = None
-    default_single_position_pct: float | None = None
+    buy_fee_pct: Ratio | None = None
+    sell_fee_pct: Ratio | None = None
+    benchmark_code: BenchmarkCode | None = None
+    default_single_position_pct: Ratio | None = None
     # Q5.3: 关键成员 symbol_id 列表；None/空=全组合默认关键
-    key_members_json: list[int] | None = None
+    key_members_json: list[KeyMemberId] | None = None
 
 
 class PortfolioRead(BaseModel):
@@ -121,6 +158,14 @@ class AutoTradePlanItem(BaseModel):
     blocked_reasons: list[str] = []
     recommended_amount: float | None = None
     buy_quantity: float | None = None
+    order_plan_id: str | None = None
+    evidence_id: str | None = None
+    quantity: float | None = None
+    signal_date: date | None = None
+    execution_date: date | None = None
+    reason_code: str | None = None
+    status: str | None = None
+    filled_quantity: float | None = None
 
 
 class AutoTradeResult(BaseModel):
@@ -140,6 +185,9 @@ class AutoTradeResult(BaseModel):
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     diffs: list[dict[str, Any]] = []
+    # Recovery can fill an earlier immutable plan while today's decision is
+    # HOLD. Preserve its execution receipt even when today's buys/sells is empty.
+    execution_result: dict[str, Any] | None = None
 
 
 class PortfolioRuleUpsert(BaseModel):

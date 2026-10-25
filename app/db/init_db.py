@@ -581,18 +581,9 @@ def _ensure_sqlite_portfolio_members_table(engine) -> None:
     logger = logging.getLogger(__name__)
     inspector = inspect(engine)
     if inspector.has_table("portfolio_members"):
-        # 表已存在，检查部分唯一索引是否需要补
-        existing_indexes = {
-            idx["name"] for idx in inspector.get_indexes("portfolio_members")
-        }
-        if "idx_portfolio_members_active" not in existing_indexes:
-            with engine.begin() as conn:
-                conn.execute(text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_members_active "
-                    "ON portfolio_members (portfolio_id, symbol_id) "
-                    "WHERE effective_to IS NULL"
-                ))
-                logger.info("WP4.1: 已创建 idx_portfolio_members_active 部分唯一索引")
+        from app.db.migration_contracts_v83 import ensure_member_contract
+        with engine.begin() as conn:
+            ensure_member_contract(conn)
         return
 
     # 表不存在，通过模型 metadata 创建（checkfirst=True 保证幂等）
@@ -618,6 +609,9 @@ def _ensure_mysql_portfolio_members_table(engine) -> None:
     logger = logging.getLogger(__name__)
     inspector = inspect(engine)
     if inspector.has_table("portfolio_members"):
+        from app.db.migration_contracts_v83 import ensure_member_contract
+        with engine.begin() as conn:
+            ensure_member_contract(conn)
         return
 
     from app.models.portfolio_member import PortfolioMember
@@ -1467,39 +1461,10 @@ def _ensure_mysql_backtest_snapshot_columns(engine) -> None:
 
 
 def _sa_type_to_ddl(col, is_mysql: bool) -> str:
-    """将 SQLAlchemy Column 类型翻译为目标数据库（SQLite/MySQL）对应的 DDL 类型片段。"""
-    from sqlalchemy import (
-        BigInteger, Boolean, Date, DateTime, Float, Integer, String, Text,
-    )
-    typ = col.type
-    try:
-        if isinstance(typ, BigInteger):
-            base = "BIGINT" if is_mysql else "INTEGER"
-        elif isinstance(typ, Integer):
-            base = "INTEGER"
-        elif isinstance(typ, Boolean):
-            base = "TINYINT(1)" if is_mysql else "INTEGER"
-        elif isinstance(typ, Float):
-            base = "DOUBLE" if is_mysql else "REAL"
-        elif isinstance(typ, DateTime):
-            base = "DATETIME"
-        elif isinstance(typ, Date):
-            base = "DATE"
-        elif isinstance(typ, Text):
-            base = "TEXT"
-        elif isinstance(typ, String):
-            length = getattr(typ, "length", None)
-            if length:
-                base = f"VARCHAR({int(length)})"
-            else:
-                base = "TEXT"
-        else:
-            base = "TEXT"
-    except Exception:
-        base = "TEXT"
+    """Compile the real dialect type, precision, generated expression and default."""
+    from app.db.schema_alignment import type_definition
 
-    null_clause = " NOT NULL" if (not col.nullable and not col.primary_key) else " NULL"
-    return base + null_clause
+    return type_definition(col, is_mysql)
 
 
 def _sa_default_to_literal(col, is_mysql: bool):
@@ -1570,9 +1535,9 @@ def _auto_align_all_schema(engine) -> None:
       4. 缺索引：对每个表，比对 SA Index 与 DB 现存索引，补齐缺失的（幂等）
 
     安全原则（与之前一致）：
-    - 只做 CREATE / ADD，绝不删除 / 改名 / 改类型 / 删索引
+    - 通用对齐只做 CREATE / ADD；成员唯一索引使用独立的保留历史纠偏契约
     - 标识符（表名/列名/索引名）必须匹配 _IDENTIFIER_RE 正则，防注入
-    - 单项 ALTER 失败只打 warning，不中断启动（降级容错）
+    - 无法安全回填必填历史值、当前成员重复时停止启动，不能静默降级
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -1581,6 +1546,13 @@ def _auto_align_all_schema(engine) -> None:
     # Step 1. 刷新注册
     _refresh_model_metadata()
     _ensure_data_sync_policy_column(engine)
+
+    # Repair the historical index before generic alignment can recreate it.
+    # Duplicate current rows are an actionable data conflict, never a warning
+    # that permits trading to start without the database uniqueness invariant.
+    from app.db.migration_contracts_v83 import ensure_member_contract
+    with engine.begin() as conn:
+        ensure_member_contract(conn)
 
     inspector = sa_inspect(engine)
     is_mysql = "mysql" in engine.dialect.name
@@ -1627,17 +1599,15 @@ def _auto_align_all_schema(engine) -> None:
                 logger.warning("[auto-align] 非法列名跳过: %s.%s", table_name, col_name)
                 continue
             ddl_type = _sa_type_to_ddl(col, is_mysql)
-            alter_sql = (
-                f'ALTER TABLE "{table_name}" ADD COLUMN "{col_name}" {ddl_type}'
-                if not is_mysql
-                else f'ALTER TABLE `{table_name}` ADD COLUMN `{col_name}` {ddl_type}'
-            )
             try:
+                from app.db.schema_alignment import add_column
                 with engine.begin() as conn:
-                    conn.execute(text(alter_sql))
+                    add_column(conn, table_name, col)
                 logger.info("[auto-align] 补齐缺失列: %s.%s  %s", table_name, col_name, ddl_type)
                 total_cols_added += 1
             except Exception as exc:
+                if isinstance(exc, RuntimeError):
+                    raise
                 logger.warning("[auto-align] 补齐列失败 %s.%s: %s", table_name, col_name, exc)
 
         # --- 补索引 ---
@@ -1653,26 +1623,15 @@ def _auto_align_all_schema(engine) -> None:
             if not _IDENTIFIER_RE.match(idx_name):
                 logger.warning("[auto-align] 非法索引名跳过: %s@%s", idx_name, table_name)
                 continue
-            # 构造 DDL
-            col_exprs = []
-            safe = True
-            for col in sa_idx.columns:
-                if not _IDENTIFIER_RE.match(col.name):
-                    safe = False
-                    break
-                col_exprs.append(f"`{col.name}`" if is_mysql else f'"{col.name}"')
-            if not safe:
+            # Let SQLAlchemy compile partial predicates. A predicate for another
+            # dialect must never become an unrestricted MySQL unique index.
+            predicates = {key: value for key, value in sa_idx.dialect_kwargs.items() if key.endswith("_where")}
+            if predicates and f"{engine.dialect.name}_where" not in predicates:
                 continue
-            unique_clause = "UNIQUE " if sa_idx.unique else ""
-            create_sql = (
-                f"CREATE {unique_clause}INDEX `{idx_name}` ON `{table_name}` ({', '.join(col_exprs)})"
-                if is_mysql
-                else f'CREATE {unique_clause}INDEX IF NOT EXISTS "{idx_name}" ON "{table_name}" ({", ".join(col_exprs)})'
-            )
             try:
                 with engine.begin() as conn:
-                    conn.execute(text(create_sql))
-                logger.info("[auto-align] 补齐缺失索引: %s@%s  (%s)", idx_name, table_name, ", ".join(col_exprs))
+                    sa_idx.create(conn)
+                logger.info("[auto-align] 补齐缺失索引: %s@%s", idx_name, table_name)
                 total_indexes_added += 1
             except Exception as exc:
                 logger.warning("[auto-align] 补索引失败 %s@%s: %s", idx_name, table_name, exc)
@@ -1778,7 +1737,7 @@ def init_db() -> None:
     """初始化数据库：完整顺序的一站式启动初始化。
 
     执行顺序（严格保证）：
-      0. 预检查 & 环境准备：SQLite 目录、MySQL MyISAM→InnoDB 转换
+      0. 预检查 & 环境准备：SQLite 目录、MySQL 非 InnoDB 业务表阻断
       1. 通用 Schema 对齐：_auto_align_all_schema（自动扫模型 + 建表 + 补列 + 补索引）
       2. 基础数据修复：_auto_repair_basic_data_integrity（NOT NULL+默认值列的 NULL 回填）
       3. 显式兼容补丁（精细逻辑，如特殊索引、部分唯一索引、字段默认值等）
@@ -1796,7 +1755,16 @@ def init_db() -> None:
         db_path = settings.database_url.replace("sqlite:///", "", 1)
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     if mgr.is_mysql:
-        _convert_myisam_to_innodb(eng)
+        # An implicit large-table engine conversion is not a safe startup
+        # operation. Refuse to trade until an explicit verified conversion.
+        with eng.connect() as conn:
+            nontransactional = conn.execute(text(
+                "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' "
+                "AND ENGINE <> 'InnoDB' AND TABLE_NAME <> 'alembic_version'"
+            )).all()
+        if nontransactional:
+            raise RuntimeError(f"Nontransactional tables require an explicit InnoDB migration: {nontransactional!r}")
 
     # --- Step 1: 通用 Schema 对齐（新增模型无需手动写 patch） ---
     _auto_align_all_schema(eng)
@@ -1871,9 +1839,8 @@ def init_db() -> None:
     # Akshare 第三方接口缓存
     _load_akshare_api_config_cache()
 
-    # 新库（由 create_all 建的）没有 alembic_version 会让两套机制互不相认，
-    # 必须在建库后补上版本记录，否则日后 `alembic upgrade head` 会从第 1 个迁移重放。
-    _stamp_alembic_head_if_absent(eng)
+    # create_all/兼容补丁不等于实际执行迁移。保持未登记状态，由明确的
+    # Alembic upgrade 回放迁移后写入真实版本；不能虚报 head 掩盖漏迁移。
 
     logger.info("init_db() 全流程结束：schema对齐 → 数据修复 → 种子数据，全部完成")
 
@@ -1979,11 +1946,12 @@ def _alembic_head_revision() -> str | None:
 
 
 def _stamp_alembic_head_if_absent(engine: Engine) -> None:
-    """create_all 建出来的新库没有 alembic_version ⇒ alembic 会认为“从未迁移过”，
-    下次 `upgrade head` 就从第 1 个迁移重放，不是撞“表已存在”就是撞类型不匹配。
-    所以表缺失时写入当前 head；表已存在则**一律不改**（那是已有库的演进事实）。
+    """Legacy explicit administrative helper, never called by startup.
 
-    失败不影响启动（只记 warning）：版本记录是事后补救，不能拖死应用。
+    A stamp records an assertion; it does not prove schema or data migration.
+    Normal deployment must execute Alembic upgrade and retain its evidence.
+    An operator using this legacy helper must independently verify every
+    migration contract; existing version rows are never overwritten.
     """
     logger = logging.getLogger(__name__)
     try:

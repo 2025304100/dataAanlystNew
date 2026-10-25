@@ -305,7 +305,10 @@ def get_data_health(db: Session = Depends(get_db)):
             "stale_cutoff": stale_bar_cutoff,
             # 用户可见文案不得出现 API 字段名（拟真走查发现这里把 missing_samples /
             # stale_samples 直接印给了用户，见 docs/拟真走查与全量验证-2026-09-30.md）。
-            "repair_hint": "优先补拉「缺失K线」与「过期K线」清单里的标的，再重新运行机会扫描。",
+            "scope": "active_business_symbols",
+            "source_tables": ["symbols", "daily_bars"],
+            "scope_label": "当前启用业务标的的独立行情副本",
+            "repair_hint": "使用下方逐标的补拉更新业务行情副本，再重新运行机会扫描。",
             "missing_samples": [_format_bar_issue_row(row) for row in missing_samples],
             "stale_samples": [_format_bar_issue_row(row) for row in stale_samples],
         },
@@ -514,6 +517,9 @@ def list_unified_tasks(
                 result = _json.loads(row.result_json)
             except Exception:
                 pass
+        from app.services.task_outcomes import external_sync_result
+
+        result = external_sync_result(row, result) or {}
         plan = latest_external_plans.get(row.id)
         if plan is not None:
             result = {

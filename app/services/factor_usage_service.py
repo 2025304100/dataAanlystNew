@@ -374,6 +374,8 @@ def get_factor_usage_options(db: Session, portfolio_id: int) -> FactorUsageOptio
                 factor_model_run_id=r.id,
                 factor_set_id=selected_factor_set_id,
                 trained_at=getattr(r, "trained_at", None) or getattr(r, "created_at", None),
+                sample_count=r.sample_count,
+                data_cutoff_at=r.data_cutoff_at,
                 passes_production_gate=True,
                 production_eligible=True,
                 readiness_code=readiness.code,

@@ -77,6 +77,16 @@ it('keeps market statistics errors in place with a read-only retry and hides the
   expect(calls.every(call => call.method === 'GET')).toBe(true);
 });
 
+it('refreshes local dashboard statistics without downloading or registering work', async () => {
+  render(<App><UniverseDataPanel /></App>);
+  const button = await screen.findByRole('button', { name: '刷新统计' });
+  await waitFor(() => expect(button).toBeEnabled());
+  const before = calls.filter(call => call.url.includes('/universe/stats')).length;
+  fireEvent.click(button);
+  await waitFor(() => expect(calls.filter(call => call.url.includes('/universe/stats')).length).toBeGreaterThan(before));
+  expect(calls.every(call => call.method === 'GET')).toBe(true);
+});
+
 it.each([
   { path: '/smart-sync/status', tab: null, panel: /补充历史并更新/, start: /开始补充并更新/, industry: false },
   { path: '/initialize/status', tab: /下载历史/, panel: null, start: /开始初始化同步/, industry: false },

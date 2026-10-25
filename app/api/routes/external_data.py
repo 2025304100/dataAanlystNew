@@ -160,6 +160,17 @@ def external_data_sync_coverage(db: Session = Depends(get_db)):
     return {"datasets": get_coverage_summary(db)}
 
 
+@router.get("/external-data/source-field-integrity")
+def external_source_field_integrity(as_of: date | None = None, db: Session = Depends(get_db)):
+    """Read source completeness without changing source rows or factor eligibility."""
+    from app.services.source_field_integrity import get_source_field_integrity
+
+    try:
+        return get_source_field_integrity(db, as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/external-data/quality-snapshots")
 def latest_external_data_quality_snapshots(db: Session = Depends(get_db)):
     """Return the latest persisted field-quality evidence and failure reasons."""

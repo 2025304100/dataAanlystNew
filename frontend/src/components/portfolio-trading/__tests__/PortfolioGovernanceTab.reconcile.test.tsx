@@ -74,10 +74,10 @@ describe("对账守恒子 Tab", () => {
       items: [...NO_DECISION_RESP.items, {dimension:"NAV_BROKEN",expected_value:{cash:434752.27},
         actual_value:{cash:434752.01},diff_value:null,explain_note:"历史余额不连续"}] });
     render(<PortfolioGovernanceTab portfolioId={1} />);openReconcileTab();
-    expect(await screen.findByTestId("recon-verdict")).toHaveTextContent("账实不符");
+    expect(await screen.findByTestId("recon-verdict")).toHaveTextContent("发现账实差异");
     expect(panelText()).toContain("434,752.27");
     expect(panelText()).toContain("-0.26");
-    expect(panelText()).toContain("仅预览当前账本");
+    expect(panelText()).toContain("只读预览");
     await act(async () => { fireEvent.click(screen.getByRole('button',{name:'刷新只读核对'})); });
     expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledTimes(2);
     expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe("对账守恒子 Tab", () => {
     const card = await screen.findByTestId("recon-verdict");
     expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledWith(1);
     expect(mockApi.triggerPortfolioReconcile).not.toHaveBeenCalled();
-    expect(card).toHaveTextContent("核对证据尚不完整");
+    expect(card).toHaveTextContent("当天执行情况尚未核实");
 
     // 走查里最刺眼的那一行（「自定义维度 (DECISION_RUN_NOT_FOUND)」）必须说人话
     expect(panelText()).toContain("当日无决策运行");
@@ -130,7 +130,7 @@ describe("对账守恒子 Tab", () => {
     openReconcileTab();
 
     const card = await screen.findByTestId("recon-verdict");
-    expect(card).toHaveTextContent("对账通过");
+    expect(card).toHaveTextContent("当天对账已通过");
     expect(screen.queryByTestId("recon-manual-toggle")).toBeNull();
   });
 
@@ -158,7 +158,7 @@ describe("对账守恒子 Tab", () => {
     openReconcileTab();
 
     const card = await screen.findByTestId("recon-verdict");
-    expect(card).toHaveTextContent("账实不符");
+    expect(card).toHaveTextContent("发现账实差异");
     expect(panelText()).toContain("持仓不符");
     expect(panelText()).not.toContain("POSITION_MISMATCH");
   });

@@ -1,5 +1,6 @@
+import { AcceptanceButton as Button } from "./portfolio-trading/inspection/AcceptanceControls";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Alert, Button, Input, Space, Table, Typography } from "antd";
+import { Alert, Input, Space, Table, Typography } from "antd";
 import { api, ApiError, type SecurityStatusDownloadInput, type SecurityStatusDownloadRead, type SecurityStatusDownloadScope } from "../api/client";
 import { AppContext } from "../context/AppContext";
 
@@ -202,10 +203,10 @@ export default function SecurityStatusDownloadPanel({ portfolioId: selectedId, r
     </Typography.Paragraph>}
     {validScope?.reasons.map(reason => <Typography.Paragraph key={reason} type="warning">{reason}</Typography.Paragraph>)}
     <Space wrap style={{ margin: "10px 0" }}>
-      <Button type="primary" loading={busy && !active} disabled={!validScope?.can_download || reading || busy || active || unconfirmed || rangeUnavailable || !dates.start || !dates.end || dates.start > dates.end}
+      <Button mutation type="primary" loading={busy && !active} disabled={!validScope?.can_download || reading || busy || active || unconfirmed || rangeUnavailable || !dates.start || !dates.end || dates.start > dates.end}
         onClick={() => void submit()}>{pending && !unconfirmed ? "重试下载" : task && !active ? "重新下载当前组合资料" : "下载当前组合资料"}</Button>
       {(unconfirmed || (error && task)) && <Button disabled={busy || reading} onClick={() => void recover()}>查看下载结果</Button>}
-      {active && <Button disabled={busy || !!task?.cancel_requested} onClick={() => void stop()}>{task?.cancel_requested ? "正在停止…" : "停止下载"}</Button>}
+      {active && <Button mutation disabled={busy || !!task?.cancel_requested} onClick={() => void stop()}>{task?.cancel_requested ? "正在停止…" : "停止下载"}</Button>}
       {report && report.raw_files.length > 0 && <Button disabled={busy} onClick={() => void saveFiles()}>保存原始文件</Button>}
       {!active && !unconfirmed && <Button disabled={busy || reading || portfolioId === null} onClick={() => void load()}>重新读取范围</Button>}
     </Space>

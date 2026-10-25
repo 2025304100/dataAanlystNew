@@ -827,7 +827,7 @@ class TestScheduledTasksIntegration:
         ).one()
         assert item.enabled == 0  # 默认关闭，用户需主动开启
         assert item.next_run_at is None
-        assert item.time_of_day == "14:55"
+        assert item.time_of_day == "20:35"
 
 
 # ============================================================================

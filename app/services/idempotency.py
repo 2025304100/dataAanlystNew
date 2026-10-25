@@ -1,21 +1,9 @@
 """IdempotencyService：WP0-2 TR-02.6 幂等键双保险协议。
 
-⚠️ 状态：**未启用（2026-10-01 核实）**
-=====================================
-本模块**当前没有任何业务调用** —— `try_acquire_or_get` / `record_response`
-全仓只有 1 个测试文件引用。对应的 `idempotency_records` 表也是 0 行。
-
-原因：这是一次**没做完的设计升级**。模型（`app/models/idempotency_record.py`）
-已按 WP0-2 契约改成「自增 `id` 主键 + `idempotency_key` UNIQUE」，
-**但库里没执行该升级**（PK 仍是 `idempotency_key`、没有 `id` 列），
-且业务侧从未接入。
-
-**所以：一旦真按本模块契约调用，会立刻撞 `Unknown column 'id'`。**
-在 A5 裁决前请勿在业务代码里引入本服务。
-
-项目**实际在跑**的幂等机制是「把 `idempotency_key` 直接存在业务表上」：
-`async_tasks`（1131 行）、`decision_runs`（77 行）都带该列。
-详见 `docs/技术债-全库schema漂移核对报告.md` §A5。
+数据库契约由迁移 0081/0083 提供：独立自增 id 与业务幂等键唯一索引。
+服务同时写入旧 resource/status 字段，使保留历史列的升级库兼容当前 ORM。
+是否在某一业务流程启用本服务，仍由该流程决定；不能以单独一次
+ACQUIRED 查询替代业务事务和数据库唯一约束。
 
 协议说明（设计态，供将来启用参考）
 ================================
@@ -163,6 +151,10 @@ class IdempotencyService:
             correlation_id=str(cid),
             entity_type=str(entity_type or "general"),
             entity_id=str(entity_id) if entity_id is not None else None,
+            resource_type=str(entity_type or "general"),
+            resource_id=str(entity_id) if entity_id is not None else None,
+            status="SUCCEEDED",
+            expires_at=exp,
             portfolio_id=int(portfolio_id) if portfolio_id is not None else None,
             expire_at=exp,
             created_at=created,
