@@ -211,7 +211,7 @@ def test_manual_create_sets_hash_and_auto_sectors(db_session):
 
 def test_cleanup_deletes_only_stale_auto_unreferenced_rows(db_session):
     now = _now()
-    old = now - timedelta(days=120)      # 超出 90 天窗口
+    old = now - timedelta(days=400)      # 超出 365 天热点保护窗口
     expired = now - timedelta(days=1)    # 已过期
 
     should_delete = _make_event(
@@ -249,7 +249,7 @@ def test_cleanup_deletes_only_stale_auto_unreferenced_rows(db_session):
     assert should_delete.id not in remaining
     assert referenced.id in remaining      # 催化剂外键保护
     assert manual.id in remaining          # 手工行保护
-    assert in_window.id in remaining       # 90 天回看窗口保护
+    assert in_window.id in remaining       # 最长 365 天回看窗口保护
     assert not_expired.id in remaining     # 未过期保护
     assert null_published.id in remaining  # NULL 时间保守保留
 
@@ -257,7 +257,7 @@ def test_cleanup_deletes_only_stale_auto_unreferenced_rows(db_session):
 def test_cleanup_is_idempotent(db_session):
     now = _now()
     _make_event(
-        db_session, title="幂等清理目标", published_at=now - timedelta(days=200),
+        db_session, title="幂等清理目标", published_at=now - timedelta(days=500),
         expires_at=now - timedelta(days=100),
     )
     first = cleanup_expired_market_events(db_session, keep_days=90)
@@ -292,7 +292,7 @@ def test_validate_collect_payload_rejects_unknown_source():
 
 
 def test_validate_cleanup_payload_bounds():
-    assert validate_task_payload("market_events_cleanup", {}) == {"keep_days": 90}
+    assert validate_task_payload("market_events_cleanup", {}) == {"keep_days": 365}
     with pytest.raises(ValueError):
-        # 低于 30 天会击穿 90 天回看窗口的下限保护
+        # 低于 90 天的配置统一拒绝；旧 90 天配置有效执行窗口提升为 365 天。
         validate_task_payload("market_events_cleanup", {"keep_days": 7})

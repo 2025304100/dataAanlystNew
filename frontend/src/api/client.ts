@@ -2143,20 +2143,7 @@ export const api = {
     }),
 
   // Market Events
-  getMarketEvents: (params: {
-    impact_scope?: string;
-    importance_level_min?: number;
-    importance_level_max?: number;
-    affected_market?: string;
-    sentiment?: string;
-    date_from?: string;
-    date_to?: string;
-    is_manual?: number;
-    keyword?: string;
-    limit?: number;
-    offset?: number;
-    sort_by?: string;
-  } = {}) => {
+  getMarketEvents: (params: import("../types").MarketEventQuery = {}) => {
     const q = new URLSearchParams();
     if (params.keyword) q.set("keyword", params.keyword);
     if (params.impact_scope) q.set("impact_scope", params.impact_scope);
@@ -2167,13 +2154,20 @@ export const api = {
     if (params.date_from) q.set("date_from", params.date_from);
     if (params.date_to) q.set("date_to", params.date_to);
     if (params.is_manual != null) q.set("is_manual", String(params.is_manual));
+    if (params.include_expired != null) q.set("include_expired", String(params.include_expired));
+    if (params.as_of) q.set("as_of", params.as_of);
+    if (params.snapshot_max_id != null) q.set("snapshot_max_id", String(params.snapshot_max_id));
+    if (params.event_ids) {
+      // An empty collection must match nothing, never fall back to all events.
+      for (const id of params.event_ids.length ? params.event_ids : [0]) q.append("event_ids", String(id));
+    }
     q.set("limit", String(params.limit ?? 50));
     q.set("offset", String(params.offset ?? 0));
     if (params.sort_by) q.set("sort_by", params.sort_by);
-    return requestJson<any>(`${API}/market-events?${q.toString()}`);
+    return requestJson<import("../types").MarketEventListResponse>(`${API}/market-events?${q.toString()}`);
   },
   collectMarketEvents: (payload: { days?: number; sources?: string[] } = {}) =>
-    requestJson<any>(`${API}/market-events/collect`, {
+    requestJson<import("../types").MarketEventCollectResponse>(`${API}/market-events/collect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2204,7 +2198,7 @@ export const api = {
       },
     ),
   // P1-5：人工修正消息分类/等级/方向（关键词规则误判的运营兜底）
-  updateMarketEvent: (eventId: number, payload: Partial<Pick<import("../types").MarketEvent, "impact_scope" | "importance_level" | "sentiment">>) =>
+  updateMarketEvent: (eventId: number, payload: Partial<Pick<import("../types").MarketEvent, "impact_scope" | "importance_level" | "sentiment" | "sector_tag_source" | "affected_sectors">>) =>
     requestJson<import("../types").MarketEvent>(`${API}/market-events/${eventId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

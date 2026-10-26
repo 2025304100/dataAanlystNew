@@ -2,7 +2,7 @@
 
 后台轮询 Outbox，调用适配器发送。
 一渠道失败不影响其他渠道。
-dispatcher 重启后继续处理未完成 Outbox。
+dispatcher 重启后继续处理 pending Outbox；不自动抢回 sending 记录。
 
 project_memory 硬约束：
 - 一渠道失败不影响其他渠道（单条 try/except）
@@ -14,6 +14,7 @@ project_memory 硬约束：
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -91,7 +92,7 @@ class Dispatcher:
         self._stop_requested = True
 
     def run_once(self) -> int:
-        """执行一次轮询，返回处理的记录数。
+        """执行一次轮询，返回实际领取并处理的记录数。
 
         供 APScheduler 调用，或测试中手动调用。
         """
@@ -101,8 +102,8 @@ class Dispatcher:
             count = 0
             for outbox in pending:
                 try:
-                    self._process_one(db, outbox)
-                    count += 1
+                    if self._process_one(db, outbox):
+                        count += 1
                 except Exception as e:
                     # 单条失败不影响其他渠道
                     logger.exception(
@@ -116,12 +117,13 @@ class Dispatcher:
         finally:
             db.close()
 
-    def _process_one(self, db: Session, outbox: NotificationOutbox) -> None:
+    def _process_one(self, db: Session, outbox: NotificationOutbox) -> bool:
         """处理单条 Outbox 记录。"""
         # 1. 标记为 sending
         marked = mark_sending(db, outbox_id=outbox.id)
         if marked is None:
-            return
+            return False
+        outbox = marked
 
         # 2. 获取渠道
         channel = db.get(NotificationChannel, outbox.channel_id)
@@ -132,7 +134,7 @@ class Dispatcher:
                 error_code="channel_not_found",
                 error_message=f"渠道 ID={outbox.channel_id} 不存在",
             )
-            return
+            return True
 
         # 3. 检查渠道是否启用
         if not channel.enabled or channel.status in ("disabled", "unconfigured"):
@@ -142,7 +144,7 @@ class Dispatcher:
                 error_code="channel_disabled",
                 error_message=f"渠道 {channel.name} 未启用",
             )
-            return
+            return True
 
         # 4. 获取适配器
         adapter = get_adapter(channel.channel_type)
@@ -153,7 +155,7 @@ class Dispatcher:
                 error_code="adapter_not_found",
                 error_message=f"无 {channel.channel_type} 适配器",
             )
-            return
+            return True
 
         # 5. 解密配置（容错：解密失败用空配置）
         try:
@@ -176,6 +178,16 @@ class Dispatcher:
         title = payload.get("title", "")
         body = payload.get("body", "")
         body_text = payload.get("body_text")
+
+        if channel.channel_type == "webhook":
+            # Stable across adapter retries, dispatcher restarts and manual
+            # retry of this Outbox. New rows/channels get different identities.
+            # Hash the namespace/event data so headers expose no business key.
+            identity = [db.get_bind().engine.url.database, outbox.id, outbox.channel_id,
+                        outbox.event_key, outbox.created_at.isoformat()]
+            digest = hashlib.sha256(json.dumps(identity, ensure_ascii=True,
+                separators=(",", ":")).encode("utf-8")).hexdigest()
+            payload = {**payload, "_notification_idempotency_key": f"notify-v1-{digest}"}
 
         # 7. 发送
         start_time = time.time()
@@ -239,6 +251,7 @@ class Dispatcher:
                 duration_ms=duration_ms,
             )
             logger.exception(f"Outbox id={outbox.id} 适配器异常")
+        return True
 
 
 # 单例

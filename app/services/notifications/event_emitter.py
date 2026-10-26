@@ -324,6 +324,7 @@ def emit_market_news_collect_failed(
         event_type="market_news_collect_failed",
         severity="warn",
         title="行情消息采集失败",
+        deduplicate_sent=True,
         body=reason_text,
         template_variables={
             "error_count": str(len(errors)),

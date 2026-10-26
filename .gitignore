@@ -56,6 +56,12 @@ backups/
 
 # ── 运行日志与进程输出 ──────────────────────────────────────────────
 *.log
+*.market-events.lock
+!docs/assets/market-news-0091-2026-10-26/backend-regression.log
+!docs/assets/notification-delivery-idempotency-2026-10-26/regression-277.log
+!docs/assets/notification-delivery-idempotency-2026-10-26/red-concurrent.log
+!docs/assets/notification-delivery-idempotency-2026-10-26/red-response-loss.log
+!docs/assets/notification-delivery-idempotency-2026-10-26/green-sqlite-9.log
 logs/
 # 忽略 .codex-run 的内容而不是目录本身：否则下面的再包含会失效
 # （docs 里的 2026-09-24 因子挖掘测试报告把 shots-bb24/ 当视觉走查证据引用）

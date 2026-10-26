@@ -30,6 +30,9 @@ class MarketEvent(Base):
     importance_level: Mapped[int] = mapped_column(Integer, default=1, index=True)
     affected_market: Mapped[str] = mapped_column(String(64), default="A\u80a1/\u671f\u8d27", index=True)
     affected_sectors: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # NULL denotes historical labels with unknown origin; never guess that a
+    # stored historical override was automatic. New writes explicitly set this.
+    sector_tag_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
     affected_symbols: Mapped[str | None] = mapped_column(Text, nullable=True)
     sentiment: Mapped[str] = mapped_column(String(16), default="neutral", index=True)
     source: Mapped[str] = mapped_column(String(64), default="manual", index=True)
@@ -63,7 +66,7 @@ class MarketEventCollectRun(Base):
     sources_json: Mapped[str] = mapped_column(Text, default="[]")
     collected: Mapped[int] = mapped_column(Integer, default=0)
     skipped_duplicate: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(16), default="done", index=True)  # done / failed
+    status: Mapped[str] = mapped_column(String(16), default="done", index=True)  # done / partial / failed
     errors_json: Mapped[str] = mapped_column(Text, default="[]")
     started_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

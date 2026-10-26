@@ -1,0 +1,5 @@
+# Preserve exact acceptance evidence bytes on Windows and Linux checkouts.
+# JSON/CSV/log hashes in each evidence-summary.json must survive Git storage.
+docs/assets/market-news-mysql57-e2e-2026-10-26/** -text whitespace=cr-at-eol
+docs/assets/market-news-0091-2026-10-26/** -text whitespace=cr-at-eol
+docs/assets/notification-delivery-idempotency-2026-10-26/** -text whitespace=cr-at-eol

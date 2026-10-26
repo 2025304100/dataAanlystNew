@@ -10,6 +10,9 @@
 - request_template：JSON 字符串模板，含 {title} / {body} / {body_text} 占位符
 - timeout：超时秒数（默认 10）
 
+经Dispatcher发送时自动携带稳定Idempotency-Key；接收端需持久化该键并
+对重复请求返回既有结果，才能避免响应丢失后的重复业务处理。
+
 project_memory 硬约束：
 - 超时默认 10 秒
 - url 脱敏（mask_url）
@@ -116,12 +119,20 @@ class WebhookAdapter(ChannelAdapter):
                 if k not in variables:
                     variables[k] = v
 
-        rendered = render_template(template, variables)
-        try:
-            request_body = json.loads(rendered)
-        except (TypeError, ValueError):
-            # 渲染后不是合法 JSON，退化为字符串
-            request_body = rendered
+        # Parse the JSON structure before inserting variables. Rendering into
+        # serialized JSON makes real newlines/quotes/Markdown escapes invalid,
+        # silently falling back to a JSON string instead of the configured
+        # object. httpx performs JSON encoding after leaf substitution.
+        def render_value(value):
+            if isinstance(value, str):
+                return render_template(value, variables)
+            if isinstance(value, list):
+                return [render_value(item) for item in value]
+            if isinstance(value, dict):
+                return {key: render_value(item) for key, item in value.items()}
+            return value
+
+        request_body = render_value(json.loads(template))
 
         headers: dict[str, str] = {}
         if auth_header:
@@ -129,6 +140,10 @@ class WebhookAdapter(ChannelAdapter):
             headers["Authorization"] = auth_header
         if method in ("POST", "PUT"):
             headers["Content-Type"] = "application/json"
+        if payload and payload.get("_notification_idempotency_key"):
+            # Receivers must honor this key to suppress duplicate effects when
+            # a successful delivery response is lost and the sender retries.
+            headers["Idempotency-Key"] = payload["_notification_idempotency_key"]
 
         def _send() -> SendResult:
             with httpx.Client(timeout=timeout) as client:

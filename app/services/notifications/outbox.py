@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.orm import Session
 
 from app.models.notification import (
@@ -77,30 +77,31 @@ def enqueue(
     payload: dict,
     channel_id: int,
     policy_id: int | None = None,
+    deduplicate_sent: bool = False,
 ) -> NotificationOutbox | None:
     """将业务事件写入 Outbox（业务事务内调用）。
 
     event_key + channel_id 唯一约束：已存在且未发送时返回 None（防重）。
-    已发送的记录不阻止新写入（允许手动重发到其他渠道场景）。
+    已发送的记录默认不阻止新写入；deduplicate_sent=True时也阻止已发送键，
+    适用于按日告警。失败消息的重试仍由原Outbox记录负责。
 
     返回：
         NotificationOutbox：新创建的记录
         None：已存在未发送的相同 event_key + channel_id 记录（防重）
     """
-    # 检查是否已有未发送的相同 event_key + channel_id 记录
-    existing = db.execute(
-        select(NotificationOutbox).where(
-            and_(
-                NotificationOutbox.event_key == event_key,
-                NotificationOutbox.channel_id == channel_id,
-                NotificationOutbox.status != "sent",
-            )
-        )
-    ).scalars().first()
+    # Daily operational alerts opt into durable dedup after successful delivery.
+    # Other callers retain the existing explicit-resend contract.
+    query = select(NotificationOutbox).where(
+        NotificationOutbox.event_key == event_key,
+        NotificationOutbox.channel_id == channel_id,
+    )
+    if not deduplicate_sent:
+        query = query.where(NotificationOutbox.status != "sent")
+    existing = db.execute(query).scalars().first()
 
     if existing is not None:
         logger.debug(
-            f"Outbox 防重：event_key={event_key}, channel_id={channel_id} 已存在未发送记录"
+            f"Outbox 防重：event_key={event_key}, channel_id={channel_id} 已存在匹配记录"
         )
         return None
 
@@ -152,14 +153,22 @@ def get_pending_outbox(
 
 
 def mark_sending(db: Session, *, outbox_id: int) -> NotificationOutbox | None:
-    """标记为发送中。"""
-    outbox = db.get(NotificationOutbox, outbox_id)
-    if outbox is None:
-        return None
-    outbox.status = "sending"
-    outbox.updated_at = _now_utc()
+    """Atomically claim a due pending message; only the winner may send it."""
+    now = _now_utc()
+    result = db.execute(
+        update(NotificationOutbox).where(
+            NotificationOutbox.id == outbox_id,
+            NotificationOutbox.status == "pending",
+            NotificationOutbox.next_retry_at <= now,
+        ).values(status="sending", updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
     db.commit()
-    return outbox
+    if result.rowcount != 1:
+        return None
+    # The polling session can hold a stale ORM instance / RR read snapshot.
+    # End that transaction and fetch the claimed row, not the cached candidate.
+    return db.get(NotificationOutbox, outbox_id, populate_existing=True)
 
 
 def mark_sent(db: Session, *, outbox_id: int, delivery: NotificationDelivery) -> None:

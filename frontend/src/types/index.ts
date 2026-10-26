@@ -980,6 +980,7 @@ export interface MarketEvent {
   importance_level: number;   // 1-5
   affected_market: string;     // A-share | Hong Kong | US
   affected_sectors: string | null;
+  sector_tag_source?: "auto" | "manual" | "legacy";
   affected_symbols: string | null;
   sentiment: string;          // positive | negative | neutral
   source: string;             // cctv | baidu | baidu-report | manual | ...
@@ -996,6 +997,28 @@ export interface MarketEventListResponse {
   total: number;
   by_scope: Record<string, number>;
   by_level: Record<string, number>;
+  expired_total?: number;
+  as_of?: string | null;
+  snapshot_max_id?: number | null;
+}
+
+export interface MarketEventQuery {
+  impact_scope?: string;
+  importance_level_min?: number;
+  importance_level_max?: number;
+  affected_market?: string;
+  sentiment?: string;
+  date_from?: string;
+  date_to?: string;
+  is_manual?: number;
+  keyword?: string;
+  limit?: number;
+  offset?: number;
+  sort_by?: string;
+  include_expired?: boolean;
+  event_ids?: number[];
+  as_of?: string;
+  snapshot_max_id?: number;
 }
 
 export interface MarketEventCollectRequest {
@@ -1007,6 +1030,7 @@ export interface MarketEventCollectResponse {
   collected: number;
   skipped_duplicate: number;
   errors: string[];
+  status: "done" | "partial" | "failed";
 }
 
 // P0-3：概念热点后端聚合（统计口径与列表筛选解耦）
@@ -1034,7 +1058,7 @@ export interface MarketEventCollectRun {
   sources: string[];
   collected: number;
   skipped_duplicate: number;
-  status: string;            // done | failed
+    status: string;            // done | partial | failed
   errors: string[];
   started_at: string;
   finished_at: string | null;

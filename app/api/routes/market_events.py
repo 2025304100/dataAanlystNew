@@ -1,7 +1,10 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.async_utils import run_sync
+from app.core.market_event_policy import MARKET_EVENT_KEEP_DAYS_DEFAULT
+from app.services.market_event_collection_lock import MarketEventCollectionBusy
 from app.db.session import get_db
 from app.models.market_event import IMPACT_SCOPE_CHOICES
 from app.schemas.market_event import (
@@ -23,6 +26,7 @@ from app.services.market_events import (
     get_market_event,
     get_market_event_hotspots,
     list_market_events,
+    market_event_to_read,
     update_market_event,
 )
 
@@ -43,6 +47,10 @@ def list_events(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     sort_by: str = Query(default="published_at"),
+    include_expired: bool = Query(default=True),
+    event_ids: list[int] | None = Query(default=None, max_length=200),
+    as_of: datetime | None = Query(default=None),
+    snapshot_max_id: int | None = Query(default=None, ge=0),
     db: Session = Depends(get_db),
 ):
     return list_market_events(
@@ -59,6 +67,10 @@ def list_events(
         limit=limit,
         offset=offset,
         sort_by=sort_by,
+        include_expired=include_expired,
+        event_ids=event_ids,
+        as_of=as_of,
+        snapshot_max_id=snapshot_max_id,
     )
 
 
@@ -132,7 +144,7 @@ async def cleanup_events(
     payload: MarketEventCleanupRequest | None = None,
     db: Session = Depends(get_db),
 ):
-    keep_days = payload.keep_days if payload is not None else 90
+    keep_days = payload.keep_days if payload is not None else MARKET_EVENT_KEEP_DAYS_DEFAULT
     return await run_sync(cleanup_expired_market_events, db, keep_days=keep_days)
 
 
@@ -141,15 +153,13 @@ def get_event(event_id: int, db: Session = Depends(get_db)):
     event = get_market_event(db, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Market event not found")
-    from app.services.market_events import _event_to_read
-    return _event_to_read(event)
+    return market_event_to_read(db, event)
 
 
 @router.post("/market-events", response_model=MarketEventRead)
 def create_event(payload: MarketEventCreate, db: Session = Depends(get_db)):
     event = create_market_event(db, payload)
-    from app.services.market_events import _event_to_read
-    return _event_to_read(event)
+    return market_event_to_read(db, event)
 
 
 @router.put("/market-events/{event_id}", response_model=MarketEventRead)
@@ -157,8 +167,7 @@ def update_event(event_id: int, payload: MarketEventUpdate, db: Session = Depend
     event = update_market_event(db, event_id, payload)
     if event is None:
         raise HTTPException(status_code=404, detail="Market event not found")
-    from app.services.market_events import _event_to_read
-    return _event_to_read(event)
+    return market_event_to_read(db, event)
 
 
 @router.delete("/market-events/{event_id}")
@@ -171,4 +180,7 @@ def delete_event(event_id: int, db: Session = Depends(get_db)):
 
 @router.post("/market-events/collect", response_model=MarketEventCollectResponse)
 async def trigger_collect(payload: MarketEventCollectRequest, db: Session = Depends(get_db)):
-    return await run_sync(collect_market_events, db, payload)
+    try:
+        return await run_sync(collect_market_events, db, payload)
+    except MarketEventCollectionBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

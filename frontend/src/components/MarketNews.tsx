@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Empty, Input, Select, Space, Tag, Tooltip, Typography } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Card, Empty, Input, Pagination, Select, Space, Tag, Tooltip, Typography } from "antd";
 import { CalendarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, StarFilled, StarOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t, template } from "../i18n";
-import type { MarketEvent, MarketEventListResponse, MarketEventHotspotsResponse, MarketEventCollectRun } from "../types";
+import type { MarketEvent, MarketEventListResponse, MarketEventHotspotsResponse, MarketEventCollectRun, MarketEventQuery } from "../types";
+import { aggregateMarketSectors, CONCEPT_DAYS, fetchCompleteMarketEvents, marketEventsCsv, marketTime, storedSectorIds } from "../utils/marketNews";
 import ThemeManagementModal from "./ThemeManagementModal";
 
 const { Paragraph, Text } = Typography;
@@ -15,6 +16,7 @@ const ALL_COLLECT_SOURCES = ["eastmoney-global", "caixin", "cctv", "baidu", "bai
 const MIN_SAMPLE_COUNT = 3;
 // P1-6：收藏标记起步用 localStorage（不加表）；id 集合序列化存储
 const FAVORITES_KEY = "mn_favorites";
+const PAGE_SIZE = 50;
 
 function loadFavorites(): Set<number> {
   try {
@@ -152,7 +154,16 @@ function mapToSectors(title: string, summary?: string | null): SectorConcept[] {
 
 /** 获取板块名称 */
 function sectorName(s: SectorConcept): string {
-  return t("market_news_sector_" + s.id);
+  const key = "market_news_sector_" + s.id;
+  const label = t(key);
+  return label === key ? s.id : label;
+}
+
+function sectorMeta(id: string): SectorConcept {
+  return SECTOR_CONCEPTS.find((sector) => sector.id === id) ?? { id, keywords: [], color: "#64748b", icon: "🏷️" };
+}
+function eventSectorIds(event: MarketEvent): string[] {
+  return storedSectorIds(event, (legacy) => mapToSectors(legacy.title, legacy.summary).map((sector) => sector.id));
 }
 
 // ── 影响评价规则引擎 ──
@@ -202,7 +213,9 @@ function assessImpact(event: MarketEvent) {
 function fmtDate(d: string | null, locale: string): string {
   if (!d) return "-";
   try {
-    return new Date(d).toLocaleDateString(locale === "zh-CN" ? "zh-CN" : "en-US",
+    const timestamp = marketTime(d);
+    if (!Number.isFinite(timestamp)) return d.slice(0, 16);
+    return new Date(timestamp).toLocaleDateString(locale === "zh-CN" ? "zh-CN" : "en-US",
       { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch { return d.slice(0, 16); }
 }
@@ -224,6 +237,7 @@ export default function MarketNews() {
   const [data, setData] = useState<MarketEventListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [themeManagerOpen, setThemeManagerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -244,9 +258,19 @@ export default function MarketNews() {
   // 全局时间范围（控制新闻加载）
   const [timeRange, setTimeRange] = useState<number>(30);
 
-  // 概念热点面板专用状态
-  interface SectorStat { sector: SectorConcept; bull: number; bear: number; neutral: number; maxLevel: number; events: number[]; }
-  const [sectorStats, setSectorStats] = useState<SectorStat[]>([]);
+  const favoriteIds = [...favorites].filter((id) => Number.isSafeInteger(id) && id > 0).sort((a, b) => a - b);
+  const favoriteKey = favoriteIds.join(",");
+  const query = useMemo<MarketEventQuery>(() => ({
+    keyword: keyword.trim() || undefined, impact_scope: filterScope || undefined,
+    importance_level_min: filterLevelMin, sentiment: filterSentiment || undefined,
+    sort_by: sortBy, date_from: daysAgo(timeRange), include_expired: false,
+  }), [keyword, filterScope, filterLevelMin, filterSentiment, sortBy, timeRange]);
+  const queryKey = JSON.stringify([query, onlyFavorites ? favoriteKey : null]);
+  const currentQueryKey = useRef(queryKey);
+  currentQueryKey.current = queryKey;
+  const [pagination, setPagination] = useState({ key: "", page: 1 });
+  const page = pagination.key === queryKey ? pagination.page : 1;
+  const listSnapshot = useRef<{ key: string; as_of?: string; snapshot_max_id?: number } | null>(null);
 
   // 概念面板的时间Tab和方向Tab
   const [conceptTimeTab, setConceptTimeTab] = useState<"7d"|"30d"|"90d"|"365d">("30d");
@@ -255,6 +279,20 @@ export default function MarketNews() {
   // P0-3：概念热点后端聚合数据；接口异常时降级为本地统计（hotspotFallback=true）
   const [hotspotData, setHotspotData] = useState<MarketEventHotspotsResponse | null>(null);
   const [hotspotFallback, setHotspotFallback] = useState(false);
+  const [hotspotLoading, setHotspotLoading] = useState(false);
+  const listRequestId = useRef(0);
+  const hotspotRequestId = useRef(0);
+  const mounted = useRef(false);
+  const currentConceptTab = useRef(conceptTimeTab);
+  currentConceptTab.current = conceptTimeTab;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      listRequestId.current++;
+      hotspotRequestId.current++;
+    };
+  }, []);
 
   // P1-5：人工修正消息标记（分类/等级/方向）——关键词规则误判时的运营兜底
   const [fixingId, setFixingId] = useState<number | null>(null);
@@ -263,111 +301,67 @@ export default function MarketNews() {
   // 过期清理计数
   const [expiredCount, setExpiredCount] = useState(0);
 
-  // 关键词统计（用于卡片展开详情）
-  const [keywordStats, setKeywordStats] = useState<Record<string, number>>({});
-
   // ── 加载新闻数据 ──
   const loadData = useCallback(async () => {
+    if (!mounted.current) return;
+    const requestId = ++listRequestId.current;
     setLoading(true);
     setError(null);
     try {
+      const snapshot: { as_of?: string; snapshot_max_id?: number } = listSnapshot.current?.key === queryKey ? listSnapshot.current : {};
+      const params = { ...query, as_of: snapshot.as_of, snapshot_max_id: snapshot.snapshot_max_id };
       const [result, runsResult] = await Promise.all([
-        api.getMarketEvents({
-          keyword: keyword.trim() || undefined,
-          impact_scope: filterScope || undefined,
-          importance_level_min: filterLevelMin,
-          sentiment: filterSentiment || undefined,
-          sort_by: sortBy,
-          limit: 200,
-          date_from: daysAgo(timeRange),
-        }),
+        onlyFavorites
+          ? fetchCompleteMarketEvents(api.getMarketEvents, params, favoriteIds,
+              () => mounted.current && requestId === listRequestId.current)
+          : api.getMarketEvents({ ...params, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
         api.getMarketEventCollectRuns(1).catch(() => null),
       ]);
+      if (requestId !== listRequestId.current) return;
       setLastRun(Array.isArray(runsResult) && runsResult.length > 0 ? runsResult[0] : null);
-
-      // 过期清理
-      let cleaned = result.events as MarketEvent[];
-      let expired = 0;
-      const now = new Date();
-      cleaned = cleaned.filter((e) => {
-        if (e.expires_at && new Date(e.expires_at) < now) { expired++; return false; }
-        return true;
-      });
-      if (expired > 0) setExpiredCount(expired);
-
-      setData({ ...result, events: cleaned, total: cleaned.length });
-
-      // 计算板块统计 + 关键词统计
-      buildSectorStats(cleaned);
+      listSnapshot.current = { key: queryKey, as_of: result.as_of ?? undefined, snapshot_max_id: result.snapshot_max_id ?? undefined };
+      const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+      if (page > lastPage) { setPagination({ key: queryKey, page: lastPage }); return; }
+      setExpiredCount(result.expired_total ?? 0);
+      setData({ ...result, events: onlyFavorites ? result.events.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : result.events });
     } catch (err: any) {
-      setError(err.message || t("market_news_load_failed"));
+      if (requestId === listRequestId.current) setError(t(err.message || "market_news_load_failed"));
     } finally {
-      setLoading(false);
+      if (requestId === listRequestId.current) setLoading(false);
     }
-  }, [filterScope, filterLevelMin, filterSentiment, keyword, sortBy, timeRange, locale]);
+  }, [queryKey, page, locale]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    void loadData();
+    return () => { listRequestId.current++; };
+  }, [loadData]);
 
   // P0-3：概念热点改调后端聚合接口——统计窗口是真实回溯（此前"近一季/近一年"
   // 只是对同一批 30 天数据再过滤的假切换），且口径不再受列表筛选影响。
   // data 变化（采集/刷新后）时联动重拉，保证热点与列表同步更新。
-  const CONCEPT_DAYS: Record<"7d"|"30d"|"90d"|"365d", number> = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 };
   const loadHotspots = useCallback(async (tab: "7d"|"30d"|"90d"|"365d") => {
+    if (!mounted.current || tab !== currentConceptTab.current) return;
+    const requestId = ++hotspotRequestId.current;
+    setHotspotLoading(true);
+    setHotspotFallback(false);
     try {
       const result = await api.getMarketEventHotspots(CONCEPT_DAYS[tab]);
+      if (requestId !== hotspotRequestId.current || tab !== currentConceptTab.current) return;
+      if (result.days !== CONCEPT_DAYS[tab]) throw new Error("Hotspot window mismatch");
       setHotspotData(result);
       setHotspotFallback(false);
     } catch {
+      if (requestId !== hotspotRequestId.current || tab !== currentConceptTab.current) return;
       // 降级：后端接口不可用时沿用本地统计，页面保持可用（口径退回当次加载数据）
       setHotspotFallback(true);
+    } finally {
+      if (requestId === hotspotRequestId.current && tab === currentConceptTab.current) setHotspotLoading(false);
     }
   }, []);
-  useEffect(() => { void loadHotspots(conceptTimeTab); }, [loadHotspots, conceptTimeTab, data]);
-
-  /** 构建板块统计数据（核心函数） */
-  function buildSectorStats(events: MarketEvent[]) {
-    // 板块聚合
-    const sectorMap = new Map<string, { bull: number; bear: number; neutral: number; maxLevel: number; events: number[] }>();
-
-    // 关键词频率（保留用于展开详情）
-    const kwCount: Record<string, number> = {};
-
-    events.forEach((e) => {
-      // 映射到板块
-      const sectors = mapToSectors(e.title, e.summary);
-      sectors.forEach((s) => {
-        if (!sectorMap.has(s.id)) sectorMap.set(s.id, { bull: 0, bear: 0, neutral: 0, maxLevel: 0, events: [] });
-        const st = sectorMap.get(s.id)!;
-        if (e.sentiment === "positive") st.bull++;
-        else if (e.sentiment === "negative") st.bear++;
-        else st.neutral++;
-        st.maxLevel = Math.max(st.maxLevel, e.importance_level);
-        st.events.push(e.id);
-      });
-
-      // 同时提取原始关键词（用于详情展示）
-      e.title.match(/[\u4e00-\u9fa5]{3,8}/g)?.forEach((w) => {
-        kwCount[w] = (kwCount[w] || 0) + 1;
-      });
-    });
-
-    setKeywordStats(kwCount);
-
-    // 转换为排序后的数组
-    const stats: SectorStat[] = Array.from(sectorMap.entries())
-      .map(([id, data]) => ({
-        sector: SECTOR_CONCEPTS.find((s) => s.id === id)!,
-        ...data,
-      }))
-      .sort((a, b) => {
-        // 按总提及量排序
-        const aTotal = a.bull + a.bear + a.neutral;
-        const bTotal = b.bull + b.bear + b.neutral;
-        return bTotal !== aTotal ? bTotal - aTotal : b.maxLevel - a.maxLevel;
-      });
-
-    setSectorStats(stats);
-  }
+  useEffect(() => {
+    void loadHotspots(conceptTimeTab);
+    return () => { hotspotRequestId.current++; };
+  }, [loadHotspots, conceptTimeTab, data]);
 
   // 采集消息
   const handleCollect = async () => {
@@ -376,17 +370,27 @@ export default function MarketNews() {
     try {
       // P0-2：默认采集全部 6 个已实现源（此前硬编码只采东财全球+财新两源）
       const result = await api.collectMarketEvents({ days: 30, sources: ALL_COLLECT_SOURCES });
+      if (!mounted.current) return;
+      listSnapshot.current = null;
       await loadData();
-      if (result && typeof result.collected === "number" && result.collected > 0) {
+      if (!mounted.current) return;
+      if (result.status === "failed") {
+        const message = `${t("market_news_collect_failed")}: ${(result.errors ?? []).join("; ")}`;
+        setError(message);
+        ctx.showToast("error", message);
+      } else if (result.errors?.length) {
+        ctx.showToast("info", `${template("market_news_collect_partial", { n: result.collected })}; ${result.errors.join("; ")}`);
+      } else if (result && typeof result.collected === "number" && result.collected > 0) {
         ctx.showToast("success", template("market_news_collect_success", { n: result.collected }));
       } else {
         ctx.showToast("info", t("market_news_collect_nothing"));
       }
     } catch (err: any) {
+      if (!mounted.current) return;
       setError(err.message || t("market_news_collect_failed"));
       ctx.showToast("error", err.message || t("market_news_collect_failed"));
     } finally {
-      setCollecting(false);
+      if (mounted.current) setCollecting(false);
     }
   };
 
@@ -401,26 +405,29 @@ export default function MarketNews() {
     });
   };
 
-  // P1-6：导出当前筛选结果为 CSV（utf-8 BOM 保证 Excel 中文不乱码）
-  const exportCsv = () => {
-    const rows = visibleEvents;
-    const header = ["published_at", "impact_scope", "importance_level", "sentiment", "source", "title", "summary", "source_url"];
-    const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = [header.join(",")];
-    for (const e of rows) {
-      lines.push([
-        e.published_at ?? "", e.impact_scope, e.importance_level, e.sentiment,
-        e.source, e.title, (e.summary ?? "").replace(/[\r\n]+/g, " "), e.source_url ?? "",
-      ].map(escape).join(","));
+  // Export every row matching the captured filters, across all pages/favorite batches.
+  const exportCsv = async () => {
+    setExporting(true);
+    const capturedKey = queryKey;
+    try {
+      const result = await fetchCompleteMarketEvents(api.getMarketEvents, {
+        ...query, as_of: data?.as_of ?? undefined, snapshot_max_id: data?.snapshot_max_id ?? undefined,
+      }, onlyFavorites ? favoriteIds : undefined,
+      () => mounted.current && currentQueryKey.current === capturedKey);
+      const blob = new Blob([marketEventsCsv(result.events)], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `market-news-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+      } finally { URL.revokeObjectURL(url); }
+      ctx.showToast("success", template("market_news_export_done", { n: result.total }));
+    } catch (err: any) {
+      if (mounted.current) ctx.showToast("error", t(err?.message || "market_news_export_failed"));
+    } finally {
+      if (mounted.current) setExporting(false);
     }
-    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `market-news-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    ctx.showToast("success", template("market_news_export_done", { n: rows.length }));
   };
 
   // P1-5：保存人工修正（写回后端，标题未变只更新标记字段）
@@ -446,56 +453,34 @@ export default function MarketNews() {
 
   // ── 派生数据 ──
   const events = useMemo(() => data?.events ?? [], [data]);
-  // P1-6：收藏是本地概念，收藏过滤在客户端完成（服务端其余筛选不受影响）
-  const visibleEvents = useMemo(
-    () => (onlyFavorites ? events.filter((e) => favorites.has(e.id)) : events),
-    [events, onlyFavorites, favorites],
-  );
+  const sortedEvents = events; // Preserve server/complete-query ordering, including tie breakers.
   const scopeStats = useMemo(() => data?.by_scope ?? {}, [data]);
-
-  const sortedEvents = useMemo(() => {
-    const list = [...visibleEvents];
-    if (sortBy === "importance_level") list.sort((a, b) => b.importance_level - a.importance_level);
-    else list.sort((a, b) => {
-      const da = a.published_at ? new Date(a.published_at).getTime() : 0;
-      const db = b.published_at ? new Date(b.published_at).getTime() : 0;
-      return db - da;
-    });
-    return list;
-  }, [visibleEvents, sortBy]);
 
   // 辅助函数
   const scopeLabel = (key: string) => t("market_news_scope_" + key);
   const levelLabel = (lv: number) => t("market_news_level_" + lv);
-  const srcName = (src: string) => t("market_news_source_" + src);
+  const srcName = (src: string) => {
+    const key = "market_news_source_" + src;
+    const label = t(key);
+    return label === key ? src : label;
+  };
 
   // ── 概念面板：行数据源 ──
   // P0-3：优先后端聚合（独立时间窗、不受列表筛选污染）；接口异常时降级为
   // 本地统计（旧口径：仅当次加载的数据 + 前端按时间Tab过滤）。
   interface ConceptRow { sector: SectorConcept; bull: number; bear: number; neutral: number; maxLevel: number; }
   const conceptRows = useMemo<ConceptRow[]>(() => {
-    if (!hotspotFallback && hotspotData) {
+    if (!hotspotFallback) {
+      if (!hotspotData || hotspotData.days !== CONCEPT_DAYS[conceptTimeTab]) return [];
       return hotspotData.sectors
         .map((row) => {
-          const meta = SECTOR_CONCEPTS.find((c) => c.id === row.sector_id);
-          return meta
-            ? { sector: meta, bull: row.bull, bear: row.bear, neutral: row.neutral, maxLevel: row.max_level }
-            : null;
+          return { sector: sectorMeta(row.sector_id), bull: row.bull, bear: row.bear, neutral: row.neutral, maxLevel: row.max_level };
         })
         .filter((row): row is ConceptRow => row !== null);
     }
-    if (conceptTimeTab === "30d" && timeRange <= 30) {
-      return sectorStats.map(({ sector, bull, bear, neutral, maxLevel }) => ({ sector, bull, bear, neutral, maxLevel }));
-    }
-    const cutoffDays = conceptTimeTab === "7d" ? 7 : conceptTimeTab === "90d" ? 90 : 365;
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - cutoffDays);
-    return sectorStats
-      .filter((s) => s.events.some((eid) => {
-        const ev = events.find((e) => e.id === eid);
-        return ev?.published_at && new Date(ev.published_at) >= cutoff;
-      }))
-      .map(({ sector, bull, bear, neutral, maxLevel }) => ({ sector, bull, bear, neutral, maxLevel }));
-  }, [hotspotData, hotspotFallback, sectorStats, conceptTimeTab, events, timeRange]);
+    return aggregateMarketSectors(events, CONCEPT_DAYS[conceptTimeTab], eventSectorIds)
+      .map(({ id, ...counts }) => ({ sector: sectorMeta(id), ...counts }));
+  }, [hotspotData, hotspotFallback, conceptTimeTab, events]);
 
   // 利多板块排行 / 利空板块排行
   const bullSectors = useMemo(() =>
@@ -524,8 +509,8 @@ export default function MarketNews() {
           <p className="mn-subtitle">{t("market_news_subtitle")}</p>
         </div>
         <Space wrap>
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={loadData}>{t("market_news_refresh")}</Button>
-          <Button icon={<DownloadOutlined />} disabled={sortedEvents.length === 0} onClick={exportCsv}>{t("market_news_export")}</Button>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { listSnapshot.current = null; void loadData(); }}>{t("market_news_refresh")}</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} disabled={loading || !data?.total} onClick={exportCsv}>{t("market_news_export")}</Button>
           <Button type="primary" icon={<ThunderboltOutlined />} loading={collecting} onClick={handleCollect}>
             {collecting ? t("market_news_collecting") : t("market_news_collect")}
           </Button>
@@ -572,10 +557,6 @@ export default function MarketNews() {
         </Card>
       )}
 
-      {/* ── 空状态 ── */}
-      {!data || events.length === 0 ? (
-        <Card className="mn-empty"><Empty description={t("market_news_empty")}><Button type="primary" loading={collecting} onClick={handleCollect}>{t("market_news_collect")}</Button></Empty></Card>
-      ) : (
         <>
           {/* ── Scope 维度卡片 ── */}
           <div className="mn-scope-cards">
@@ -593,8 +574,7 @@ export default function MarketNews() {
              ★ 概念热点汇总面板（全新设计）
              时间Tab + 利多/利空Tab + 板块级展示
              ═══════════════════════════════════════════════════ */}
-          {conceptRows.length > 0 && (
-            <div className="mn-concept-panel">
+            <div className="mn-concept-panel" aria-busy={hotspotLoading}>
               {/* 头部 */}
               <div className="mn-concept-head">
                 <div className="mn-concept-title-row">
@@ -660,7 +640,7 @@ export default function MarketNews() {
                   );
                 }) : (
                   <div className="mn-empty-hint">
-                    {conceptDirTab === "bull" ? t("market_news_no_bull_data") : t("market_news_no_bear_data")}
+                    {hotspotLoading ? t("market_news_loading") : conceptDirTab === "bull" ? t("market_news_no_bull_data") : t("market_news_no_bear_data")}
                   </div>
                 )}
               </div>
@@ -669,22 +649,23 @@ export default function MarketNews() {
               <div className="mn-panel-footer-hint">
                 <Text type="secondary" style={{ fontSize: 11 }}>
                   {hotspotFallback
-                    ? t("market_news_hotspot_fallback_hint")
-                    : template("market_news_auto_match_hint", { news: events.length, sectors: conceptRows.length })}
+                    ? <><span>{t("market_news_hotspot_fallback_hint")}</span>{" "}<span>{template("market_news_hotspot_loaded_hint", { n: events.length, days: timeRange })}</span></>
+                    : template("market_news_hotspot_server_hint", { days: CONCEPT_DAYS[conceptTimeTab], sectors: conceptRows.length })}
                 </Text>
               </div>
             </div>
-          )}
 
           {/* ── 消息卡片列表 ── */}
-          <div className="mn-news-list">
+          {!data || events.length === 0 ? (
+            <Card className="mn-empty"><Empty description={t("market_news_empty")}><Button type="primary" loading={collecting} onClick={handleCollect}>{t("market_news_collect")}</Button></Empty></Card>
+          ) : <div className="mn-news-list">
             {sortedEvents.map((event) => {
               const lvlCfg = LEVEL_CONFIG[event.importance_level] || LEVEL_CONFIG[1];
               const scopeCfg = SCOPE_CONFIG[event.impact_scope] || SCOPE_CONFIG.other;
               const assessment = assessImpact(event);
               const credibility = SOURCE_CREDIBILITY[event.source] ?? 2;
               const credLbl = CREDIBILITY_LABELS[credibility] ?? CREDIBILITY_LABELS[2];
-              const mappedSectors = mapToSectors(event.title, event.summary);
+              const mappedSectors = eventSectorIds(event).map(sectorMeta);
               const isExpanded = expandedId === event.id;
 
               return (
@@ -724,12 +705,19 @@ export default function MarketNews() {
                         <div className="mn-keywords">
                           <Text type="secondary" className="mn-kw-label">{t("market_news_related_sectors")}</Text>
                           {mappedSectors.map((s) => (
-                            <Tag key={s.id} className="mn-kw-tag" color={s.color.replace("#", "")}>
+                            <Tag key={s.id} className="mn-kw-tag" color={s.color}>
                               {s.icon} {sectorName(s)}
                             </Tag>
                           ))}
                         </div>
                       )}
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Text type="secondary">{t(`market_news_tags_${event.sector_tag_source ?? "legacy"}`)}</Text>
+                        {event.sector_tag_source !== "auto" && <Button type="link" size="small" onClick={async () => {
+                          try { await api.updateMarketEvent(event.id, { sector_tag_source: "auto" }); await loadData(); }
+                          catch (err: any) { ctx.showToast("error", err.message); }
+                        }}>{t("market_news_tags_reset_auto")}</Button>}
+                      </div>
 
                       <div className="mn-meta-footer">
                         <Tooltip title={`${t("market_news_source")}: ${srcName(event.source)}`}><Text type="secondary">{srcName(event.source)}</Text></Tooltip>
@@ -763,11 +751,14 @@ export default function MarketNews() {
                 </Card>
               );
             })}
-          </div>
+          </div>}
+          <Pagination current={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} showSizeChanger={false}
+            onChange={(next) => setPagination({ key: queryKey, page: next })}
+            showTotal={(total) => template("market_news_page_total", { n: total })} />
 
           {/* 底部统计 + P1-7 最近采集 */}
           <div className="mn-footer-stats">
-            <Text type="secondary">{t("market_news_total_prefix")} <strong>{data.total}</strong> {t("market_news_total_suffix")}</Text>
+            <Text type="secondary">{t("market_news_total_prefix")} <strong>{data?.total ?? 0}</strong> {t("market_news_total_suffix")}</Text>
             {lastRun && (
               <Text type="secondary" style={{ fontSize: 11 }}>
                 {template("market_news_last_collect_line", {
@@ -781,7 +772,6 @@ export default function MarketNews() {
             )}
           </div>
         </>
-      )}
       <ThemeManagementModal open={themeManagerOpen} onClose={() => setThemeManagerOpen(false)} />
     </div>
   );

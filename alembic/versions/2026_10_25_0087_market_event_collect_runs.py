@@ -17,11 +17,13 @@ def upgrade():
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("trigger_source", sa.String(length=16), nullable=False, server_default="manual"),
         sa.Column("days", sa.Integer(), nullable=False, server_default="30"),
-        sa.Column("sources_json", sa.Text(), nullable=False, server_default="[]"),
+        # MySQL 5.7 rejects defaults on TEXT (error 1101). The ORM/collector
+        # explicitly supplies JSON arrays, matching the create_all schema.
+        sa.Column("sources_json", sa.Text(), nullable=False),
         sa.Column("collected", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("skipped_duplicate", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("status", sa.String(length=16), nullable=False, server_default="done"),
-        sa.Column("errors_json", sa.Text(), nullable=False, server_default="[]"),
+        sa.Column("errors_json", sa.Text(), nullable=False),
         sa.Column("started_at", sa.DateTime(), nullable=False),
         sa.Column("finished_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),

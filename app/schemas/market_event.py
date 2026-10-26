@@ -1,6 +1,11 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.core.market_event_policy import (
+    MARKET_EVENT_KEEP_DAYS_DEFAULT, MARKET_EVENT_MIN_KEEP_DAYS, MARKET_EVENT_MAX_KEEP_DAYS,
+)
 
 
 class MarketEventCreate(BaseModel):
@@ -27,6 +32,7 @@ class MarketEventUpdate(BaseModel):
     sentiment: str | None = None
     source_url: str | None = None
     published_at: datetime | None = None
+    sector_tag_source: Literal["auto", "manual"] | None = None
 
 
 class MarketEventRead(BaseModel):
@@ -37,6 +43,7 @@ class MarketEventRead(BaseModel):
     importance_level: int
     affected_market: str
     affected_sectors: str | None = None
+    sector_tag_source: str = "legacy"
     affected_symbols: str | None = None
     sentiment: str
     source: str
@@ -63,17 +70,22 @@ class MarketEventListResponse(BaseModel):
     total: int
     by_scope: dict[str, int] = Field(default_factory=dict)
     by_level: dict[str, int] = Field(default_factory=dict)
+    expired_total: int = 0
+    as_of: datetime | None = None
+    snapshot_max_id: int | None = None
 
 
 class MarketEventCollectResponse(BaseModel):
     collected: int
     skipped_duplicate: int
     errors: list[str] = Field(default_factory=list)
+    status: Literal["done", "partial", "failed"] = "done"
 
 
 class MarketEventCleanupRequest(BaseModel):
-    """P0-1：过期消息清理参数。keep_days 为发布时间保留窗口，默认 90 天。"""
-    keep_days: int = Field(default=90, ge=7, le=3650)
+    """发布时间保留窗口；90～364 天的旧配置安全提升为 365 天。"""
+    keep_days: int = Field(default=MARKET_EVENT_KEEP_DAYS_DEFAULT,
+                           ge=MARKET_EVENT_MIN_KEEP_DAYS, le=MARKET_EVENT_MAX_KEEP_DAYS, strict=True)
 
 
 class MarketEventCleanupResponse(BaseModel):

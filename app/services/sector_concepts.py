@@ -101,10 +101,14 @@ def map_to_sectors(title: str, summary: str | None) -> list[str]:
 
 
 def parse_affected_sectors(field: str | None) -> list[str]:
-    """解析落库的 affected_sectors 字段（逗号分隔板块 id），未知 id 丢弃。"""
+    """Stored labels are authoritative, including custom/retired IDs.
+
+    Removing a keyword configuration must not erase historical event labels.
+    Deduplicate within an event so repeated IDs cannot inflate its mentions.
+    """
     if not field:
         return []
-    return [item.strip() for item in field.split(",") if item.strip() in SECTOR_IDS]
+    return list(dict.fromkeys(item.strip() for item in field.split(",") if item.strip()))
 
 
 __all__ = [
@@ -163,6 +167,12 @@ def map_sectors_on(index: dict[str, str], title: str, summary: str | None) -> li
 def map_to_sectors_db(db, title: str, summary: str | None) -> list[str]:
     """带 DB 覆盖的匹配入口（采集打标 / 热点聚合使用）。"""
     return map_sectors_on(build_index(resolve_concepts(db)), title, summary)
+
+
+def event_sector_ids(field: str | None, title: str, summary: str | None, index: dict[str, str]) -> list[str]:
+    # NULL means no stored classification; an explicit empty string means
+    # intentionally no labels, and must not silently fall back to auto tagging.
+    return parse_affected_sectors(field) if field is not None else map_sectors_on(index, title, summary)
 
 
 def list_sector_concept_configs(db) -> list[dict]:

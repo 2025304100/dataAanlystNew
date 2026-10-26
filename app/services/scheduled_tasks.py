@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.orm import Session
+from app.core.market_event_policy import MARKET_EVENT_KEEP_DAYS_DEFAULT, effective_keep_days
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
@@ -149,12 +150,12 @@ TASK_DEFINITIONS: dict[str, dict] = {
             ],
         },
     },
-    # 行情消息 P0-1：过期消息清理（expires_at 已过期且发布超 90 天的自动行；
+    # 行情消息：过期消息清理（保护至少 365 天热点历史；
     # 被主题催化剂引用的行与手工行不删）
     "market_events_cleanup": {
         "name": "行情消息过期清理",
-        "description": "删除已过期且发布时间超出保留窗口（默认90天）的自动采集消息；保护主题催化剂引用与手工录入",
-        "default_payload": {"keep_days": 90},
+        "description": "删除已过期且发布时间超出保留窗口（至少365天）的自动采集消息；保护主题催化剂引用与手工录入",
+        "default_payload": {"keep_days": MARKET_EVENT_KEEP_DAYS_DEFAULT},
     },
 }
 
@@ -328,7 +329,7 @@ DEFAULT_SCHEDULES = (
         "payload": TASK_DEFINITIONS["market_events_collect"]["default_payload"],
         "enabled": True,
     },
-    # 行情消息 P0-1：凌晨低峰清理过期消息（保护 90 天回看窗口与催化剂引用行）
+    # 凌晨低峰清理，保护 365 天热点历史与催化剂引用行。
     {
         "name": "每日行情消息过期清理",
         "task_type": "market_events_cleanup",
@@ -609,12 +610,8 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
             raise ValueError(f"unknown market event sources: {unknown}")
         return {"days": days, "sources": sources}
     if task_type == "market_events_cleanup":
-        keep_days = int(payload.get("keep_days", 90))
-        # 下限 30：再激进的配置也不允许压缩 90 天默认窗口的三分之一以下，
-        # 保留窗口是"回看完整"的硬约束，不是可任意调小的运维参数。
-        if not 30 <= keep_days <= 3650:
-            raise ValueError("keep_days must be between 30 and 3650")
-        return {"keep_days": keep_days}
+        keep_days = payload.get("keep_days", MARKET_EVENT_KEEP_DAYS_DEFAULT)
+        return {"keep_days": effective_keep_days(keep_days)}
     raise ValueError(f"Unsupported scheduled task type: {task_type}")
 
 
@@ -872,29 +869,29 @@ def _dispatch_task(item: ScheduledTask):
 
             daily_key = f"market_news_collect_failed:{_now().date().isoformat()}"
             # 告警一（全源失败）：部分失败源常见且已有重试兜底，不值得打扰。
-            if result.errors and result.collected == 0 and len(result.errors) >= len(validated["sources"]):
+            if result.status == "failed":
                 emit_market_news_collect_failed(
                     session, errors=result.errors, event_key=daily_key,
                 )
-                message += f"；全部 {len(result.errors)} 个来源失败，已发出告警"
+                message += f"；全部 {len(result.errors)} 个来源失败，已触发告警策略"
             elif result.errors:
                 message += f"；{len(result.errors)} 个来源失败"
             # 告警二（P1-7 连续空采）：采集"成功"但连续两轮零新增——源在返回
             # 空数据而不是报错，全源失败告警覆盖不到这种静默断供。
             from app.services.market_events import recent_collects_all_empty
 
-            if result.collected == 0 and recent_collects_all_empty(session, lookback=2):
+            if result.status == "done" and result.collected == 0 and recent_collects_all_empty(session, lookback=2):
                 emit_market_news_collect_failed(
                     session, errors=[],
                     event_key=f"{daily_key}:stale",
                     reason_text="行情消息连续两轮采集零新增，疑似数据源静默断供，请人工核查。",
                 )
-                message += "；连续空采，已发出告警"
+                message += "；连续空采，已触发告警策略"
         finally:
             session.close()
         return "market_events", {
             "id": f"market-events-collect-{int(_now().timestamp())}",
-            "status": "done",
+            "status": "failed" if result.status == "failed" else "done",
             "message": message,
         }
     if item.task_type == "market_events_cleanup":

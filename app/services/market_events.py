@@ -11,6 +11,9 @@ from pathlib import Path
 from sqlalchemy import case, delete, desc, func, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.core.market_event_policy import MARKET_EVENT_KEEP_DAYS_DEFAULT, effective_keep_days
+from app.services.market_event_collection_lock import market_event_write_lock
+
 from app.models.investment_theme import ThemeCatalyst
 from app.models.market_event import MarketEvent, MarketEventCollectRun
 from app.schemas.market_event import (
@@ -22,7 +25,10 @@ from app.schemas.market_event import (
     MarketEventUpdate,
 )
 from app.services.akshare_utils import quiet_akshare_output
-from app.services.sector_concepts import map_to_sectors, map_to_sectors_db, parse_affected_sectors
+from app.services.sector_concepts import (
+    KEYWORD_TO_SECTOR, build_index, event_sector_ids, map_sectors_on,
+    map_to_sectors, map_to_sectors_db, parse_affected_sectors, resolve_concepts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +37,8 @@ ALL_COLLECT_SOURCES = [
     "eastmoney-global", "caixin", "cctv", "baidu", "baidu-report", "futures-shmet",
 ]
 
-# P0-1：过期消息清理的默认保留窗口（天）。90 天回看窗口内的数据绝不清删。
-CLEANUP_KEEP_DAYS_DEFAULT = 90
+# 保留最长一年热点窗口；旧 90 天排程在服务层安全提升到 365 天。
+CLEANUP_KEEP_DAYS_DEFAULT = MARKET_EVENT_KEEP_DAYS_DEFAULT
 
 SCOPE_KEYWORDS: dict[str, list[str]] = {
     "macro_policy": ["政策", "央行", "降准", "降息", "加息", "利率", "LPR", "MLF", "财政", "货币", "CPI", "PPI", "PMI", "GDP", "社融", "M2", "国债", "美债", "通胀", "就业", "非农", "美联储", "国务院", "发改委", "证监会", "政治局"],
@@ -67,7 +73,6 @@ _keyword_cache: dict = {"mtime": None, "scope": None, "level": None, "sentiment"
 
 def _merged_keywords() -> tuple[dict, dict, dict]:
     import json
-    import os
 
     try:
         mtime = _KEYWORD_OVERRIDE_FILE.stat().st_mtime
@@ -83,13 +88,27 @@ def _merged_keywords() -> tuple[dict, dict, dict]:
         try:
             with open(_KEYWORD_OVERRIDE_FILE, encoding="utf-8") as fh:
                 overrides = json.load(fh)
+            if not isinstance(overrides, dict):
+                raise ValueError("keyword config must be an object")
             for key, target in (("impact_scope", scope), ("importance_level", level), ("sentiment", sentiment)):
-                for name, words in (overrides.get(key) or {}).items():
-                    if isinstance(words, list) and words:
-                        target[str(name)] = [str(w) for w in words]
+                section = overrides.get(key, {})
+                if not isinstance(section, dict):
+                    raise ValueError(f"{key} must be an object")
+                for name, words in section.items():
+                    if not isinstance(words, list) or not all(isinstance(w, str) and w.strip() for w in words):
+                        raise ValueError(f"{key}.{name} must be a list of non-empty strings")
+                    normalized_key = int(name) if key == "importance_level" else str(name)
+                    if key == "importance_level" and normalized_key not in LEVEL_KEYWORDS:
+                        raise ValueError("importance_level must be between 2 and 5")
+                    if key == "sentiment" and normalized_key not in SENTIMENT_KEYWORDS:
+                        raise ValueError("unknown sentiment")
+                    target[normalized_key] = [w.strip() for w in words]
         except (OSError, ValueError, TypeError):
             logger.warning("market_event_keywords.json 解析失败，回退内置默认词表", exc_info=True)
-            mtime = None
+            scope = {k: list(v) for k, v in SCOPE_KEYWORDS.items()}
+            level = {k: list(v) for k, v in LEVEL_KEYWORDS.items()}
+            sentiment = {k: list(v) for k, v in SENTIMENT_KEYWORDS.items()}
+            # Cache the fallback for this file version; retry after mtime changes.
     _keyword_cache.update({"mtime": mtime, "scope": scope, "level": level, "sentiment": sentiment})
     return scope, level, sentiment
 
@@ -97,13 +116,18 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _parse_datetime(value: Any) -> datetime | None:
+def _parse_datetime(value: Any, *, assume_timezone=None) -> datetime | None:
     if value is None:
         return None
     parsed = pd.to_datetime(value, errors="coerce")
     if pd.isna(parsed):
         return None
-    return parsed.to_pydatetime().replace(tzinfo=None)
+    parsed = parsed.to_pydatetime()
+    if parsed.tzinfo is None and assume_timezone is not None:
+        parsed = parsed.replace(tzinfo=assume_timezone)
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def _text_values(row: dict[str, Any]) -> list[str]:
@@ -161,14 +185,14 @@ def _pick_url(row: dict[str, Any]) -> str | None:
     return None
 
 
-def _pick_published_at(row: dict[str, Any]) -> datetime | None:
+def _pick_published_at(row: dict[str, Any], *, assume_timezone=None) -> datetime | None:
     for key in ["date", "日期", "时间", "发布时间", "publish_time", "showTime", "time"]:
         if key in row:
-            parsed = _parse_datetime(row.get(key))
+            parsed = _parse_datetime(row.get(key), assume_timezone=assume_timezone)
             if parsed is not None:
                 return parsed
     for value in row.values():
-        parsed = _parse_datetime(value)
+        parsed = _parse_datetime(value, assume_timezone=assume_timezone)
         if parsed is not None:
             return parsed
     return None
@@ -224,7 +248,7 @@ def _title_hash(title: str) -> str:
     return hashlib.md5(title.encode("utf-8")).hexdigest()
 
 
-def _event_to_read(event: MarketEvent) -> MarketEventRead:
+def _event_to_read(event: MarketEvent, sector_index: dict[str, str] | None = None) -> MarketEventRead:
     return MarketEventRead(
         id=event.id,
         title=event.title,
@@ -232,7 +256,9 @@ def _event_to_read(event: MarketEvent) -> MarketEventRead:
         impact_scope=event.impact_scope,
         importance_level=event.importance_level,
         affected_market=event.affected_market,
-        affected_sectors=event.affected_sectors,
+        affected_sectors=",".join(event_sector_ids(event.affected_sectors, event.title, event.summary,
+                                                  KEYWORD_TO_SECTOR if sector_index is None else sector_index)),
+        sector_tag_source=event.sector_tag_source or ("legacy" if event.affected_sectors is not None else "auto"),
         affected_symbols=event.affected_symbols,
         sentiment=event.sentiment,
         source=event.source,
@@ -254,6 +280,11 @@ def _parse_date_str(value: str | None) -> datetime | None:
         return None
 
 
+def market_event_to_read(db: Session, event: MarketEvent) -> MarketEventRead:
+    index = build_index(resolve_concepts(db)) if event.affected_sectors is None else {}
+    return _event_to_read(event, index)
+
+
 def list_market_events(
     db: Session,
     *,
@@ -269,8 +300,18 @@ def list_market_events(
     limit: int = 50,
     offset: int = 0,
     sort_by: str = "published_at",
+    include_expired: bool = True,
+    event_ids: list[int] | None = None,
+    as_of: datetime | None = None,
+    snapshot_max_id: int | None = None,
 ) -> MarketEventListResponse:
-    stmt = select(MarketEvent)
+    now = as_of or _now()
+    if now.tzinfo is not None:
+        now = now.astimezone(timezone.utc).replace(tzinfo=None)
+    max_id = snapshot_max_id if snapshot_max_id is not None else int(db.scalar(select(func.max(MarketEvent.id))) or 0)
+    stmt = select(MarketEvent).where(MarketEvent.id <= max_id)
+    if event_ids is not None:
+        stmt = stmt.where(MarketEvent.id.in_(event_ids))
     if keyword:
         # P1-6：关键词检索（标题/摘要包含；contains 自带 autoescape 处理 %/_ 通配符）
         needle = keyword.strip()
@@ -297,6 +338,12 @@ def list_market_events(
     if is_manual is not None:
         stmt = stmt.where(MarketEvent.is_manual == is_manual)
 
+    expired_total = db.scalar(select(func.count()).select_from(
+        stmt.where(MarketEvent.expires_at < now).subquery()
+    )) or 0
+    if not include_expired:
+        stmt = stmt.where(or_(MarketEvent.expires_at.is_(None), MarketEvent.expires_at >= now))
+
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
     if sort_by == "importance_level":
         # P1-5：同级并列时按来源权威性兜底排序（SOURCE_CREDIBILITY 首次真正参与排序），
@@ -310,20 +357,25 @@ def list_market_events(
             desc(credibility),
             desc(MarketEvent.published_at),
             desc(MarketEvent.created_at),
+            desc(MarketEvent.id),
         )
     else:
-        stmt = stmt.order_by(desc(MarketEvent.published_at), desc(MarketEvent.created_at))
+        stmt = stmt.order_by(desc(MarketEvent.published_at), desc(MarketEvent.created_at), desc(MarketEvent.id))
     events = db.execute(stmt.offset(offset).limit(limit)).scalars().all()
 
-    all_events = db.execute(select(MarketEvent)).scalars().all()
-    by_scope: dict[str, int] = {}
-    by_level: dict[str, int] = {}
-    for event in all_events:
-        by_scope[event.impact_scope] = by_scope.get(event.impact_scope, 0) + 1
-        level_key = str(event.importance_level)
-        by_level[level_key] = by_level.get(level_key, 0) + 1
-
-    return MarketEventListResponse(events=[_event_to_read(e) for e in events], total=total, by_scope=by_scope, by_level=by_level)
+    # Keep the existing global scope-card contract without loading every ORM row.
+    stats_conditions = [MarketEvent.id <= max_id]
+    if not include_expired:
+        stats_conditions.append(or_(MarketEvent.expires_at.is_(None), MarketEvent.expires_at >= now))
+    by_scope = dict(db.execute(select(MarketEvent.impact_scope, func.count()).where(*stats_conditions)
+                               .group_by(MarketEvent.impact_scope)).all())
+    by_level = {str(level): count for level, count in db.execute(
+        select(MarketEvent.importance_level, func.count()).where(*stats_conditions).group_by(MarketEvent.importance_level)
+    ).all()}
+    index = build_index(resolve_concepts(db)) if any(e.affected_sectors is None for e in events) else {}
+    return MarketEventListResponse(events=[_event_to_read(e, index) for e in events], total=total,
+                                   by_scope=by_scope, by_level=by_level, expired_total=expired_total,
+                                   as_of=now, snapshot_max_id=max_id)
 
 
 def get_market_event(db: Session, event_id: int) -> MarketEvent | None:
@@ -336,9 +388,13 @@ def create_market_event(db: Session, payload: MarketEventCreate) -> MarketEvent:
         event.published_at = _now()
     # P0-4/P0-3：手工事件同样维护去重 hash；未显式给板块时自动打标
     event.title_hash = _title_hash(event.title)
-    if not event.affected_sectors:
+    if event.affected_sectors is None:
         sectors = map_to_sectors_db(db, event.title, event.summary)
-        event.affected_sectors = ",".join(sectors) if sectors else None
+        event.affected_sectors = ",".join(sectors)
+        event.sector_tag_source = "auto"
+    else:
+        event.affected_sectors = ",".join(parse_affected_sectors(event.affected_sectors))
+        event.sector_tag_source = "manual"
     db.add(event)
     db.commit()
     db.refresh(event)
@@ -350,11 +406,22 @@ def update_market_event(db: Session, event_id: int, payload: MarketEventUpdate) 
     if event is None:
         return None
     changes = payload.model_dump(exclude_unset=True)
+    requested_source = changes.pop("sector_tag_source", None)
+    old_source = event.sector_tag_source or ("legacy" if event.affected_sectors is not None else "auto")
     for key, value in changes.items():
         setattr(event, key, value)
     # 标题变更时同步去重 hash（保持与采集入库一致的不变量）
     if "title" in changes:
         event.title_hash = _title_hash(event.title or "")
+    if requested_source == "auto" or ("affected_sectors" in changes and changes["affected_sectors"] is None):
+        event.affected_sectors = ",".join(map_to_sectors_db(db, event.title, event.summary))
+        event.sector_tag_source = "auto"
+    elif "affected_sectors" in changes or requested_source == "manual":
+        event.affected_sectors = ",".join(parse_affected_sectors(event.affected_sectors))
+        event.sector_tag_source = "manual"
+    elif {"title", "summary"} & changes.keys() and old_source == "auto":
+        event.affected_sectors = ",".join(map_to_sectors_db(db, event.title, event.summary))
+        event.sector_tag_source = "auto"
     db.commit()
     db.refresh(event)
     return event
@@ -369,41 +436,52 @@ def delete_market_event(db: Session, event_id: int) -> bool:
     return True
 
 
-def _fetch_from_ak(fetcher: Callable[[], Any], source: str, limit: int = 40) -> list[dict]:
+def _fetch_from_ak(fetcher: Callable[..., Any], source: str, limit: int = 40, **fetch_kwargs) -> list[dict]:
     events: list[dict] = []
     # 风控加固：用 call_akshare_with_retry 包装，给瞬时风控一次重试机会
     from app.services.akshare_utils import call_akshare_with_retry
     try:
         with quiet_akshare_output():
-            frame = call_akshare_with_retry(fetcher, api_key=source, max_attempts=2)
+            frame = call_akshare_with_retry(fetcher, api_key=source, max_attempts=2, **fetch_kwargs)
         if frame is None or getattr(frame, "empty", True):
             return events
         for row in frame.head(limit).to_dict("records"):
             title = _pick_title(row)
             if not title:
                 continue
+            # These domestic feeds expose naive China local timestamps, whereas
+            # stored/API timestamps use naive UTC. Explicit offsets are already
+            # normalized by _parse_datetime and must not be shifted twice.
+            published_at = _pick_published_at(row, assume_timezone=timezone(timedelta(hours=8)))
             events.append({
                 "title": title,
                 "summary": _pick_summary(row, title),
                 "source": source,
                 "source_url": _pick_url(row),
-                "published_at": _pick_published_at(row),
+                "published_at": published_at,
             })
     except Exception as exc:
-        logger.debug("Failed to fetch %s: %s", source, exc, exc_info=True)
+        logger.warning("Failed to fetch %s: %s", source, exc)
+        raise
     return events
 
 
 def _fetch_cctv_news() -> list[dict]:
-    return _fetch_from_ak(ak.news_cctv, "cctv", 40)
+    # Yesterday's complete broadcast is available even before today's evening
+    # programme. Never rely on the dependency's hard-coded historical date.
+    return _fetch_from_ak(ak.news_cctv, "cctv", 40, date=_supplier_date(days_back=1))
+
+
+def _supplier_date(*, days_back: int = 0) -> str:
+    return (_now() + timedelta(hours=8, days=-days_back)).strftime("%Y%m%d")
 
 
 def _fetch_baidu_economic_news() -> list[dict]:
-    return _fetch_from_ak(ak.news_economic_baidu, "baidu", 40)
+    return _fetch_from_ak(ak.news_economic_baidu, "baidu", 40, date=_supplier_date())
 
 
 def _fetch_baidu_report_news() -> list[dict]:
-    return _fetch_from_ak(ak.news_report_time_baidu, "baidu-report", 40)
+    return _fetch_from_ak(ak.news_report_time_baidu, "baidu-report", 40, date=_supplier_date())
 
 
 def _fetch_global_news() -> list[dict]:
@@ -490,18 +568,19 @@ def list_collect_runs(db: Session, *, limit: int = 20) -> list[MarketEventCollec
 
 
 def recent_collects_all_empty(db: Session, *, lookback: int = 2) -> bool:
-    """P1-7：最近 lookback 次采集是否全部零新增（连续空采告警判定）。
+    """最近 lookback 次是否均为成功空采（不含全重复、失败或部分失败）。
 
     历史记录不足 lookback 条时返回 False——没有足够证据就不告警。
     """
     runs = db.execute(
-        select(MarketEventCollectRun.collected)
+        select(MarketEventCollectRun)
         .order_by(desc(MarketEventCollectRun.id))
         .limit(lookback)
     ).scalars().all()
     if len(runs) < lookback:
         return False
-    return all((count or 0) == 0 for count in runs)
+    return all(run.status == "done" and run.collected == 0 and run.skipped_duplicate == 0
+               and run.errors_json in (None, "[]") for run in runs)
 
 
 def collect_market_events(
@@ -515,13 +594,14 @@ def collect_market_events(
     try:
         result = _collect_market_events_inner(db, payload)
     except Exception as exc:
+        db.rollback()
         _record_collect_run(db, trigger_source=trigger_source, payload=payload,
                             collected=0, skipped=0, status="failed",
                             errors=[f"{type(exc).__name__}: {exc}"], started_at=started_at)
         raise
     _record_collect_run(db, trigger_source=trigger_source, payload=payload,
                         collected=result.collected, skipped=result.skipped_duplicate,
-                        status="done", errors=result.errors, started_at=started_at)
+                        status=result.status, errors=result.errors, started_at=started_at)
     return result
 
 
@@ -548,6 +628,19 @@ def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest
             errors.append(f"{source}: {exc}")
             logger.debug("Failed to fetch source %s", source, exc_info=True)
 
+    # Fetch outside the lock, then serialize the entire read/dedup/write/commit
+    # section. No schema migration or removal of legacy duplicate rows needed.
+    with market_event_write_lock(db):
+        if db.new or db.dirty or db.deleted:
+            raise ValueError("Collection requires a session without pending changes")
+        # Discard any earlier read snapshot (notably MySQL REPEATABLE READ).
+        # A lock alone cannot make an old transaction see the previous writer.
+        db.rollback()
+        return _store_market_events(db, payload, all_raw, errors)
+
+
+def _store_market_events(db: Session, payload: MarketEventCollectRequest,
+                         all_raw: list[dict], errors: list[str]) -> MarketEventCollectResponse:
     cutoff = _now() - timedelta(days=payload.days)
     # P0-4：先自愈回填历史行，再用本批候选 hash 做索引查询去重，
     # 替代原先"全表拉所有标题"的内存 MD5 集合（表越大采集越慢）。
@@ -558,6 +651,7 @@ def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest
         if title:
             candidate_titles.setdefault(_title_hash(title), title)
     seen_hashes = _existing_title_hashes(db, set(candidate_titles))
+    sector_index = build_index(resolve_concepts(db))
     collected = 0
     skipped = 0
 
@@ -584,7 +678,7 @@ def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest
         expires_days = 14 if importance_level >= 4 else 7 if importance_level >= 3 else 3
         # P0-3：板块标签入库（逗号分隔板块 id），激活原先闲置的 affected_sectors 字段
         # P2-12：匹配前先合并 DB 关键词覆盖（后台可调词，无需发版）
-        sectors = map_to_sectors_db(db, title, summary)
+        sectors = map_sectors_on(sector_index, title, summary)
 
         db.add(MarketEvent(
             title=title,
@@ -592,7 +686,8 @@ def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest
             impact_scope=impact_scope,
             importance_level=importance_level,
             affected_market=_affected_market(impact_scope),
-            affected_sectors=",".join(sectors) if sectors else None,
+            affected_sectors=",".join(sectors),
+            sector_tag_source="auto",
             sentiment=sentiment,
             source=raw.get("source") or "unknown",
             source_url=raw.get("source_url"),
@@ -604,21 +699,23 @@ def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest
         collected += 1
 
     db.commit()
-    return MarketEventCollectResponse(collected=collected, skipped_duplicate=skipped, errors=errors)
+    status = "failed" if errors and len(errors) >= len(payload.sources) else "partial" if errors else "done"
+    return MarketEventCollectResponse(collected=collected, skipped_duplicate=skipped, errors=errors, status=status)
 
 
 def cleanup_expired_market_events(db: Session, *, keep_days: int = CLEANUP_KEEP_DAYS_DEFAULT) -> "MarketEventCleanupResponse":
     """P0-1：清理过期消息（此前只有前端视觉过滤，数据库无限增长）。
 
     数据保护规则（硬约束，回归用例锁死）：
-    1. 仅删除已过期（expires_at < now）且发布时间早于保留窗口（keep_days，默认 90 天）的行
-       —— 90 天回看窗口内数据完整；
+    1. 仅删除已过期且发布时间早于保留窗口的行；实际至少保留 365 天，
+       兼容旧 90 天排程并保护一年热点历史；
     2. 排除被主题催化剂（ThemeCatalyst）引用的事件行，组合准入链路依赖该外键；
     3. 排除手工创建（is_manual=1）的行 —— 人工录入内容不自动删除，由人工管理；
     4. expires_at / published_at 为 NULL 的行不删（NULL 比较为假，保守保留）。
     """
     from app.schemas.market_event import MarketEventCleanupResponse
 
+    keep_days = effective_keep_days(keep_days)
     now = _now()
     published_cutoff = now - timedelta(days=keep_days)
     referenced = select(ThemeCatalyst.market_event_id).where(ThemeCatalyst.market_event_id.is_not(None))
@@ -706,11 +803,10 @@ def get_market_event_hotspots(db: Session, *, days: int = 30) -> "MarketEventHot
         ).where(MarketEvent.published_at >= cutoff)
     ).all()
 
+    sector_index = build_index(resolve_concepts(db)) if any(row.affected_sectors is None for row in rows) else {}
     agg: dict[str, dict] = {}
     for event_id, title, summary, sentiment, level, sectors_field in rows:
-        sector_ids = parse_affected_sectors(sectors_field)
-        if not sector_ids:
-            sector_ids = map_to_sectors_db(db, title or "", summary)
+        sector_ids = event_sector_ids(sectors_field, title or "", summary, sector_index)
         for sector_id in sector_ids:
             bucket = agg.setdefault(
                 sector_id, {"bull": 0, "bear": 0, "neutral": 0, "max_level": 0, "event_ids": []}

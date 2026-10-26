@@ -13,6 +13,8 @@ from app.services import scheduled_tasks
 import pytest
 
 pytestmark = pytest.mark.whitebox
+# Reviewed deployment contract: 17 defaults plus independently seeded reconciliation.
+EXPECTED_DEFAULT_SCHEDULE_COUNT = 18
 def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
     after = datetime(2026, 7, 13, 9, 0)  # 17:00 Asia/Shanghai
     daily = scheduled_tasks.calculate_next_run(
@@ -37,11 +39,11 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 15
+    assert scheduled_tasks.seed_default_schedules(db_session) == EXPECTED_DEFAULT_SCHEDULE_COUNT
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 15
+    assert len(rows) == EXPECTED_DEFAULT_SCHEDULE_COUNT
     enabled = [item for item in rows if item.enabled]
     # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步 + 因子输入日更 + 告警评估
     # （自动交易默认关闭，需用户主动开启）
@@ -52,6 +54,8 @@ def test_seed_default_schedules_is_idempotent(db_session):
         "external_data_sync",
         "alert_evaluation",
         "portfolio_reconciliation",
+        "market_events_collect",
+        "market_events_cleanup",
     }
     assert all(item.next_run_at is not None for item in enabled)
     # P2-3：portfolio_auto_trade 应在默认调度中且默认关闭
@@ -59,10 +63,18 @@ def test_seed_default_schedules_is_idempotent(db_session):
     assert len(auto_trade) == 1
     assert auto_trade[0].enabled == 0
     assert auto_trade[0].next_run_at is None
+    news = {row.task_type: row for row in rows if row.task_type.startswith("market_events_")}
+    assert set(news) == {"market_events_collect", "market_events_cleanup"}
+    assert news["market_events_collect"].time_of_day == "08:10"
+    assert news["market_events_cleanup"].time_of_day == "02:30"
+    assert json.loads(news["market_events_cleanup"].payload_json) == {"keep_days": 365}
+    collect = json.loads(news["market_events_collect"].payload_json)
+    assert collect["days"] == 7
+    assert set(collect["sources"]) == {"eastmoney-global", "caixin", "cctv", "baidu", "baidu-report", "futures-shmet"}
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 15
+    assert scheduled_tasks.seed_default_schedules(db_session) == EXPECTED_DEFAULT_SCHEDULE_COUNT
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
@@ -104,8 +116,8 @@ def _seed_legacy_defaults_only(db_session) -> None:
     """Simulate a database already seeded by the previous default schedule set."""
     from app.models.scheduled_task import ScheduledTaskSeedState
 
-    # v7 时代还没有这两条：资金流日更（v8 加）和告警规则评估（v9 加）。
-    not_yet_seeded = {"每日因子资金流增量同步", "每日告警规则评估"}
+    # v7 尚无资金流日更(v8)、告警评估(v9)及行情消息两任务(v10)。
+    not_yet_seeded = {"每日因子资金流增量同步", "每日告警规则评估", "每日行情消息采集", "每日行情消息过期清理"}
     for data in scheduled_tasks.DEFAULT_SCHEDULES:
         if data["name"] in not_yet_seeded:
             continue
@@ -126,7 +138,7 @@ def _seed_legacy_defaults_only(db_session) -> None:
 
 
 def test_capital_flow_daily_schedule_is_seeded_once(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 15
+    assert scheduled_tasks.seed_default_schedules(db_session) == EXPECTED_DEFAULT_SCHEDULE_COUNT
     db_session.commit()
 
     item = db_session.query(ScheduledTask).filter_by(name="每日因子资金流增量同步").one()
@@ -156,14 +168,14 @@ def test_seed_key_bump_adds_capital_flow_to_a_legacy_seeded_db(db_session):
     created = scheduled_tasks.seed_default_schedules(db_session)
     db_session.commit()
 
-    assert created == 3
+    assert created == 5  # 四条后续默认任务 + 独立播种的对账任务
     assert db_session.query(ScheduledTask).filter_by(
         name="每日因子资金流增量同步"
     ).count() == 1
     assert db_session.query(ScheduledTask).filter_by(
         name="每日告警规则评估"
     ).count() == 1
-    assert db_session.query(ScheduledTask).count() == 15
+    assert db_session.query(ScheduledTask).count() == EXPECTED_DEFAULT_SCHEDULE_COUNT
 
 
 def test_capital_flow_schedule_validates_and_dispatches(monkeypatch):
@@ -198,7 +210,7 @@ def test_capital_flow_schedule_validates_and_dispatches(monkeypatch):
 
 
 def test_scheduled_external_sync_still_rejects_unschedulable_datasets():
-    with pytest.raises(ValueError, match="fundamental and capital_flow"):
+    with pytest.raises(ValueError, match="fundamental, capital_flow and etf"):
         scheduled_tasks.validate_task_payload(
             "external_data_sync", {"dataset": "financial", "source": "all"}
         )

@@ -133,6 +133,7 @@ def emit_event(
     scope_id: int | None = None,
     template_variables: dict | None = None,
     event_key: str | None = None,
+    deduplicate_sent: bool = False,
 ) -> list:
     """触发业务事件，匹配策略并写入 Outbox。
 
@@ -140,6 +141,7 @@ def emit_event(
 
     防重：同一 source_type:event_type:source_id + channel_id 在 Outbox 中
     已存在未发送记录时，跳过（由 enqueue 保证）。
+    deduplicate_sent=True时，已发送记录同样防重，用于显式按日告警键。
 
     WP-MSG.5：
     - 防打扰检查（去重窗口/冷却/免打扰）由 should_send_now 保证
@@ -241,6 +243,7 @@ def emit_event(
                 payload=channel_payload,
                 channel_id=channel.id,
                 policy_id=policy.id,
+                deduplicate_sent=deduplicate_sent,
             )
             if outbox is not None:
                 created.append(outbox)
