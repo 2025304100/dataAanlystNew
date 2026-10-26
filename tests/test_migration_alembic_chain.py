@@ -803,3 +803,119 @@ class TestFactorLibraryLifecycleMigration:
                 f"Expected {len(FACTOR_DEFINITIONS)} factor set members (idempotent), got {member_count}"
 
         engine.dispose()
+
+
+# ============================================================================
+# 6. 0086: market_events.title_hash 存量回填
+# ============================================================================
+
+
+class _FakeUnbufferedResult:
+    """模拟 PyMySQL SSCursor：结果集逐行读取；连接上再发命令会丢弃未读完的行。
+
+    对应 pymysql/connections.py 的 "Previous unbuffered result was left
+    incomplete" 处理：`_execute_command` 在发新命令前调用
+    `_finish_unbuffered_query` 把剩余行读掉丢弃。
+    """
+
+    def __init__(self, rows, conn):
+        self._rows = list(rows)
+        self._conn = conn
+        self.unbuffered_active = True
+        conn.open_result = self
+
+    def _finish(self):
+        self._rows.clear()
+        self.unbuffered_active = False
+        if self._conn.open_result is self:
+            self._conn.open_result = None
+
+    def fetchone(self):
+        if not self.unbuffered_active or not self._rows:
+            self._finish()
+            return None
+        return self._rows.pop(0)
+
+    def fetchall(self):
+        rows, self._rows = list(self._rows), []
+        self._finish()
+        return rows
+
+    def __iter__(self):
+        while True:
+            row = self.fetchone()
+            if row is None:
+                return
+            yield row
+
+
+class _FakeUnbufferedConnection:
+    """只实现 0086 回填所需的 execute 语义，用于复现服务端游标被打断的行为。"""
+
+    def __init__(self, rows):
+        # rows: list[list[id, title, title_hash]]
+        self.rows = rows
+        self.open_result = None
+
+    def execution_options(self, **_):
+        return self
+
+    def execute(self, statement, params=None):
+        if self.open_result is not None and self.open_result.unbuffered_active:
+            self.open_result._finish()  # 发新命令前丢弃未读完的流式结果
+        sql = str(statement).strip().upper()
+        if sql.startswith("SELECT"):
+            pending = [[row[0], row[1]] for row in self.rows if row[2] is None]
+            return _FakeUnbufferedResult(pending, self)
+        if sql.startswith("UPDATE"):
+            for row in self.rows:
+                if row[0] == params["id"]:
+                    row[2] = params["h"]
+            return None
+        raise AssertionError(f"unexpected SQL: {statement}")
+
+
+class TestMarketEventTitleHashBackfillMigration:
+    """验证 0086 的存量回填在 MySQL 服务端游标语义下仍然完整。"""
+
+    def test_backfill_writes_every_row_despite_unbuffered_cursor(self):
+        """回归：边读流式结果边 UPDATE 会被驱动打断，只剩首行被回填。"""
+        modules = _load_revision_modules()
+        mod = modules["wps_0024_086_market_events_title_hash"]
+
+        rows = [[idx, f"legacy-{idx}", None] for idx in range(1, 4)]
+        conn = _FakeUnbufferedConnection(rows)
+        mod._backfill_existing_rows(conn)
+
+        assert [row[2] for row in rows] == [
+            mod._title_hash(row[1]) for row in rows
+        ], "存量回填被截断：仅首行写入了 title_hash"
+
+    def test_upgrade_backfills_legacy_rows(self, fresh_sqlite_url):
+        """端到端：create_all 后插入无 hash 的旧行，upgrade 补齐全部 hash。"""
+        import hashlib
+
+        from alembic import command
+        from sqlalchemy.orm import Session
+
+        from app.models.market_event import MarketEvent
+
+        engine = create_engine(fresh_sqlite_url)
+        Base.metadata.create_all(engine)
+        with Session(engine) as session:
+            session.add_all([MarketEvent(title=f"存量消息-{idx}") for idx in range(3)])
+            session.commit()
+        engine.dispose()
+
+        command.upgrade(_make_alembic_config(fresh_sqlite_url), "head")
+
+        engine = create_engine(fresh_sqlite_url)
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT title, title_hash FROM market_events ORDER BY id")
+            ).fetchall()
+        engine.dispose()
+
+        assert len(rows) == 3
+        for title, title_hash in rows:
+            assert title_hash == hashlib.md5(title.encode("utf-8")).hexdigest()

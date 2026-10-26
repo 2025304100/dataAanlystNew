@@ -16,10 +16,36 @@ branch_labels = depends_on = None
 
 _TABLE = "market_events"
 _INDEX = "ix_market_events_title_hash"
+_BACKFILL_BATCH = 500
 
 
 def _title_hash(title: str | None) -> str:
     return hashlib.md5((title or "").encode("utf-8")).hexdigest()
+
+
+def _backfill_existing_rows(conn) -> None:
+    """分批回填 title_hash：先把结果集取完，再发 UPDATE。
+
+    必须避免在同一条连接上"边读未取完的流式结果边写"：MySQL 驱动会把
+    stream_results 映射成服务端游标（PyMySQL SSCursor），下一次命令会先
+    丢弃未读完的结果（"Previous unbuffered result was left incomplete"），
+    导致只有首行被回填、其余存量行静默保持 NULL。改为 LIMIT 分批取完再写，
+    既规避该方言行为，也保证内存有界（每批最多 _BACKFILL_BATCH 行）。
+    """
+    while True:
+        rows = conn.execute(
+            sa.text(
+                f"SELECT id, title FROM {_TABLE} "
+                f"WHERE title_hash IS NULL LIMIT {_BACKFILL_BATCH}"
+            )
+        ).fetchall()
+        if not rows:
+            return
+        for row in rows:
+            conn.execute(
+                sa.text(f"UPDATE {_TABLE} SET title_hash = :h WHERE id = :id"),
+                {"h": _title_hash(row[1]), "id": row[0]},
+            )
 
 
 def upgrade():
@@ -33,15 +59,8 @@ def upgrade():
     indexes = {idx["name"] for idx in inspector.get_indexes(_TABLE)}
     if _INDEX not in indexes:
         op.create_index(_INDEX, _TABLE, ["title_hash"])
-    # 存量回填：分批拉取 NULL 行，Python 端计算 MD5（方言无关）
-    rows = conn.execution_options(stream_results=True).execute(
-        sa.text(f"SELECT id, title FROM {_TABLE} WHERE title_hash IS NULL")
-    )
-    for row in rows:
-        conn.execute(
-            sa.text(f"UPDATE {_TABLE} SET title_hash = :h WHERE id = :id"),
-            {"h": _title_hash(row[1]), "id": row[0]},
-        )
+    # 存量回填：Python 端计算 MD5（方言无关）
+    _backfill_existing_rows(conn)
 
 
 def downgrade():
