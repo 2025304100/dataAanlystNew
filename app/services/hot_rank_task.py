@@ -54,18 +54,26 @@ def _run_hot_rank_task(task_id: str) -> None:
         from app.services.external_data_sync_task import finalize_legacy_external_sync
         publication = finalize_legacy_external_sync(db, task_id, "hot_rank", summary.written,
                                                   [summary.trade_date], skip_reason=summary.skip_reason)
-        publication_failed = publication["warehouse_mirror"]["status"] == "warning"
+        # The snapshot is already in SQL; mirror warnings must not flip the
+        # task to failed. They remain in result_json for mirror retry/patrol.
+        mirror_warning = publication["warehouse_mirror"]["status"] == "warning"
+        if mirror_warning:
+            message = "人气榜已入库，因子仓库镜像待重试"
+        elif summary.skip_reason == "market_closed":
+            message = "A 股休市，已跳过人气榜采集"
+        else:
+            message = "Hot-rank snapshot completed"
         _set_task(
             db,
             task_id,
-            status="failed" if publication_failed else "done",
-            stage="failed" if publication_failed else "done",
+            status="done",
+            stage="done",
             percent=100,
             total=summary.received,
             processed=summary.received,
             ok_count=summary.written,
-            failed_count=int(publication_failed),
-            message="人气榜已入库，仓库同步失败，请重试" if publication_failed else "A 股休市，已跳过人气榜采集" if summary.skip_reason == "market_closed" else "Hot-rank snapshot completed",
+            failed_count=0,
+            message=message,
             result_json=json.dumps(
                 {
                     "trade_date": summary.trade_date,

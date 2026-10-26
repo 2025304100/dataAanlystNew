@@ -158,30 +158,40 @@ _FIELD_DATA_POLICIES: dict[str, dict[str, Any]] = {
     },
     "pe_ttm": {
         "data_mode": "point_in_time",
+        "minimum_daily_coverage": 0.70,
         "limited_reason_zh": "仅允许在真实估值快照覆盖区间内评价，禁止向历史缺口填充。",
+        "available_reason_zh": "估值快照在真实交易日的横截面覆盖已达到阈值；仅在快照覆盖区间内评价。",
     },
     "pb": {
         "data_mode": "point_in_time",
+        "minimum_daily_coverage": 0.70,
         "limited_reason_zh": "仅允许在真实估值快照覆盖区间内评价，禁止向历史缺口填充。",
+        "available_reason_zh": "估值快照在真实交易日的横截面覆盖已达到阈值；仅在快照覆盖区间内评价。",
     },
     # M1/T06 新增三列。total_market_cap / circulating_market_cap 实测非空 100%（3,079,528 行），
     # 属正常 point_in_time；dividend_yield 列存在但**全为 NULL（非空 0 行）**，
     # 故意**不**写死 data_mode=blocked —— 覆盖率检测会因 nonnull_rows<=0 自动判 blocked
-    # （formula_catalog._field_capability），补数后自动恢复为 limited，无需再改代码。
+    # （formula_catalog._field_capability），补数并达到覆盖阈值后自动恢复为 available。
     "dividend_yield": {
         "data_mode": "point_in_time",
+        "minimum_daily_coverage": 0.70,
         "limited_reason_zh": (
             "股息率物理列已存在，但当前估值快照中该列全为空值（未采集）。"
-            "补齐采集前能力检测会判为缺数据（blocked），补齐后自动转为覆盖受限（limited）。"
+            "补齐采集前能力检测会判为缺数据（blocked），补齐并达到覆盖阈值后自动恢复为 available。"
         ),
+        "available_reason_zh": "股息率快照的横截面覆盖已达到阈值；仅在快照覆盖区间内评价。",
     },
     "total_market_cap": {
         "data_mode": "point_in_time",
+        "minimum_daily_coverage": 0.70,
         "limited_reason_zh": "仅允许在真实估值快照覆盖区间内评价，禁止向历史缺口填充。",
+        "available_reason_zh": "市值快照在真实交易日的横截面覆盖已达到阈值；仅在快照覆盖区间内评价。",
     },
     "circulating_market_cap": {
         "data_mode": "point_in_time",
+        "minimum_daily_coverage": 0.70,
         "limited_reason_zh": "仅允许在真实估值快照覆盖区间内评价，禁止向历史缺口填充。",
+        "available_reason_zh": "流通市值快照在真实交易日的横截面覆盖已达到阈值；仅在快照覆盖区间内评价。",
     },
     "main_net_inflow": {
         "data_mode": "continuous",
@@ -191,7 +201,9 @@ _FIELD_DATA_POLICIES: dict[str, dict[str, Any]] = {
     },
     "roe_ttm": {
         "data_mode": "point_in_time",
+        "minimum_daily_coverage": 0.70,
         "limited_reason_zh": "财报必须按 announcement_date 做 PIT 对齐，且当前优先覆盖高流动性池。",
+        "available_reason_zh": "PIT 对齐后的财报横截面覆盖已达到阈值；仅在公告日及之后的可见区间内评价。",
     },
     "lhb_institution_net": {
         "data_mode": "event",
@@ -211,6 +223,9 @@ _FIELD_DATA_POLICIES: dict[str, dict[str, Any]] = {
         "data_mode": "snapshot", "evaluation_mode": "snapshot",
         "status_reason_zh": "ETF 当日指标快照，仅用于 ETF 快照评价。",
         "empty_reason_zh": "跟踪误差尚未接入对应基准及同日收益序列，当前同步不提供该指标。",
+        # 该指标尚未接入基准收益序列，永久为空；它不应把整个 ETF 数据集
+        # 的 readiness 拖成 limited/partial。字段明细仍照常展示为空。
+        "exclude_from_readiness": True,
     },
     "etf_fund_size": {
         "data_mode": "snapshot", "evaluation_mode": "snapshot",
@@ -377,43 +392,41 @@ def _query_cross_section_coverage(
         source_join = f"""LEFT JOIN LATERAL (
             SELECT reports.symbol, reports.{field}
             FROM raw_financial_reports AS reports
-            WHERE reports.symbol = bars.symbol
-              AND reports.announcement_date <= calendar.trade_date
+            WHERE reports.symbol = universe_days.symbol
+              AND reports.announcement_date <= universe_days.trade_date
             ORDER BY reports.announcement_date DESC, reports.report_period DESC
             LIMIT 1
         ) AS source ON TRUE"""
     else:
         source_join = f"""LEFT JOIN {table} AS source
-            ON source.symbol = bars.symbol
-            AND source.trade_date = calendar.trade_date"""
+            ON source.symbol = universe_days.symbol
+            AND source.trade_date = universe_days.trade_date"""
     try:
         if not _calendar_ready:
             _prepare_coverage_calendar(conn)
         rows = conn.execute(
             f"""
-            WITH stock_bars AS (
-                SELECT DISTINCT bars.symbol, bars.trade_date
+            WITH calendar AS (
+                SELECT DISTINCT bars.trade_date
                 FROM raw_daily_bars AS bars
-                JOIN raw_asset_universe AS universe
-                  ON universe.symbol = bars.symbol
+                WHERE {_open_cn_day_sql('bars.trade_date')}
+                ORDER BY bars.trade_date DESC
+                LIMIT 260
+            ),
+            universe_days AS (
+                SELECT universe.symbol, calendar.trade_date
+                FROM calendar
+                JOIN raw_asset_universe AS universe ON TRUE
                 WHERE LOWER(universe.asset_type) = '{asset_type}'
                   AND LOWER(universe.region) = 'cn'
                   AND universe.is_active = TRUE
-                  AND {_open_cn_day_sql('bars.trade_date')}
-            ),
-            calendar AS (
-                SELECT DISTINCT trade_date
-                FROM stock_bars
-                ORDER BY trade_date DESC
-                LIMIT 260
             ),
             observations AS (
-                SELECT bars.symbol, calendar.trade_date,
+                SELECT universe_days.symbol, universe_days.trade_date,
                     BOOL_OR(source.{field} IS NOT NULL) AS covered
-                FROM calendar
-                JOIN stock_bars AS bars ON bars.trade_date = calendar.trade_date
+                FROM universe_days
                 {source_join}
-                GROUP BY bars.symbol, calendar.trade_date
+                GROUP BY universe_days.symbol, universe_days.trade_date
             ),
             gap_islands AS (
                 SELECT *, SUM(CASE WHEN covered THEN 1 ELSE 0 END) OVER (
@@ -631,20 +644,23 @@ def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) ->
 
 
 def _prepare_stock_coverage(conn: Any) -> None:
-    """Build the identical 260-session denominator once per catalog read."""
+    """Build the identical 260-session denominator once per catalog read.
+
+    Every active CN stock is expected on every session in the window. Deriving
+    the denominator from existing bars would let a partially mirrored session
+    shrink the universe and report a fake 100% coverage.
+    """
     conn.execute(f"""CREATE OR REPLACE TEMP TABLE coverage_cn_stock_bars AS
         WITH eligible AS (
             SELECT symbol FROM raw_asset_universe
             WHERE LOWER(asset_type)='stock' AND LOWER(region)='cn' AND is_active=TRUE
         ), calendar AS (
             SELECT DISTINCT bars.trade_date FROM raw_daily_bars bars
-            JOIN eligible ON eligible.symbol=bars.symbol
             WHERE {_open_cn_day_sql('bars.trade_date')}
             ORDER BY bars.trade_date DESC LIMIT 260
         )
-        SELECT DISTINCT bars.symbol, bars.trade_date FROM raw_daily_bars bars
-        JOIN calendar ON calendar.trade_date=bars.trade_date
-        JOIN eligible ON eligible.symbol=bars.symbol
+        SELECT eligible.symbol, calendar.trade_date FROM eligible
+        CROSS JOIN calendar
     """)
 
 
@@ -702,8 +718,24 @@ def _field_capability(field_name: str, stats: Mapping[str, Any]) -> dict[str, An
         status = "snapshot"
         reason = str(policy.get("status_reason_zh", "仅快照可用。"))
     elif data_mode == "point_in_time":
-        status = "limited"
-        reason = str(policy.get("limited_reason_zh", "仅在实际覆盖区间可用。"))
+        # PIT 只限制“可评价区间”，不等于“永久 limited”。当日与中位数
+        # 横截面覆盖都达标时，字段本身仍是可用输入。
+        latest = stats.get("latest_daily_coverage")
+        median = stats.get("daily_coverage_p50")
+        minimum = float(policy.get("minimum_daily_coverage", 0.0))
+        coverage_ok = (
+            latest is not None
+            and median is not None
+            and float(latest) >= minimum
+            and float(median) >= minimum
+        )
+        status = "available" if coverage_ok else "limited"
+        reason = str(
+            policy.get(
+                "available_reason_zh" if coverage_ok else "limited_reason_zh",
+                "仅在实际覆盖区间可用。",
+            )
+        )
     elif policy.get("minimum_continuity_days") and continuity_days < int(policy["minimum_continuity_days"]):
         status = "limited"
         reason = str(policy.get("limited_reason_zh", "连续交易日不足。"))
@@ -748,6 +780,7 @@ def _field_capability(field_name: str, stats: Mapping[str, Any]) -> dict[str, An
         "latest_date": stats.get("latest_date"),
         "derived": bool(stats.get("derived", False)),
         "derived_from": list(policy.get("derived_from", [])),
+        "exclude_from_readiness": bool(policy.get("exclude_from_readiness", False)),
     }
 
 

@@ -140,7 +140,9 @@ def test_public_task_is_one_targeted_request_and_real_sql_to_warehouse(environme
     invalidate_formula_catalog_cache()
     coverage = client.get("/api/v1/external-data/coverage").json()
     diagnostic = next(row for row in coverage["datasets"] if row["dataset"] == "etf")
-    assert diagnostic["readiness"] == "limited" and diagnostic["reason"] == "partial_fields_available"
+    # etf_tracking_error is not collected yet and is excluded from readiness,
+    # so the remaining snapshot fields make the dataset snapshot-ready.
+    assert diagnostic["readiness"] == "snapshot" and diagnostic["reason"] == "snapshot_only_data"
 
 
 @pytest.mark.parametrize("unavailable", ["empty", "stale", "close_only"])

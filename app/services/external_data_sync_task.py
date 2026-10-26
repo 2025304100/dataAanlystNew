@@ -782,11 +782,17 @@ def get_external_data_coverage(db: Session) -> dict[str, Any]:
             }
             for item in selected_fields
         ]
-        availability = [str(item["availability"]) for item in selected_fields]
+        # Fields that are intentionally not collected yet (for example
+        # etf_tracking_error) stay visible in the field list but must not drag
+        # the whole dataset into limited/partial readiness forever.
+        readiness_fields = [
+            item for item in selected_fields if not item.get("exclude_from_readiness")
+        ]
+        availability = [str(item["availability"]) for item in readiness_fields]
         if not selected_fields:
             readiness, reason = "not_applicable", "no_factor_field_mapping"
-        elif dataset == "etf" and any(value not in {"blocked", "unknown"} for value in availability) and any(value in {"blocked", "unknown"} for value in availability):
-            readiness, reason = "limited", "partial_fields_available"
+        elif not readiness_fields:
+            readiness, reason = "not_applicable", "no_readiness_field"
         elif "blocked" in availability or "unknown" in availability:
             readiness, reason = "blocked", "field_data_unavailable"
         elif all(item == "available" for item in availability):
@@ -1163,11 +1169,16 @@ def _run_symbol_sync(
     # Daily valuation and fund flow use selected code/date batches. Failures
     # never switch to individual history downloads.
     if dataset in {"fundamental", "capital_flow"} and plan.get("mode") != "backfill":
+        # Only a residual top-up (already-current symbols were removed above)
+        # may treat an empty snapshot as "no new data"; a full unresolved
+        # request still surfaces an unpublished provider snapshot.
+        residual_topup = len(symbols) < int(result.get("total") or 0)
         if dataset == "capital_flow":
             from app.services.capital_flow_data import (
                 sync_market_capital_flow_snapshot,
                 sync_symbol_capital_flow,
             )
+            from app.services.capital_flow_provider import BATCH_SIZE as _snapshot_batch_size
 
             def _snapshot_sync(active_db: Session) -> set[int]:
                 return sync_market_capital_flow_snapshot(active_db, symbols, range_end,
@@ -1179,10 +1190,12 @@ def _run_symbol_sync(
             from app.services.fundamental_data import (
                 sync_market_valuation_snapshot,
             )
+            from app.services.valuation_provider import DAILY_BATCH_SIZE as _snapshot_batch_size
 
             def _snapshot_sync(active_db: Session) -> set[int]:
                 return sync_market_valuation_snapshot(active_db, symbols, range_end,
-                    should_cancel=lambda: _is_cancelled(active_db, task_id), **write_options)
+                    should_cancel=lambda: _is_cancelled(active_db, task_id),
+                    allow_empty_snapshot=residual_topup, **write_options)
 
         if _is_cancelled(db, task_id):
             return None
@@ -1200,6 +1213,15 @@ def _run_symbol_sync(
         result["success"] += len(synced_ids)
         result["skipped"] += max(len(symbols) - len(synced_ids), 0)
         result["records"] += len(synced_ids)
+        if not synced_ids and (
+            residual_topup
+            or (dataset == "fundamental" and len(symbols) < _snapshot_batch_size)
+        ):
+            # A small tail top-up (for example the last 9 symbols) has no
+            # first-batch evidence; an empty snapshot means "nothing new",
+            # not a failed whole-market sync.
+            result["skip_reason"] = "no_new_data"
+            result["message"] = "所选标的当日快照尚未发布或无新增数据，已跳过"
         _merge_written_dates(result, getattr(synced_ids, "trade_dates", ()))
         for symbol_id, partition in partitions_by_symbol.items():
             partition.status = "done" if symbol_id in synced_ids else "skipped"
@@ -1855,6 +1877,16 @@ def finalize_legacy_external_sync(db, task_id, dataset, records, dates, *, skip_
         raise ValueError("外部同步缺少实际写入日期，未执行仓库镜像")
     plan = {"requested_start_date": min(actual_dates).isoformat(), "requested_end_date": max(actual_dates).isoformat()}
     mirror = _mirror_external_factor_inputs(db, task_id, dataset, plan)
+    if dataset in {"lhb", "hot_rank"}:
+        # Event/snapshot lists never prove a whole-market complete day, so
+        # record a dataset-level partial point for the dates actually written.
+        from app.services.sync_coverage import record_coverage_points
+        try:
+            record_coverage_points(db, dataset, {0: actual_dates}, task_id=task_id, complete=False)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("legacy %s coverage record failed for task %s: %s", dataset, task_id, exc)
     from app.services.data_quality import capture_field_quality_snapshots
     try:
         _update_task(db, task_id, stage="quality", percent=99, message="正在检查本次数据集的字段质量")

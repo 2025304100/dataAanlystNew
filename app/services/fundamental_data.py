@@ -106,8 +106,14 @@ def sync_market_valuation_snapshot(
     symbols: list[Symbol],
     trade_date: date | None = None,
     *, should_cancel: Callable[[], bool] | None = None, fill_missing_only: bool = False,
+    allow_empty_snapshot: bool = False,
 ) -> set[int]:
-    """Fetch only the requested symbols and exact day, with no historical fallback."""
+    """Fetch only the requested symbols and exact day, with no historical fallback.
+
+    ``allow_empty_snapshot`` is set by the caller when this request only tops
+    up a residual subset of an otherwise current universe. In that case an
+    unpublished snapshot means "nothing new", not a whole-market outage.
+    """
     target_date = trade_date or date.today()
     if target_date != date.today():
         raise ValueError("实时估值快照仅允许同步今天；历史日期请使用估值历史同步。")
@@ -128,10 +134,14 @@ def sync_market_valuation_snapshot(
         batch = eligible[offset:offset + DAILY_BATCH_SIZE]
         rows = fetch_valuation_rows(db, [_market_code_for_akshare(s) for s in batch],
                                     target_date, target_date, should_cancel=should_cancel)
-        if offset == 0 and not any(
+        batch_has_values = any(
             any(_safe_float(row.get(field)) is not None for field in ("pe_ttm", "pb", "total_market_cap"))
             for row in rows
-        ):
+        )
+        if not batch_has_values and offset == 0 and not allow_empty_snapshot:
+            # The whole requested snapshot has no published value yet; stop
+            # after this single bounded request instead of downloading every
+            # batch for nothing.
             raise RuntimeError("所请求标的的当日估值尚未发布或无数据，已停止；未下载历史，请稍后重试")
         observations.extend(rows)
     frame = pd.DataFrame([{

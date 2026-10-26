@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Literal
@@ -91,8 +92,20 @@ _READINESS_SOURCE_TABLES: dict[str, str] = {
 # A 层覆盖率阈值
 _A_MINIMUM_COVERAGE = 0.7
 _A_HEALTHY_COVERAGE = 0.9
-# C 层覆盖率阈值（任何缺失都阻断）
-_C_BLOCKED_COVERAGE = 1.0
+# C 层覆盖率阈值。历史上按 100% 处理，任一标的缺失就会永久阻断；
+# 默认放宽到 95%，并允许通过 FACTOR_C_MIN_COVERAGE 覆盖。
+_C_BLOCKED_COVERAGE = 0.95
+
+
+def _env_ratio(name: str, default: float) -> float:
+    """读取 0~1 的覆盖率阈值环境变量，非法值回退到默认值。"""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return min(max(float(raw), 0.0), 1.0)
+    except ValueError:
+        return default
 
 
 # ── 数据类 ────────────────────────────────────────────────
@@ -209,13 +222,13 @@ def _compute_coverage_threshold(*, layer: FactorLayer) -> float:
 
     - A_continuous: 0.7（最低）/0.9（健康）
     - B_event: 0.0（事件日覆盖率不适用）
-    - C_blocked: 1.0（任何缺失都阻断）
+    - C_blocked: 默认 0.95（可用 FACTOR_C_MIN_COVERAGE 覆盖）
     """
     if layer == "A_continuous":
-        return _A_MINIMUM_COVERAGE
+        return _env_ratio("FACTOR_A_MIN_COVERAGE", _A_MINIMUM_COVERAGE)
     if layer == "B_event":
         return 0.0
-    return _C_BLOCKED_COVERAGE
+    return _env_ratio("FACTOR_C_MIN_COVERAGE", _C_BLOCKED_COVERAGE)
 
 
 def _evidence_to_dict(evidence: CompleteTradeDayEvidence) -> dict[str, Any]:
@@ -428,11 +441,12 @@ def evaluate_factor_readiness(
     ctd_evidence_dict: dict[str, Any] | None = None
 
     if layer == "A_continuous":
-        if not blocking_reasons and coverage >= _A_HEALTHY_COVERAGE:
+        healthy_coverage = _env_ratio("FACTOR_A_HEALTHY_COVERAGE", _A_HEALTHY_COVERAGE)
+        if not blocking_reasons and coverage >= healthy_coverage:
             status: ReadinessStatus = "available"
             action = "evaluate"
             ctd_evidence_dict = ctd_dict
-        elif not blocking_reasons and coverage >= _A_MINIMUM_COVERAGE:
+        elif not blocking_reasons and coverage >= threshold:
             status = "degraded"
             action = "evaluate"
         else:
@@ -458,7 +472,7 @@ def evaluate_factor_readiness(
         if blocking_reasons:
             status = "blocked"
             action = "await_data"
-        elif coverage >= _C_BLOCKED_COVERAGE:
+        elif coverage >= threshold:
             status = "available"
             action = "evaluate"
             ctd_evidence_dict = ctd_dict

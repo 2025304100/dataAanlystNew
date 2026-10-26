@@ -57,6 +57,36 @@ def test_dividend_yield_reports_blocked_while_its_column_is_empty():
 
 
 @pytest.mark.whitebox
+def test_point_in_time_field_becomes_available_when_coverage_clears_threshold():
+    stats = {
+        "table_rows": 3_079_528,
+        "nonnull_rows": 3_079_528,
+        "distinct_dates": 100,
+        "latest_daily_coverage": 0.9986,
+        "daily_coverage_p50": 0.97,
+    }
+    ready = _field_capability("pe_ttm", stats)
+    assert ready["availability"] == "available"
+    assert ready["evaluation_enabled"] is True
+
+    # A shrunken cross-section (1/3 = 33%) must still be limited, not falsely
+    # available and not permanently limited either.
+    thin = _field_capability("pe_ttm", {**stats, "latest_daily_coverage": 1 / 3})
+    assert thin["availability"] == "limited"
+    assert thin["evaluation_enabled"] is True
+
+
+@pytest.mark.whitebox
+def test_uncollected_field_can_be_excluded_from_dataset_readiness():
+    capability = _field_capability(
+        "etf_tracking_error",
+        {"table_rows": 148, "nonnull_rows": 0, "distinct_dates": 1},
+    )
+    assert capability["availability"] == "blocked"
+    assert capability["exclude_from_readiness"] is True
+
+
+@pytest.mark.whitebox
 @pytest.mark.parametrize(
     ("field", "expected_status"),
     [

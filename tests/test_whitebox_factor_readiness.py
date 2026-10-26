@@ -269,6 +269,43 @@ def test_hot_rank_attention_degraded():
 # ── 场景 8: tail_accumulation_proxy blocked ──────────────
 
 
+# ── C 层阈值：默认 95%，可通过环境变量覆盖 ────────────────
+
+def _c_layer_stats():
+    return _make_source_table_stats(**{
+        "raw_valuation_snapshots": {
+            "rows": UNIVERSE,
+            "latest_date": "2026-07-24",
+            "date_column": "trade_date",
+        },
+    })
+
+
+def test_c_layer_allows_five_percent_missing_by_default(monkeypatch):
+    monkeypatch.delenv("FACTOR_C_MIN_COVERAGE", raising=False)
+    result = _eval(
+        "ep_ttm",
+        source_stats=_c_layer_stats(),
+        coverage=_make_factor_coverage("ep_ttm", coverage=0.96, eligible=1985),
+    )
+    assert result.layer == "C_blocked"
+    assert result.status == "available"
+    assert result.recommended_action == "evaluate"
+    assert result.blocking_reasons == []
+
+
+def test_c_layer_threshold_is_configurable(monkeypatch):
+    monkeypatch.setenv("FACTOR_C_MIN_COVERAGE", "1.0")
+    result = _eval(
+        "ep_ttm",
+        source_stats=_c_layer_stats(),
+        coverage=_make_factor_coverage("ep_ttm", coverage=0.96, eligible=1985),
+    )
+    assert result.layer == "C_blocked"
+    assert result.status == "blocked"
+    assert "coverage_below_threshold" in result.blocking_reasons
+
+
 # ── 场景 9: warehouse 不可用 ─────────────────────────────
 
 def test_warehouse_unavailable_blocks_all():

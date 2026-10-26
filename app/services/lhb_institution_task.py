@@ -65,18 +65,27 @@ def _run_lhb_institution_task(task_id: str) -> None:
         from app.services.external_data_sync_task import finalize_legacy_external_sync
         publication = finalize_legacy_external_sync(db, task_id, "lhb", summary.written,
                                                   summary.written_dates, skip_reason=summary.skip_reason)
-        publication_failed = publication["warehouse_mirror"]["status"] == "warning"
+        # Provider rows are already durable in SQL. A warehouse mirror warning
+        # must not turn a successful collection into a failed task; the warning
+        # stays in result_json so the mirror retry/patrol can pick it up.
+        mirror_warning = publication["warehouse_mirror"]["status"] == "warning"
+        if mirror_warning:
+            message = "龙虎榜已入库，因子仓库镜像待重试"
+        elif summary.skip_reason == "market_closed":
+            message = "A 股休市，已跳过龙虎榜采集"
+        else:
+            message = "Institution-seat LHB synchronization completed"
         _set_task(
             db,
             task_id,
-            status="failed" if publication_failed else "done",
-            stage="failed" if publication_failed else "done",
+            status="done",
+            stage="done",
             percent=100,
             total=summary.received,
             processed=summary.received,
             ok_count=summary.written,
-            failed_count=int(publication_failed),
-            message="龙虎榜已入库，仓库同步失败，请重试" if publication_failed else "A 股休市，已跳过龙虎榜采集" if summary.skip_reason == "market_closed" else "Institution-seat LHB synchronization completed",
+            failed_count=0,
+            message=message,
             result_json=json.dumps(
                 {
                     "start_date": summary.start_date,

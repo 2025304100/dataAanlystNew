@@ -341,6 +341,21 @@ def test_unpublished_day_stops_after_one_bounded_request(valuation_client, monke
     assert spy.call_count == 1
 
 
+def test_residual_tail_with_unpublished_snapshot_is_skipped(valuation_client, db_session, monkeypatch):
+    """A residual top-up of an otherwise current universe is not an outage."""
+    one = db_session.query(Symbol).filter_by(symbol="600001").one()
+    db_session.add(StockValuation(symbol_id=one.id, trade_date=TODAY, pb=1, total_market_cap=100))
+    db_session.commit()
+    get = _mock_daily(monkeypatch, lambda: pd.DataFrame())
+    spy = Mock(wraps=get)
+    monkeypatch.setattr(valuation_provider.requests, "get", spy)
+    task = _run(valuation_client)
+    assert task["status"] == "done", task
+    assert task["result"]["skip_reason"] == "no_new_data"
+    assert task["ok_count"] == 0
+    assert spy.call_count == 1
+
+
 def test_legacy_sync_endpoint_uses_same_bounded_daily_request(valuation_client, monkeypatch):
     get = _mock_daily(monkeypatch, lambda: pd.DataFrame([
         {"代码": "600001", "PE(TTM)": 12.}, {"代码": "600002", "PE(TTM)": 13.}]))
