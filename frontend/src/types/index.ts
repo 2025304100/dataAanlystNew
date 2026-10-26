@@ -983,6 +983,20 @@ export interface MarketEvent {
   sector_tag_source?: "auto" | "manual" | "legacy";
   affected_symbols: string | null;
   sentiment: string;          // positive | negative | neutral
+  classification_analysis?: {
+    rule_version: string;
+    rule_fingerprint: string;
+    current_scope: string;
+    current_level: number;
+    current_sentiment: "positive" | "negative" | "neutral";
+    scope_hits: Record<string, string[]>;
+    level_hits: Record<string, string[]>;
+    positive_hits: string[];
+    negative_hits: string[];
+    negated_phrases: string[];
+    scope_ties: string[];
+    matches_saved: boolean;
+  } | null;
   source: string;             // cctv | baidu | baidu-report | manual | ...
   source_url: string | null;
   is_manual: number;          // 0 = synced from source, 1 = manually entered

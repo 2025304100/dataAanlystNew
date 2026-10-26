@@ -286,3 +286,30 @@ def test_utc_publication_time_displays_in_shanghai_timezone(ui, case_db):
     open_news(page, 1)
     expected = page.evaluate("iso => new Date(iso + 'Z').toLocaleDateString('zh-CN', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})", now.isoformat())
     expect(page.locator(".mn-card-header .ant-typography")).to_have_text(expected)
+
+
+def test_classification_analysis_explains_negation_without_rewriting_saved_labels(ui, case_db):
+    with Session(case_db) as db:
+        db.add(event_row("美国取消制裁",impact_scope="international",importance_level=5,sentiment="negative"))
+        db.commit()
+    page,folder,_=ui
+    open_news(page,1)
+    card=page.locator(".mn-news-card")
+    card.locator(".mn-title").click()
+    analysis=card.locator(".mn-classification-analysis")
+    expect(analysis).to_contain_text("当前规则分析")
+    expect(analysis).to_contain_text("一般 / 国际形势 / 中性")
+    expect(analysis).to_contain_text("取消制裁")
+    expect(analysis).to_contain_text("当前分析与已保存标签不同")
+    expect(card.locator(".mn-card-header")).to_contain_text("紧急")
+    expect(card.locator(".mn-card-header")).to_contain_text("利空")
+    page.reload(wait_until="domcontentloaded")
+    card.locator(".mn-title").click()
+    expect(card.locator(".mn-card-header")).to_contain_text("紧急")
+    card.get_by_role("button",name="修正标记").click()
+    controls=card.locator(".mn-fix-row .ant-select")
+    choose(page,controls.nth(1),"一般")
+    choose(page,controls.nth(2),"中性")
+    card.get_by_role("button",name=re.compile(r"保\s*存")).click()
+    expect(card.locator(".mn-classification-analysis")).to_contain_text("当前分析与已保存标签一致")
+    page.screenshot(path=str(folder/"classification-reviewed.png"))

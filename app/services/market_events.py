@@ -205,35 +205,27 @@ def _classify_impact_scope(title: str, summary: str | None) -> str:
     前算谁。改为计数后，多命中证据的分类胜出；平局保持原字典序优先；
     全部未命中仍归 other。
     """
-    scope_keywords, _, _ = _merged_keywords()
-    text = f"{title} {summary or ''}"
-    best_scope, best_hits = "other", 0
-    for scope, keywords in scope_keywords.items():
-        hits = sum(1 for keyword in keywords if keyword in text)
-        if hits > best_hits:
-            best_scope, best_hits = scope, hits
-    return best_scope
+    return _analyze_classification(title,summary)["current_scope"]
 
 
 def _classify_importance_level(title: str, summary: str | None) -> int:
-    _, level_keywords, _ = _merged_keywords()
-    text = f"{title} {summary or ''}"
-    for level in range(5, 1, -1):
-        if any(keyword in text for keyword in level_keywords.get(level, [])):
-            return level
-    return 2
+    return _analyze_classification(title,summary)["current_level"]
 
 
 def _classify_sentiment(title: str, summary: str | None) -> str:
-    _, _, sentiment_keywords = _merged_keywords()
-    text = f"{title} {summary or ''}"
-    pos = sum(1 for keyword in sentiment_keywords["positive"] if keyword in text)
-    neg = sum(1 for keyword in sentiment_keywords["negative"] if keyword in text)
-    if pos > neg:
-        return "positive"
-    if neg > pos:
-        return "negative"
-    return "neutral"
+    return _analyze_classification(title,summary)["current_sentiment"]
+
+
+def _analyze_classification(title,summary):
+    from app.services.market_event_classification import analyze_market_text
+    return analyze_market_text(title,summary,*_merged_keywords())
+
+
+def _current_classification_analysis(event):
+    analysis=_analyze_classification(event.title,event.summary)
+    analysis["matches_saved"]=(analysis["current_scope"],analysis["current_level"],analysis["current_sentiment"]) == (
+        event.impact_scope,event.importance_level,event.sentiment)
+    return analysis
 
 
 def _affected_market(scope: str) -> str:
@@ -261,6 +253,7 @@ def _event_to_read(event: MarketEvent, sector_index: dict[str, str] | None = Non
         sector_tag_source=event.sector_tag_source or ("legacy" if event.affected_sectors is not None else "auto"),
         affected_symbols=event.affected_symbols,
         sentiment=event.sentiment,
+        classification_analysis=_current_classification_analysis(event),
         source=event.source,
         source_url=event.source_url,
         is_manual=event.is_manual,
@@ -477,11 +470,13 @@ def _supplier_date(*, days_back: int = 0) -> str:
 
 
 def _fetch_baidu_economic_news() -> list[dict]:
-    return _fetch_from_ak(ak.news_economic_baidu, "baidu", 40, date=_supplier_date())
+    from app.services.baidu_market_calendar import fetch_baidu_calendar
+    return _fetch_from_ak(fetch_baidu_calendar, "baidu", 40, date=_supplier_date(), category="economic_data")
 
 
 def _fetch_baidu_report_news() -> list[dict]:
-    return _fetch_from_ak(ak.news_report_time_baidu, "baidu-report", 40, date=_supplier_date())
+    from app.services.baidu_market_calendar import fetch_baidu_calendar
+    return _fetch_from_ak(fetch_baidu_calendar, "baidu-report", 40, date=_supplier_date(), category="report_time")
 
 
 def _fetch_global_news() -> list[dict]:
@@ -672,9 +667,10 @@ def _store_market_events(db: Session, payload: MarketEventCollectRequest,
             continue
 
         summary = raw.get("summary")
-        impact_scope = _classify_impact_scope(title, summary)
-        importance_level = _classify_importance_level(title, summary)
-        sentiment = _classify_sentiment(title, summary)
+        classification = _analyze_classification(title,summary)
+        impact_scope = classification["current_scope"]
+        importance_level = classification["current_level"]
+        sentiment = classification["current_sentiment"]
         expires_days = 14 if importance_level >= 4 else 7 if importance_level >= 3 else 3
         # P0-3：板块标签入库（逗号分隔板块 id），激活原先闲置的 affected_sectors 字段
         # P2-12：匹配前先合并 DB 关键词覆盖（后台可调词，无需发版）

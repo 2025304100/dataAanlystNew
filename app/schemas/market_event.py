@@ -35,6 +35,21 @@ class MarketEventUpdate(BaseModel):
     sector_tag_source: Literal["auto", "manual"] | None = None
 
 
+class MarketEventClassificationAnalysis(BaseModel):
+    rule_version: str
+    rule_fingerprint: str
+    current_scope: str
+    current_level: int
+    current_sentiment: Literal["positive", "negative", "neutral"]
+    scope_hits: dict[str,list[str]]
+    level_hits: dict[str,list[str]]
+    positive_hits: list[str]
+    negative_hits: list[str]
+    negated_phrases: list[str]
+    scope_ties: list[str]
+    matches_saved: bool
+
+
 class MarketEventRead(BaseModel):
     id: int
     title: str
@@ -46,6 +61,7 @@ class MarketEventRead(BaseModel):
     sector_tag_source: str = "legacy"
     affected_symbols: str | None = None
     sentiment: str
+    classification_analysis: MarketEventClassificationAnalysis | None = None
     source: str
     source_url: str | None = None
     is_manual: int

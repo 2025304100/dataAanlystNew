@@ -692,6 +692,23 @@ export default function MarketNews() {
                   {isExpanded && (
                     <div className="mn-detail-panel">
                       {event.summary && <Paragraph className="mn-detail-summary">{event.summary}</Paragraph>}
+                      {event.classification_analysis && (() => {
+                        const analysis = event.classification_analysis;
+                        const words = (values: string[] | undefined) => values?.length ? values.join("、") : t("market_news_analysis_none");
+                        return <div className="mn-classification-analysis" role="note" style={{ padding: 12, marginBottom: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+                          <Text strong>{t("market_news_analysis_title")}</Text>
+                          <Paragraph type="secondary" style={{ marginBottom: 6 }}>{t("market_news_analysis_current_notice")}</Paragraph>
+                          <div>{template("market_news_analysis_suggestion", { level: levelLabel(analysis.current_level), scope: scopeLabel(analysis.current_scope), direction: t(`market_news_sentiment_${analysis.current_sentiment}`) })}</div>
+                          <div>{t("market_news_analysis_scope_hits")}: {words(analysis.scope_hits[analysis.current_scope])}</div>
+                          <div>{t("market_news_analysis_level_hits")}: {analysis.level_hits[String(analysis.current_level)]?.length ? words(analysis.level_hits[String(analysis.current_level)]) : t("market_news_analysis_default_level")}</div>
+                          <div>{t("market_news_analysis_positive_hits")}: {words(analysis.positive_hits)}</div>
+                          <div>{t("market_news_analysis_negative_hits")}: {words(analysis.negative_hits)}</div>
+                          {analysis.scope_ties.length > 1 && <div>{template("market_news_analysis_tie", { scopes: analysis.scope_ties.map(scopeLabel).join("、") })}</div>}
+                          {analysis.negated_phrases.length > 0 && <div>{t("market_news_analysis_negated")}: {analysis.negated_phrases.map(phrase => <Tag key={phrase}>{phrase}</Tag>)}</div>}
+                          <Text type={analysis.matches_saved ? "secondary" : "warning"}>{t(analysis.matches_saved ? "market_news_analysis_matches" : "market_news_analysis_mismatch")}</Text>
+                          <div><Text type="secondary">{t("market_news_analysis_sector_limit")}</Text></div>
+                        </div>;
+                      })()}
                       <div className="mn-assessment">
                         <div className="mn-assessment-row"><span className="mn-assessment-label">{t("market_news_impact_dir")}</span><Text strong style={{ color: event.sentiment === "positive" ? "#16a34a" : event.sentiment === "negative" ? "#dc2626" : "#6b7280" }}>{assessment.direction}</Text></div>
                         <div className="mn-assessment-row"><span className="mn-assessment-label">{t("market_news_impact_deg")}</span><Text>{assessment.degree}</Text></div>

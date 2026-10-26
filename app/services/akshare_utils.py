@@ -2,20 +2,68 @@ from __future__ import annotations
 
 import logging
 import time
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager
 from contextvars import ContextVar
 import os
+import sys
+import threading
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+_quiet_output: ContextVar[bool] = ContextVar("akshare_quiet_output", default=False)
+_quiet_stream_lock = threading.RLock()
+_quiet_stream_users = 0
+_quiet_streams = None
+
+
+class _ContextQuietStream:
+    """Suppress only the calling context; never own/close the original stream."""
+    def __init__(self, target):
+        self.target = target
+
+    def write(self, value):
+        if _quiet_output.get() or self.target is None:
+            return len(value)
+        return self.target.write(value)
+
+    def flush(self):
+        if not _quiet_output.get() and self.target is not None:
+            return self.target.flush()
+
+    def close(self):
+        # A third-party wrapper must not close process-owned stdout/stderr.
+        pass
+
+    def __getattr__(self, name):
+        return getattr(self.target, name)
+
 
 @contextmanager
 def quiet_akshare_output():
-    """抑制第三方库的进度输出，避免在 Windows 隐藏工作进程中出错。"""
-    with open(os.devnull, "w", encoding="utf-8") as sink:
-        with redirect_stdout(sink), redirect_stderr(sink):
-            yield
+    """Quiet this call without serializing suppliers or closing shared streams."""
+    global _quiet_stream_users, _quiet_streams
+    with _quiet_stream_lock:
+        if _quiet_stream_users == 0:
+            original_out, original_err = sys.stdout, sys.stderr
+            out, err = _ContextQuietStream(original_out), _ContextQuietStream(original_err)
+            _quiet_streams = (original_out, original_err, out, err)
+            sys.stdout, sys.stderr = out, err
+        _quiet_stream_users += 1
+    token = _quiet_output.set(True)
+    try:
+        yield
+    finally:
+        _quiet_output.reset(token)
+        with _quiet_stream_lock:
+            _quiet_stream_users -= 1
+            if _quiet_stream_users == 0:
+                original_out, original_err, out, err = _quiet_streams
+                if sys.stdout is out:
+                    sys.stdout = original_out
+                if sys.stderr is err:
+                    sys.stderr = original_err
+                _quiet_streams = None
 
 
 # ----------------------------------------------------------------------------

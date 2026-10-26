@@ -62,6 +62,7 @@ backups/
 !docs/assets/notification-delivery-idempotency-2026-10-26/red-concurrent.log
 !docs/assets/notification-delivery-idempotency-2026-10-26/red-response-loss.log
 !docs/assets/notification-delivery-idempotency-2026-10-26/green-sqlite-9.log
+!docs/assets/market-news-sources-analysis-2026-10-26/*.log
 logs/
 # 忽略 .codex-run 的内容而不是目录本身：否则下面的再包含会失效
 # （docs 里的 2026-09-24 因子挖掘测试报告把 shots-bb24/ 当视觉走查证据引用）
