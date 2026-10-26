@@ -333,6 +333,8 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   const activationEvidence = useFactorModelReviewEvidence();
   const [error, setError] = useState<string | null>(null);
   const [stateReadError, setStateReadError] = useState<string | null>(null);
+  // 原「因子基础配置」页唯一独有信息：配置最后修改人与时间（只读审计行）
+  const [configAudit, setConfigAudit] = useState<{ updatedAt: string | null; updatedBy: string | null } | null>(null);
   const [activationScoreError, setActivationScoreError] = useState<string | null>(null);
   const [fullRefresh, setFullRefresh] = useState(false);
   const [trainModel, setTrainModel] = useState<boolean>(initialTrainModel);
@@ -406,7 +408,17 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
           // Factor-domain internal - DO NOT USE outside factor center
           ? (api as any).listFactorSets("frozen", 50)
           : Promise.resolve([]);
-      const [overviewData, modelData, tasks, frozenFactorSetsData] = await Promise.all([
+      // 配置审计行（原「因子基础配置」页并入）：读失败只隐藏这一行，不影响主状态。
+      const configAuditLoader: Promise<{ updatedAt: string | null; updatedBy: string | null } | null> =
+        typeof api.getFactorBasicConfig === "function"
+          ? api.getFactorBasicConfig()
+              .then((raw) => ({
+                updatedAt: typeof raw?.updated_at === "string" && raw.updated_at ? raw.updated_at : null,
+                updatedBy: typeof raw?.updated_by === "string" && raw.updated_by ? raw.updated_by : null,
+              }))
+              .catch(() => null)
+          : Promise.resolve(null);
+      const [overviewData, modelData, tasks, frozenFactorSetsData, configAuditData] = await Promise.all([
         // Factor-domain internal - DO NOT USE outside factor center
         api.scoringGetOverviewAsFactor(),
         // Factor-domain internal - DO NOT USE outside factor center
@@ -414,12 +426,14 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         // Factor-domain internal - DO NOT USE outside factor center
         api.scoringListTasks("factor_pipeline", 5),
         factorSetLoader,
+        configAuditLoader,
       ]);
       const displayModels = await hydrateResearchModelPresentation<FactorModelRun>(modelData.items, (id) => api.getFactorModel(id));
       if (!pageMounted.current || request !== loadRequest.current) return;
       setOverview((current) => current?.runtime && current.runtime.version > overviewData.runtime?.version
         ? { ...overviewData, runtime: current.runtime } : overviewData);
       setStateReadError(null);
+      setConfigAudit(configAuditData);
       setModels(displayModels);
       if (!modeChosenRef.current && props.initialTrainModel === undefined) {
         const currentModel = modelData.items.find((model: FactorModelRun) => model.id === overviewData.runtime?.active_model_run_id);
@@ -1293,7 +1307,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         {wizardStep !== "prepare" && <div className="factor-wizard-page-head"><h2>{pageTitle}</h2><p>{pageDescription}</p>{workflowFactorSetId && <Tag>当前集合 · {frozenFactorSets.find((set) => set.id === workflowFactorSetId) ? factorSetOptionName(frozenFactorSets.find((set) => set.id === workflowFactorSetId)!) : workflowFactorSetId}</Tag>}</div>}
 
         {wizardStep === "prepare" && <>
-          <FactorPipelinePrepareStep loading={loading} featureEnabled={featureEnabled} warehouseAvailable={warehouseAvailable} coverage={averageCoverage} latestDate={overview?.latest_trade_date ?? null} error={stateReadError} busy={Boolean(acting)} onEnable={() => void toggleFeature(true)} onInitialize={() => void initializeWarehouse()} onRefresh={() => void loadAll()} onCoverage={() => openFactorData("coverage")} onViewChange={(view) => setPrepareInputsOpen(view === "inputs")} />
+          <FactorPipelinePrepareStep loading={loading} featureEnabled={featureEnabled} warehouseAvailable={warehouseAvailable} coverage={averageCoverage} latestDate={overview?.latest_trade_date ?? null} configUpdatedAt={configAudit?.updatedAt ?? null} configUpdatedBy={configAudit?.updatedBy ?? null} error={stateReadError} busy={Boolean(acting)} onEnable={() => void toggleFeature(true)} onInitialize={() => void initializeWarehouse()} onRefresh={() => void loadAll()} onCoverage={() => openFactorData("coverage")} onViewChange={(view) => setPrepareInputsOpen(view === "inputs")} />
           {!prepareInputsOpen && <div className="factor-wizard-input-calculation"><div><strong>已有本地输入，需要重新计算？</strong><p>仅整理已有输入、计算因子与目标标签。之后仍需训练和启用模型。</p></div><Button disabled={operationUnavailable} loading={acting === "pipeline"} onClick={() => void startPipeline("inputs")}>仅计算已有输入</Button></div>}
           {!prepareInputsOpen && taskPanel}
         </>}

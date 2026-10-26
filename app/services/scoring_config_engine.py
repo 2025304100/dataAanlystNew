@@ -689,10 +689,33 @@ def evaluate_dimension_scores(
     return dim_scores, factor_detail
 
 
+def _resolve_news_score(db: Session, symbol_id: int) -> tuple[float | None, float | None]:
+    """P2-9：按灰度开关解析消息面真值。
+
+    返回 (enabled_value, shadow_value)：
+    - 双开关全关（默认）：(None, None)——零查询零行为变化；
+    - 仅 SHADOW：候选分只写 dim_scores.news_score_shadow，评分不变；
+    - ENABLED：event_score 与 priority 的 news 桶用真值（同时保留 shadow 记录）。
+    读取失败按无数据回退，绝不阻断评分。
+    """
+    from app.core.config import settings
+    enabled = getattr(settings, "news_score_enabled", False)
+    shadow = getattr(settings, "news_score_shadow", False)
+    if not (enabled or shadow):
+        return None, None
+    try:
+        from app.services.news import compute_news_event_score
+        value = compute_news_event_score(db, symbol_id)
+    except Exception:
+        return None, None
+    return (value if enabled else None), value
+
+
 def _aggregate_final_scores(
     dim_scores: dict[str, float],
     config_json: dict[str, Any],
     factor_scores: dict[str, float | None],
+    news_override: float | None = None,
 ) -> tuple[float, float, float, str, str]:
     """根据 final_weights 和维度 score_bucket 聚合 quality/timing/priority。
 
@@ -722,7 +745,8 @@ def _aggregate_final_scores(
 
     quality = _clamp(_weighted_avg(bucket_dims.get("quality", [])))
     timing = _clamp(_weighted_avg(bucket_dims.get("timing", [])))
-    news = _clamp(_weighted_avg(bucket_dims.get("news", [50.0, 1.0])))  # news 默认 50
+    # P2-9：news_override 来自消息面快照（NEWS_SCORE_ENABLED 灰度开关）；None 保持默认 50
+    news = _clamp(news_override if news_override is not None else _weighted_avg(bucket_dims.get("news", [50.0, 1.0])))
 
     q_w = float(final_weights.get("quality", 0.4))
     t_w = float(final_weights.get("timing", 0.5))
@@ -835,7 +859,15 @@ def calculate_symbol_score_with_config(
 
     # 维度评分
     dim_scores, factor_detail = evaluate_dimension_scores(factor_scores, config_json)
-    quality, timing, priority, stage, action = _aggregate_final_scores(dim_scores, config_json, factor_scores)
+    # P2-9：news 桶灰度接入（默认双关，行为不变）
+    news_enabled_value, news_shadow_value = _resolve_news_score(db, symbol.id)
+    if news_shadow_value is not None:
+        dim_scores.setdefault("news_score_shadow", news_shadow_value)
+    if news_enabled_value is not None:
+        factor_scores["event_score"] = news_enabled_value
+    quality, timing, priority, stage, action = _aggregate_final_scores(
+        dim_scores, config_json, factor_scores, news_override=news_enabled_value
+    )
 
     # 写库（含配置快照）
     date_key = trade_date.isoformat() if hasattr(trade_date, "isoformat") else str(trade_date)
@@ -955,7 +987,15 @@ def calculate_universe_symbol_score(
 
     # 维度评分 + 聚合
     dim_scores, factor_detail = evaluate_dimension_scores(factor_scores, config_json)
-    quality, timing, priority, stage, action = _aggregate_final_scores(dim_scores, config_json, factor_scores)
+    # P2-9：news 桶灰度接入（默认双关，行为不变）
+    news_enabled_value, news_shadow_value = _resolve_news_score(db, symbol.id)
+    if news_shadow_value is not None:
+        dim_scores.setdefault("news_score_shadow", news_shadow_value)
+    if news_enabled_value is not None:
+        factor_scores["event_score"] = news_enabled_value
+    quality, timing, priority, stage, action = _aggregate_final_scores(
+        dim_scores, config_json, factor_scores, news_override=news_enabled_value
+    )
 
     # 写 scores 表（与 calculate_symbol_score_with_config 完全一致）
     date_key = trade_date.isoformat() if hasattr(trade_date, "isoformat") else str(trade_date)

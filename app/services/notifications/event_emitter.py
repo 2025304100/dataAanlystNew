@@ -296,6 +296,43 @@ def emit_max_loss_warning(
     )
 
 
+def emit_market_news_collect_failed(
+    db: Session,
+    *,
+    errors: list[str],
+    event_key: str | None = None,
+    reason_text: str | None = None,
+) -> list:
+    """行情消息 P0-2：定时采集全部来源失败告警。
+
+    仅在所有来源都失败（结果里 collected=0 且错误数等于来源数）时由调度
+    任务调用；部分失败不值得打扰。event_key 建议带日期（如
+    market_news_collect_failed:2026-10-25）实现按日防重，避免断供期间
+    每次调度都刷屏。
+    """
+    preview = "; ".join(errors[:3])
+    if len(errors) > 3:
+        preview += f" ...（共 {len(errors)} 个来源失败）"
+    if reason_text is None:
+        reason_text = f"定时采集全部来源失败，行情消息已停止更新，请检查 akshare 可用性。失败来源：{preview}"
+    else:
+        reason_text = f"{reason_text}（{preview}）" if preview else reason_text
+    return emit_event(
+        db,
+        source_type="system",
+        source_id=None,
+        event_type="market_news_collect_failed",
+        severity="warn",
+        title="行情消息采集失败",
+        body=reason_text,
+        template_variables={
+            "error_count": str(len(errors)),
+            "errors_preview": preview,
+        },
+        event_key=event_key,
+    )
+
+
 __all__ = [
     "emit_alert_event",
     "emit_task_complete",
@@ -306,4 +343,5 @@ __all__ = [
     "emit_auto_trade_blocked",
     "emit_drawdown_warning",
     "emit_max_loss_warning",
+    "emit_market_news_collect_failed",
 ]

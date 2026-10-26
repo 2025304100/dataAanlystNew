@@ -223,7 +223,198 @@ describe("WP-AI.7 AIAssistant", () => {
           message: "Explain this candidate",
         }),
         expect.any(Object),
+        expect.any(AbortSignal),
       );
     }, { timeout: 5000 });
+  });
+
+  it("test_stop_button_aborts_stream_and_keeps_partial_content", async () => {
+    mockApi.getAIHealth.mockResolvedValue(healthyProfiles);
+    // 流式挂起，直到 abort 才 reject（模拟真实 SSE 中断）
+    mockApi.streamAISession.mockImplementation((_payload, handlers, signal) => new Promise((_resolve, reject) => {
+      handlers.onDelta?.("部分回答");
+      signal?.addEventListener("abort", () => {
+        const err = new Error("Aborted");
+        err.name = "AbortError";
+        reject(err);
+      });
+    }));
+    const user = userEvent.setup();
+    renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+
+    await user.click(screen.getByTestId("ai-assistant-fab"));
+    const textarea = await screen.findByTestId("ai-input");
+    await user.type(textarea, "讲个长回答");
+    await user.click(screen.getByTestId("ai-send-button"));
+
+    // 发送中：出现停止按钮，输入框禁用（防双发）
+    const stopBtn = await screen.findByTestId("ai-stop-button");
+    expect(textarea).toBeDisabled();
+
+    await user.click(stopBtn);
+
+    // 停止后：已流出内容保留 + 停止标注；不出现错误提示
+    await waitFor(() => {
+      expect(screen.getByText(/部分回答/)).toBeInTheDocument();
+      expect(screen.getByText(/aiAssistant\.stopped/)).toBeInTheDocument();
+      expect(screen.queryByTestId("ai-error-alert")).not.toBeInTheDocument();
+    });
+    // 停止后回到可发送状态
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-send-button")).toBeInTheDocument();
+    });
+  });
+
+  it("test_suggested_questions_send_on_click", async () => {
+    mockApi.getAIHealth.mockResolvedValue(healthyProfiles);
+    mockApi.streamAISession.mockImplementation(async (_payload, handlers) => {
+      handlers.onDelta?.("ok");
+      handlers.onDone?.(1, sampleAIResponse);
+    });
+    const user = userEvent.setup();
+    renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+
+    await user.click(screen.getByTestId("ai-assistant-fab"));
+    const suggestions = await screen.findAllByTestId("ai-suggested-question");
+    expect(suggestions.length).toBeGreaterThan(0);
+
+    await user.click(suggestions[0]);
+    await waitFor(() => {
+      expect(mockApi.streamAISession).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "aiAssistant.suggested.opportunity1" }),
+        expect.any(Object),
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it("test_session_chip_bar_expands_with_search", async () => {
+    mockApi.getAIHealth.mockResolvedValue(healthyProfiles);
+    mockApi.getAISessions.mockResolvedValue({
+      items: [
+        { id: 1, title: "组合 1 检查与对账诊断", source_page: "portfolio-inspection", provider: null, model: null, profile_id: null, status: "active", context_summary: null, total_tokens: 0, total_cost: null, created_at: new Date().toISOString(), updated_at: null, deleted_at: null },
+        { id: 2, title: "你好，你能干什么", source_page: "decision", provider: null, model: null, profile_id: null, status: "active", context_summary: null, total_tokens: 0, total_cost: null, created_at: new Date().toISOString(), updated_at: null, deleted_at: null },
+        { id: 3, title: "旧会话甲", source_page: "settings", provider: null, model: null, profile_id: null, status: "active", context_summary: null, total_tokens: 0, total_cost: null, created_at: "2026-08-01T10:00:00.000Z", updated_at: null, deleted_at: null },
+      ],
+      limit: 50, offset: 0, include_archived: false,
+    });
+    const user = userEvent.setup();
+    renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+
+    await user.click(screen.getByTestId("ai-assistant-fab"));
+    // chip 条：默认收起，展示历史按钮
+    const historyBtn = await screen.findByTestId("ai-session-history-toggle");
+    expect(historyBtn).toBeInTheDocument();
+
+    // 展开面板 + 搜索过滤
+    await user.click(historyBtn);
+    const search = await screen.findByTestId("ai-session-search");
+    await user.type(search, "组合");
+    await waitFor(() => {
+      const items = screen.getAllByTestId("ai-session-item");
+      expect(items).toHaveLength(1);
+      expect(items[0]).toHaveTextContent("组合 1 检查与对账诊断");
+    });
+  });
+
+  it("test_copy_button_copies_message_text", async () => {
+    mockApi.getAIHealth.mockResolvedValue(healthyProfiles);
+    mockApi.getAISessions.mockResolvedValue({
+      items: [
+        { id: 7, title: "有消息的会话", source_page: "settings", provider: null, model: null, profile_id: null, status: "active", context_summary: null, total_tokens: 0, total_cost: null, created_at: new Date().toISOString(), updated_at: null, deleted_at: null },
+      ],
+      limit: 50, offset: 0, include_archived: false,
+    });
+    mockApi.getAIMessages.mockResolvedValue({
+      items: [
+        { id: 71, session_id: 7, role: "user", content: "帮我解释这个候选", context_summary: null, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, latency_ms: null, model_used: null, provider_used: null, metadata_json: null, created_at: new Date().toISOString() },
+      ],
+      session_id: 7, limit: 100, offset: 0,
+    });
+    const user = userEvent.setup();
+    renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+
+    await user.click(screen.getByTestId("ai-assistant-fab"));
+    await user.click(await screen.findByTestId("ai-session-history-toggle"));
+    await user.click(await screen.findByTestId("ai-session-item"));
+
+    const copyBtn = await screen.findByTestId("ai-copy-button");
+    await user.click(copyBtn);
+    // user-event 会把 navigator.clipboard 换成自带 stub，写进去的内容可回读
+    expect(await navigator.clipboard.readText()).toBe("帮我解释这个候选");
+  });
+
+  it("test_regenerate_resends_previous_user_message", async () => {
+    mockApi.getAIHealth.mockResolvedValue(healthyProfiles);
+    mockApi.getAISessions.mockResolvedValue({
+      items: [
+        { id: 8, title: "可重生成的会话", source_page: "settings", provider: null, model: null, profile_id: null, status: "active", context_summary: null, total_tokens: 0, total_cost: null, created_at: new Date().toISOString(), updated_at: null, deleted_at: null },
+      ],
+      limit: 50, offset: 0, include_archived: false,
+    });
+    mockApi.getAIMessages.mockResolvedValue({
+      items: [
+        { id: 81, session_id: 8, role: "user", content: "第一次提问", context_summary: null, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, latency_ms: null, model_used: null, provider_used: null, metadata_json: null, created_at: new Date().toISOString() },
+        { id: 82, session_id: 8, role: "assistant", content: JSON.stringify(sampleAIResponse), context_summary: null, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, latency_ms: null, model_used: null, provider_used: null, metadata_json: null, created_at: new Date().toISOString() },
+      ],
+      session_id: 8, limit: 100, offset: 0,
+    });
+    mockApi.streamAISession.mockImplementation(async (_payload, handlers) => {
+      handlers.onDelta?.("重新生成的回答");
+      handlers.onDone?.(8, sampleAIResponse);
+    });
+
+    const user = userEvent.setup();
+    renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+
+    await user.click(screen.getByTestId("ai-assistant-fab"));
+    await user.click(await screen.findByTestId("ai-session-history-toggle"));
+    await user.click(await screen.findByTestId("ai-session-item"));
+
+    const regenBtn = await screen.findByTestId("ai-regenerate-button");
+    await user.click(regenBtn);
+
+    await waitFor(() => {
+      expect(mockApi.streamAISession).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "第一次提问", session_id: 8 }),
+        expect.any(Object),
+        expect.any(AbortSignal),
+      );
+    });
+    // 重新生成后原 user 消息仍在（不被错误清理逻辑删掉）
+    expect(screen.getByText("第一次提问")).toBeInTheDocument();
+  });
+
+  it("test_drawer_width_responds_to_viewport", async () => {
+    mockApi.getAIHealth.mockResolvedValue(healthyProfiles);
+    const originalWidth = window.innerWidth;
+    const setWidth = (value: number) => {
+      Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value });
+      window.dispatchEvent(new Event("resize"));
+    };
+    try {
+      setWidth(1366);
+      const user = userEvent.setup();
+      const { unmount } = renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+      await user.click(screen.getByTestId("ai-assistant-fab"));
+      await waitFor(() => {
+        const wrappers = document.querySelectorAll(".ant-drawer-content-wrapper");
+        const style = wrappers.length ? wrappers[wrappers.length - 1].getAttribute("style") : null;
+        expect(style).toContain("width: 520px");
+      });
+      unmount();
+
+      setWidth(390);
+      const user2 = userEvent.setup();
+      renderWithProvider(<AIAssistant activeTab="discovery" onGoToSettings={() => {}} />);
+      await user2.click(screen.getByTestId("ai-assistant-fab"));
+      await waitFor(() => {
+        const wrappers = document.querySelectorAll(".ant-drawer-content-wrapper");
+        const style = wrappers.length ? wrappers[wrappers.length - 1].getAttribute("style") : null;
+        expect(style).toContain("width: 100%");
+      });
+    } finally {
+      setWidth(originalWidth);
+    }
   });
 });

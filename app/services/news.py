@@ -594,3 +594,29 @@ def update_news(db: Session, payload: NewsUpdateRequest) -> dict:
         "symbols": summaries,
         "failed": failed,
     }
+
+
+# P2-9：news 评分桶接真数据 ──────────────────────────────────
+# 置信度门槛：_summarize_symbol 的 confidence = 0.35 + 0.08×条数（风险加成另计），
+# 0.5 对应至少约 2 条样本——单条噪声消息不足以撬动评分，返回 None 让调用方回退 50。
+NEWS_SCORE_MIN_CONFIDENCE = 0.5
+
+
+def compute_news_event_score(session: Session, symbol_id: int) -> float | None:
+    """个股最新消息面快照 → event_score（0-100），供评分引擎 news 桶灰度接入。
+
+    NewsSnapshot.message_score ∈ [-20, 20]（_summarize_symbol 已截断），线性映射
+    -20→0 / 0→50 / +20→100。无快照或置信度不足时返回 None（调用方保持默认 50，
+    与旧行为一致）。取 scope="symbol" 的最新一条快照，走 symbol_id 索引。
+    """
+    snapshot = session.execute(
+        select(NewsSnapshot)
+        .where(NewsSnapshot.symbol_id == symbol_id, NewsSnapshot.scope == "symbol")
+        .order_by(desc(NewsSnapshot.created_at), desc(NewsSnapshot.id))
+        .limit(1)
+    ).scalars().first()
+    if snapshot is None:
+        return None
+    if (snapshot.confidence or 0.0) < NEWS_SCORE_MIN_CONFIDENCE:
+        return None
+    return max(0.0, min(100.0, 50.0 + (snapshot.message_score or 0.0) * 2.5))

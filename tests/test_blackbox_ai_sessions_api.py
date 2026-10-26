@@ -490,6 +490,27 @@ def test_create_session_draft_audit(client, db_session, monkeypatch):
     # 响应中的 draft 字段也包含草稿内容
     assert data["response"]["draft"] is not None, "response 应包含 draft 字段"
 
+    # Batch 1（2026-10-25）：audit_id 必须回写到响应与已持久化消息，
+    # 否则前端拿不到锚点，无法发起 getAIDraft/preview/confirm/execute 三步确认。
+    expected_audit_id = audit_record["id"]
+    assert data["response"]["draft"].get("audit_id") == expected_audit_id, (
+        "响应 draft 应携带 audit_id（前端确认入口的锚点）"
+    )
+    assert data["response"]["metadata"].get("draft_audit_id") == expected_audit_id, (
+        "响应 metadata 应携带 draft_audit_id"
+    )
+
+    # 刷新会话后仍可确认：持久化消息的 content/metadata 也要带上 audit_id
+    messages_resp = client.get(f"/api/v1/ai/sessions/{session_id}/messages")
+    assert messages_resp.status_code == 200
+    stored = messages_resp.json()["items"][-1]
+    stored_content = json.loads(stored["content"])
+    assert stored_content["draft"].get("audit_id") == expected_audit_id, (
+        "持久化消息的 draft 应携带 audit_id（刷新后仍可确认）"
+    )
+    stored_metadata = json.loads(stored["metadata_json"])
+    assert stored_metadata.get("draft_audit_id") == expected_audit_id
+
 
 # ----------------------------------------------------------------------------
 # 7. 凭据脱敏
@@ -601,3 +622,103 @@ def test_evidence_is_normalized_for_display():
     assert response.evidence[1] == {
         "type": "market", "source": "daily", "content": "收盘价上涨", "confidence": 0.85,
     }
+
+
+def test_session_surface_defaults_to_assistant(client, db_session, monkeypatch):
+    """【P2-13 预埋】会话落库时 surface 默认为 assistant；公式 AI 暂不落会话。"""
+    from sqlalchemy import select
+
+    from app.models.ai_session import AISession, SURFACE_ASSISTANT
+
+    profile = _make_profile(db_session, name="qa-surface")
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.api.routes.ai_sessions.call_llm_with_failover",
+        lambda *args, **kwargs: _make_llm_success(profile),
+    )
+    resp = client.post("/api/v1/ai/sessions", json={
+        "profile_id": profile.id, "first_message": "测试 surface 预埋",
+    })
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    row = db_session.execute(select(AISession).where(AISession.id == session_id)).scalar_one()
+    assert row.surface == SURFACE_ASSISTANT
+
+
+def test_stream_answer_preview_tolerates_markdown_fence():
+    """【L7】模型把 JSON 包在 ```json 围栏里时，流式预览也应提取 answer。"""
+    from app.api.routes.ai_sessions import _stream_answer_preview
+
+    fenced = '```json\n{"answer":"围栏里的回答","evidence":[]}'
+    assert _stream_answer_preview(fenced) == "围栏里的回答"
+
+    plain = '{"answer":"裸 JSON 回答"'
+    assert _stream_answer_preview(plain) == "裸 JSON 回答"
+
+    # 非 JSON 文本保持原样返回（流式预览直接透传）
+    assert _stream_answer_preview("普通文本回答") == "普通文本回答"
+
+
+def test_stream_session_runs_tool_round_then_answer(client, db_session, monkeypatch):
+    """【Batch 2】流式路径：第一轮只返回 tool_calls → 执行 → 回喂 → 第二轮出答案。
+
+    断言：①首轮带 tools、第二轮消息含 role=tool 回喂；②最终 SSE 有 done 与答案；
+    ③metadata 记录 tool_calls；④审计出现 action_type=tool_call 记录。
+    """
+    profile = _make_profile(db_session, name="qa-tool-stream")
+    db_session.commit()
+    captured = []
+
+    def fake_stream(*args, **kwargs):
+        captured.append({"messages": list(args[1]) if len(args) > 1 else [], "tools": kwargs.get("tools")})
+        if len(captured) == 1:
+            yield {
+                "type": "result",
+                "result": LLMCallResult(
+                    success=True, raw_response="", profile_used=profile, latency_ms=5,
+                    prompt_tokens=10, completion_tokens=2, total_tokens=12,
+                    tool_calls=[{
+                        "id": "c1", "type": "function",
+                        "function": {"name": "get_data_health", "arguments": "{}"},
+                    }],
+                ),
+            }
+            return
+        answer = '{"answer":"数据健康","evidence":[],"warnings":[],"suggested_actions":[],"draft":null}'
+        yield {"type": "delta", "content": answer}
+        yield {
+            "type": "result",
+            "result": LLMCallResult(
+                success=True, raw_response=answer, profile_used=profile, latency_ms=6,
+                prompt_tokens=8, completion_tokens=4, total_tokens=12,
+            ),
+        }
+
+    monkeypatch.setattr("app.api.routes.ai_sessions.stream_llm_completion", fake_stream)
+
+    with client.stream("POST", "/api/v1/ai/sessions/stream", json={
+        "profile_id": profile.id, "message": "现在数据健康吗", "source_page": "settings",
+    }) as resp:
+        body = resp.read().decode("utf-8")
+    assert resp.status_code == 200
+    assert "event: done" in body
+    assert "数据健康" in body
+
+    # 两轮：首轮带 tools，次轮消息里必须有 tool 回喂
+    assert len(captured) == 2
+    assert captured[0]["tools"]
+    second_messages = captured[1]["messages"]
+    assert any(msg.get("role") == "tool" and msg.get("tool_call_id") == "c1" for msg in second_messages)
+    assert any(msg.get("role") == "assistant" and msg.get("tool_calls") for msg in second_messages)
+
+    sessions = client.get("/api/v1/ai/sessions").json()["items"]
+    session_id = sessions[0]["id"]
+    messages = client.get(f"/api/v1/ai/sessions/{session_id}/messages").json()["items"]
+    metadata = json.loads(messages[-1]["metadata_json"])
+    assert metadata["tool_calls"][0]["name"] == "get_data_health"
+    assert metadata["tool_rounds"] == 2
+
+    audit = client.get(f"/api/v1/ai/sessions/{session_id}/audit").json()
+    tool_audits = [item for item in audit["items"] if item["action_type"] == "tool_call"]
+    assert tool_audits, "工具调用应落审计记录"
+    assert tool_audits[0]["suggested_payload"]["tool"] == "get_data_health"

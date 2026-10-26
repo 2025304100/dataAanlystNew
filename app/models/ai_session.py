@@ -39,6 +39,11 @@ SESSION_STATUS_DELETED = "deleted"    # 软删除（deleted_at 已设置）
 
 SESSION_STATUSES = (SESSION_STATUS_ACTIVE, SESSION_STATUS_ARCHIVED, SESSION_STATUS_DELETED)
 
+# ── 能力面（P2-13 预埋）─────────────────────────────────────────
+SURFACE_ASSISTANT = "assistant"  # 全局 AI 助手（当前唯一生产者）
+SURFACE_FORMULA = "formula"      # 公式 AI（暂不落会话，仅预埋）
+SURFACES = (SURFACE_ASSISTANT, SURFACE_FORMULA)
+
 # ── 来源页面枚举 ────────────────────────────────────────────────
 SOURCE_PAGE_DISCOVERY = "discovery"
 SOURCE_PAGE_RESEARCH = "research"
@@ -108,6 +113,13 @@ class AISession(Base):
     source_page: Mapped[str | None] = mapped_column(
         String(64), nullable=True, index=True,
         comment="来源页面：discovery/research/portfolio/backtest/task",
+    )
+
+    # P2-13 预埋（Batch 1 范围）：区分能力面。当前所有会话都由全局助手创建（assistant），
+    # 公式 AI 保持无状态、不落会话；后续若公式 AI 接入会话化，写入 formula 即可按面区分。
+    surface: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SURFACE_ASSISTANT,
+        comment="能力面：assistant=全局助手 / formula=公式 AI（预埋）",
     )
 
     provider: Mapped[str | None] = mapped_column(

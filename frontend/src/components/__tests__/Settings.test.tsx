@@ -128,6 +128,13 @@ describe("Settings 因子挖掘入口", () => {
     expect(window.localStorage.getItem("settings_active_section")).toBe("factor-mining");
   });
 
+  it("旧值 factor-basic 收敛到因子与模型分区", () => {
+    window.localStorage.setItem("settings_active_section", "factor-basic");
+    render(<Settings />);
+    expect(document.querySelector('[data-settings-content="settings-factor-model"]')).toBeTruthy();
+    expect(document.querySelector('[data-settings-content="settings-factor-basic"]')).toBeNull();
+  });
+
   it("因子中心跳转按钮方案下不新增顶级 Tab（not_do 守卫）", () => {
     render(<Settings />);
     // 全部导航项仍在 settings-sidebar 内，未新增 App 级容器

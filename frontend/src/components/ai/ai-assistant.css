@@ -1,0 +1,69 @@
+/* AI 助手抽屉：消息气泡布局。
+   颜色一律由组件用 antd theme token 内联设置，这里只放布局与 hover 规则，
+   避免硬编码色值在暗色主题下失效（评估报告 P2-12）。 */
+.ai-msg-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ai-msg-row--user {
+  flex-direction: row-reverse;
+}
+
+.ai-msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.ai-msg-main {
+  display: flex;
+  flex-direction: column;
+  max-width: 78%;
+  min-width: 0;
+}
+
+.ai-msg-row--user .ai-msg-main {
+  align-items: flex-end;
+}
+
+.ai-msg-bubble {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.ai-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.ai-msg-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ai-msg-row:hover .ai-msg-actions,
+.ai-msg-row:focus-within .ai-msg-actions {
+  opacity: 1;
+}
+
+/* 触屏设备没有 hover，操作按钮常显 */
+@media (hover: none) {
+  .ai-msg-actions {
+    opacity: 1;
+  }
+}

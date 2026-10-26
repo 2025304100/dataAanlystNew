@@ -43,6 +43,8 @@ const NOTIFICATION_NAV: Record<string, { tab: string; section?: string; subtab?:
   task_failed: { tab: "settings", section: "tasks" },
   data_stale: { tab: "settings", section: "alerts" },
   score_drop: { tab: "settings", section: "alerts" },
+  // 行情消息 P0-2：定时采集全部来源失败的告警，点击跳转行情消息页
+  market_news_collect_failed: { tab: "news" },
 };
 const SOURCE_TAB_FALLBACK: Record<string, { tab: string }> = {
   portfolio: { tab: "portfolio" },

@@ -18,6 +18,8 @@ MESSAGE_SOURCES: dict[str, dict] = {
             {"type": "task_complete", "name": "任务完成", "default_severity": "info"},
             {"type": "data_expired", "name": "数据过期", "default_severity": "warn"},
             {"type": "api_failure", "name": "接口失败", "default_severity": "error"},
+            # 行情消息 P0-2：定时采集全部来源失败时告警（部分失败只记调度日志）
+            {"type": "market_news_collect_failed", "name": "行情消息采集失败", "default_severity": "warn"},
         ],
     },
     "data": {
@@ -68,6 +70,7 @@ MESSAGE_SOURCES: dict[str, dict] = {
 CONNECTED_EVENT_TYPES = frozenset({
     "score_drop", "data_stale", "task_failed", "discovery_new",
     "trade_executed", "auto_trade_blocked", "drawdown_warning", "max_loss_warning",
+    "market_news_collect_failed",
 })
 for _source in MESSAGE_SOURCES.values():
     for _event in _source["events"]:

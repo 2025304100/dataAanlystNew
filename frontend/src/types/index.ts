@@ -1009,6 +1009,55 @@ export interface MarketEventCollectResponse {
   errors: string[];
 }
 
+// P0-3：概念热点后端聚合（统计口径与列表筛选解耦）
+export interface MarketEventHotspotSector {
+  sector_id: string;
+  bull: number;
+  bear: number;
+  neutral: number;
+  total: number;
+  max_level: number;
+  event_ids: number[];
+}
+
+export interface MarketEventHotspotsResponse {
+  days: number;
+  generated_at: string;
+  sectors: MarketEventHotspotSector[];
+}
+
+// P1-7：采集运行账目（可观测：最近采集展示 + 连续空采告警依据）
+export interface MarketEventCollectRun {
+  id: number;
+  trigger_source: string;    // manual | scheduled
+  days: number;
+  sources: string[];
+  collected: number;
+  skipped_duplicate: number;
+  status: string;            // done | failed
+  errors: string[];
+  started_at: string;
+  finished_at: string | null;
+}
+
+// P2-12：板块关键词配置（DB 覆盖内置，整行替换）
+export interface SectorConceptConfigItem {
+  sector_id: string;
+  keywords: string[];
+  source: string;            // builtin | db
+}
+
+// P0-1：过期消息清理（keep_days 默认 90，保护 90 天回看窗口）
+export interface MarketEventCleanupRequest {
+  keep_days?: number;
+}
+
+export interface MarketEventCleanupResponse {
+  deleted: number;
+  keep_days: number;
+  cutoff_date: string;
+}
+
 export interface DataHealthIssue {
   level: "ok" | "warn" | "error" | string;
   message: string;
@@ -2135,9 +2184,10 @@ export interface PortfolioStatusResponse {
   last_decision_trade_date?: string | null;          // ISO date，可 NULL 但 JSON 键必须存在
   last_reconciled_trade_date?: string | null;        // ISO date，可 NULL 但 JSON 键必须存在
   allowed_transitions: string[];                     // 直接来自 _allowed_transitions_from(current)；空数组=全部按钮 disabled
-  is_auto_simulation_eligible: boolean;              // HG1 综合结果；false=预检按钮灰
+  is_auto_simulation_eligible: boolean;              // 当前运行检查允许新买入且允许自动恢复；不由持久化 READY 推断
   // FR-P1-8a 扩展：若后端未返回，前端按 ALLOWANCE_MATRIX 静态表 fail-closed 派生
-  permissions?: PortfolioStatePermissions;
+  permissions?: { [K in keyof PortfolioStatePermissions]: boolean | null } | null;
+  admission_checked_at?: string | null;
 }
 
 /** 9×4 允许矩阵静态常量（FR-P0-10 / FR-P1-8a 契约）。

@@ -9,7 +9,8 @@ on:
 jobs:
   combination-mysql57-required:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # G4 adds 23 fresh, fully migrated schemas; keep the existing real-model lanes.
+    timeout-minutes: 45
     services:
       mysql:
         image: mysql:5.7.26
@@ -40,6 +41,12 @@ jobs:
           MYSQLDUMP_BIN: /tmp/combination-mysqldump
           MYSQL_BIN: /tmp/combination-mysql
         run: python scripts/verify_combination_mysql57.py --prefix codex_combination_ci_${{ github.run_id }}_${{ github.run_attempt }} --evidence-dir tmp/combination-ci
+      - name: Real admission display HTTP flow on a fresh retained-model copy
+        env:
+          ADMISSION_DISPLAY_SOURCE_URL: mysql+pymysql://root:ci_combination_pw@127.0.0.1:3306/codex_combination_ci_${{ github.run_id }}_${{ github.run_attempt }}_auto_http
+          MYSQLDUMP_BIN: /tmp/combination-mysqldump
+          MYSQL_BIN: /tmp/combination-mysql
+        run: python scripts/verify_combination_admission_display.py --target-database codex_combination_display_${{ github.run_id }}_${{ github.run_attempt }} --evidence-dir tmp/combination-ci/admission-display
       - name: Preserve complete evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4

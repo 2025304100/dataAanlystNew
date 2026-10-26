@@ -1,3 +1,5 @@
+import PortfolioAdmissionBadge from "./PortfolioAdmissionBadge";
+import usePortfolioAdmission, {refreshPortfolioAdmission} from "../../hooks/usePortfolioAdmission";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Briefcase, ChevronDown, Zap, Trophy, Plus, AlertTriangle, Lock, Activity, Database, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { ConfigProvider, Tooltip, theme as antdTheme } from "antd";
@@ -159,7 +161,12 @@ const HG1_FALLBACK_MATRIX: Record<PortfolioStatus | string, PortfolioStatePermis
 };
 function resolveShellPermissions(status: PortfolioStatusResponse | null): PortfolioStatePermissions {
   if (!status) return HG1_FALLBACK_MATRIX.UNKNOWN;
-  if (status.permissions) return status.permissions;
+  if (status.permissions) return {
+    allow_new_buys:status.permissions.allow_new_buys===true,
+    allow_risk_exits:status.permissions.allow_risk_exits===true,
+    allow_auto_recovery:status.permissions.allow_auto_recovery===true,
+    requires_manual_ack:status.permissions.requires_manual_ack!==false,
+  };
   return HG1_FALLBACK_MATRIX[status.current_state] ?? HG1_FALLBACK_MATRIX.UNKNOWN;
 }
 
@@ -336,8 +343,8 @@ const PortfolioTradingShell: React.FC = () => {
   );
   const actionChecks: ActionItemChecks | null = currentActionItems?.checks ?? null;
   const refreshPortfolioSources = useCallback(async () => {
-    await Promise.allSettled([loadActionItems(), loadPortfolioStatus(), loadWorkbench()]);
-  }, [loadActionItems, loadPortfolioStatus, loadWorkbench]);
+    await Promise.allSettled([loadActionItems(), loadPortfolioStatus(), loadWorkbench(),refreshPortfolioAdmission(effectivePortfolioId,true)]);
+  }, [loadActionItems, loadPortfolioStatus, loadWorkbench, effectivePortfolioId]);
   const handleGovernanceChanged = useCallback(async (changedPortfolioId: number) => {
     if (changedPortfolioId !== currentPortfolioIdRef.current) return;
     await refreshPortfolioSources();
@@ -486,6 +493,7 @@ const PortfolioTradingShell: React.FC = () => {
 
       {/* ========== 组合头部 ========== */}
       <PortfolioHeader
+        portfolioId={effectivePortfolioId}
         portfolioName={currentPortfolioName}
         accountTypeLabel={currentAccountTypeLabel}
         assetScopeLabel={currentAssetScopeLabel}
@@ -586,6 +594,7 @@ const PortfolioTradingShell: React.FC = () => {
 /* ------------------------------------------------------------------ */
 
 interface PortfolioHeaderProps {
+  portfolioId: number;
   portfolioName: string;
   accountTypeLabel: string;
   assetScopeLabel: string;
@@ -613,6 +622,7 @@ interface PortfolioHeaderProps {
 }
 
 const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
+  portfolioId,
   portfolioName,
   accountTypeLabel,
   assetScopeLabel,
@@ -636,6 +646,8 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
   governanceBlocked,
   allowNewBuys = true,
 }) => {
+  const admission=usePortfolioAdmission(portfolioId);
+  const canAddCandidate=allowNewBuys && admission.view.kind==="allowed";
   // P0：单 pill 语义色。数据源为 action-items 聚合（checks 五维 + summary 计数）。
   // off=开关关；notReady=HG1 硬阻塞或存在 blocker；ready=就绪；
   // enabledOnly=已开但暂不就绪且无 blocker；unknown=聚合尚未返回。
@@ -815,52 +827,7 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
             >
               {assetScopeLabel}
             </span>
-            {/* FR-P0-10/P1-8a 9 状态徽章：与 GovernanceTab/SelectorDropdown 色板一致 */}
-            {(() => {
-              const meta = portfolioStatusMeta(portfolioStatusRaw);
-              const isEmphasis =
-                portfolioStatusRaw === "ADMIN_PAUSED" || portfolioStatusRaw === "RECONCILIATION_BLOCKED";
-              return (
-                <Tooltip title={`${meta.title}\n${meta.hint}`}>
-                  <span
-                    onClick={onOpenRepair}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      gap: 6,
-                      fontSize: 11,
-                      fontWeight: 500,
-                      padding: "2px 10px",
-                      borderRadius: "var(--pt-radius-sm)",
-                      border: `1px solid ${meta.border}`,
-                      background: meta.bg,
-                      color: meta.fg,
-                      boxShadow: isEmphasis ? "0 0 0 1px rgba(220,38,38,0.08)" : undefined,
-                    }}
-                  >
-                    {statusLoading ? (
-                      <Activity size={10} style={{ opacity: 0.7 }} />
-                    ) : portfolioStatusRaw === "READY" ? (
-                      <CheckCircle2 size={10} />
-                    ) : portfolioStatusRaw === "ADMIN_PAUSED" ? (
-                      <Lock size={10} />
-                    ) : portfolioStatusRaw === "DATA_INCOMPLETE_PAUSED" || portfolioStatusRaw === "SCORE_STALE" ? (
-                      <Database size={10} />
-                    ) : portfolioStatusRaw === "RUNNING_AUTO_SIMULATION" || portfolioStatusRaw === "RUNNING_BACKTEST" ? (
-                      <Activity size={10} />
-                    ) : portfolioStatusRaw === "RECONCILIATION_BLOCKED" ? (
-                      <AlertTriangle size={10} />
-                    ) : portfolioStatusRaw === "READY" ? (
-                      <ShieldCheck size={10} />
-                    ) : (
-                      <AlertTriangle size={10} />
-                    )}
-                    {meta.title}
-                  </span>
-                </Tooltip>
-              );
-            })()}
+            <PortfolioAdmissionBadge portfolioId={portfolioId} onInspect={onOpenRepair}/>
             <ChevronDown
               size={16}
               style={{
@@ -923,23 +890,22 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
         </button>
         {/* FR-P1-8a：添加候选标的入口（NEW_BUY 入口），allow_new_buys=false 时禁用并给出明确原因 */}
         {(() => {
-          const meta = portfolioStatusMeta(portfolioStatusRaw);
-          const reason = allowNewBuys
+          const reason = canAddCandidate
             ? undefined
-            : `${template("portfolioTrading.header.newBuysBlocked", { state: meta.title })}\n${meta.hint}`;
+            : `${template("portfolioTrading.header.newBuysBlocked", { state: admission.view.title })}\n${admission.view.hint}`;
           const btn = (
             <button
               type="button"
               className="pt-btn pt-btn-primary"
               onClick={onOpenAddCandidate}
-              disabled={!allowNewBuys}
-              style={{ opacity: !allowNewBuys ? 0.55 : 1, cursor: !allowNewBuys ? "not-allowed" : undefined }}
+              disabled={!canAddCandidate}
+              style={{ opacity: !canAddCandidate ? 0.55 : 1, cursor: !canAddCandidate ? "not-allowed" : undefined }}
             >
               <Plus size={16} />
               <span>{t("portfolioTrading.header.addCandidate")}</span>
             </button>
           );
-          return !allowNewBuys ? <Tooltip title={reason ?? ""} placement="bottomRight">{btn}</Tooltip> : btn;
+          return !canAddCandidate ? <Tooltip title={reason ?? ""} placement="bottomRight">{btn}</Tooltip> : btn;
         })()}
       </div>
     </header>

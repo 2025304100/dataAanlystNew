@@ -29,7 +29,9 @@ SCHEDULER_CHECK_INTERVAL_SECONDS = 30
 # 派发失败后的短延迟重试：撞上前台行情同步这类瞬时冲突时，不该把一整天算成已跑。
 DISPATCH_RETRY_DELAY_MINUTES = 15
 DISPATCH_MAX_RETRIES_PER_DAY = 6
-DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v9"
+# v10：新增"每日行情消息采集"与"每日行情消息过期清理"两条默认排程（行情消息 P0-1/P0-2）。
+# 升 key 触发重播种：按 name 去重，既有部署的历史排程与用户自建计划原样保留。
+DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v10"
 RECONCILIATION_SEED_KEY = "portfolio_reconciliation_schedule_v1"
 
 TASK_DEFINITIONS: dict[str, dict] = {
@@ -135,6 +137,24 @@ TASK_DEFINITIONS: dict[str, dict] = {
             "生成正式告警事件并按通知策略投递；与告警中心的「立即评估」同一条代码路径"
         ),
         "default_payload": {},
+    },
+    # 行情消息 P0-2：市场事件定时采集（原先只能前端手动触发，且默认只采 2/6 源）
+    "market_events_collect": {
+        "name": "行情消息采集",
+        "description": "从东财全球/财新/央视/百度经济/百度研报/上海金属网采集市场级事件并打标入库",
+        "default_payload": {
+            "days": 7,
+            "sources": [
+                "eastmoney-global", "caixin", "cctv", "baidu", "baidu-report", "futures-shmet",
+            ],
+        },
+    },
+    # 行情消息 P0-1：过期消息清理（expires_at 已过期且发布超 90 天的自动行；
+    # 被主题催化剂引用的行与手工行不删）
+    "market_events_cleanup": {
+        "name": "行情消息过期清理",
+        "description": "删除已过期且发布时间超出保留窗口（默认90天）的自动采集消息；保护主题催化剂引用与手工录入",
+        "default_payload": {"keep_days": 90},
     },
 }
 
@@ -296,6 +316,26 @@ DEFAULT_SCHEDULES = (
         "time_of_day": "21:30",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["alert_evaluation"]["default_payload"],
+        "enabled": True,
+    },
+    # 行情消息 P0-2：盘前采集当日资讯（08:10 早于 09:30 开盘，供今日决策引用）
+    {
+        "name": "每日行情消息采集",
+        "task_type": "market_events_collect",
+        "frequency": "daily",
+        "time_of_day": "08:10",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["market_events_collect"]["default_payload"],
+        "enabled": True,
+    },
+    # 行情消息 P0-1：凌晨低峰清理过期消息（保护 90 天回看窗口与催化剂引用行）
+    {
+        "name": "每日行情消息过期清理",
+        "task_type": "market_events_cleanup",
+        "frequency": "daily",
+        "time_of_day": "02:30",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["market_events_cleanup"]["default_payload"],
         "enabled": True,
     },
 )
@@ -555,6 +595,26 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         if payload:
             raise ValueError("alert_evaluation payload must be empty")
         return {}
+    if task_type == "market_events_collect":
+        from app.services.market_events import ALL_COLLECT_SOURCES
+
+        days = int(payload.get("days", 7))
+        if not 1 <= days <= 30:
+            raise ValueError("days must be between 1 and 30")
+        sources = payload.get("sources") or list(ALL_COLLECT_SOURCES)
+        if not isinstance(sources, list) or not sources:
+            raise ValueError("sources must be a non-empty list")
+        unknown = [item for item in sources if item not in ALL_COLLECT_SOURCES]
+        if unknown:
+            raise ValueError(f"unknown market event sources: {unknown}")
+        return {"days": days, "sources": sources}
+    if task_type == "market_events_cleanup":
+        keep_days = int(payload.get("keep_days", 90))
+        # 下限 30：再激进的配置也不允许压缩 90 天默认窗口的三分之一以下，
+        # 保留窗口是"回看完整"的硬约束，不是可任意调小的运维参数。
+        if not 30 <= keep_days <= 3650:
+            raise ValueError("keep_days must be between 30 and 3650")
+        return {"keep_days": keep_days}
     raise ValueError(f"Unsupported scheduled task type: {task_type}")
 
 
@@ -664,6 +724,13 @@ def delete_schedule(db: Session, schedule_id: int) -> None:
     db.execute(delete(ScheduledTaskRun).where(ScheduledTaskRun.schedule_id == schedule_id))
     db.delete(item)
     db.commit()
+
+
+def _fresh_service_session() -> Session:
+    """为同步执行的任务开独立会话（任务自己提交/回滚，不与调度轮次共用事务）。"""
+    from app.db.manager import DatabaseManager
+
+    return DatabaseManager.get().session_factory()
 
 
 def _dispatch_task(item: ScheduledTask):
@@ -784,6 +851,66 @@ def _dispatch_task(item: ScheduledTask):
             "id": f"alert-eval-{int(_now().timestamp())}",
             "status": "done",
             "message": f"告警评估完成：本轮命中 {len(events)} 条告警",
+        }
+    if item.task_type == "market_events_collect":
+        # 行情消息 P0-2：同步执行（scheduler_loop 在 to_thread 里跑，akshare 的
+        # 秒级耗时不会阻塞事件循环）；自己开会话自己提交，与 alert_evaluation 同一模式。
+        from app.schemas.market_event import MarketEventCollectRequest
+        from app.services.market_events import collect_market_events
+
+        validated = validate_task_payload(item.task_type, payload)
+        session = _fresh_service_session()
+        try:
+            result = collect_market_events(
+                session, MarketEventCollectRequest(**validated), trigger_source="scheduled"
+            )
+            message = (
+                f"行情消息采集完成：新增 {result.collected} 条，"
+                f"跳过重复 {result.skipped_duplicate} 条"
+            )
+            from app.services.notifications.event_emitter import emit_market_news_collect_failed
+
+            daily_key = f"market_news_collect_failed:{_now().date().isoformat()}"
+            # 告警一（全源失败）：部分失败源常见且已有重试兜底，不值得打扰。
+            if result.errors and result.collected == 0 and len(result.errors) >= len(validated["sources"]):
+                emit_market_news_collect_failed(
+                    session, errors=result.errors, event_key=daily_key,
+                )
+                message += f"；全部 {len(result.errors)} 个来源失败，已发出告警"
+            elif result.errors:
+                message += f"；{len(result.errors)} 个来源失败"
+            # 告警二（P1-7 连续空采）：采集"成功"但连续两轮零新增——源在返回
+            # 空数据而不是报错，全源失败告警覆盖不到这种静默断供。
+            from app.services.market_events import recent_collects_all_empty
+
+            if result.collected == 0 and recent_collects_all_empty(session, lookback=2):
+                emit_market_news_collect_failed(
+                    session, errors=[],
+                    event_key=f"{daily_key}:stale",
+                    reason_text="行情消息连续两轮采集零新增，疑似数据源静默断供，请人工核查。",
+                )
+                message += "；连续空采，已发出告警"
+        finally:
+            session.close()
+        return "market_events", {
+            "id": f"market-events-collect-{int(_now().timestamp())}",
+            "status": "done",
+            "message": message,
+        }
+    if item.task_type == "market_events_cleanup":
+        # 行情消息 P0-1：凌晨清理过期消息（服务内已提交）。
+        from app.services.market_events import cleanup_expired_market_events
+
+        validated = validate_task_payload(item.task_type, payload)
+        session = _fresh_service_session()
+        try:
+            result = cleanup_expired_market_events(session, keep_days=validated["keep_days"])
+        finally:
+            session.close()
+        return "market_events", {
+            "id": f"market-events-cleanup-{int(_now().timestamp())}",
+            "status": "done",
+            "message": f"行情消息清理完成：删除 {result.deleted} 条（保留窗口 {result.keep_days} 天）",
         }
     raise ValueError(f"Unsupported scheduled task type: {item.task_type}")
 

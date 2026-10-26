@@ -1,3 +1,4 @@
+import PortfolioAdmissionBadge from "./PortfolioAdmissionBadge";
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Search, Plus, Check, Trash2 } from "lucide-react";
 import { Modal } from "antd";
@@ -428,38 +429,8 @@ const PortfolioSelectorDropdown: React.FC<PortfolioSelectorDropdownProps> = ({
                     {template("portfolioTrading.selector.symbols", {
                       count: Number.isFinite(item.symbolCount) ? item.symbolCount : "--",
                     })}
-                    {item.status && (
-                      <>
-                        {" · "}
-                        {(() => {
-                          const st = STATUS_STYLES[item.status] ?? STATUS_FALLBACK;
-                          return (
-                            <span
-                              title={`组合状态: ${item.status}`}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 4,
-                                padding: "1px 7px",
-                                borderRadius: 999,
-                                border: `1px solid ${st.border}`,
-                                background: st.bg,
-                                color: st.fg,
-                                fontWeight: 600,
-                                fontSize: 10,
-                                lineHeight: "16px",
-                              }}
-                            >
-                              <span style={{
-                                width: 6, height: 6, borderRadius: 3,
-                                background: st.dot, display: "inline-block",
-                              }} />
-                              {t(`portfolioStatus.${item.status}` as any) || item.status}
-                            </span>
-                          );
-                        })()}
-                      </>
-                    )}
+                    {" · "}<PortfolioAdmissionBadge portfolioId={item.id}/>
+
                   </div>
                 </div>
 

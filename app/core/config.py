@@ -42,6 +42,11 @@ class Settings:
             os.getenv("FACTOR_WAREHOUSE_PATH", str(default_factor_warehouse_path))
         ).expanduser()
         self.wxpusher_enabled = _env_bool("WXPUSHER_ENABLED", False)
+        # P2-9：news 评分桶接真数据（灰度双开关，默认全关 = 行为与旧版完全一致）。
+        # SHADOW：只把候选分写进 dimension_scores_json.news_score_shadow，不改 event_score/priority；
+        # ENABLED：event_score 与 priority 的 news 桶正式用消息面真值。先 SHADOW 对比一轮分布再 ENABLED。
+        self.news_score_shadow = _env_bool("NEWS_SCORE_SHADOW", False)
+        self.news_score_enabled = _env_bool("NEWS_SCORE_ENABLED", False)
         self.wxpusher_endpoint = os.getenv(
             "WXPUSHER_ENDPOINT",
             "https://wxpusher.zjiecode.com/api/send/message",

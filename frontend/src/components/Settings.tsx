@@ -21,7 +21,6 @@ import MiningShell from "./factors/mining/MiningShell";
 import ScheduledTaskManager from "./ScheduledTaskManager";
 import AiConfigSection from "./AiConfigSection";
 import AISettings from "./ai/AISettings";
-import FactorBasicSettings from "./settings/FactorBasicSettings";
 import AppSettingsSection from "./settings/AppSettingsSection";
 import MessageCenter from "./messageCenter/MessageCenter";
 import { backtestMissingLabels, clearBacktestRepair, readBacktestRepair } from "../utils/backtestDraft";
@@ -36,13 +35,15 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "message-center" | "scoring" | "factor-model" | "factor-center" | "data-center" | "api-mgmt" | "db" | "ai" | "factor-mining" | "factor-basic" | "app-settings">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "message-center" | "scoring" | "factor-model" | "factor-center" | "data-center" | "api-mgmt" | "db" | "ai" | "factor-mining" | "app-settings">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
     // 「告警中心」与「消息管理」已合并为「消息中心」，旧持久化值继续可达。
     if (stored === "alerts" || stored === "notifications") return "message-center";
     if (stored === "external" || stored === "universe") return "data-center";
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "message-center" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "data-center" || stored === "api-mgmt" || stored === "db" || stored === "ai" || stored === "factor-mining" || stored === "factor-basic" || stored === "app-settings" ? stored : "rules";
+    // 原「因子基础配置」已并入「因子与模型」，旧持久化值落到新家而不是默认页。
+    if (stored === "factor-basic") return "factor-model";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "message-center" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "data-center" || stored === "api-mgmt" || stored === "db" || stored === "ai" || stored === "factor-mining" || stored === "app-settings" ? stored : "rules";
   });
   const [messageCenterTab, setMessageCenterTab] = useState<"alerts" | "inbox" | "delivery">(() => {
     if (typeof window === "undefined") return "alerts";
@@ -564,13 +565,6 @@ export default function Settings() {
                     <AISettings embedded />
                   </div>
                 </div>
-              </section>
-            </div>
-          )}
-          {activeSection === "factor-basic" && (
-            <div className="settings-tab-container" data-settings-content="settings-factor-basic">
-              <section className="band">
-                <FactorBasicSettings />
               </section>
             </div>
           )}

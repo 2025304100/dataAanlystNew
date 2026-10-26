@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -34,6 +34,10 @@ class LLMCallResult:
 
     success=False 时表示主备模型均不可用，上层应返回降级响应。
     failover_happened=True 表示发生过主备切换（无论最终成功与否）。
+
+    Batch 2（原生 function calling）：
+    - tool_calls 非空表示模型请求调用工具（此时 raw_response 可能为空）
+    - tools_unsupported=True 表示该 provider 拒绝 tools 字段，本次已自动降级为不带 tools
     """
 
     success: bool
@@ -48,6 +52,50 @@ class LLMCallResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    tool_calls: list[dict[str, Any]] | None = None
+    tools_unsupported: bool = False
+
+
+@dataclass
+class _HTTPOutcome:
+    """单次 chat/completions 调用的内部结果（含工具调用与降级标记）。"""
+
+    success: bool
+    raw_text: str = ""
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    status_code: int | str | None = None
+    error_message: str | None = None
+    latency_ms: int = 0
+    tools_unsupported: bool = False
+
+
+def _normalize_tool_calls(raw_calls: Any) -> list[dict[str, Any]]:
+    """把 provider 返回的 tool_calls 归一成 [{'id','type','function':{'name','arguments'}}]。"""
+    if not isinstance(raw_calls, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_calls):
+        if not isinstance(item, dict):
+            continue
+        function = item.get("function") if isinstance(item.get("function"), dict) else {}
+        name = function.get("name")
+        if not name:
+            continue
+        arguments = function.get("arguments")
+        if not isinstance(arguments, str):
+            try:
+                arguments = json.dumps(arguments or {}, ensure_ascii=False)
+            except (TypeError, ValueError):
+                arguments = "{}"
+        normalized.append({
+            "id": str(item.get("id") or f"call_{index}"),
+            "type": "function",
+            "function": {"name": str(name), "arguments": arguments},
+        })
+    return normalized
 
 
 def _classify_error(status_code: int | None, exc: Exception | None = None) -> str:
@@ -86,25 +134,51 @@ def _http_chat_completion(
     *,
     max_tokens: int | None = None,
     temperature: float = 0.2,
-):
+    tools: list[dict[str, Any]] | None = None,
+) -> _HTTPOutcome:
     """调用单个 Profile 的 chat/completions（OpenAI 兼容）。
 
-    返回元组：
-    (success, raw_text, prompt_tokens, completion_tokens, total_tokens,
-     status_code, error_msg, latency_ms)
+    Batch 2：支持 tools（原生 function calling）。若 provider 不接受 tools
+    （4xx），自动去掉 tools 重试一次并把 tools_unsupported 标记回传——
+    上层据此退回单轮问答逻辑，不改变原有行为（既定约束 1）。
 
-    永不抛异常：所有错误被捕获并返回 success=False。
+    永不抛异常：所有错误被捕获并以 success=False 返回。
     Authorization header 仅在 httpx 请求中使用，不记录到日志/返回值。
     """
+    outcome = _http_chat_completion_once(
+        profile, messages, max_tokens=max_tokens, temperature=temperature, tools=tools,
+    )
+    if tools and not outcome.success and outcome.status_code in (400, 404, 422):
+        # provider 不支持 tools：降级重试（不带 tools），并标记
+        fallback = _http_chat_completion_once(
+            profile, messages, max_tokens=max_tokens, temperature=temperature, tools=None,
+        )
+        fallback.tools_unsupported = True
+        return fallback
+    return outcome
+
+
+def _http_chat_completion_once(
+    profile: AIProfile,
+    messages: list[dict[str, Any]],
+    *,
+    max_tokens: int | None = None,
+    temperature: float = 0.2,
+    tools: list[dict[str, Any]] | None = None,
+) -> _HTTPOutcome:
+    """单次 chat/completions 调用（不做工具降级重试）。"""
     # 复用 ai_profile_service 的鉴权/endpoint 构造（不暴露明文 secret）
     headers = ai_profile_service._auth_headers(profile, json_content=True)
     endpoint = ai_profile_service._endpoint_url(profile, "/chat/completions")
-    payload = {
+    payload: dict[str, Any] = {
         "model": profile.model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens or profile.max_tokens,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
     started = time.time()
     try:
         # 非流式调用：统一给 120s 兜底，避免长回复时被默认 30s 截断
@@ -119,35 +193,48 @@ def _http_chat_completion(
             resp = client.post(endpoint, json=payload, headers=headers)
     except httpx.TimeoutException as exc:
         latency_ms = int((time.time() - started) * 1000)
-        return (False, "", 0, 0, 0, None, f"请求超时：{exc}", latency_ms)
+        return _HTTPOutcome(success=False, error_message=f"请求超时：{exc}", latency_ms=latency_ms)
     except httpx.RequestError as exc:
         latency_ms = int((time.time() - started) * 1000)
         # 不记录 exc 原文（可能含 URL/header），仅分类信息
-        return (False, "", 0, 0, 0, None, f"连接失败：{type(exc).__name__}", latency_ms)
+        return _HTTPOutcome(success=False, error_message=f"连接失败：{type(exc).__name__}", latency_ms=latency_ms)
     except Exception as exc:  # noqa: BLE001 - best-effort，不阻塞业务
         latency_ms = int((time.time() - started) * 1000)
-        return (False, "", 0, 0, 0, None, f"内部错误：{type(exc).__name__}", latency_ms)
+        return _HTTPOutcome(success=False, error_message=f"内部错误：{type(exc).__name__}", latency_ms=latency_ms)
 
     latency_ms = int((time.time() - started) * 1000)
     status_code = resp.status_code
     if status_code >= 400:
         # 响应体可能含敏感信息，仅截断后返回
-        return (False, "", 0, 0, 0, status_code, f"HTTP {status_code}", latency_ms)
+        return _HTTPOutcome(success=False, status_code=status_code, error_message=f"HTTP {status_code}", latency_ms=latency_ms)
 
     try:
         data = resp.json()
     except Exception:  # noqa: BLE001
-        return (False, "", 0, 0, 0, status_code, "响应解析失败", latency_ms)
+        return _HTTPOutcome(success=False, status_code=status_code, error_message="响应解析失败", latency_ms=latency_ms)
 
     try:
         choices = data.get("choices") or []
-        raw_text = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(raw_text, str) or not raw_text:
+        message = (choices[0].get("message") or {}) if choices else {}
+        raw_text = message.get("content")
+        if not isinstance(raw_text, str):
+            raw_text = ""
+        tool_calls = _normalize_tool_calls(message.get("tool_calls"))
+        if not raw_text and not tool_calls:
             raise ValueError("Missing text content")
         prompt_tokens, completion_tokens, total_tokens = _token_usage(data.get("usage") or {})
     except (AttributeError, TypeError, ValueError, IndexError, KeyError, OverflowError):
-        return False, "", 0, 0, 0, status_code, "AI 服务响应格式异常，请检查兼容协议与模型", latency_ms
-    return (True, raw_text, prompt_tokens, completion_tokens, total_tokens, status_code, None, latency_ms)
+        return _HTTPOutcome(success=False, status_code=status_code, error_message="AI 服务响应格式异常，请检查兼容协议与模型", latency_ms=latency_ms)
+    return _HTTPOutcome(
+        success=True,
+        raw_text=raw_text,
+        tool_calls=tool_calls,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        status_code=status_code,
+        latency_ms=latency_ms,
+    )
 
 
 def _stream_profile_completion(
@@ -157,22 +244,32 @@ def _stream_profile_completion(
     profile_id: int,
     max_tokens: int | None = None,
     temperature: float = 0.2,
+    tools: list[dict[str, Any]] | None = None,
 ):
-    """Yield provider text deltas followed by one terminal LLMCallResult."""
+    """Yield provider text deltas followed by one terminal LLMCallResult.
+
+    Batch 2：tools 非空时按 OpenAI 流式协议聚合 `delta.tool_calls` 分片
+    （id / name / arguments 都可能被切碎，按 index 合并）；本轮若只产出工具调用，
+    chunks 为空但 tool_calls 非空，属正常结束。
+    """
     profile = ai_profile_service.get_profile(db, profile_id)
     if profile is None or not profile.is_enabled:
         yield {"type": "result", "result": LLMCallResult(success=False, error_message="指定的 AI Profile 不存在或未启用")}
         return
     headers = ai_profile_service._auth_headers(profile, json_content=True)
     endpoint = ai_profile_service._endpoint_url(profile, "/chat/completions")
-    payload = {
+    payload: dict[str, Any] = {
         "model": profile.model, "messages": messages, "stream": True,
         "temperature": temperature, "max_tokens": max_tokens or profile.max_tokens,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
     started = time.time()
     chunks: list[str] = []
     usage: dict[str, Any] = {}
     completed = False
+    tool_fragments: dict[int, dict[str, Any]] = {}
     try:
         # 流式响应：connect/write 用配置超时，read 阶段不设上限
         base_timeout = float(profile.timeout_seconds)
@@ -185,7 +282,14 @@ def _stream_profile_completion(
         with httpx.Client(timeout=timeout) as client:
             with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
                 if resp.status_code >= 400:
-                    result = LLMCallResult(success=False, error_type=_classify_error(resp.status_code), error_message=f"HTTP {resp.status_code}", profile_used=profile)
+                    result = LLMCallResult(
+                        success=False,
+                        error_type=_classify_error(resp.status_code),
+                        error_message=f"HTTP {resp.status_code}",
+                        profile_used=profile,
+                        # 4xx 且带 tools → 由调用方决定是否降级重试（不带 tools）
+                        tools_unsupported=bool(tools) and resp.status_code in (400, 404, 422),
+                    )
                     yield {"type": "result", "result": result}
                     return
                 for line in resp.iter_lines():
@@ -203,12 +307,25 @@ def _stream_profile_completion(
                     choices = data.get("choices") or []
                     if choices and choices[0].get("finish_reason") is not None:
                         completed = True
-                    delta = ((choices[0].get("delta") or {}).get("content") or "") if choices else ""
+                    delta_obj = (choices[0].get("delta") or {}) if choices else {}
+                    delta = delta_obj.get("content") or ""
                     if delta and not isinstance(delta, str):
                         raise ValueError("Unsupported stream content shape")
                     if delta:
                         chunks.append(delta)
                         yield {"type": "delta", "content": delta}
+                    for fragment in delta_obj.get("tool_calls") or []:
+                        if not isinstance(fragment, dict):
+                            continue
+                        index = int(fragment.get("index") or 0)
+                        slot = tool_fragments.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                        if fragment.get("id"):
+                            slot["id"] = str(fragment["id"])
+                        function = fragment.get("function") or {}
+                        if function.get("name"):
+                            slot["function"]["name"] += str(function["name"])
+                        if function.get("arguments"):
+                            slot["function"]["arguments"] += str(function["arguments"])
     except Exception as exc:  # noqa: BLE001
         latency = int((time.time() - started) * 1000)
         yield {"type": "result", "result": LLMCallResult(success=False, error_type=_classify_error(None, exc), error_message=type(exc).__name__, profile_used=profile, latency_ms=latency)}
@@ -217,7 +334,10 @@ def _stream_profile_completion(
     if not completed:
         yield {"type": "result", "result": LLMCallResult(success=False, error_type="stream_interrupted", error_message="AI 流式连接在完成标记前结束，回复可能不完整，请重试", profile_used=profile, latency_ms=latency)}
         return
-    if not chunks:
+    tool_calls = _normalize_tool_calls(
+        [tool_fragments[index] for index in sorted(tool_fragments)]
+    )
+    if not chunks and not tool_calls:
         yield {"type": "result", "result": LLMCallResult(success=False, error_type="protocol", error_message="AI 服务没有返回可解析的流式内容", profile_used=profile, latency_ms=latency)}
         return
     try:
@@ -225,7 +345,7 @@ def _stream_profile_completion(
     except (TypeError, ValueError, OverflowError):
         yield {"type": "result", "result": LLMCallResult(success=False, error_type="protocol", error_message="AI 服务返回的用量信息格式异常，请检查兼容协议", profile_used=profile, latency_ms=latency)}
         return
-    yield {"type": "result", "result": LLMCallResult(success=True, raw_response="".join(chunks), profile_used=profile, latency_ms=latency, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt)}
+    yield {"type": "result", "result": LLMCallResult(success=True, raw_response="".join(chunks), profile_used=profile, latency_ms=latency, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt, tool_calls=tool_calls or None)}
 
 
 def _unavailable_result(profile, purpose):
@@ -233,7 +353,7 @@ def _unavailable_result(profile, purpose):
     return LLMCallResult(success=False, error_type="unsupported_protocol" if protocol_error else "quota", error_message=protocol_error or "AI Profile 不可用、用途不匹配或当日额度已用完，请检查配置或选择可用备用模型", profile_used=profile)
 
 
-def stream_llm_completion(db, messages, *, profile_id, max_tokens=None, temperature=0.2, purpose=PURPOSE_ALL):
+def stream_llm_completion(db, messages, *, profile_id, max_tokens=None, temperature=0.2, purpose=PURPOSE_ALL, tools=None):
     """Apply the same quota and health policy to streamed assistant requests."""
     manager = get_failover_manager()
     profile = ai_profile_service.get_profile(db, profile_id)
@@ -244,7 +364,7 @@ def stream_llm_completion(db, messages, *, profile_id, max_tokens=None, temperat
         if profile is not None and manager.profile_available(profile, purpose):
             try:
                 with profile_request_slot(db, profile):
-                    for event in _stream_profile_completion(db, messages, profile_id=profile.id, max_tokens=max_tokens, temperature=temperature):
+                    for event in _stream_profile_completion(db, messages, profile_id=profile.id, max_tokens=max_tokens, temperature=temperature, tools=tools):
                         if event["type"] == "delta":
                             emitted = True
                             yield event
@@ -271,12 +391,12 @@ def stream_llm_completion(db, messages, *, profile_id, max_tokens=None, temperat
         profile = backup
 
 
-def _admitted_chat_completion(db, profile, messages, **kwargs):
+def _admitted_chat_completion(db, profile, messages, **kwargs) -> _HTTPOutcome:
     try:
         with profile_request_slot(db, profile):
             return _http_chat_completion(profile, messages, **kwargs)
     except ProfileExecutionRejected as exc:
-        return False, "", 0, 0, 0, exc.code, str(exc), 0
+        return _HTTPOutcome(success=False, status_code=exc.code, error_message=str(exc))
 
 
 def call_llm_with_failover(
@@ -287,27 +407,40 @@ def call_llm_with_failover(
     purpose: str = PURPOSE_ALL,
     max_tokens: int | None = None,
     temperature: float = 0.2,
+    tools: list[dict[str, Any]] | None = None,
 ) -> LLMCallResult:
-    """Run at most one primary and one available backup under shared admission."""
+    """Run at most one primary and one available backup under shared admission.
+
+    Batch 2：tools 非空时走原生 function calling；provider 拒绝 tools 时
+    `_http_chat_completion` 会自动降级重试并置 tools_unsupported。
+    """
     manager = get_failover_manager()
     profile = ai_profile_service.get_profile(db, profile_id) if profile_id is not None else manager.select_profile(db, purpose=purpose)
     primary_name = profile.name if profile else ""
     for attempt in range(2):
         result = _unavailable_result(profile, purpose)
         if profile is not None and manager.profile_available(profile, purpose):
-            ok, raw, pt, ct, tt, status, error, latency = _admitted_chat_completion(
-                db, profile, messages, max_tokens=max_tokens, temperature=temperature,
+            outcome = _admitted_chat_completion(
+                db, profile, messages, max_tokens=max_tokens, temperature=temperature, tools=tools,
             )
-            error_type = None if ok else _classify_error(status)
+            error_type = None if outcome.success else _classify_error(outcome.status_code)
             result = LLMCallResult(
-                success=ok, raw_response=raw, profile_used=profile,
-                error_type=error_type, error_message=error,
-                latency_ms=latency, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt,
+                success=outcome.success,
+                raw_response=outcome.raw_text,
+                profile_used=profile,
+                error_type=error_type,
+                error_message=outcome.error_message,
+                latency_ms=outcome.latency_ms,
+                prompt_tokens=outcome.prompt_tokens,
+                completion_tokens=outcome.completion_tokens,
+                total_tokens=outcome.total_tokens,
+                tool_calls=outcome.tool_calls or None,
+                tools_unsupported=outcome.tools_unsupported,
             )
-            if ok:
-                manager.record_success(db, profile.id, latency_ms=latency, tokens=tt, count_request=False)
+            if outcome.success:
+                manager.record_success(db, profile.id, latency_ms=outcome.latency_ms, tokens=outcome.total_tokens, count_request=False)
             elif error_type not in ("quota", "concurrency", "unsupported_protocol", "storage"):
-                manager.record_failure(db, profile.id, error_type=error_type or "unknown", error_msg=error or "")
+                manager.record_failure(db, profile.id, error_type=error_type or "unknown", error_msg=outcome.error_message or "")
             db.commit()
         if attempt:
             result.failover_happened = True

@@ -13,6 +13,9 @@ export type FactorPipelinePrepareStepProps = {
   warehouseAvailable: boolean;
   coverage: number | null;
   latestDate: string | null;
+  /** 因子系统配置的最后修改人与时间（原「因子基础配置」页唯一独有信息） */
+  configUpdatedAt?: string | null;
+  configUpdatedBy?: string | null;
   error?: string | null;
   busy?: boolean;
   onEnable: () => void;
@@ -28,6 +31,8 @@ export default function FactorPipelinePrepareStep({
   warehouseAvailable,
   coverage,
   latestDate,
+  configUpdatedAt = null,
+  configUpdatedBy = null,
   error,
   busy = false,
   onEnable,
@@ -44,6 +49,9 @@ export default function FactorPipelinePrepareStep({
       ? `${(Math.min(1, Math.max(0, coverage)) * 100).toFixed(1)}%`
       : "尚无覆盖统计"
     : pendingLabel;
+  const configAuditText = known && (configUpdatedAt || configUpdatedBy)
+    ? `${t("factorModelConfigAudit")}：${configUpdatedAt ? configUpdatedAt.replace("T", " ") : "—"}${configUpdatedBy ? ` · ${configUpdatedBy}` : ""}`
+    : null;
 
   if (inputPage) {
     return (
@@ -89,6 +97,7 @@ export default function FactorPipelinePrepareStep({
             {known ? featureEnabled ? "已开启" : "需要开启" : pendingLabel}
           </Tag></dd>
           {known && !featureEnabled && <Button size="small" loading={busy} onClick={onEnable}>开启因子功能</Button>}
+          {configAuditText && <small className="factor-prepare-audit" data-factor-config-audit>{configAuditText}</small>}
         </div>
         <div className="factor-prepare-status-item">
           <dt>本地因子仓库</dt>

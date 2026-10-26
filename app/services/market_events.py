@@ -7,10 +7,12 @@ from typing import Any, Callable
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import desc, func, select
+from pathlib import Path
+from sqlalchemy import case, delete, desc, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.models.market_event import MarketEvent
+from app.models.investment_theme import ThemeCatalyst
+from app.models.market_event import MarketEvent, MarketEventCollectRun
 from app.schemas.market_event import (
     MarketEventCollectRequest,
     MarketEventCollectResponse,
@@ -20,8 +22,17 @@ from app.schemas.market_event import (
     MarketEventUpdate,
 )
 from app.services.akshare_utils import quiet_akshare_output
+from app.services.sector_concepts import map_to_sectors, map_to_sectors_db, parse_affected_sectors
 
 logger = logging.getLogger(__name__)
+
+# P0-2：全部已实现采集源（前端按钮与定时任务的默认全集）
+ALL_COLLECT_SOURCES = [
+    "eastmoney-global", "caixin", "cctv", "baidu", "baidu-report", "futures-shmet",
+]
+
+# P0-1：过期消息清理的默认保留窗口（天）。90 天回看窗口内的数据绝不清删。
+CLEANUP_KEEP_DAYS_DEFAULT = 90
 
 SCOPE_KEYWORDS: dict[str, list[str]] = {
     "macro_policy": ["政策", "央行", "降准", "降息", "加息", "利率", "LPR", "MLF", "财政", "货币", "CPI", "PPI", "PMI", "GDP", "社融", "M2", "国债", "美债", "通胀", "就业", "非农", "美联储", "国务院", "发改委", "证监会", "政治局"],
@@ -46,6 +57,41 @@ SENTIMENT_KEYWORDS: dict[str, list[str]] = {
 }
 
 SOURCE_CREDIBILITY = {"cctv": 5, "baidu-report": 4, "baidu": 3, "eastmoney-global": 4, "caixin": 4, "futures-shmet": 3, "manual": 4}
+
+# ── P1-5：词表外置配置 ──────────────────────────────────────
+# data/config/market_event_keywords.json 可覆盖默认词表（同名键整体替换），
+# 调词不用改代码发版；文件缺失/损坏时静默回退内置默认。按 mtime 缓存。
+_KEYWORD_OVERRIDE_FILE = Path(__file__).resolve().parents[2] / "data" / "config" / "market_event_keywords.json"
+_keyword_cache: dict = {"mtime": None, "scope": None, "level": None, "sentiment": None}
+
+
+def _merged_keywords() -> tuple[dict, dict, dict]:
+    import json
+    import os
+
+    try:
+        mtime = _KEYWORD_OVERRIDE_FILE.stat().st_mtime
+    except OSError:
+        mtime = None
+    if mtime is not None and _keyword_cache["mtime"] == mtime:
+        return _keyword_cache["scope"], _keyword_cache["level"], _keyword_cache["sentiment"]
+
+    scope = {k: list(v) for k, v in SCOPE_KEYWORDS.items()}
+    level = {k: list(v) for k, v in LEVEL_KEYWORDS.items()}
+    sentiment = {k: list(v) for k, v in SENTIMENT_KEYWORDS.items()}
+    if mtime is not None:
+        try:
+            with open(_KEYWORD_OVERRIDE_FILE, encoding="utf-8") as fh:
+                overrides = json.load(fh)
+            for key, target in (("impact_scope", scope), ("importance_level", level), ("sentiment", sentiment)):
+                for name, words in (overrides.get(key) or {}).items():
+                    if isinstance(words, list) and words:
+                        target[str(name)] = [str(w) for w in words]
+        except (OSError, ValueError, TypeError):
+            logger.warning("market_event_keywords.json 解析失败，回退内置默认词表", exc_info=True)
+            mtime = None
+    _keyword_cache.update({"mtime": mtime, "scope": scope, "level": level, "sentiment": sentiment})
+    return scope, level, sentiment
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -129,25 +175,36 @@ def _pick_published_at(row: dict[str, Any]) -> datetime | None:
 
 
 def _classify_impact_scope(title: str, summary: str | None) -> str:
+    """P1-5：按命中关键词数加权取最高（消除词表顺序敏感）。
+
+    旧行为是"字典序首个命中即返回"——"美联储"同时属于宏观与国际，谁在
+    前算谁。改为计数后，多命中证据的分类胜出；平局保持原字典序优先；
+    全部未命中仍归 other。
+    """
+    scope_keywords, _, _ = _merged_keywords()
     text = f"{title} {summary or ''}"
-    for scope, keywords in SCOPE_KEYWORDS.items():
-        if any(keyword in text for keyword in keywords):
-            return scope
-    return "other"
+    best_scope, best_hits = "other", 0
+    for scope, keywords in scope_keywords.items():
+        hits = sum(1 for keyword in keywords if keyword in text)
+        if hits > best_hits:
+            best_scope, best_hits = scope, hits
+    return best_scope
 
 
 def _classify_importance_level(title: str, summary: str | None) -> int:
+    _, level_keywords, _ = _merged_keywords()
     text = f"{title} {summary or ''}"
     for level in range(5, 1, -1):
-        if any(keyword in text for keyword in LEVEL_KEYWORDS.get(level, [])):
+        if any(keyword in text for keyword in level_keywords.get(level, [])):
             return level
     return 2
 
 
 def _classify_sentiment(title: str, summary: str | None) -> str:
+    _, _, sentiment_keywords = _merged_keywords()
     text = f"{title} {summary or ''}"
-    pos = sum(1 for keyword in SENTIMENT_KEYWORDS["positive"] if keyword in text)
-    neg = sum(1 for keyword in SENTIMENT_KEYWORDS["negative"] if keyword in text)
+    pos = sum(1 for keyword in sentiment_keywords["positive"] if keyword in text)
+    neg = sum(1 for keyword in sentiment_keywords["negative"] if keyword in text)
     if pos > neg:
         return "positive"
     if neg > pos:
@@ -208,11 +265,17 @@ def list_market_events(
     date_from: str | None = None,
     date_to: str | None = None,
     is_manual: int | None = None,
+    keyword: str | None = None,
     limit: int = 50,
     offset: int = 0,
     sort_by: str = "published_at",
 ) -> MarketEventListResponse:
     stmt = select(MarketEvent)
+    if keyword:
+        # P1-6：关键词检索（标题/摘要包含；contains 自带 autoescape 处理 %/_ 通配符）
+        needle = keyword.strip()
+        stmt = stmt.where(or_(MarketEvent.title.contains(needle, autoescape=True),
+                              MarketEvent.summary.contains(needle, autoescape=True)))
     if impact_scope:
         stmt = stmt.where(MarketEvent.impact_scope == impact_scope)
     if importance_level_min is not None:
@@ -236,7 +299,18 @@ def list_market_events(
 
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
     if sort_by == "importance_level":
-        stmt = stmt.order_by(desc(MarketEvent.importance_level), desc(MarketEvent.published_at), desc(MarketEvent.created_at))
+        # P1-5：同级并列时按来源权威性兜底排序（SOURCE_CREDIBILITY 首次真正参与排序），
+        # 权威源在前、未知来源按最低档 2 处理；时间仍是第三序。
+        credibility = case(
+            *[(MarketEvent.source == src, score) for src, score in SOURCE_CREDIBILITY.items()],
+            else_=2,
+        )
+        stmt = stmt.order_by(
+            desc(MarketEvent.importance_level),
+            desc(credibility),
+            desc(MarketEvent.published_at),
+            desc(MarketEvent.created_at),
+        )
     else:
         stmt = stmt.order_by(desc(MarketEvent.published_at), desc(MarketEvent.created_at))
     events = db.execute(stmt.offset(offset).limit(limit)).scalars().all()
@@ -260,6 +334,11 @@ def create_market_event(db: Session, payload: MarketEventCreate) -> MarketEvent:
     event = MarketEvent(**payload.model_dump(exclude_unset=True), source="manual", is_manual=1)
     if event.published_at is None:
         event.published_at = _now()
+    # P0-4/P0-3：手工事件同样维护去重 hash；未显式给板块时自动打标
+    event.title_hash = _title_hash(event.title)
+    if not event.affected_sectors:
+        sectors = map_to_sectors_db(db, event.title, event.summary)
+        event.affected_sectors = ",".join(sectors) if sectors else None
     db.add(event)
     db.commit()
     db.refresh(event)
@@ -270,8 +349,12 @@ def update_market_event(db: Session, event_id: int, payload: MarketEventUpdate) 
     event = db.get(MarketEvent, event_id)
     if event is None:
         return None
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for key, value in changes.items():
         setattr(event, key, value)
+    # 标题变更时同步去重 hash（保持与采集入库一致的不变量）
+    if "title" in changes:
+        event.title_hash = _title_hash(event.title or "")
     db.commit()
     db.refresh(event)
     return event
@@ -335,7 +418,114 @@ def _fetch_futures_news() -> list[dict]:
     return _fetch_from_ak(ak.futures_news_shmet, "futures-shmet", 30)
 
 
-def collect_market_events(db: Session, payload: MarketEventCollectRequest) -> MarketEventCollectResponse:
+def _backfill_title_hashes(db: Session) -> int:
+    """P0-4：为历史缺 title_hash 的行回填（自愈，幂等）。
+
+    迁移 0086 会回填存量；这里兜底两类环境：只跑过 create_all 的库、
+    以及迁移后人工导入了无 hash 数据的库。行数不多时一次补齐，
+    避免去重查询漏掉旧标题造成重复入库。
+    """
+    rows = db.execute(
+        select(MarketEvent.id, MarketEvent.title).where(MarketEvent.title_hash.is_(None))
+    ).all()
+    for event_id, title in rows:
+        db.execute(
+            update(MarketEvent).where(MarketEvent.id == event_id).values(title_hash=_title_hash(title))
+        )
+    return len(rows)
+
+
+def _existing_title_hashes(db: Session, candidate_hashes: set[str]) -> set[str]:
+    """按候选 hash 分块查库，返回库中已存在的 hash 集合（走 title_hash 索引）。"""
+    found: set[str] = set()
+    ordered = list(candidate_hashes)
+    chunk_size = 500
+    for start in range(0, len(ordered), chunk_size):
+        chunk = ordered[start:start + chunk_size]
+        found.update(
+            db.execute(
+                select(MarketEvent.title_hash).where(MarketEvent.title_hash.in_(chunk))
+            ).scalars().all()
+        )
+    return found
+
+
+# P1-7：采集运行账目保留窗口（天）
+COLLECT_RUNS_KEEP_DAYS = 90
+
+
+def _record_collect_run(db: Session, *, trigger_source: str, payload: MarketEventCollectRequest,
+                        collected: int, skipped: int, status: str, errors: list[str],
+                        started_at) -> None:
+    import json as _json
+
+    try:
+        from app.models.market_event import MarketEventCollectRun
+
+        db.add(MarketEventCollectRun(
+            trigger_source=trigger_source,
+            days=payload.days,
+            sources_json=_json.dumps(list(payload.sources), ensure_ascii=False),
+            collected=collected,
+            skipped_duplicate=skipped,
+            status=status,
+            errors_json=_json.dumps(errors[:20], ensure_ascii=False),
+            started_at=started_at,
+            finished_at=_now(),
+        ))
+        # 顺带清理窗口外的旧账目（轻表，不无限增长）
+        cutoff = _now() - timedelta(days=COLLECT_RUNS_KEEP_DAYS)
+        db.execute(delete(MarketEventCollectRun).where(MarketEventCollectRun.created_at < cutoff))
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning("market_event_collect_runs 记账失败（不影响采集结果）", exc_info=True)
+
+
+def list_collect_runs(db: Session, *, limit: int = 20) -> list[MarketEventCollectRun]:
+    """P1-7：最近采集记录（新→旧）。"""
+    return db.execute(
+        select(MarketEventCollectRun).order_by(desc(MarketEventCollectRun.id)).limit(limit)
+    ).scalars().all()
+
+
+def recent_collects_all_empty(db: Session, *, lookback: int = 2) -> bool:
+    """P1-7：最近 lookback 次采集是否全部零新增（连续空采告警判定）。
+
+    历史记录不足 lookback 条时返回 False——没有足够证据就不告警。
+    """
+    runs = db.execute(
+        select(MarketEventCollectRun.collected)
+        .order_by(desc(MarketEventCollectRun.id))
+        .limit(lookback)
+    ).scalars().all()
+    if len(runs) < lookback:
+        return False
+    return all((count or 0) == 0 for count in runs)
+
+
+def collect_market_events(
+    db: Session, payload: MarketEventCollectRequest, *, trigger_source: str = "manual"
+) -> MarketEventCollectResponse:
+    """P1-7：外层包一层采集运行账目（成功/失败都落一行 market_event_collect_runs）。
+
+    账目写入失败只记日志不阻断采集（旧库未跑迁移时采集仍可用）。
+    """
+    started_at = _now()
+    try:
+        result = _collect_market_events_inner(db, payload)
+    except Exception as exc:
+        _record_collect_run(db, trigger_source=trigger_source, payload=payload,
+                            collected=0, skipped=0, status="failed",
+                            errors=[f"{type(exc).__name__}: {exc}"], started_at=started_at)
+        raise
+    _record_collect_run(db, trigger_source=trigger_source, payload=payload,
+                        collected=result.collected, skipped=result.skipped_duplicate,
+                        status="done", errors=result.errors, started_at=started_at)
+    return result
+
+
+def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest) -> MarketEventCollectResponse:
     source_map: dict[str, Callable[[], list[dict]]] = {
         "eastmoney-global": _fetch_global_news,
         "caixin": _fetch_caixin_news,
@@ -359,8 +549,15 @@ def collect_market_events(db: Session, payload: MarketEventCollectRequest) -> Ma
             logger.debug("Failed to fetch source %s", source, exc_info=True)
 
     cutoff = _now() - timedelta(days=payload.days)
-    existing = db.execute(select(MarketEvent.title)).scalars().all()
-    seen_hashes = {_title_hash(title) for title in existing}
+    # P0-4：先自愈回填历史行，再用本批候选 hash 做索引查询去重，
+    # 替代原先"全表拉所有标题"的内存 MD5 集合（表越大采集越慢）。
+    _backfill_title_hashes(db)
+    candidate_titles: dict[str, str] = {}
+    for raw in all_raw:
+        title = str(raw.get("title") or "").strip()
+        if title:
+            candidate_titles.setdefault(_title_hash(title), title)
+    seen_hashes = _existing_title_hashes(db, set(candidate_titles))
     collected = 0
     skipped = 0
 
@@ -385,6 +582,9 @@ def collect_market_events(db: Session, payload: MarketEventCollectRequest) -> Ma
         importance_level = _classify_importance_level(title, summary)
         sentiment = _classify_sentiment(title, summary)
         expires_days = 14 if importance_level >= 4 else 7 if importance_level >= 3 else 3
+        # P0-3：板块标签入库（逗号分隔板块 id），激活原先闲置的 affected_sectors 字段
+        # P2-12：匹配前先合并 DB 关键词覆盖（后台可调词，无需发版）
+        sectors = map_to_sectors_db(db, title, summary)
 
         db.add(MarketEvent(
             title=title,
@@ -392,14 +592,151 @@ def collect_market_events(db: Session, payload: MarketEventCollectRequest) -> Ma
             impact_scope=impact_scope,
             importance_level=importance_level,
             affected_market=_affected_market(impact_scope),
+            affected_sectors=",".join(sectors) if sectors else None,
             sentiment=sentiment,
             source=raw.get("source") or "unknown",
             source_url=raw.get("source_url"),
             is_manual=0,
             published_at=published_at,
             expires_at=published_at + timedelta(days=expires_days) if published_at else None,
+            title_hash=title_hash,
         ))
         collected += 1
 
     db.commit()
     return MarketEventCollectResponse(collected=collected, skipped_duplicate=skipped, errors=errors)
+
+
+def cleanup_expired_market_events(db: Session, *, keep_days: int = CLEANUP_KEEP_DAYS_DEFAULT) -> "MarketEventCleanupResponse":
+    """P0-1：清理过期消息（此前只有前端视觉过滤，数据库无限增长）。
+
+    数据保护规则（硬约束，回归用例锁死）：
+    1. 仅删除已过期（expires_at < now）且发布时间早于保留窗口（keep_days，默认 90 天）的行
+       —— 90 天回看窗口内数据完整；
+    2. 排除被主题催化剂（ThemeCatalyst）引用的事件行，组合准入链路依赖该外键；
+    3. 排除手工创建（is_manual=1）的行 —— 人工录入内容不自动删除，由人工管理；
+    4. expires_at / published_at 为 NULL 的行不删（NULL 比较为假，保守保留）。
+    """
+    from app.schemas.market_event import MarketEventCleanupResponse
+
+    now = _now()
+    published_cutoff = now - timedelta(days=keep_days)
+    referenced = select(ThemeCatalyst.market_event_id).where(ThemeCatalyst.market_event_id.is_not(None))
+    stmt = select(MarketEvent).where(
+        MarketEvent.expires_at.is_not(None),
+        MarketEvent.expires_at < now,
+        MarketEvent.published_at.is_not(None),
+        MarketEvent.published_at < published_cutoff,
+        MarketEvent.is_manual == 0,
+        ~MarketEvent.id.in_(referenced),
+    )
+    stale = db.execute(stmt).scalars().all()
+    for event in stale:
+        db.delete(event)
+    db.commit()
+    logger.info("market_events cleanup: deleted %d rows (keep_days=%d)", len(stale), keep_days)
+    return MarketEventCleanupResponse(deleted=len(stale), keep_days=keep_days, cutoff_date=published_cutoff)
+
+
+# 单个板块返回给前端的样本事件 id 上限（防止 365 天窗口下 payload 膨胀）
+HOTSPOT_EVENT_IDS_CAP = 50
+
+# AI 事件归因（P1-8）：注入 AI 上下文的同期重大事件筛选口径
+CONTEXT_EVENT_DAYS = 14
+CONTEXT_EVENT_MIN_LEVEL = 4
+CONTEXT_EVENT_LIMIT = 8
+
+
+def recent_market_events_for_context(
+    db: Session,
+    *,
+    days: int = CONTEXT_EVENT_DAYS,
+    min_level: int = CONTEXT_EVENT_MIN_LEVEL,
+    limit: int = CONTEXT_EVENT_LIMIT,
+) -> list[dict]:
+    """P1-8：取近期重大市场事件供 AI 上下文归因引用。
+
+    只取 importance>=4（默认）的宏观/行业级事件，量级可控；调用方必须以
+    is_untrusted 标记注入——AI 只能引用其解释异动，不得当作事实依据。
+    """
+    cutoff = _now() - timedelta(days=days)
+    rows = db.execute(
+        select(MarketEvent)
+        .where(MarketEvent.importance_level >= min_level, MarketEvent.published_at >= cutoff)
+        .order_by(desc(MarketEvent.importance_level), desc(MarketEvent.published_at))
+        .limit(limit)
+    ).scalars().all()
+    return [
+        {
+            "id": event.id,
+            "title": event.title,
+            "impact_scope": event.impact_scope,
+            "importance_level": event.importance_level,
+            "sentiment": event.sentiment,
+            "source": event.source,
+            "published_at": event.published_at.isoformat() if event.published_at else None,
+        }
+        for event in rows
+    ]
+
+
+def get_market_event_hotspots(db: Session, *, days: int = 30) -> "MarketEventHotspotsResponse":
+    """P0-3：概念热点后端聚合。
+
+    口径说明：
+    - 统计窗口按 published_at 回溯，不受列表筛选影响，也**不再剔除已过期消息**
+      （过期只影响列表展示；此前前端把 365 天窗口当 30 天数据过滤是失真来源）；
+    - 落库的 affected_sectors 优先；历史空值行用知识库现算（不回写，保持读时兼容）；
+    - MySQL 5.7 兼容：无窗口函数/CTE，窗口过滤后在应用层聚合。
+    """
+    from app.schemas.market_event import (
+        MarketEventHotspotSector,
+        MarketEventHotspotsResponse,
+    )
+
+    cutoff = _now() - timedelta(days=days)
+    rows = db.execute(
+        select(
+            MarketEvent.id,
+            MarketEvent.title,
+            MarketEvent.summary,
+            MarketEvent.sentiment,
+            MarketEvent.importance_level,
+            MarketEvent.affected_sectors,
+        ).where(MarketEvent.published_at >= cutoff)
+    ).all()
+
+    agg: dict[str, dict] = {}
+    for event_id, title, summary, sentiment, level, sectors_field in rows:
+        sector_ids = parse_affected_sectors(sectors_field)
+        if not sector_ids:
+            sector_ids = map_to_sectors_db(db, title or "", summary)
+        for sector_id in sector_ids:
+            bucket = agg.setdefault(
+                sector_id, {"bull": 0, "bear": 0, "neutral": 0, "max_level": 0, "event_ids": []}
+            )
+            if sentiment == "positive":
+                bucket["bull"] += 1
+            elif sentiment == "negative":
+                bucket["bear"] += 1
+            else:
+                bucket["neutral"] += 1
+            bucket["max_level"] = max(bucket["max_level"], level or 0)
+            if len(bucket["event_ids"]) < HOTSPOT_EVENT_IDS_CAP:
+                bucket["event_ids"].append(event_id)
+
+    sectors = [
+        MarketEventHotspotSector(
+            sector_id=sector_id,
+            bull=data["bull"],
+            bear=data["bear"],
+            neutral=data["neutral"],
+            total=data["bull"] + data["bear"] + data["neutral"],
+            max_level=data["max_level"],
+            event_ids=data["event_ids"],
+        )
+        for sector_id, data in agg.items()
+    ]
+    # 与前端原排序口径一致：总提及量降序，再按最高重要级降序
+    sectors.sort(key=lambda item: (item.total, item.max_level), reverse=True)
+    return MarketEventHotspotsResponse(days=days, generated_at=_now(), sectors=sectors)

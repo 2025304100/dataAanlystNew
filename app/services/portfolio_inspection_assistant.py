@@ -77,6 +77,20 @@ def build_inspection_context(db: Session, portfolio_id: int, *, symbol_ids: list
         data_status={"credibility": "requires_evidence", "missing_items": metadata["unknowns"]},
         capabilities={"execute_tools": False, "human_confirmation_required": True},
         untrusted_content=[{"is_untrusted": True, "kind": "inspection_evidence", "facts": facts}], metadata=metadata)
+    # P1-8（AI 事件归因）：补充同期重大市场事件供复盘归因引用（untrusted，
+    # 只作解释参考不作事实依据）。读取失败不阻断检视——事件归因是增强项。
+    try:
+        from app.services.market_events import recent_market_events_for_context
+        market_events = recent_market_events_for_context(db)
+    except Exception:
+        market_events = []
+    if market_events:
+        pack.untrusted_content.append({
+            "is_untrusted": True,
+            "kind": "market_events_for_attribution",
+            "note": "同期市场重大事件（仅作盈亏/阻断归因参考，不作为事实依据）",
+            "events": market_events,
+        })
     pack = sanitize_context(pack)
     pack.metadata["version"] = 1
     pack.metadata["inspection_snapshot_id"] = hashlib.sha256(json.dumps({"scope": pack.metadata["scope"],

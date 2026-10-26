@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
 SUITES = {
     "migrations": "tests/test_combination_migration_mysql57.py",
     "orders": "tests/test_combination_orders_mysql57.py",
@@ -26,6 +27,7 @@ SUITES = {
     "backup": "tests/test_combination_restore_mysql57.py",
     "dates": "tests/test_combination_legacy_dates_mysql57.py",
     "auto_http": "tests/test_combination_auto_http_mysql57.py",
+    "g4": "tests/test_g4_api_governance.py",
 }
 
 
@@ -81,6 +83,8 @@ def main() -> int:
             if suite == "auto_http":
                 env["COMBINATION_AUTO_E2E_URL"] = env["MYSQL57_TEST_URL"]
                 env["COMBINATION_AUTO_E2E_EVIDENCE"] = str((args.evidence_dir/"auto-http").resolve())
+            if suite == "g4":
+                env["G4_MYSQL57_URL"] = env["MYSQL57_TEST_URL"]
             if suite == "backup":
                 env["MYSQL57_RESTORE_TEST_URL"] = url.set(database=names["restore"]).render_as_string(hide_password=False)
                 for variable, binary in (("MYSQLDUMP_BIN", "mysqldump"), ("MYSQL_BIN", "mysql")):
@@ -99,6 +103,11 @@ def main() -> int:
                     for key in counts:
                         counts[key] += int(item.attrib.get(key, 0))
             passed = run.returncode == 0 and counts["tests"] > 0 and not any(counts[key] for key in ("failures", "errors", "skipped"))
+            if suite == "g4":
+                from scripts.verify_g4_contracts import validate_junit
+                contract_coverage = validate_junit(junit)
+                passed = passed and contract_coverage["passed"]
+                (args.evidence_dir/"g4-contract-coverage.json").write_text(json.dumps(contract_coverage,indent=2),encoding="utf8")
             outcomes[suite] = {"passed": passed, "exit_code": run.returncode, **counts, "log": str(log_path)}
             print(json.dumps({"suite": suite, **outcomes[suite]}, ensure_ascii=False), flush=True)
         report = {"passed": all(item["passed"] for item in outcomes.values()), "outcomes": outcomes, "schemas": names}

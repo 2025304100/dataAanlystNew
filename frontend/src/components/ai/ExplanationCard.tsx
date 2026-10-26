@@ -1,7 +1,11 @@
-import { Card, Collapse, List, Tag, Alert, Button, Space, Tooltip, Empty, Descriptions } from "antd";
-import { QuestionCircleOutlined, ExperimentOutlined, WarningOutlined, FileTextOutlined } from "@ant-design/icons";
+import { useState } from "react";
+import { Card, Collapse, List, Tag, Alert, Button, Space, Tooltip, Empty, Descriptions, theme } from "antd";
+import { QuestionCircleOutlined, ExperimentOutlined, WarningOutlined, FileTextOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import { enumLabel, t } from "../../i18n";
 import type { AIResponse } from "../../types";
+import MarkdownText from "./MarkdownText";
+import AIDraftConfirmModal from "./AIDraftConfirmModal";
+import { isSupportedDraftType } from "./draftFieldRenderers";
 
 interface ExplanationCardProps {
   response: AIResponse;
@@ -30,13 +34,24 @@ function evidenceContent(item: Record<string, unknown>): string {
 }
 
 export default function ExplanationCard({ response, onActionClick }: ExplanationCardProps) {
+  const { token } = theme.useToken();
+  const [draftModalOpen, setDraftModalOpen] = useState(false);
+  const [draftExecuted, setDraftExecuted] = useState(false);
   const hasEvidence = response.evidence && response.evidence.length > 0;
   const hasWarnings = response.warnings && response.warnings.length > 0;
   const hasActions = response.suggested_actions && response.suggested_actions.length > 0;
   const hasDraft = response.draft != null;
   const meta = response.metadata || {};
 
-  const collapseItems: Array<{ key: string; label: React.ReactNode; children: React.ReactNode }> = [];
+  // 草稿类型与审计 id（后端 _maybe_audit_draft 会回写 audit_id / metadata.draft_audit_id）
+  const draftObj = (response.draft ?? null) as Record<string, unknown> | null;
+  const draftType = String(draftObj?.draft_type ?? draftObj?.action_type ?? "");
+  const isFactorDraft = draftType === "draft_factor";
+  const supportedDraft = isSupportedDraftType(draftType);
+  const rawAuditId = draftObj?.audit_id ?? (meta as Record<string, unknown>).draft_audit_id;
+  const draftAuditId = typeof rawAuditId === "number" ? rawAuditId : null;
+
+  const collapseItems: Array<{ key: string; label: React.ReactNode; children: React.ReactNode; forceRender?: boolean }> = [];
 
   if (hasEvidence) {
     collapseItems.push({
@@ -60,7 +75,7 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
                   <Space>
                     <Tag color="blue">{displayEnum("aiEvidenceType", item.type ?? (item as Record<string, unknown>).kind, "上下文")}</Tag>
                     <Tag color={tag.color}>{tag.label}</Tag>
-                    <span style={{ fontSize: 12, color: "#64748b" }}>{displayEnum("aiEvidenceSource", item.source ?? (item as Record<string, unknown>).origin, "AI")}</span>
+                    <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{displayEnum("aiEvidenceSource", item.source ?? (item as Record<string, unknown>).origin, "AI")}</span>
                   </Space>
                   <span style={{ fontSize: 13 }}>{evidenceContent(item as unknown as Record<string, unknown>)}</span>
                 </Space>
@@ -85,7 +100,7 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
       children: (
         <ul style={{ margin: 0, paddingLeft: 20 }}>
           {response.warnings.map((w, idx) => (
-            <li key={idx} style={{ fontSize: 13, color: "#874d00", marginBottom: 4 }}>{w}</li>
+            <li key={idx} style={{ fontSize: 13, color: "var(--warn, #b45309)", marginBottom: 4 }}>{w}</li>
           ))}
         </ul>
       ),
@@ -93,16 +108,16 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
   }
 
   if (hasDraft) {
-    const draftObj = response.draft as Record<string, unknown> | null;
-    const draftType = String(draftObj?.draft_type ?? draftObj?.action_type ?? "");
-    const isFactorDraft = draftType === "draft_factor";
     collapseItems.push({
       key: "draft",
+      // forceRender：草稿是唯一需要用户操作的折叠区，展开前也渲染 DOM（可测、可被读屏访问）
+      forceRender: true,
       label: (
         <Space>
           <ExperimentOutlined style={{ color: "#722ed1" }} />
           <span>{t("aiAssistant.draft")}</span>
           {isFactorDraft && <Tag color="purple">factor</Tag>}
+          {draftExecuted && <Tag color="green">{t("aiDraftExecutedTag")}</Tag>}
         </Space>
       ),
       children: (
@@ -112,7 +127,7 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
             message={t("aiAssistant.draftNeedsConfirmation")}
             style={{ marginBottom: 8 }}
             description={
-              <pre style={{ fontSize: 12, maxHeight: 200, overflow: "auto", margin: 0 }}>
+              <pre style={{ fontSize: 12, maxHeight: 200, overflow: "auto", margin: 0, fontFamily: "var(--font-mono, monospace)" }}>
                 {JSON.stringify(response.draft, null, 2)}
               </pre>
             }
@@ -134,6 +149,23 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
               {t("aiDraftApplyToEditor")}
             </Button>
           )}
+          {!isFactorDraft && supportedDraft && (
+            <Tooltip title={draftExecuted ? t("aiDraftExecutedTag") : draftAuditId ? undefined : t("aiDraftAuditMissing")}>
+              <Button
+                size="small"
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                disabled={draftExecuted}
+                onClick={() => setDraftModalOpen(true)}
+                data-testid="ai-draft-open-confirm"
+              >
+                {draftExecuted ? t("aiDraftExecutedTag") : t("aiDraftOpenConfirm")}
+              </Button>
+            </Tooltip>
+          )}
+          {!isFactorDraft && !supportedDraft && (
+            <span style={{ fontSize: 12, color: token.colorTextTertiary }}>{t("aiDraftUnsupported")}</span>
+          )}
         </>
       ),
     });
@@ -152,11 +184,11 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
       size="small"
       data-testid="ai-explanation-card"
       style={{ marginBottom: 12 }}
-      bodyStyle={{ padding: "8px 12px" }}
+      styles={{ body: { padding: "8px 12px" } }}
     >
-      {/* 主回答 */}
-      <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: 8 }}>
-        {response.answer}
+      {/* 主回答（轻量 markdown 渲染：代码块/列表/粗体/行内代码，评估报告 L4） */}
+      <div style={{ marginBottom: 8 }}>
+        <MarkdownText content={response.answer} />
       </div>
 
       {/* 建议动作 */}
@@ -191,7 +223,7 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
           size="small"
           column={2}
           colon={false}
-          styles={{ label: { fontSize: 11, color: "#94a3b8" }, content: { fontSize: 11 } }}
+          styles={{ label: { fontSize: 11, color: token.colorTextTertiary }, content: { fontSize: 11 } }}
         >
           {metadataItems.map((item, idx) => (
             <Descriptions.Item key={idx} label={item.label}>{item.value}</Descriptions.Item>
@@ -200,12 +232,24 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
       )}
 
       {/* 免责声明 */}
-      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 4 }}>
         <Tooltip title={t("aiAssistant.usageNote")}>
           <QuestionCircleOutlined style={{ marginRight: 4 }} />
         </Tooltip>
         {t("aiAssistant.usageNote")}
       </div>
+
+      {/* 通用草稿确认（note/alert/filter）：三步流程在本卡内完成 */}
+      {hasDraft && supportedDraft && !isFactorDraft && (
+        <AIDraftConfirmModal
+          open={draftModalOpen}
+          auditId={draftAuditId}
+          draftType={draftType}
+          suggestedPayload={draftObj}
+          onClose={() => setDraftModalOpen(false)}
+          onExecuted={() => setDraftExecuted(true)}
+        />
+      )}
     </Card>
   );
 }

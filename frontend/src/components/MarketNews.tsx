@@ -1,13 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Empty, Select, Space, Tag, Tooltip, Typography } from "antd";
-import { CalendarOutlined, FilterOutlined, ReloadOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Empty, Input, Select, Space, Tag, Tooltip, Typography } from "antd";
+import { CalendarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, StarFilled, StarOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t, template } from "../i18n";
-import type { MarketEvent, MarketEventListResponse } from "../types";
+import type { MarketEvent, MarketEventListResponse, MarketEventHotspotsResponse, MarketEventCollectRun } from "../types";
 import ThemeManagementModal from "./ThemeManagementModal";
 
 const { Paragraph, Text } = Typography;
+
+// P0-2：全部已实现采集源（与后端 ALL_COLLECT_SOURCES 保持一致）
+const ALL_COLLECT_SOURCES = ["eastmoney-global", "caixin", "cctv", "baidu", "baidu-report", "futures-shmet"];
+// P0-3：样本不足阈值——板块方向计数低于该值时不具统计意义，显示"样本不足"而非满格误导
+const MIN_SAMPLE_COUNT = 3;
+// P1-6：收藏标记起步用 localStorage（不加表）；id 集合序列化存储
+const FAVORITES_KEY = "mn_favorites";
+
+function loadFavorites(): Set<number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw.filter((v) => typeof v === "number") : []);
+  } catch {
+    return new Set();
+  }
+}
 
 // ── 影响范围配置（8类）──
 const SCOPE_CONFIG: Record<string, { color: string; icon: string }> = {
@@ -215,6 +231,12 @@ export default function MarketNews() {
   const [filterScope, setFilterScope] = useState("");
   const [filterLevelMin, setFilterLevelMin] = useState(1);
   const [filterSentiment, setFilterSentiment] = useState("");
+  // P1-6：关键词检索与"仅收藏"本地筛选
+  const [keyword, setKeyword] = useState("");
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [favorites, setFavorites] = useState<Set<number>>(() => loadFavorites());
+  // P1-7：最近一次采集运行（可观测）
+  const [lastRun, setLastRun] = useState<MarketEventCollectRun | null>(null);
   const [sortBy, setSortBy] = useState<"published_at" | "importance_level">("published_at");
   const [showFilter, setShowFilter] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -227,8 +249,16 @@ export default function MarketNews() {
   const [sectorStats, setSectorStats] = useState<SectorStat[]>([]);
 
   // 概念面板的时间Tab和方向Tab
-  const [conceptTimeTab, setConceptTimeTab] = useState<"30d"|"90d"|"365d">("30d");
+  const [conceptTimeTab, setConceptTimeTab] = useState<"7d"|"30d"|"90d"|"365d">("30d");
   const [conceptDirTab, setConceptDirTab] = useState<"bull"|"bear">("bull");
+
+  // P0-3：概念热点后端聚合数据；接口异常时降级为本地统计（hotspotFallback=true）
+  const [hotspotData, setHotspotData] = useState<MarketEventHotspotsResponse | null>(null);
+  const [hotspotFallback, setHotspotFallback] = useState(false);
+
+  // P1-5：人工修正消息标记（分类/等级/方向）——关键词规则误判时的运营兜底
+  const [fixingId, setFixingId] = useState<number | null>(null);
+  const [fixDraft, setFixDraft] = useState<{ scope: string; level: number; sentiment: string }>({ scope: "other", level: 2, sentiment: "neutral" });
 
   // 过期清理计数
   const [expiredCount, setExpiredCount] = useState(0);
@@ -241,14 +271,19 @@ export default function MarketNews() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.getMarketEvents({
-        impact_scope: filterScope || undefined,
-        importance_level_min: filterLevelMin,
-        sentiment: filterSentiment || undefined,
-        sort_by: sortBy,
-        limit: 200,
-        date_from: daysAgo(timeRange),
-      });
+      const [result, runsResult] = await Promise.all([
+        api.getMarketEvents({
+          keyword: keyword.trim() || undefined,
+          impact_scope: filterScope || undefined,
+          importance_level_min: filterLevelMin,
+          sentiment: filterSentiment || undefined,
+          sort_by: sortBy,
+          limit: 200,
+          date_from: daysAgo(timeRange),
+        }),
+        api.getMarketEventCollectRuns(1).catch(() => null),
+      ]);
+      setLastRun(Array.isArray(runsResult) && runsResult.length > 0 ? runsResult[0] : null);
 
       // 过期清理
       let cleaned = result.events as MarketEvent[];
@@ -269,9 +304,25 @@ export default function MarketNews() {
     } finally {
       setLoading(false);
     }
-  }, [filterScope, filterLevelMin, filterSentiment, sortBy, timeRange, locale]);
+  }, [filterScope, filterLevelMin, filterSentiment, keyword, sortBy, timeRange, locale]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // P0-3：概念热点改调后端聚合接口——统计窗口是真实回溯（此前"近一季/近一年"
+  // 只是对同一批 30 天数据再过滤的假切换），且口径不再受列表筛选影响。
+  // data 变化（采集/刷新后）时联动重拉，保证热点与列表同步更新。
+  const CONCEPT_DAYS: Record<"7d"|"30d"|"90d"|"365d", number> = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 };
+  const loadHotspots = useCallback(async (tab: "7d"|"30d"|"90d"|"365d") => {
+    try {
+      const result = await api.getMarketEventHotspots(CONCEPT_DAYS[tab]);
+      setHotspotData(result);
+      setHotspotFallback(false);
+    } catch {
+      // 降级：后端接口不可用时沿用本地统计，页面保持可用（口径退回当次加载数据）
+      setHotspotFallback(true);
+    }
+  }, []);
+  useEffect(() => { void loadHotspots(conceptTimeTab); }, [loadHotspots, conceptTimeTab, data]);
 
   /** 构建板块统计数据（核心函数） */
   function buildSectorStats(events: MarketEvent[]) {
@@ -323,7 +374,8 @@ export default function MarketNews() {
     setCollecting(true);
     setError(null);
     try {
-      const result = await api.collectMarketEvents({ days: 30, sources: ["eastmoney-global", "caixin"] });
+      // P0-2：默认采集全部 6 个已实现源（此前硬编码只采东财全球+财新两源）
+      const result = await api.collectMarketEvents({ days: 30, sources: ALL_COLLECT_SOURCES });
       await loadData();
       if (result && typeof result.collected === "number" && result.collected > 0) {
         ctx.showToast("success", template("market_news_collect_success", { n: result.collected }));
@@ -338,12 +390,71 @@ export default function MarketNews() {
     }
   };
 
+  // P1-6：收藏切换（localStorage 持久化）
+  const toggleFavorite = (id: number) => {
+    setFavorites((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // P1-6：导出当前筛选结果为 CSV（utf-8 BOM 保证 Excel 中文不乱码）
+  const exportCsv = () => {
+    const rows = visibleEvents;
+    const header = ["published_at", "impact_scope", "importance_level", "sentiment", "source", "title", "summary", "source_url"];
+    const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [header.join(",")];
+    for (const e of rows) {
+      lines.push([
+        e.published_at ?? "", e.impact_scope, e.importance_level, e.sentiment,
+        e.source, e.title, (e.summary ?? "").replace(/[\r\n]+/g, " "), e.source_url ?? "",
+      ].map(escape).join(","));
+    }
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `market-news-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    ctx.showToast("success", template("market_news_export_done", { n: rows.length }));
+  };
+
+  // P1-5：保存人工修正（写回后端，标题未变只更新标记字段）
+  const startFix = (event: MarketEvent) => {
+    setFixingId(event.id);
+    setFixDraft({ scope: event.impact_scope, level: event.importance_level, sentiment: event.sentiment });
+  };
+  const saveFix = async (eventId: number) => {
+    try {
+      await api.updateMarketEvent(eventId, {
+        impact_scope: fixDraft.scope,
+        importance_level: fixDraft.level,
+        sentiment: fixDraft.sentiment,
+      });
+      ctx.showToast("success", t("market_news_fix_saved"));
+      setFixingId(null);
+      await loadData();
+      void loadHotspots(conceptTimeTab);
+    } catch (err: any) {
+      ctx.showToast("error", err?.message || String(err));
+    }
+  };
+
   // ── 派生数据 ──
   const events = useMemo(() => data?.events ?? [], [data]);
+  // P1-6：收藏是本地概念，收藏过滤在客户端完成（服务端其余筛选不受影响）
+  const visibleEvents = useMemo(
+    () => (onlyFavorites ? events.filter((e) => favorites.has(e.id)) : events),
+    [events, onlyFavorites, favorites],
+  );
   const scopeStats = useMemo(() => data?.by_scope ?? {}, [data]);
 
   const sortedEvents = useMemo(() => {
-    const list = [...events];
+    const list = [...visibleEvents];
     if (sortBy === "importance_level") list.sort((a, b) => b.importance_level - a.importance_level);
     else list.sort((a, b) => {
       const da = a.published_at ? new Date(a.published_at).getTime() : 0;
@@ -351,36 +462,49 @@ export default function MarketNews() {
       return db - da;
     });
     return list;
-  }, [events, sortBy]);
+  }, [visibleEvents, sortBy]);
 
   // 辅助函数
   const scopeLabel = (key: string) => t("market_news_scope_" + key);
   const levelLabel = (lv: number) => t("market_news_level_" + lv);
   const srcName = (src: string) => t("market_news_source_" + src);
 
-  // ── 概念面板：根据时间Tab筛选显示的数据 ──
-  const filteredSectorStats = useMemo(() => {
-    if (conceptTimeTab === "30d") return sectorStats; // 已是当前加载的数据
-    // 对于更长的时间范围，我们基于已加载的事件按日期过滤
-    const cutoffDays = conceptTimeTab === "90d" ? 90 : 365;
+  // ── 概念面板：行数据源 ──
+  // P0-3：优先后端聚合（独立时间窗、不受列表筛选污染）；接口异常时降级为
+  // 本地统计（旧口径：仅当次加载的数据 + 前端按时间Tab过滤）。
+  interface ConceptRow { sector: SectorConcept; bull: number; bear: number; neutral: number; maxLevel: number; }
+  const conceptRows = useMemo<ConceptRow[]>(() => {
+    if (!hotspotFallback && hotspotData) {
+      return hotspotData.sectors
+        .map((row) => {
+          const meta = SECTOR_CONCEPTS.find((c) => c.id === row.sector_id);
+          return meta
+            ? { sector: meta, bull: row.bull, bear: row.bear, neutral: row.neutral, maxLevel: row.max_level }
+            : null;
+        })
+        .filter((row): row is ConceptRow => row !== null);
+    }
+    if (conceptTimeTab === "30d" && timeRange <= 30) {
+      return sectorStats.map(({ sector, bull, bear, neutral, maxLevel }) => ({ sector, bull, bear, neutral, maxLevel }));
+    }
+    const cutoffDays = conceptTimeTab === "7d" ? 7 : conceptTimeTab === "90d" ? 90 : 365;
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - cutoffDays);
-    const filtered = sectorStats.filter((s) =>
-      s.events.some((eid) => {
+    return sectorStats
+      .filter((s) => s.events.some((eid) => {
         const ev = events.find((e) => e.id === eid);
         return ev?.published_at && new Date(ev.published_at) >= cutoff;
-      })
-    );
-    return filtered;
-  }, [sectorStats, conceptTimeTab, events]);
+      }))
+      .map(({ sector, bull, bear, neutral, maxLevel }) => ({ sector, bull, bear, neutral, maxLevel }));
+  }, [hotspotData, hotspotFallback, sectorStats, conceptTimeTab, events, timeRange]);
 
   // 利多板块排行 / 利空板块排行
   const bullSectors = useMemo(() =>
-    filteredSectorStats.filter((s) => s.bull > 0).sort((a, b) => b.bull - a.bull),
-    [filteredSectorStats]
+    conceptRows.filter((s) => s.bull > 0).sort((a, b) => b.bull - a.bull),
+    [conceptRows]
   );
   const bearSectors = useMemo(() =>
-    filteredSectorStats.filter((s) => s.bear > 0).sort((a, b) => b.bear - a.bear),
-    [filteredSectorStats]
+    conceptRows.filter((s) => s.bear > 0).sort((a, b) => b.bear - a.bear),
+    [conceptRows]
   );
 
   // 当前显示的列表（根据方向Tab）
@@ -401,6 +525,7 @@ export default function MarketNews() {
         </div>
         <Space wrap>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={loadData}>{t("market_news_refresh")}</Button>
+          <Button icon={<DownloadOutlined />} disabled={sortedEvents.length === 0} onClick={exportCsv}>{t("market_news_export")}</Button>
           <Button type="primary" icon={<ThunderboltOutlined />} loading={collecting} onClick={handleCollect}>
             {collecting ? t("market_news_collecting") : t("market_news_collect")}
           </Button>
@@ -435,6 +560,14 @@ export default function MarketNews() {
               options={[{ value: 1, label: t("market_news_all_levels") }, { value: 3, label: `${levelLabel(3)}+ (3-5)` }, { value: 4, label: `${levelLabel(4)}+ (4-5)` }, { value: 5, label: levelLabel(5) }]} /></label>
             <label className="mn-filter-item"><span>{t("market_news_direction")}</span><Select value={filterSentiment || "__all__"} onChange={(v) => setFilterSentiment(v === "__all__" ? "" : v)} style={{ width: "100%" }}
               options={[{ value: "__all__", label: t("market_news_all_sentiments") }, { value: "positive", label: t("market_news_sentiment_positive") }, { value: "negative", label: t("market_news_sentiment_negative") }, { value: "neutral", label: t("market_news_sentiment_neutral") }]} /></label>
+            <label className="mn-filter-item"><span>{t("market_news_keyword_search")}</span>
+              <Input.Search value={keyword} onChange={(e) => setKeyword(e.target.value)} onSearch={() => loadData()} allowClear
+                placeholder={t("market_news_keyword_placeholder")} />
+            </label>
+            <label className="mn-filter-item"><span>{t("market_news_favorite_filter")}</span>
+              <Select value={onlyFavorites ? "only" : "__all__"} onChange={(v) => setOnlyFavorites(v === "only")} style={{ width: "100%" }}
+                options={[{ value: "__all__", label: t("market_news_all_items") }, { value: "only", label: `⭐ ${t("market_news_favorite_only")}` }]} />
+            </label>
           </div>
         </Card>
       )}
@@ -460,7 +593,7 @@ export default function MarketNews() {
              ★ 概念热点汇总面板（全新设计）
              时间Tab + 利多/利空Tab + 板块级展示
              ═══════════════════════════════════════════════════ */}
-          {sectorStats.length > 0 && (
+          {conceptRows.length > 0 && (
             <div className="mn-concept-panel">
               {/* 头部 */}
               <div className="mn-concept-head">
@@ -469,7 +602,7 @@ export default function MarketNews() {
                   <strong>{t("market_news_concept_panel_title")}</strong>
                   <span className="mn-concept-sub-text">{t("market_news_concept_panel_sub")}</span>
                 </div>
-                <span className="mn-concept-badge-total">{sectorStats.length} {t("market_news_active_concepts")}</span>
+                <span className="mn-concept-badge-total">{conceptRows.length} {t("market_news_active_concepts")}</span>
               </div>
 
               {/* ====== 第一行：Tab 切换栏 ====== */}
@@ -477,6 +610,7 @@ export default function MarketNews() {
                 {/* 左侧：时间区间 Tab */}
                 <div className="mn-tab-group mn-tab-group--time">
                   <span className="mn-tab-label">{t("market_news_time_tab_label")}:</span>
+                  <button className={`mn-tab-btn${conceptTimeTab === "7d" ? " active" : ""}`} onClick={() => setConceptTimeTab("7d")}>{t("market_news_last_7d")}</button>
                   <button className={`mn-tab-btn${conceptTimeTab === "30d" ? " active" : ""}`} onClick={() => setConceptTimeTab("30d")}>{t("market_news_last_30d")}</button>
                   <button className={`mn-tab-btn${conceptTimeTab === "90d" ? " active" : ""}`} onClick={() => setConceptTimeTab("90d")}>{t("market_news_last_90d")}</button>
                   <button className={`mn-tab-btn${conceptTimeTab === "365d" ? " active" : ""}`} onClick={() => setConceptTimeTab("365d")}>{t("market_news_last_365d")}</button>
@@ -500,6 +634,8 @@ export default function MarketNews() {
                   const count = stat[countKey] as number;
                   const pct = maxDisplayCount > 0 ? (count / maxDisplayCount) * 100 : 0;
                   const isTop3 = idx < 3;
+                  // P0-3：稀疏样本下进度条会误导（1 条即满格），低于阈值挂"样本不足"标记
+                  const lowSample = count < MIN_SAMPLE_COUNT;
 
                   return (
                     <Tooltip key={stat.sector.id} title={
@@ -507,7 +643,7 @@ export default function MarketNews() {
                       ` | ${t("market_news_sentiment_positive")}${stat.bull} ${t("market_news_sentiment_negative")}${stat.bear}` +
                       (stat.maxLevel >= 4 ? ` | ${levelLabel(stat.maxLevel)}` : "")
                     }>
-                      <div className={`mn-sector-row${isTop3 ? ` mn-sector--top${idx}` : ""}`}>
+                      <div className={`mn-sector-row${isTop3 ? ` mn-sector--top${idx}` : ""}${lowSample ? " mn-sector--low-sample" : ""}`}>
                         <span className="mn-sector-rank">{idx + 1}</span>
                         <span className="mn-sector-icon">{stat.sector.icon}</span>
                         <span className="mn-sector-name">{sectorName(stat.sector)}</span>
@@ -518,6 +654,7 @@ export default function MarketNews() {
                         <span className={`mn-sector-count${conceptDirTab === "bull" ? " count-bull" : " count-bear"}`}>
                           {count}{t("market_news_count_unit")}
                         </span>
+                        {lowSample && <span className="mn-sample-hint">{t("market_news_sample_insufficient")}</span>}
                       </div>
                     </Tooltip>
                   );
@@ -531,7 +668,9 @@ export default function MarketNews() {
               {/* 底部提示 */}
               <div className="mn-panel-footer-hint">
                 <Text type="secondary" style={{ fontSize: 11 }}>
-                  {template("market_news_auto_match_hint", { news: events.length, sectors: sectorStats.length })}
+                  {hotspotFallback
+                    ? t("market_news_hotspot_fallback_hint")
+                    : template("market_news_auto_match_hint", { news: events.length, sectors: conceptRows.length })}
                 </Text>
               </div>
             </div>
@@ -559,6 +698,10 @@ export default function MarketNews() {
                         {event.sentiment === "positive" ? t("market_news_sentiment_positive") : event.sentiment === "negative" ? t("market_news_sentiment_negative") : t("market_news_sentiment_neutral")}
                       </Tag>
                     </Space>
+                    <span className="mn-fav-toggle" title={favorites.has(event.id) ? t("market_news_unfavorite") : t("market_news_favorite")}
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(event.id); }}>
+                      {favorites.has(event.id) ? <StarFilled style={{ color: "#f59e0b" }} /> : <StarOutlined style={{ color: "#94a3b8" }} />}
+                    </span>
                     <Text type="secondary">{fmtDate(event.published_at, locale)}</Text>
                   </div>
                   <h3 className={`mn-title${event.importance_level >= 4 ? ` mn-title-lvl${event.importance_level}` : ""}`}>{event.title}</h3>
@@ -593,6 +736,28 @@ export default function MarketNews() {
                         <span className="mn-credibility" title={t("market_news_credibility_" + credibility)}>{credLbl.stars}</span>
                         {event.source_url && (<a href={event.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="mn-source-link">{t("market_news_source")}</a>)}
                       </div>
+
+                      {/* P1-5：人工修正标记入口（关键词规则误判的运营兜底） */}
+                      <div className="mn-fix-row" onClick={(e) => e.stopPropagation()}>
+                        {fixingId === event.id ? (
+                          <Space size={6} wrap>
+                            <Select size="small" value={fixDraft.scope} onChange={(v) => setFixDraft({ ...fixDraft, scope: v })} style={{ width: 132 }}
+                              options={SCOPE_KEYS.map((k) => ({ value: k, label: scopeLabel(k) }))} />
+                            <Select size="small" value={fixDraft.level} onChange={(v) => setFixDraft({ ...fixDraft, level: v })} style={{ width: 96 }}
+                              options={[1, 2, 3, 4, 5].map((l) => ({ value: l, label: levelLabel(l) }))} />
+                            <Select size="small" value={fixDraft.sentiment} onChange={(v) => setFixDraft({ ...fixDraft, sentiment: v })} style={{ width: 96 }}
+                              options={[
+                                { value: "positive", label: t("market_news_sentiment_positive") },
+                                { value: "negative", label: t("market_news_sentiment_negative") },
+                                { value: "neutral", label: t("market_news_sentiment_neutral") },
+                              ]} />
+                            <Button size="small" type="primary" onClick={() => void saveFix(event.id)}>{t("market_news_fix_save")}</Button>
+                            <Button size="small" onClick={() => setFixingId(null)}>{t("market_news_fix_cancel")}</Button>
+                          </Space>
+                        ) : (
+                          <Button size="small" type="link" onClick={() => startFix(event)}>{t("market_news_fix_toggle")}</Button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </Card>
@@ -600,9 +765,20 @@ export default function MarketNews() {
             })}
           </div>
 
-          {/* 底部统计 */}
+          {/* 底部统计 + P1-7 最近采集 */}
           <div className="mn-footer-stats">
             <Text type="secondary">{t("market_news_total_prefix")} <strong>{data.total}</strong> {t("market_news_total_suffix")}</Text>
+            {lastRun && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {template("market_news_last_collect_line", {
+                  time: fmtDate(lastRun.finished_at ?? lastRun.started_at, locale),
+                  source: lastRun.trigger_source === "scheduled" ? t("market_news_collect_scheduled") : t("market_news_collect_manual"),
+                  collected: lastRun.collected,
+                  skipped: lastRun.skipped_duplicate,
+                  errors: lastRun.errors.length > 0 ? ` · ${template("market_news_last_collect_errors", { n: lastRun.errors.length })}` : "",
+                })}
+              </Text>
+            )}
           </div>
         </>
       )}

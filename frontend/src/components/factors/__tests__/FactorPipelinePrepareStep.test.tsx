@@ -131,6 +131,18 @@ describe("factor pipeline input preparation", () => {
     expect(props.onInitialize).toHaveBeenCalledOnce();
   });
 
+  it("shows the merged factor config audit beside the feature status", () => {
+    render(<FactorPipelinePrepareStep {...createProps()} configUpdatedAt="2026-08-30T03:36:50" configUpdatedBy="factor_initialization_script" />);
+    expect(screen.getByText("最后修改：2026-08-30 03:36:50 · factor_initialization_script")).toBeInTheDocument();
+  });
+
+  it("hides the audit line when it is unavailable or the state is not confirmed", () => {
+    const { rerender } = render(<FactorPipelinePrepareStep {...createProps()} />);
+    expect(document.querySelector("[data-factor-config-audit]")).toBeNull();
+    rerender(<FactorPipelinePrepareStep {...createProps()} loading configUpdatedAt="2026-08-30T03:36:50" />);
+    expect(document.querySelector("[data-factor-config-audit]")).toBeNull();
+  });
+
   it("preserves the input scope and explicit dates when returning to input checks and reopening operations", async () => {
     const user = userEvent.setup();
     render(<FactorPipelinePrepareStep {...createProps()} />);
@@ -174,7 +186,9 @@ describe("factor pipeline input preparation", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "准备因子输入" }));
 
     expect(screen.getByText("当前观察池")).toBeInTheDocument();
-    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
+    // UI 已把“更新最近数据 · 只补未更新的部分”拆成两个下拉，按各自选中值断言。
+    expect(screen.getByText("最近数据")).toBeInTheDocument();
+    expect(screen.getByText("只补未更新的部分")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
   });
@@ -187,7 +201,8 @@ describe("factor pipeline input preparation", () => {
     render(<ExternalDataSync />);
 
     expect(await screen.findByText("当前观察池")).toBeInTheDocument();
-    expect(screen.getByText("更新最近数据 · 只补未更新的部分")).toBeInTheDocument();
+    expect(screen.getByText("最近数据")).toBeInTheDocument();
+    expect(screen.getByText("只补未更新的部分")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("开始日期")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新评分" })).toBeInTheDocument();
   });
@@ -214,6 +229,8 @@ describe("factor pipeline input preparation", () => {
     render(<FactorPipelinePrepareStep {...createProps()} />);
     await userEvent.setup().click(screen.getByRole("button", { name: "准备因子输入" }));
 
+    // 日期校验文案现在位于“日期和更新设置”折叠面板内，先展开再断言。
+    fireEvent.click(screen.getByRole("button", { name: /日期和更新设置/ }));
     expect(screen.getByText("结束日期不能晚于今天")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /同步股票估值/ })).toBeDisabled();
     expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();

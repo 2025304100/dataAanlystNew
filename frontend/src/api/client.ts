@@ -2152,11 +2152,13 @@ export const api = {
     date_from?: string;
     date_to?: string;
     is_manual?: number;
+    keyword?: string;
     limit?: number;
     offset?: number;
     sort_by?: string;
   } = {}) => {
     const q = new URLSearchParams();
+    if (params.keyword) q.set("keyword", params.keyword);
     if (params.impact_scope) q.set("impact_scope", params.impact_scope);
     if (params.importance_level_min != null) q.set("importance_level_min", String(params.importance_level_min));
     if (params.importance_level_max != null) q.set("importance_level_max", String(params.importance_level_max));
@@ -2179,6 +2181,43 @@ export const api = {
     }),
   getMarketEventScopes: () =>
     requestJson<string[]>(`${API}/market-events/scopes`),
+  // P0-3：概念热点后端聚合（30/90/365 天窗口独立查询，不受列表筛选影响）
+  getMarketEventHotspots: (days: number) =>
+    requestJson<import("../types").MarketEventHotspotsResponse>(
+      `${API}/market-events/hotspots?days=${days}`,
+    ),
+  // P1-7：最近采集运行记录（可观测）
+  getMarketEventCollectRuns: (limit = 5) =>
+    requestJson<import("../types").MarketEventCollectRun[]>(
+      `${API}/market-events/collect-runs?limit=${limit}`,
+    ),
+  // P2-12：板块关键词后台维护（DB 覆盖内置）
+  getSectorConcepts: () =>
+    requestJson<import("../types").SectorConceptConfigItem[]>(`${API}/market-events/sector-concepts`),
+  updateSectorConcepts: (sectorId: string, keywords: string[]) =>
+    requestJson<import("../types").SectorConceptConfigItem>(
+      `${API}/market-events/sector-concepts/${encodeURIComponent(sectorId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords }),
+      },
+    ),
+  // P1-5：人工修正消息分类/等级/方向（关键词规则误判的运营兜底）
+  updateMarketEvent: (eventId: number, payload: Partial<Pick<import("../types").MarketEvent, "impact_scope" | "importance_level" | "sentiment">>) =>
+    requestJson<import("../types").MarketEvent>(`${API}/market-events/${eventId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  // P0-1：过期消息清理（运维触发；日常由每日 02:30 定时任务执行）
+  cleanupMarketEvents: (payload: { keep_days?: number } = {}) =>
+    requestJson<import("../types").MarketEventCleanupResponse>(`${API}/market-events/cleanup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 60000,
+    }),
 
   // Journals
   getJournals: (portfolioId: number, symbolId?: number) => {

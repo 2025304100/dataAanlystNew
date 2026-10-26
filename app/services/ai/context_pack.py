@@ -400,8 +400,6 @@ def _build_untrusted_content(db: Session, references: dict[str, Any]) -> list[di
     """新闻/第三方文本（标记 is_untrusted: true）。"""
     items: list[dict[str, Any]] = []
     symbol_id = references.get("symbol_id")
-    if symbol_id is None:
-        return items
 
     def _recent_news():
         from app.models.news_event import NewsEvent
@@ -411,17 +409,35 @@ def _build_untrusted_content(db: Session, references: dict[str, Any]) -> list[di
             .order_by(NewsEvent.published_at.desc().nulls_last())
             .limit(5)
         ).scalars().all()
-    news_list = _safe_call(_recent_news, default=[])
-    for n in news_list or []:
+    if symbol_id is not None:
+        news_list = _safe_call(_recent_news, default=[])
+        for n in news_list or []:
+            items.append({
+                "type": "news",
+                "source": n.source,
+                "title": n.title,
+                "url": n.url,
+                "event_type": n.event_type,
+                "sentiment": n.sentiment,
+                "risk_level": n.risk_level,
+                "published_at": n.published_at.isoformat() if n.published_at else None,
+                "is_untrusted": True,  # 关键：标记不可信
+            })
+
+    # P1-8（AI 事件归因）：个股新闻之外补充同期市场级重大事件（importance>=4），
+    # 让研究/决策类提问能引用宏观/行业背景；无 symbol_id 的组合级上下文同样注入。
+    def _recent_market_events():
+        from app.services.market_events import recent_market_events_for_context
+        return recent_market_events_for_context(db, limit=5)
+    for ev in _safe_call(_recent_market_events, default=[]) or []:
         items.append({
-            "type": "news",
-            "source": n.source,
-            "title": n.title,
-            "url": n.url,
-            "event_type": n.event_type,
-            "sentiment": n.sentiment,
-            "risk_level": n.risk_level,
-            "published_at": n.published_at.isoformat() if n.published_at else None,
+            "type": "market_event",
+            "source": ev["source"],
+            "title": ev["title"],
+            "impact_scope": ev["impact_scope"],
+            "importance_level": ev["importance_level"],
+            "sentiment": ev["sentiment"],
+            "published_at": ev["published_at"],
             "is_untrusted": True,  # 关键：标记不可信
         })
     return items

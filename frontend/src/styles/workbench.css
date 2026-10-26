@@ -6235,6 +6235,35 @@ td .symbol-name {
 .count-bull { color: #16a34a; }
 .count-bear { color: #dc2626; }
 
+/* P0-3：样本不足标记（方向计数 < 3 的板块排行行，弱化提示避免满格误导） */
+.mn-sample-hint {
+  font-size: 10px;
+  color: #94a3b8;
+  border: 1px solid rgba(148,163,184,0.45);
+  border-radius: 4px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  line-height: 16px;
+}
+.mn-sector--low-sample .mn-sector-bar-fill {
+  opacity: 0.45;
+}
+
+/* P1-6：卡片收藏星标 */
+.mn-fav-toggle {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2px;
+}
+
+/* P1-5：详情面板人工修正标记行 */
+.mn-fix-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(148,163,184,0.25);
+}
+
 /* 搴曢儴鎻愮ず */
 .mn-panel-footer-hint {
   display: flex;

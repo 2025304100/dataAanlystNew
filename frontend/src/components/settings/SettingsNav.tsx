@@ -25,7 +25,7 @@ import { t } from "../../i18n";
 export type SettingsSection =
   | "rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules"
   | "message-center" | "scoring" | "factor-model" | "factor-center" | "data-center"
-  | "api-mgmt" | "db" | "ai" | "factor-mining" | "factor-basic"
+  | "api-mgmt" | "db" | "ai" | "factor-mining"
   | "app-settings";
 
 interface NavItem {
@@ -48,7 +48,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: "factor-model", icon: <ExperimentOutlined />, labelKey: "factorModelTabTitle" },
   { key: "factor-center", icon: <AppstoreOutlined />, labelKey: "factorCenterTabTitle" },
   { key: "factor-mining", icon: <ExperimentOutlined />, labelKey: "factorMiningTabTitle" },
-  { key: "factor-basic", icon: <SettingOutlined />, labelKey: "factorBasicTabTitle" },
   { key: "data-center", icon: <DatabaseOutlined />, label: "数据管理" },
   // 通用应用设置（app_settings 登记表驱动，后端加键前端零改动）
   { key: "app-settings", icon: <AppstoreOutlined />, labelKey: "appSettingsTabTitle" },
