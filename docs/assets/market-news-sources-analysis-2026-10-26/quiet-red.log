@@ -1,0 +1,24 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 1 item
+
+tests\test_akshare_quiet_output_concurrency.py F                         [100%]
+
+================================== FAILURES ===================================
+_ test_overlapping_quiet_contexts_restore_streams_and_preserve_other_threads __
+tests\test_akshare_quiet_output_concurrency.py:50: in test_overlapping_quiet_contexts_restore_streams_and_preserve_other_threads
+    assert result == {"restored": True, "errors": [], "out": "visible-after\n", "alive": False}
+E   AssertionError: assert {'restored': ...alive': False} == {'restored': ...alive': False}
+E     
+E     Omitting 1 identical items, use -vv to show
+E     Differing items:
+E     {'restored': False} != {'restored': True}
+E     {'out': 'hidden-second\n'} != {'out': 'visible-after\n'}
+E     {'errors': ['ValueError']} != {'errors': []}
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_akshare_quiet_output_concurrency.py::test_overlapping_quiet_contexts_restore_streams_and_preserve_other_threads
+============================== 1 failed in 5.14s ==============================

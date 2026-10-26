@@ -1,0 +1,63 @@
+{
+  "test_counts": {
+    "backend-offline.xml": {
+      "tests": 414,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "backend-with-network.xml": {
+      "tests": 417,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 1
+    },
+    "e2e.xml": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "offline_deselected_slow": 3,
+  "frontend_tests": 71,
+  "typecheck": "passed",
+  "build": "passed",
+  "new_tests": {
+    "backend": 25,
+    "frontend": 1,
+    "e2e": 1
+  },
+  "runtime": {
+    "origin": "http://127.0.0.1:60270",
+    "database": "codex_market_261026_j28_e2e",
+    "lifespan": "off",
+    "frontend": "app/web/dist production build",
+    "business_api_mocks": false
+  },
+  "runtime_stopped": true,
+  "live_six_source_modes": [
+    "isolated_processes",
+    "six_threads_one_process"
+  ],
+  "calendar_time_semantics": "Baidu values are scheduled calendar times, not verified publication timestamps",
+  "files": {
+    "backend-offline.log": "b98f7cbf513a60808a3b0012a979a6a77a4ea4607db98e707a0719b1fef7c7b4",
+    "backend-offline.xml": "270cf269936c6bb0cf2d8b009638083ce534cdf093d5783f67304a7a7ea318f0",
+    "backend-with-network.log": "6f864a7b0fe2d23afc4a96fa72ccea211b1de0fa00d1e28a8e79cc439cc2278a",
+    "backend-with-network.xml": "427877bfd589d95cdbd63fe5ac9ecae34870695dbf4d131a76644e2af655a158",
+    "baidu-endpoint-shape.json": "a3ee2b4c4b08ea4aaa79f0565184972ac3af06a9d4d862ed5a3a2409fbdd4e84",
+    "baidu-red.log": "63eaadd32a5e1796bdfe8c0a9407ee83f4dc10d820c3369c414621c55ffbf61f",
+    "build.log": "025ae5d07ab5a85b43cf63f926058f059afed771d3a1d0210f4bdbdcd3b8d2b1",
+    "classification-red.log": "f3d9e953085111ec5b87805f1d109bce3e75e007904b20222231c9e889158254",
+    "classification-reviewed.png": "50f108eab407450051b637d6377f875c24c0a76fe2ed59a29fdd574ab1c41e3c",
+    "e2e-result.json": "1a749fe4830bfad93e47439dc1968fd72679547e1637d2fe877f551d334887c6",
+    "e2e.xml": "00e437f609ab9c0640193da9bf69a464b047d07e983a20f613c5257ea9161703",
+    "frontend.log": "f02b39b4bf681d9acb5e9ea64e809825b2e695f204daf81c3b7648343179704f",
+    "live-six-sources.json": "5a04d0fd733ca9952d3fba481357bb4d98a1e75beaa5417b0a4e08d405dac4cf",
+    "live-six-threads.json": "98cd2e4fa622883fb8c9ab799026dcb381489abf0293c51c7041cbaa220c489b",
+    "quiet-red.log": "220d999edbf60f6cc71a611715771ed5b9c33f5475aedb8e323d482ccd6a1433",
+    "tsc.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ui-red.log": "e5f124fe1c2a7cd0dac81d03b75bf5db7466d011037d7f339e1a77eb341b3e00"
+  }
+}

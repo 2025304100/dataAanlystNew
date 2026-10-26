@@ -4,3 +4,4 @@ docs/assets/market-news-mysql57-e2e-2026-10-26/** -text whitespace=cr-at-eol
 docs/assets/market-news-0091-2026-10-26/** -text whitespace=cr-at-eol
 docs/assets/notification-delivery-idempotency-2026-10-26/** -text whitespace=cr-at-eol
 docs/assets/market-news-sources-analysis-2026-10-26/** -text whitespace=cr-at-eol
+docs/assets/market-news-sources-analysis-2026-10-26/*.log binary

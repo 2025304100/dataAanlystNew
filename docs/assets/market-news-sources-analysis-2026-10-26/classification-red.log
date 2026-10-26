@@ -1,0 +1,20 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 1 item
+
+tests\test_market_news_classification_explanation.py F                   [100%]
+
+================================== FAILURES ===================================
+___ test_new_collection_excludes_explicitly_cancelled_sanction_and_explains ___
+tests\test_market_news_classification_explanation.py:31: in test_new_collection_excludes_explicitly_cancelled_sanction_and_explains
+    assert (event["impact_scope"],event["importance_level"],event["sentiment"])==("international",2,"neutral")
+E   AssertionError: assert ('internation...5, 'negative') == ('internation... 2, 'neutral')
+E     
+E     At index 1 diff: 5 != 2
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/test_market_news_classification_explanation.py::test_new_collection_excludes_explicitly_cancelled_sanction_and_explains
+============================== 1 failed in 6.33s ==============================

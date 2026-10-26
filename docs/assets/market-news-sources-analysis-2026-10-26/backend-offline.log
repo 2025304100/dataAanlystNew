@@ -1,0 +1,41 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 417 items / 3 deselected / 414 selected
+
+tests\test_akshare_quiet_output_concurrency.py ..                        [  0%]
+tests\test_market_news_baidu_public_calendar.py .......                  [  2%]
+tests\test_market_news_classification_explanation.py ................    [  6%]
+tests\test_notification_delivery_idempotency.py .........                [  8%]
+tests\test_market_event_migration_compatibility.py ......                [  9%]
+tests\test_market_news_source_contracts.py .........                     [ 11%]
+tests\test_market_news_notification_roundtrip.py ......                  [ 13%]
+tests\test_market_events_p1_fixes.py ................................... [ 21%]
+....                                                                     [ 22%]
+tests\test_market_events_p2_fixes.py ......................              [ 28%]
+tests\test_whitebox_notification_dispatcher.py ...............           [ 31%]
+tests\test_whitebox_notification_adapters.py ........................... [ 38%]
+...................................................                      [ 50%]
+tests\test_whitebox_notification_outbox.py ......................        [ 55%]
+tests\test_whitebox_notification_policies.py ........................... [ 62%]
+.................                                                        [ 66%]
+tests\test_whitebox_notification_event_emitter.py ............           [ 69%]
+tests\test_whitebox_market_events_p0.py ...........                      [ 71%]
+tests\test_whitebox_market_event_collect_runs.py ....                    [ 72%]
+tests\test_whitebox_akshare_http.py ..........................           [ 79%]
+tests\test_whitebox_akshare_probe_task.py ...............                [ 82%]
+tests\test_whitebox_risk_control_guard.py .............................. [ 90%]
+................                                                         [ 93%]
+tests\test_whitebox_data_correctness.py ....................             [ 98%]
+tests\test_whitebox_market_event_tagging.py .....                        [100%]
+
+============================== warnings summary ===============================
+tests/test_whitebox_market_event_collect_runs.py::test_collect_runs_pruned_beyond_window
+  D:\ai_project\dataAanlystNew\app\services\market_events.py:552: SAWarning: Identity map already had an identity for (<class 'app.models.market_event.MarketEventCollectRun'>, (1,), None), replacing it with newly flushed object.   Are there load operations occurring inside of an event handler within the flush?
+    db.commit()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\ai_project\dataAanlystNew\tmp\market-news-analysis-backend-offline.xml -
+========== 414 passed, 3 deselected, 1 warning in 143.71s (0:02:23) ===========

@@ -1,0 +1,91 @@
+{
+  "mode": "six_threads_one_process",
+  "business_database_selected": false,
+  "rows": [
+    {
+      "source": "eastmoney-global",
+      "status": "ok_nonempty",
+      "count": 50,
+      "earliest": "2026-10-26 11:40:19",
+      "latest": "2026-10-26 12:53:39",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "95ad8197f153c2c2232b2dfaa5244e4afc482255fc212074710794aeec0e4ecf",
+        "4e380cc40eb2b33fc2b9d372ba47fadd835ebd6ee1a1affa3cccd99e91f6cc03",
+        "be5d8b4399147546ea847ac3ac12026a1d15e7e0b2ada67ea66230092d3b9821"
+      ],
+      "elapsed_seconds": 2.56
+    },
+    {
+      "source": "caixin",
+      "status": "ok_nonempty",
+      "count": 40,
+      "earliest": null,
+      "latest": null,
+      "missing_publication": 40,
+      "sample_title_sha256": [
+        "a8b2662cfb118e90d2d25839e4b1a18d1dc8b5527a07ffc9cdb26519d68403b4",
+        "aa651d644c0f2747692754794f4d85a7f4e5334110d958e285156a3d22ae713d",
+        "057c50678220c439ec485304c3e735c34824ebc531e6c212ac8a872a50c4fee8"
+      ],
+      "elapsed_seconds": 1.55
+    },
+    {
+      "source": "cctv",
+      "status": "ok_nonempty",
+      "count": 13,
+      "earliest": "2026-10-24 16:00:00",
+      "latest": "2026-10-24 16:00:00",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "d80cb973a760bd013d283601c2e18748b63b0dad3776be2b5a29768ddd650cc5",
+        "bd2d3d79b8aa0377ea9a46de3e748ec608329b39b4274ce489de4f4d24d018f0",
+        "df2183af339d2cbcd171f2bd10bce0631b2b09b99a9b8998b1ee0dc76d314914"
+      ],
+      "elapsed_seconds": 9.36
+    },
+    {
+      "source": "baidu",
+      "status": "ok_nonempty",
+      "count": 40,
+      "earliest": "2026-10-26 05:00:00",
+      "latest": "2026-10-26 15:30:00",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "47a2dd8451ba8ffcb35f64e834670a86e504186378543b493ea227540c2f98f5",
+        "66765a7346968471f5db5391e125be01ef4fa15db785a12cf2cf5760d9277cc1",
+        "99c5b73db0d0b27be6c4ae2bbf02c78c44ce4977b08552216d691293d1fb006a"
+      ],
+      "elapsed_seconds": 1.7
+    },
+    {
+      "source": "baidu-report",
+      "status": "ok_nonempty",
+      "count": 40,
+      "earliest": "2026-10-25 16:00:00",
+      "latest": "2026-10-25 16:00:00",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "1449b55dcef007d3a58256362b82999ac1ef47d67dd19fa554af6971cd461d94",
+        "8b8c85fee0d7c4d0993556ac51099799a3d882e3001290b49981c31aae31a2b1",
+        "7d2fca6541be1be3ebb566155851b9a3eac1241263d29013cef3d16e0ce1a919"
+      ],
+      "elapsed_seconds": 1.31
+    },
+    {
+      "source": "futures-shmet",
+      "status": "ok_nonempty",
+      "count": 8,
+      "earliest": "2026-10-26 12:48:33",
+      "latest": "2026-10-26 12:54:20",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "e0fa3cb534f0030f2ddcc6a22ae7cc6106db2e170f24e5da5239826b29cedf24",
+        "0e58d501982c5be409c2dfc8686428fcf61629298cd361bca14addb4c0f6431f",
+        "30508343a9bbea1af92755d1c043d90db9f0d948a241622308e737189d00287c"
+      ],
+      "elapsed_seconds": 1.39
+    }
+  ],
+  "all_nonempty": true
+}

@@ -1,0 +1,41 @@
+vite v5.4.21 building for production...
+transforming...
+✓ 5670 modules transformed.
+rendering chunks...
+computing gzip size...
+../app/web/dist/index.html                                      1.09 kB │ gzip:   0.69 kB
+../app/web/dist/assets/PortfolioTradingShell-C8-h-Vq7.css      19.80 kB │ gzip:   3.85 kB
+../app/web/dist/assets/InspectionReturnLink-jianiUt0.css       37.94 kB │ gzip:   6.90 kB
+../app/web/dist/assets/Settings-Co3rMThU.css                   61.10 kB │ gzip:  10.55 kB
+../app/web/dist/assets/index-Rohb8fY6.css                     237.44 kB │ gzip:  37.91 kB
+../app/web/dist/assets/govStatusLabel-D2BF0I6_.js               0.47 kB │ gzip:   0.32 kB
+../app/web/dist/assets/FactorCoverageSummary-CLSIMoTi.js        1.61 kB │ gzip:   0.79 kB
+../app/web/dist/assets/navigate-DdJ20wNb.js                     2.44 kB │ gzip:   0.96 kB
+../app/web/dist/assets/sourceContext-CIxv0lsS.js                2.52 kB │ gzip:   0.95 kB
+../app/web/dist/assets/chartTheme-KBVcowv6.js                   2.95 kB │ gzip:   1.28 kB
+../app/web/dist/assets/OpportunityStatusBadges-C1LR-r8L.js      3.56 kB │ gzip:   1.20 kB
+../app/web/dist/assets/MetricModal-DNTu93Xw.js                  5.59 kB │ gzip:   1.87 kB
+../app/web/dist/assets/ThemeManagementModal-WEJWjv6R.js         7.57 kB │ gzip:   2.65 kB
+../app/web/dist/assets/ExplainButton-_PllJ3ai.js               10.94 kB │ gzip:   1.80 kB
+../app/web/dist/assets/MacroData-DhPhO8A8.js                   14.70 kB │ gzip:   4.78 kB
+../app/web/dist/assets/vendor-dayjs-CceJwmd0.js                16.40 kB │ gzip:   6.53 kB
+../app/web/dist/assets/MarketNews-9T_wci7w.js                  30.41 kB │ gzip:  12.55 kB
+../app/web/dist/assets/vendor-icons-yJaWK0D0.js                31.69 kB │ gzip:   6.43 kB
+../app/web/dist/assets/TodayDecision-D9NI_O8W.js               34.08 kB │ gzip:  11.99 kB
+../app/web/dist/assets/vendor-misc-BH4juuit.js                 40.64 kB │ gzip:  14.59 kB
+../app/web/dist/assets/InspectionReturnLink-4ndnFOG4.js        45.16 kB │ gzip:  18.23 kB
+../app/web/dist/assets/DetailModal-CId5X-If.js                 56.37 kB │ gzip:  15.30 kB
+../app/web/dist/assets/OpportunityCenter-F8mo-JaW.js           95.64 kB │ gzip:  25.74 kB
+../app/web/dist/assets/InvestmentCenter-Cry8hXSI.js           102.01 kB │ gzip:  28.40 kB
+
+../app/web/dist/assets/vendor-react-BJx6hX8p.js               144.66 kB │ gzip:  46.41 kB
+../app/web/dist/assets/PortfolioTradingShell-DQIgzIxY.js      442.23 kB │ gzip: 137.08 kB
+(!) Some chunks are larger than 1000 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+../app/web/dist/assets/index-CWYQAh4J.js                      775.16 kB │ gzip: 270.40 kB
+../app/web/dist/assets/Settings-UdyMpN-8.js                 1,000.43 kB │ gzip: 287.04 kB
+../app/web/dist/assets/vendor-charts-CK6CLuDQ.js            1,044.82 kB │ gzip: 347.06 kB
+../app/web/dist/assets/vendor-antd-CaWnk8Cj.js              1,198.43 kB │ gzip: 369.84 kB
+✓ built in 44.22s

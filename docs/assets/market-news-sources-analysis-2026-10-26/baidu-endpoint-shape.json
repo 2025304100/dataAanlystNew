@@ -1,0 +1,77 @@
+[
+  {
+    "category": "economic_data",
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "cookie_names": [
+      "BAIDUID"
+    ],
+    "top_keys": [
+      "QueryID",
+      "Result",
+      "ResultCode"
+    ],
+    "error_code": null,
+    "error_message": null,
+    "calendar_rows": [
+      {
+        "date": "2026-10-26",
+        "total": 42,
+        "items": 42,
+        "item_keys": [
+          "capitalization",
+          "countryIcon",
+          "date",
+          "dbName",
+          "formerVal",
+          "indicateVal",
+          "marketValue",
+          "pubVal",
+          "region",
+          "star",
+          "time",
+          "title"
+        ]
+      }
+    ]
+  },
+  {
+    "category": "report_time",
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "cookie_names": [
+      "BAIDUID"
+    ],
+    "top_keys": [
+      "QueryID",
+      "Result",
+      "ResultCode"
+    ],
+    "error_code": null,
+    "error_message": null,
+    "calendar_rows": [
+      {
+        "date": "2026-10-26",
+        "total": 200,
+        "items": 100,
+        "item_keys": [
+          "capitalization",
+          "code",
+          "countryIcon",
+          "date",
+          "dbName",
+          "exchange",
+          "isSkip",
+          "logoInfo",
+          "market",
+          "marketValue",
+          "mountSection",
+          "name",
+          "reportType",
+          "time",
+          "type"
+        ]
+      }
+    ]
+  }
+]

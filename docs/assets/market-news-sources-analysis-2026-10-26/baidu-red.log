@@ -1,0 +1,22 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 1 item
+
+tests\test_market_news_baidu_public_calendar.py F                        [100%]
+
+================================== FAILURES ===================================
+_____ test_baidu_collection_uses_public_calendar_without_cookie_preflight _____
+tests\test_market_news_baidu_public_calendar.py:34: in test_baidu_collection_uses_public_calendar_without_cookie_preflight
+    assert result.json()["status"]=="done"
+E   AssertionError: assert 'failed' == 'done'
+E     
+E     - done
+E     + failed
+------------------------------ Captured log call ------------------------------
+WARNING  app.services.market_events:market_events.py:464 Failed to fetch baidu: Failed to obtain Baidu cookies: Missing BAIDUID cookies in first response
+=========================== short test summary info ===========================
+FAILED tests/test_market_news_baidu_public_calendar.py::test_baidu_collection_uses_public_calendar_without_cookie_preflight
+============================== 1 failed in 6.64s ==============================

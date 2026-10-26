@@ -1,0 +1,112 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 417 items
+
+tests\test_akshare_quiet_output_concurrency.py ..                        [  0%]
+tests\test_market_news_baidu_public_calendar.py .......                  [  2%]
+tests\test_market_news_classification_explanation.py ................    [  5%]
+tests\test_notification_delivery_idempotency.py .........                [  8%]
+tests\test_market_event_migration_compatibility.py ......                [  9%]
+tests\test_market_news_source_contracts.py .........                     [ 11%]
+tests\test_market_news_notification_roundtrip.py ......                  [ 13%]
+tests\test_market_events_p1_fixes.py ................................... [ 21%]
+....                                                                     [ 22%]
+tests\test_market_events_p2_fixes.py ......................              [ 27%]
+tests\test_whitebox_notification_dispatcher.py ...............           [ 31%]
+tests\test_whitebox_notification_adapters.py ........................... [ 37%]
+...................................................                      [ 50%]
+tests\test_whitebox_notification_outbox.py ......................        [ 55%]
+tests\test_whitebox_notification_policies.py ........................... [ 61%]
+.................                                                        [ 65%]
+tests\test_whitebox_notification_event_emitter.py ............           [ 68%]
+tests\test_whitebox_market_events_p0.py ...........                      [ 71%]
+tests\test_whitebox_market_event_collect_runs.py ....                    [ 72%]
+tests\test_whitebox_akshare_http.py ......................F.s....        [ 79%]
+tests\test_whitebox_akshare_probe_task.py ...............                [ 82%]
+tests\test_whitebox_risk_control_guard.py .............................. [ 90%]
+................                                                         [ 94%]
+tests\test_whitebox_data_correctness.py ....................             [ 98%]
+tests\test_whitebox_market_event_tagging.py .....                        [100%]
+
+================================== FAILURES ===================================
+______________________ test_real_stock_info_a_code_name _______________________
+C:\Python312\Lib\site-packages\urllib3\connectionpool.py:467: in _make_request
+    self._validate_conn(conn)
+C:\Python312\Lib\site-packages\urllib3\connectionpool.py:1099: in _validate_conn
+    conn.connect()
+C:\Python312\Lib\site-packages\urllib3\connection.py:653: in connect
+    sock_and_verified = _ssl_wrap_socket_and_match_hostname(
+C:\Python312\Lib\site-packages\urllib3\connection.py:806: in _ssl_wrap_socket_and_match_hostname
+    ssl_sock = ssl_wrap_socket(
+C:\Python312\Lib\site-packages\urllib3\util\ssl_.py:465: in ssl_wrap_socket
+    ssl_sock = _ssl_wrap_socket_impl(sock, context, tls_in_tls, server_hostname)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\site-packages\urllib3\util\ssl_.py:509: in _ssl_wrap_socket_impl
+    return ssl_context.wrap_socket(sock, server_hostname=server_hostname)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\ssl.py:455: in wrap_socket
+    return self.sslsocket_class._create(
+C:\Python312\Lib\ssl.py:1042: in _create
+    self.do_handshake()
+C:\Python312\Lib\ssl.py:1320: in do_handshake
+    self._sslobj.do_handshake()
+E   ssl.SSLEOFError: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)
+
+During handling of the above exception, another exception occurred:
+C:\Python312\Lib\site-packages\urllib3\connectionpool.py:793: in urlopen
+    response = self._make_request(
+C:\Python312\Lib\site-packages\urllib3\connectionpool.py:491: in _make_request
+    raise new_e
+E   urllib3.exceptions.SSLError: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)
+
+The above exception was the direct cause of the following exception:
+C:\Python312\Lib\site-packages\requests\adapters.py:589: in send
+    resp = conn.urlopen(
+C:\Python312\Lib\site-packages\urllib3\connectionpool.py:847: in urlopen
+    retries = retries.increment(
+C:\Python312\Lib\site-packages\urllib3\util\retry.py:515: in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='query.sse.com.cn', port=443): Max retries exceeded with url: /sseQuery/commonQuery.do?STOCK_TYPE=1&REG_PROVINCE=&CSRC_CODE=&STOCK_CODE=&sqlId=COMMON_SSE_CP_GPJCTPZ_GPLB_GP_L&COMPANY_STATUS=2%2C4%2C5%2C7%2C8&type=inParams&isPagination=true&pageHelp.cacheSize=1&pageHelp.beginPage=1&pageHelp.pageSize=10000&pageHelp.pageNo=1&pageHelp.endPage=1 (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)')))
+
+During handling of the above exception, another exception occurred:
+tests\test_whitebox_akshare_http.py:373: in test_real_stock_info_a_code_name
+    df = ak.stock_info_a_code_name()
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\akshare\stock\stock_info.py:447: in stock_info_a_code_name
+    stock_sh = stock_info_sh_name_code(symbol="主板A股")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\akshare\stock\stock_info.py:155: in stock_info_sh_name_code
+    r = requests.get(url, params=params, headers=headers)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\site-packages\requests\api.py:73: in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\site-packages\requests\api.py:59: in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\akshare_utils.py:194: in _patched_request
+    return _orig_request(self, method, url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\site-packages\requests\sessions.py:589: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\site-packages\requests\sessions.py:703: in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\site-packages\requests\adapters.py:620: in send
+    raise SSLError(e, request=request)
+E   requests.exceptions.SSLError: HTTPSConnectionPool(host='query.sse.com.cn', port=443): Max retries exceeded with url: /sseQuery/commonQuery.do?STOCK_TYPE=1&REG_PROVINCE=&CSRC_CODE=&STOCK_CODE=&sqlId=COMMON_SSE_CP_GPJCTPZ_GPLB_GP_L&COMPANY_STATUS=2%2C4%2C5%2C7%2C8&type=inParams&isPagination=true&pageHelp.cacheSize=1&pageHelp.beginPage=1&pageHelp.pageSize=10000&pageHelp.pageNo=1&pageHelp.endPage=1 (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)')))
+============================== warnings summary ===============================
+tests/test_whitebox_market_event_collect_runs.py::test_collect_runs_pruned_beyond_window
+  D:\ai_project\dataAanlystNew\app\services\market_events.py:552: SAWarning: Identity map already had an identity for (<class 'app.models.market_event.MarketEventCollectRun'>, (1,), None), replacing it with newly flushed object.   Are there load operations occurring inside of an event handler within the flush?
+    db.commit()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\ai_project\dataAanlystNew\tmp\market-news-analysis-backend.xml -
+=========================== short test summary info ===========================
+FAILED tests/test_whitebox_akshare_http.py::test_real_stock_info_a_code_name
+======= 1 failed, 415 passed, 1 skipped, 1 warning in 204.07s (0:03:24) =======
