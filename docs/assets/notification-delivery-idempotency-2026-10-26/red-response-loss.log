@@ -1,0 +1,17 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 2 items / 1 deselected / 1 selected
+
+tests\test_notification_delivery_idempotency.py F                        [100%]
+
+================================== FAILURES ===================================
+____ test_response_lost_after_acceptance_retries_with_same_idempotency_key ____
+tests\test_notification_delivery_idempotency.py:28: in test_response_lost_after_acceptance_retries_with_same_idempotency_key
+    assert keys[0] and keys[0]==keys[1]
+E   assert (None)
+=========================== short test summary info ===========================
+FAILED tests/test_notification_delivery_idempotency.py::test_response_lost_after_acceptance_retries_with_same_idempotency_key
+====================== 1 failed, 1 deselected in 14.80s =======================

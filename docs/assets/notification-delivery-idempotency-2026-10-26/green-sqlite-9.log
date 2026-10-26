@@ -1,0 +1,10 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 9 items
+
+tests\test_notification_delivery_idempotency.py .........                [100%]
+
+============================= 9 passed in 23.85s ==============================

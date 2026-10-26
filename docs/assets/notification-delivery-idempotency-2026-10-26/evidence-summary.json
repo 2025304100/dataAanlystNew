@@ -1,0 +1,38 @@
+{
+  "test_counts": {
+    "mysql57-delivery.xml": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "regression-277.xml": {
+      "tests": 277,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "new_tests": {
+    "sqlite": 9,
+    "mysql57": 2
+  },
+  "mysql_concurrent_requests": 1,
+  "mysql_response_loss_requests": 2,
+  "mysql_response_loss_receiver_effects": 1,
+  "receiver_honors_idempotency": true,
+  "external_recipients_used": false,
+  "schema_retained": "codex_market_261026_i27_delivery",
+  "files": {
+    "delivery-mysql57-concurrent.json": "602b19336ae6a261905f881215ffbd9b4223b6a319743d8312279da1955dab38",
+    "delivery-mysql57-identity.json": "10cd0080d6de013cade2093d16b105bd9d2e710765c67ce8dd55baded6840a02",
+    "delivery-mysql57-response-loss.json": "1cbb562a987a24135ade6a879cc35f00993389d4d267bccc510f3a8190b0f2f4",
+    "green-sqlite-9.log": "b8a4f03edc107765c2f2c00df8c996aa58d8ed150218d9530d880fbf5676e749",
+    "mysql57-delivery.xml": "cf32d5c9456f364e168c7f77deec780054012008a64c03b60ee0c9536ebeb6fb",
+    "red-concurrent.log": "2ac748147daf3c4a40ca5f63f7e77383cef629b491fceea15d6e36c752d25c14",
+    "red-response-loss.log": "b9bd3e77d668068c82a9efbf61bd261e982de34cf442e2b6a96d37a69390215a",
+    "regression-277.log": "033f73d1695bd56d1bbe3abb1ce7f4314f02dbf29377226670c1f15b6a9e2103",
+    "regression-277.xml": "04c10a485e6428828b96104cfb2bc3b008ca1a9a3a1bd57051766eda467ea3f6",
+    "result-delivery.json": "b05f85658593795126e8a56637300ccaf446087885c857b3aefbd392e0a5e8a8"
+  }
+}

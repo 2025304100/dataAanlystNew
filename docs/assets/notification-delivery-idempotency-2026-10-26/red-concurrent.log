@@ -1,0 +1,19 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 1 item
+
+tests\test_notification_delivery_idempotency.py F                        [100%]
+
+================================== FAILURES ===================================
+______ test_two_processes_reading_same_pending_message_deliver_only_once ______
+tests\test_notification_delivery_idempotency.py:13: in test_two_processes_reading_same_pending_message_deliver_only_once
+    assert len(receiver.receipts)==1
+E   AssertionError: assert 2 == 1
+E    +  where 2 = len([{'key': None, 'body': {'title': '隔离采集失败', 'body': '受控投递验收'}}, {'key': None, 'body': {'title': '隔离采集失败', 'body': '受控投递验收'}}])
+E    +    where [{'key': None, 'body': {'title': '隔离采集失败', 'body': '受控投递验收'}}, {'key': None, 'body': {'title': '隔离采集失败', 'body': '受控投递验收'}}] = <tests.notification_delivery_acceptance_support.LocalReceiver object at 0x000001E095114200>.receipts
+=========================== short test summary info ===========================
+FAILED tests/test_notification_delivery_idempotency.py::test_two_processes_reading_same_pending_message_deliver_only_once
+============================== 1 failed in 8.56s ==============================

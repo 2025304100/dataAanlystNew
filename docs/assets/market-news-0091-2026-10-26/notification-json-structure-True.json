@@ -1,0 +1,14 @@
+{
+  "nested": true,
+  "status_code": 200,
+  "received_http_requests": 1,
+  "received_body": {
+    "items": [
+      {
+        "text": "首行\n次行\\\\路径 \\*\\*强调\\*\\* \",\"injected\":true,\"tail\":\""
+      }
+    ],
+    "enabled": true,
+    "count": 2
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "receipts": [
+    {
+      "key": "notify-v1-4aaba4fdc12ec45326b77cf08eec27df58c32b6f5c8fdf4b188c9710b38085f7",
+      "body": {
+        "title": "隔离采集失败",
+        "body": "受控投递验收"
+      }
+    }
+  ],
+  "effects": [
+    {
+      "key": "notify-v1-4aaba4fdc12ec45326b77cf08eec27df58c32b6f5c8fdf4b188c9710b38085f7",
+      "body": {
+        "title": "隔离采集失败",
+        "body": "受控投递验收"
+      }
+    }
+  ],
+  "workers": [
+    {
+      "processed": 1
+    },
+    {
+      "processed": 0
+    }
+  ],
+  "outboxes": [
+    {
+      "id": 1,
+      "status": "sent",
+      "attempt_count": 1
+    }
+  ],
+  "deliveries": [
+    {
+      "outbox_id": 1,
+      "status": "success",
+      "attempt_number": 1
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "outcome": "partial",
+  "stored_events": 5,
+  "outbox_count": 0,
+  "received_http_requests": 0,
+  "runs": [
+    {
+      "status": "partial",
+      "collected": 5,
+      "skipped_duplicate": 0
+    }
+  ]
+}

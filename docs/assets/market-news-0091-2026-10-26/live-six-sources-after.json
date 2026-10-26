@@ -1,0 +1,83 @@
+{
+  "executed_at_utc": "2026-10-26T09:06:47.799834+00:00",
+  "akshare_version": "1.18.30",
+  "production_fetch_wrappers": true,
+  "business_database_selected": false,
+  "application_database_writes": false,
+  "notifications_sent": false,
+  "sources": [
+    {
+      "source": "eastmoney-global",
+      "status": "ok_nonempty",
+      "count": 50,
+      "earliest": "2026-10-26 08:23:33",
+      "latest": "2026-10-26 09:03:45",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "d69e22c6116ac418433055ad9ecc271a708df3001cde3afe8c6b1951502853d4",
+        "003467eb676f40f1c97d254c7ec2575001f48b17d01938559d25fc6578b2aa65",
+        "88899c9ef74d35f3f9bd58aaaa35347a877fdb06f34edd0fc69668072561f080"
+      ],
+      "elapsed_seconds": 0.97
+    },
+    {
+      "source": "caixin",
+      "status": "ok_nonempty",
+      "count": 40,
+      "earliest": null,
+      "latest": null,
+      "missing_publication": 40,
+      "sample_title_sha256": [
+        "aa651d644c0f2747692754794f4d85a7f4e5334110d958e285156a3d22ae713d",
+        "057c50678220c439ec485304c3e735c34824ebc531e6c212ac8a872a50c4fee8",
+        "3f9e7d648cb087cfd71ff6c5995665910d8307cd2eec28c4513d8ccf2599c673"
+      ],
+      "elapsed_seconds": 1.12
+    },
+    {
+      "source": "cctv",
+      "status": "ok_nonempty",
+      "count": 13,
+      "earliest": "2026-10-24 16:00:00",
+      "latest": "2026-10-24 16:00:00",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "d80cb973a760bd013d283601c2e18748b63b0dad3776be2b5a29768ddd650cc5",
+        "bd2d3d79b8aa0377ea9a46de3e748ec608329b39b4274ce489de4f4d24d018f0",
+        "df2183af339d2cbcd171f2bd10bce0631b2b09b99a9b8998b1ee0dc76d314914"
+      ],
+      "elapsed_seconds": 2.83
+    },
+    {
+      "source": "baidu",
+      "status": "error",
+      "error_type": "RuntimeError",
+      "category": "supplier_cookie_failure",
+      "cause_type": "ValueError",
+      "elapsed_seconds": 1.03
+    },
+    {
+      "source": "baidu-report",
+      "status": "error",
+      "error_type": "RuntimeError",
+      "category": "supplier_cookie_failure",
+      "cause_type": "ValueError",
+      "elapsed_seconds": 0.59
+    },
+    {
+      "source": "futures-shmet",
+      "status": "ok_nonempty",
+      "count": 7,
+      "earliest": "2026-10-26 09:00:09",
+      "latest": "2026-10-26 09:05:02",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "aa5dc48d90dcf7842310e48a43815fdb4d06068c04a479c810626cf61490b98a",
+        "f7f99c8159551240459ede75c0b57d2fcd7472aeb8b8c6ecaf8dba53b85d6efd",
+        "4533dcc7d71c092e74db487b11d7b5f18e7481e16a593f59b6163f732ebe2e80"
+      ],
+      "elapsed_seconds": 0.97
+    }
+  ],
+  "all_nonempty": false
+}

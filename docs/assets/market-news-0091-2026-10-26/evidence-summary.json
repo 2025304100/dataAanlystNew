@@ -1,0 +1,53 @@
+{
+  "migration_head": "wps_0024_091_market_compat",
+  "test_counts": {
+    "mysql-migration.xml": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "page-e2e.xml": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "notification-roundtrip.xml": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "backend_regression_passed": 253,
+  "backend_warning_count": 1,
+  "runtime": {
+    "origin": "http://127.0.0.1:55972",
+    "database": "codex_market_261026_f24_e2e",
+    "lifespan": "off",
+    "frontend": "app/web/dist production build",
+    "business_api_mocks": false
+  },
+  "runtime_stopped": true,
+  "third_party_delivery": "deferred by user; local receiver and in_app only",
+  "live_sources_note": "read-only production fetch wrappers; no database persistence; Baidu cookie failures remain",
+  "files": {
+    "backend-regression.log": "b776b3db7c6cb9fd99797cd0b91a22987f6a5724bb8cba2459139fd39f9b4a47",
+    "live-six-sources-after.json": "a476359bb4d08571ec07c33f47974da074934754950855ffe3caa4ffca77db20",
+    "live-six-sources-before.json": "17b94fab736df3971cd7144a5e83eefead053fd2ae0825654e22869893ed0ad2",
+    "mysql-migration.xml": "9da7e13f6ce7e0a4675b7b5834cf03a54f432d0b9185a4de3584b53a933f8901",
+    "mysql0091-compensation-roundtrip.json": "b225b2fa934eff7252b6eb12e83b289ce11dbfc562b48cf1275e99d18a3ff7cc",
+    "mysql0091-fresh-head.json": "23cd6deb1f6b15c6c39cedb7b68b8ed04f6c88b57d87ed947d17e0beafb79d9f",
+    "notification-all_duplicate.json": "7c48265d6823bbab24c99c3a50a437396777729b38849f86a9a7c75a54bb2d07",
+    "notification-all_failed.json": "1913df0a020f1dd63215fc5a5907da20d25f73106cedc93e11dc876bbfb5562e",
+    "notification-json-structure-False.json": "5f700088aa9d0f22d2ad1fd18ed827a395b8e1589e0ad4b7fb63a5b4b04fcfe7",
+    "notification-json-structure-True.json": "b5d512b250867e0192b127682a106b00411fc6e31d4d86d5cb930a9672016c03",
+    "notification-normal.json": "eff82d05c8c26441d8a61d642a458fc5dd8740b7af181a06fbb6e3525650ad4d",
+    "notification-partial.json": "45537cb7e771c8a355af9a88ae346395501b0c2dec41e2816507ee3bde0f33ac",
+    "notification-roundtrip.xml": "efa778b1a5201adbe8f5076521a6bdaf6a5d8c1557f4b7c11494eeb3e1be8829",
+    "page-e2e-result.json": "db2567df1c013a4c64c6ed1533851e8d19202576c12e9392313796612ce39cbc",
+    "page-e2e.xml": "5ef062ec4ae9004ee27ac8d03ace15f35ef8f658b587c0934a4ad1a303bf1699",
+    "result-migration.json": "be64f1ebdfefe9b7993eb65d1b836c41f5706b410a51a29f0ccd0122623603f2"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "identity": {
+    "version": "5.7.26",
+    "database_name": "codex_market_261026_i27_delivery",
+    "server_uuid_sha256": "088b56a8a8e91d5fa24b0eeba44e32559d84593a7f32a33e35ff422996a577d9",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+    "isolation_level": "REPEATABLE-READ"
+  },
+  "revision": "wps_0024_091_market_compat",
+  "storage_engine": "InnoDB"
+}

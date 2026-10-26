@@ -1,0 +1,32 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collected 277 items
+
+tests\test_notification_delivery_idempotency.py .........                [  3%]
+tests\test_market_event_migration_compatibility.py ......                [  5%]
+tests\test_market_news_source_contracts.py .........                     [  8%]
+tests\test_market_news_notification_roundtrip.py ......                  [ 10%]
+tests\test_market_events_p1_fixes.py ................................... [ 23%]
+....                                                                     [ 24%]
+tests\test_market_events_p2_fixes.py ......................              [ 32%]
+tests\test_whitebox_notification_dispatcher.py ...............           [ 38%]
+tests\test_whitebox_notification_adapters.py ........................... [ 48%]
+...................................................                      [ 66%]
+tests\test_whitebox_notification_outbox.py ......................        [ 74%]
+tests\test_whitebox_notification_policies.py ........................... [ 84%]
+.................                                                        [ 90%]
+tests\test_whitebox_notification_event_emitter.py ............           [ 94%]
+tests\test_whitebox_market_events_p0.py ...........                      [ 98%]
+tests\test_whitebox_market_event_collect_runs.py ....                    [100%]
+
+============================== warnings summary ===============================
+tests/test_whitebox_market_event_collect_runs.py::test_collect_runs_pruned_beyond_window
+  D:\ai_project\dataAanlystNew\app\services\market_events.py:557: SAWarning: Identity map already had an identity for (<class 'app.models.market_event.MarketEventCollectRun'>, (1,), None), replacing it with newly flushed object.   Are there load operations occurring inside of an event handler within the flush?
+    db.commit()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\ai_project\dataAanlystNew\tmp\notification-delivery-regression-h26.xml -
+================== 277 passed, 1 warning in 94.05s (0:01:34) ==================

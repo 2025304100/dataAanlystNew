@@ -1,0 +1,5 @@
+{
+  "while_held": "busy",
+  "after_release": "acquired",
+  "business_commit_preserved_lock": true
+}

@@ -1,0 +1,64 @@
+{
+  "receipts": [
+    {
+      "key": "notify-v1-2d66524d2445d44fe4328caa26019031fc08e1a844eddaa4d4e6f984661b75fb",
+      "body": {
+        "title": "隔离采集失败",
+        "body": "受控投递验收"
+      }
+    },
+    {
+      "key": "notify-v1-2d66524d2445d44fe4328caa26019031fc08e1a844eddaa4d4e6f984661b75fb",
+      "body": {
+        "title": "隔离采集失败",
+        "body": "受控投递验收"
+      }
+    }
+  ],
+  "effects": [
+    {
+      "key": "notify-v1-2d66524d2445d44fe4328caa26019031fc08e1a844eddaa4d4e6f984661b75fb",
+      "body": {
+        "title": "隔离采集失败",
+        "body": "受控投递验收"
+      }
+    }
+  ],
+  "workers": [
+    {
+      "processed": 1
+    },
+    {
+      "processed": 1
+    }
+  ],
+  "outboxes": [
+    {
+      "id": 1,
+      "status": "sent",
+      "attempt_count": 1
+    },
+    {
+      "id": 2,
+      "status": "sent",
+      "attempt_count": 2
+    }
+  ],
+  "deliveries": [
+    {
+      "outbox_id": 1,
+      "status": "success",
+      "attempt_number": 1
+    },
+    {
+      "outbox_id": 2,
+      "status": "failed",
+      "attempt_number": 1
+    },
+    {
+      "outbox_id": 2,
+      "status": "success",
+      "attempt_number": 2
+    }
+  ]
+}

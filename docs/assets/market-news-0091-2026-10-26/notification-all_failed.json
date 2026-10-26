@@ -1,0 +1,13 @@
+{
+  "outcome": "all_failed",
+  "stored_events": 0,
+  "delivered_outboxes": 2,
+  "successful_deliveries": 2,
+  "received_http_requests": 1,
+  "received_body": {
+    "title": "行情消息采集失败",
+    "body": "行情消息采集失败\n\n定时采集全部来源失败，行情消息已停止更新，请检查 akshare 可用性。失败来源：eastmoney-global: 受控供应商故障; caixin: 受控供应商故障; cctv: 受控供应商故障 ...（共 6 个来源失败）"
+  },
+  "pending_and_sent_daily_dedup": true,
+  "next_key_outboxes": 2
+}

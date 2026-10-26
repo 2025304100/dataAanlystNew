@@ -1,0 +1,13 @@
+{
+  "outcome": "normal",
+  "stored_events": 6,
+  "outbox_count": 0,
+  "received_http_requests": 0,
+  "runs": [
+    {
+      "status": "done",
+      "collected": 6,
+      "skipped_duplicate": 0
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "executed_at_utc": "2026-10-26T09:03:32.734967+00:00",
+  "akshare_version": "1.18.30",
+  "production_fetch_wrappers": true,
+  "business_database_selected": false,
+  "application_database_writes": false,
+  "notifications_sent": false,
+  "sources": [
+    {
+      "source": "eastmoney-global",
+      "status": "ok_nonempty",
+      "count": 50,
+      "earliest": "2026-10-26 16:20:07",
+      "latest": "2026-10-26 17:01:29",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "d50426125e23c066c78a23d953a11def64f18eaaa25b453aafc18709da6c59d0",
+        "d84c22d6d59c8a29b5945a5cb07a39714f93cedbfe41c84ec261a2a062317415",
+        "55348251b7571fb1070a29dc82277d3026a8d89fae50954cd364b4c8e0950654"
+      ],
+      "elapsed_seconds": 0.7
+    },
+    {
+      "source": "caixin",
+      "status": "ok_nonempty",
+      "count": 40,
+      "earliest": null,
+      "latest": null,
+      "missing_publication": 40,
+      "sample_title_sha256": [
+        "aa651d644c0f2747692754794f4d85a7f4e5334110d958e285156a3d22ae713d",
+        "057c50678220c439ec485304c3e735c34824ebc531e6c212ac8a872a50c4fee8",
+        "3f9e7d648cb087cfd71ff6c5995665910d8307cd2eec28c4513d8ccf2599c673"
+      ],
+      "elapsed_seconds": 1.17
+    },
+    {
+      "source": "cctv",
+      "status": "ok_nonempty",
+      "count": 11,
+      "earliest": "2024-04-24 00:00:00",
+      "latest": "2024-04-24 00:00:00",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "af8f2174129cfe4d8337669f9dfa6686edd239408e0becadd7b03a730bafdf58",
+        "6721ca7c0fdfb106d078e292c035cdd3b5c8f3eef5caac2516554b13f705abbd",
+        "45a0fb491d72b131f183918d64b93bdacd6da4d7a0cc3d3339a141a85da971b8"
+      ],
+      "elapsed_seconds": 2.44
+    },
+    {
+      "source": "baidu",
+      "status": "error",
+      "error_type": "RuntimeError",
+      "elapsed_seconds": 1.09
+    },
+    {
+      "source": "baidu-report",
+      "status": "error",
+      "error_type": "RuntimeError",
+      "elapsed_seconds": 1.08
+    },
+    {
+      "source": "futures-shmet",
+      "status": "ok_nonempty",
+      "count": 7,
+      "earliest": "2026-10-26 16:55:21",
+      "latest": "2026-10-26 17:01:56",
+      "missing_publication": 0,
+      "sample_title_sha256": [
+        "0b870a48370619c81ce55580a6e15ae6cfba6090fca0fe242d869b98877f5a86",
+        "5e28f8017229cba8dfbe96338c2d95c9c4083c7acdcce98d4b1fea5e08636b18",
+        "422c10ed1ce4504a4f84c27efda16b80c5641efbbcf47a7b5b8f0b806b2cae52"
+      ],
+      "elapsed_seconds": 1.06
+    }
+  ],
+  "all_nonempty": false
+}

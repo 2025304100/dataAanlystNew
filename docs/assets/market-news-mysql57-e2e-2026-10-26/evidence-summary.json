@@ -1,0 +1,96 @@
+{
+  "mysql_version": "5.7.26",
+  "packages": {
+    "SQLAlchemy": "2.0.48",
+    "PyMySQL": "1.2.0",
+    "playwright": "1.60.0",
+    "alembic": "1.15.2"
+  },
+  "logical_database_isolation": true,
+  "api_mocks": false,
+  "intentional_fault_injection": "one hotspots transport-abort case",
+  "runtime": {
+    "origin": "http://127.0.0.1:63076",
+    "database": "codex_market_261026_d22_e2e",
+    "lifespan": "off",
+    "frontend": "app/web/dist production build",
+    "business_api_mocks": false
+  },
+  "runtime_stopped": true,
+  "browser_cases": [
+    {
+      "case": "test_csv_real_browser_bom_escaping_and_formula_text",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 5
+    },
+    {
+      "case": "test_export_all_205_and_filtered_csv",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 13
+    },
+    {
+      "case": "test_favorite_beyond_first_page_persists_and_exports",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 16
+    },
+    {
+      "case": "test_hotspot_failure_fallback_recomputes_window",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 6
+    },
+    {
+      "case": "test_hotspot_real_windows_and_independence_from_empty_list",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 11
+    },
+    {
+      "case": "test_label_correction_persists_through_http_and_reload",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 11
+    },
+    {
+      "case": "test_legacy_custom_label_can_return_to_auto_via_ui",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 11
+    },
+    {
+      "case": "test_pagination_real_total_and_last_page",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 10
+    },
+    {
+      "case": "test_utc_publication_time_displays_in_shanghai_timezone",
+      "page_errors": 0,
+      "api_5xx": 0,
+      "market_request_count": 4
+    }
+  ],
+  "files": {
+    "all-205.csv": "c456287bb9e250ae052e56e445c67b958b21896ecf59fa3c399757cf1462546e",
+    "escaped-formula-1.csv": "53a3f3be325ec6d4fe197e42a582ffb00c19cb2c2f3c273537c226c112069378",
+    "favorite-1.csv": "a64907ae3d21a92b0e24b0cfe70ff6eed933d9848559ecfbcdfc58d7dd6b3258",
+    "filtered-50.csv": "f1fa4746c920f6ab79e489adc64059825edbbc276d6ec42a9831d65aef51791e",
+    "hotspots-year-empty-list.png": "c9008c4c2c46548b88c7e98b877a104bcd24705d7584144e67d449ee947643cf",
+    "labels-auto.png": "6526c93e87ee4f616332069030bb95e76b0d539c234c0d84dad68949f28f1129",
+    "labels-corrected.png": "d11c6a77510e01d7293b39efbde3c9b0004bcf9f0f8e3dd843901889f7a415d1",
+    "mysql-cross-process-lock.json": "0631c4471fc8ffc6633712e15e62dfbf81970797d48ba3d6e205ab05e7138c06",
+    "mysql-migration-roundtrip.json": "d69aa45fab29a5326ea74e27178afbd9f4b8b9747d6512702699a2b6a970fbf3",
+    "pagination-last-page.png": "09440557760856413aa85a45ea6720399b7ce75e56b75f7ec3c831ee9b1d5a52",
+    "result-all.json": "ac730eaf198c80970962db2dc4c4c2efb8f3e5242906544076b8f686db56d18f",
+    "shanghai-time.png": "786f8b30518d01bd37f716008c05fe199eddbdc428ab41faa15daec0222557fa"
+  },
+  "csv_rows": {
+    "all-205.csv": 205,
+    "escaped-formula-1.csv": 1,
+    "favorite-1.csv": 1,
+    "filtered-50.csv": 50
+  }
+}
