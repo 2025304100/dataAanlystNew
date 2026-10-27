@@ -7,17 +7,28 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
-from app.models.news_event import NewsSnapshot
+from app.models.news_event import NewsEvent, NewsSnapshot
 from app.models.symbol import Symbol
-from app.services.news import NEWS_SCORE_MIN_CONFIDENCE, compute_news_event_score
+from app.schemas.news import NewsUpdateRequest
+from app.services.news import (
+    NEWS_SCORE_MIN_CONFIDENCE,
+    _summarize_symbol,
+    compute_news_event_score,
+)
 from app.services.scoring_config_engine import (
     _aggregate_final_scores,
     _resolve_news_score,
 )
 
 pytestmark = pytest.mark.whitebox
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _symbol(db):
@@ -70,6 +81,33 @@ def test_compute_news_score_takes_latest_snapshot(db_session):
     _snapshot(db_session, sym.id, message_score=8.0, confidence=0.9)
     _snapshot(db_session, sym.id, message_score=-4.0, confidence=0.9)  # 后插入=更新
     assert compute_news_event_score(db_session, sym.id) == 40.0
+
+
+def test_compute_news_score_reads_snapshot_written_by_summarize(db_session):
+    """回归：生产链路 update_news(scope="symbols") 写入的快照必须能被读到。
+
+    NewsSnapshot.scope 记录的是请求范围而非快照粒度，历史实现按 scope=="symbol"
+    过滤会永远查不到生产写入的行，导致灰度开关静默失效。
+    """
+    sym = _symbol(db_session)
+    events = [
+        NewsEvent(
+            title="利好一", source="cninfo", event_type="news", strength=1,
+            sentiment="positive", risk_level="low", effective_score=5.0,
+            published_at=_now(), created_at=_now(),
+        ),
+        NewsEvent(
+            title="利好二", source="cninfo", event_type="news", strength=1,
+            sentiment="positive", risk_level="low", effective_score=5.0,
+            published_at=_now(), created_at=_now(),
+        ),
+    ]
+    payload = NewsUpdateRequest(scope="symbols", symbol_ids=[sym.id])
+    summary = _summarize_symbol(db_session, payload, sym, events)
+    db_session.commit()
+    assert summary.confidence >= NEWS_SCORE_MIN_CONFIDENCE
+    # message_score=10 → 50 + 10*2.5 = 75
+    assert compute_news_event_score(db_session, sym.id) == 75.0
 
 
 # ----------------------------------------------------------------------------

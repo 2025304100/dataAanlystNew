@@ -607,11 +607,15 @@ def compute_news_event_score(session: Session, symbol_id: int) -> float | None:
 
     NewsSnapshot.message_score ∈ [-20, 20]（_summarize_symbol 已截断），线性映射
     -20→0 / 0→50 / +20→100。无快照或置信度不足时返回 None（调用方保持默认 50，
-    与旧行为一致）。取 scope="symbol" 的最新一条快照，走 symbol_id 索引。
+    与旧行为一致）。
+
+    注意：NewsSnapshot.scope 记录的是 update_news 的请求范围（"symbols"/"candidates"/
+    "watchlist"），并非快照粒度；_summarize_symbol 为每个 symbol 各写一条，因此这里
+    只按 symbol_id 取最新一条，不能再过滤 scope（否则永远查不到生产写入的行）。
     """
     snapshot = session.execute(
         select(NewsSnapshot)
-        .where(NewsSnapshot.symbol_id == symbol_id, NewsSnapshot.scope == "symbol")
+        .where(NewsSnapshot.symbol_id == symbol_id)
         .order_by(desc(NewsSnapshot.created_at), desc(NewsSnapshot.id))
         .limit(1)
     ).scalars().first()
