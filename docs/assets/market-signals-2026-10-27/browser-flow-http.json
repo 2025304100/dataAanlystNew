@@ -1,0 +1,349 @@
+{
+  "responses": [
+    {
+      "url": "http://127.0.0.1:50508/api/v1/inspection-acceptance/status",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/notifications/inbox?limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-data/sync-tasks?limit=1",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/portfolios",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-events/collect-runs?limit=1",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-events?importance_level_min=1&date_from=2026-09-27&include_expired=false&limit=50&offset=0&sort_by=published_at",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-events/hotspots?days=30",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/discovery/tasks?limit=10&scope=cn-stock",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-events/hotspots?days=30",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/system/capabilities",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 201
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence",
+      "status": 201
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs/0137fc16070147b3abdbce94243a5fec",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs/b37c5c91bc6846a78faf101b079df2b5",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs/85e5669725a84f3791253b484131a243",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/jobs/f048dedcc8a549388d4ed74add594541",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/notifications/inbox?limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/notifications/inbox/1/read",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/metadata?keyword=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/evidence?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/assessments?offset=0&limit=50",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50508/api/v1/market-signals/predictions?offset=0&limit=50",
+      "status": 200
+    }
+  ],
+  "page_errors": []
+}

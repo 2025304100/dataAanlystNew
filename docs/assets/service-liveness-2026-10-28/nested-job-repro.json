@@ -1,0 +1,17 @@
+{
+  "reproduced": true,
+  "parent_exit": 0,
+  "child_policy": {
+    "pid": 69684,
+    "parent": 68148,
+    "query_ok": true,
+    "in_job": true,
+    "limits_ok": true,
+    "limits_error": null,
+    "flags": "0x2000",
+    "kill_on_close": true,
+    "breakaway_ok": false,
+    "silent_breakaway_ok": false
+  },
+  "description": "Existing launcher breaks immediate job but remains in outer kill-on-close job"
+}

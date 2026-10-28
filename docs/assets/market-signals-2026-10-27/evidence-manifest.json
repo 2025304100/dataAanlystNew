@@ -1,0 +1,309 @@
+{
+  "date": "2026-10-27",
+  "timezone": "Asia/Shanghai",
+  "junit": {
+    "backend-regression.xml": {
+      "tests": 235,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "browser-legacy.xml": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "browser-new-feature.xml": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "mysql57-legacy-migration.xml": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "mysql57-new-feature.xml": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "frontend_tests": 48,
+  "frontend_failures": 0,
+  "typescript_exit_code": 0,
+  "production_build_exit_code": 0,
+  "ai_vendor": "deterministic loopback HTTP fixture; not a model-quality evaluation",
+  "accuracy_75_percent_verified": false,
+  "production_database_migrated": false,
+  "production_service_restarted": false,
+  "source_files": [
+    {
+      "path": "alembic/versions/2026_10_27_0092_market_signals.py",
+      "sha256": "7a1d5dfbc9e0368cf224c262ab352d73f6f2b7d316851acfa075096e68f1ecf5"
+    },
+    {
+      "path": "app/api/router.py",
+      "sha256": "47579173bf6715f82e22a210ed67e67759fac2a0cfe8cda3ee7e6fabd36bd9a9"
+    },
+    {
+      "path": "app/api/routes/market_signals.py",
+      "sha256": "9f038e63ab1446a8d625edf0d7515c674cecc54f8956bcbfef28b5d600be2eae"
+    },
+    {
+      "path": "app/models/market_signal.py",
+      "sha256": "59e9bc53dd0b3cf0899fa67ef1f2b4392d62ec30ab4c03236d2b1aba0549b4ba"
+    },
+    {
+      "path": "app/schemas/market_signal.py",
+      "sha256": "fd1db3369dc41070c402c6cc091ebee68ef62b61fa0d3a4110249c2c2c51a17d"
+    },
+    {
+      "path": "app/services/market_event_collection_lock.py",
+      "sha256": "22bca8813257c1030c9f768668d4b4cfc0ee0efef4d54c462c260b961e0f816a"
+    },
+    {
+      "path": "app/services/market_events.py",
+      "sha256": "84fc3fd649af95d84a0574f12f6c43550df16367e2dabee30151c7421837c1fc"
+    },
+    {
+      "path": "app/services/market_signal_analysis.py",
+      "sha256": "250b9ca8e71514ba95c5cad3f08fdec145db35e1cc82ad28ee7e3ce9910df890"
+    },
+    {
+      "path": "app/services/market_signal_delivery.py",
+      "sha256": "e869966a057bc46ff1570d3227710459f26bdad703478d01186fb622c983a313"
+    },
+    {
+      "path": "app/services/market_signal_engine.py",
+      "sha256": "3943d0fdc567f1f8fa0feb18eeaf32e596dcd2e59cf928b7be2b3a149e96f57e"
+    },
+    {
+      "path": "app/services/market_signal_jobs.py",
+      "sha256": "d7799e5dcd8bc2cdc745b192fe02b830b6e4bf245065868282be31fdbba21d4f"
+    },
+    {
+      "path": "app/services/market_signal_operations.py",
+      "sha256": "0d2f6032261ca4e2cbf450a4a7905c64c41e184c63d78c705d2d0b837d831af1"
+    },
+    {
+      "path": "app/services/market_signal_quotes.py",
+      "sha256": "925cae1540a4499c026a37db0dee974e0f306678017998ebf4e69b2290403e98"
+    },
+    {
+      "path": "app/services/market_signal_sources.py",
+      "sha256": "5e8b7fd47b82efd1196cd45b6cd826f4394be4b678ebaf43f3eaee2f146587ea"
+    },
+    {
+      "path": "app/services/market_signal_stats.py",
+      "sha256": "6e439fb0cf42c942d70f1e43472e5deef0022237943f86dedcd6442b76c5fad7"
+    },
+    {
+      "path": "app/services/market_signals.py",
+      "sha256": "d9a31d14dbaed6aede1fba8b83268d6e2b3f4f5680abf75e0849acafb5521d7e"
+    },
+    {
+      "path": "app/services/notifications/dispatcher.py",
+      "sha256": "28f7ac10647bec98e804cac54eb2077352babbf086acdc4dd27b58c9cc2ad2e9"
+    },
+    {
+      "path": "app/services/scheduled_tasks.py",
+      "sha256": "1fb9689fb47b497938985864320ebc1e518378ee839bb1ec9dbb1d899c963989"
+    },
+    {
+      "path": "frontend/src/api/marketSignals.ts",
+      "sha256": "46d12ed3f8ab2ae540871c0844cd6508c30ff0676fdfeb47cf01b5ce126aaf8c"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "sha256": "833677fb7b0f898e7daebdb9566cbb025594a9c07ede5ab39cf2ea734a6b746f"
+    },
+    {
+      "path": "frontend/src/components/__tests__/MarketSignalCenter.test.tsx",
+      "sha256": "4ca33568c5faa76124adcfa786ccc2d85b15e10c0431361502885ab3db8fd41c"
+    },
+    {
+      "path": "frontend/src/components/MarketNews.tsx",
+      "sha256": "212251e24c66423dad111d99ee4fe9338c99a7d6146b2d6b8fb040ec38e881a5"
+    },
+    {
+      "path": "frontend/src/components/MarketSignalCenter.tsx",
+      "sha256": "130e65fbc9b4d96e2a00f4d5a618318c299930f852610a01245916fcca13904e"
+    },
+    {
+      "path": "frontend/src/components/portfolio-trading/NotificationDropdown.tsx",
+      "sha256": "4636bebf6076e02346f27812523c978de2f2136ff1ceb1cff19b6a47be41fcec"
+    },
+    {
+      "path": "frontend/src/i18n/marketSignals.ts",
+      "sha256": "8fe83925218a80afb7279b3a7a38297293067e1de28c0c4f33e12b85040bc5ff"
+    },
+    {
+      "path": "frontend/src/styles/marketSignals.css",
+      "sha256": "91fe857e27a77513ff7965984a737423b17db65c709cdae47687936fb6ec7549"
+    },
+    {
+      "path": "frontend/src/types/marketSignal.ts",
+      "sha256": "786254eb3b33ed5c829cf2d7d5eff83a1523c52cd9aa538bc81b5a97a70cfa8b"
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "e207fa1059795a6adb39a007d07ffccdd2802213cce39191e61a60112b7d51f3"
+    },
+    {
+      "path": "scripts/verify_market_signals_acceptance.py",
+      "sha256": "f178a6c605cdd23e79dbb7821494eca45ddeedde18b1d474dd0ac26690952781"
+    },
+    {
+      "path": "tests/e2e/test_market_signals_acceptance.py",
+      "sha256": "1cf98db2f01f58de5b623cba9890effd624c37d553efe5410bad37323a7a1df2"
+    },
+    {
+      "path": "tests/market_signals_e2e_server.py",
+      "sha256": "f49cee7d55ae93ea1735b19defffedb25493d46626deeee281a8fd868d60a8cd"
+    },
+    {
+      "path": "tests/test_market_signals_api.py",
+      "sha256": "957a2001f7875c20702693c88bd203f91f769fb82c01e0b8754387a0760241a6"
+    },
+    {
+      "path": "tests/test_market_signals_migration.py",
+      "sha256": "048b3c331bc6c32c0f80ebcd4702c51a8d48bea0db15223d148e60b1c69709c9"
+    },
+    {
+      "path": "tests/test_market_signals_mysql57.py",
+      "sha256": "5720f771a01d18aac55113557bb2490e446c789740de56b60d7555a4f5e424e9"
+    }
+  ],
+  "files": [
+    {
+      "name": "backend-regression.log",
+      "bytes": 357,
+      "sha256": "972bacc385b006d2cc6eefc3c7a24db66dd5ee7cd1c57322d9e9fe8ce80b1e13"
+    },
+    {
+      "name": "backend-regression.xml",
+      "bytes": 33513,
+      "sha256": "8c54f74a67b375939f3db61cc0c024def9a6e59f876ba50f31ceb8b9b421eb95"
+    },
+    {
+      "name": "browser-flow-http.json",
+      "bytes": 10094,
+      "sha256": "0c24fcff2c10e79e8651302e3e27aafb7de46b67b28cadf2f0f4512b37354806"
+    },
+    {
+      "name": "browser-legacy.log",
+      "bytes": 506,
+      "sha256": "227e8317a727994ff0f7aeb76d1308031ddf293b4b65cf5455ae8121f21d96f2"
+    },
+    {
+      "name": "browser-legacy.xml",
+      "bytes": 1604,
+      "sha256": "f438443eca0dfc4bb37bba23782ea17f4cc7e31eac59b9ec9c85481e39b246f2"
+    },
+    {
+      "name": "browser-new-feature.log",
+      "bytes": 516,
+      "sha256": "54f6e960d6acee2d79a7c257dd333d3c1a21774ca309b81352456b2911a59c01"
+    },
+    {
+      "name": "browser-new-feature.xml",
+      "bytes": 574,
+      "sha256": "7f41ff3d877efc3d89c07a7088786d3ae58bb00af5fea253e4f97526948bc08f"
+    },
+    {
+      "name": "browser-rules-http.json",
+      "bytes": 4027,
+      "sha256": "c115ab34d7489405eff51fad64b1796d8f288c860d185dd02980ded04cfd807f"
+    },
+    {
+      "name": "delivered-outcome.png",
+      "bytes": 127594,
+      "sha256": "c5ed8690ee0864ad64d041a7316c24f36fb86142eea7ea34fe86f84b0f900cb7"
+    },
+    {
+      "name": "frontend-regression.log",
+      "bytes": 2274,
+      "sha256": "534fee3bea590f647564327db195819b22f08680883f3fca387e7732fa11c06e"
+    },
+    {
+      "name": "identity-new-feature.json",
+      "bytes": 268,
+      "sha256": "89ac11d81a34f552e14ef0a9aee9463955a54259d25d3e9f92edb093e99321e6"
+    },
+    {
+      "name": "mysql57-concurrent.json",
+      "bytes": 77,
+      "sha256": "837f4e035f1265ed5d0d2facbe48975e28c2b426a6c6f8f76d65931b93bbc73a"
+    },
+    {
+      "name": "mysql57-legacy-migration.log",
+      "bytes": 599,
+      "sha256": "c9ba97b4a963c6482eb1a98e606c85c865641523b799f435b93b4354c4de2c5f"
+    },
+    {
+      "name": "mysql57-legacy-migration.xml",
+      "bytes": 2096,
+      "sha256": "3f656bf3bb84c3da4edcd61b025d660f88328393174469f795e68cfd84dbb7d3"
+    },
+    {
+      "name": "mysql57-lifecycle.json",
+      "bytes": 1118,
+      "sha256": "7301ade587fa735cf8213710c5d21d8c028c03760423f55be2585bbe2fdc6767"
+    },
+    {
+      "name": "mysql57-new-feature.log",
+      "bytes": 516,
+      "sha256": "5d2bd08b741d60074c98bc4156c4d0972c94103e59c90473443696d8e6dcf7c2"
+    },
+    {
+      "name": "mysql57-new-feature.xml",
+      "bytes": 523,
+      "sha256": "587dccdee4cbe5b863254f56a9cd14331931112e3941a85061fedcc102a4192b"
+    },
+    {
+      "name": "notification-navigation.png",
+      "bytes": 189130,
+      "sha256": "9ba7a47256113f2367d7b374026690745504d3d0ba4dc29df8ef9a3895762e4f"
+    },
+    {
+      "name": "production-build.log",
+      "bytes": 3469,
+      "sha256": "6ef67c6bd93e3ba4a35aa63843595dfae53e9ddc80a85330b4801be3c4d46e42"
+    },
+    {
+      "name": "result-legacy-browser.json",
+      "bytes": 292,
+      "sha256": "3c8355d1e4d2debc5481d8c445f8c5c81015b5c69f359c7b5b81594aa5885153"
+    },
+    {
+      "name": "result-legacy-migration.json",
+      "bytes": 422,
+      "sha256": "a52ddb83823170c5a19342f092f4064a887f5becce742a71cb9869a53a1de9c4"
+    },
+    {
+      "name": "result-new-feature.json",
+      "bytes": 600,
+      "sha256": "420e6510140d022d8a051d83de947599e86e2a47f59a1f8fd06d45699afacb58"
+    },
+    {
+      "name": "rule-versions.png",
+      "bytes": 148104,
+      "sha256": "94251128b3275bfb53042888259d09e9d85228a2a5c8eee2676aab6a6b59b844"
+    },
+    {
+      "name": "runtime-new-feature.json",
+      "bytes": 223,
+      "sha256": "9215af1d055a984a1b1cf392d3cc4dbfedb31c2fc076b7876c7909994a9d0793"
+    },
+    {
+      "name": "typescript.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

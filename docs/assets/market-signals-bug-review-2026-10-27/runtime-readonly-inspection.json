@@ -1,0 +1,16 @@
+{
+  "checked_at_utc": "2026-10-27T15:08:53.883590+00:00",
+  "listeners": [],
+  "business_processes_stopped_by_review": 0,
+  "business_processes_started_by_review": 0,
+  "inspection_only": true,
+  "previous_backend": {
+    "pid": 53856,
+    "exists": false
+  },
+  "health": {
+    "reachable": false,
+    "error_type": "URLError",
+    "reason": "Local health endpoint could not be reached; no restart attempted"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "report_date": "2026-10-26",
+  "timezone": "Asia/Shanghai",
+  "scope": "Existing component regression and hypothetical arithmetic scenarios; no new market-prediction performance tested.",
+  "baseline_regression": {
+    "tests": 205,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 205,
+    "time_seconds": 121.125
+  },
+  "test_file_counts": {
+    "test_akshare_quiet_output_concurrency": 2,
+    "test_market_events_p1_fixes": 39,
+    "test_market_events_p2_fixes": 22,
+    "test_market_news_baidu_public_calendar": 7,
+    "test_market_news_classification_explanation": 16,
+    "test_market_news_notification_roundtrip": 6,
+    "test_market_news_source_contracts": 9,
+    "test_notification_delivery_idempotency": 9,
+    "test_whitebox_index_data": 39,
+    "test_whitebox_notification_policies": 44,
+    "test_whitebox_watchlists_portfolios": 12
+  },
+  "isolation": {
+    "database": "Per-test dedicated SQLite files; default DATABASE_URL=sqlite:///:memory:",
+    "auto_startup_sync": false,
+    "auto_calendar_refresh": false,
+    "network": "Controlled supplier inputs; loopback delivery only; no third-party recipients."
+  },
+  "command": "C:\\Python312\\python.exe -m pytest tests/test_market_news_source_contracts.py tests/test_market_news_baidu_public_calendar.py tests/test_akshare_quiet_output_concurrency.py tests/test_market_news_classification_explanation.py tests/test_market_events_p1_fixes.py tests/test_market_events_p2_fixes.py tests/test_market_news_notification_roundtrip.py tests/test_notification_delivery_idempotency.py tests/test_whitebox_notification_policies.py tests/test_whitebox_watchlists_portfolios.py tests/test_whitebox_index_data.py -m 'not slow' -q -o addopts= --junitxml=tmp/market-news-feasibility-20261026/baseline-regression.xml",
+  "files": [
+    {
+      "name": "analysis-scenarios.json",
+      "bytes": 3911,
+      "sha256": "b504b4fea277ec479ba916ec1a4864d81fa955d522c6f6cbd9231c8403060a22"
+    },
+    {
+      "name": "baseline-regression.txt",
+      "bytes": 276,
+      "sha256": "687b6365f460bd835d569f25e5af9c4b58bbd23e618a9e6a6b90388e6bd3e16d"
+    },
+    {
+      "name": "baseline-regression.xml",
+      "bytes": 29181,
+      "sha256": "395199ed884289e6dd7e11a145165088b429ba65af1ebc73eedae62d9ef87647"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "passed": true,
+  "verified_at_utc": "2026-10-28T02:37:44.538579+00:00",
+  "unique_tests": 311,
+  "stages": [
+    {
+      "junit": "signal-regression.xml",
+      "passed": 94
+    },
+    {
+      "junit": "fund-regression/regression.xml",
+      "passed": 198
+    },
+    {
+      "junit": "fund-mysql/mysql.xml",
+      "passed": 6
+    },
+    {
+      "junit": "native.xml",
+      "passed": 5
+    },
+    {
+      "junit": "ui-and-legacy.xml",
+      "passed": 8
+    }
+  ],
+  "files": [
+    {
+      "path": "app/services/market_signal_engine.py",
+      "baseline_sha256": "d6e36410a004299ee93c1f6656fbc8dfc51f73e3464b215868770c5f51d13456",
+      "candidate_sha256": "cf8b99ab870ed0eea518ae1c2fa52efae9dba6cb6247dfa0e593c9ef7adfc7a7"
+    },
+    {
+      "path": "app/services/market_signal_delivery.py",
+      "baseline_sha256": "d21f6c4e4e07734e414971cff70df0be1d32c26ed220e80e54d57e821ec6fff8",
+      "candidate_sha256": "a3fe64891eddf13f1cc4d59d7475528fa7b7349d02a5c3f6195a88efa833a043"
+    },
+    {
+      "path": "app/services/market_signals.py",
+      "baseline_sha256": "d9a31d14dbaed6aede1fba8b83268d6e2b3f4f5680abf75e0849acafb5521d7e",
+      "candidate_sha256": "985516a935067e1974fc2226325db8093971a934f5ed95cfce6c936c72c77815"
+    },
+    {
+      "path": "app/services/akshare_guard.py",
+      "baseline_sha256": "73130c1ca6e0c2982f66ecd57ffd49151a8f4be7e820f0e4839b8a03564d2b36",
+      "candidate_sha256": "1ee353159093957b52a11e6f8b4e47a5a74055f4eff7d160030ba46cbd9760ec"
+    },
+    {
+      "path": "app/services/akshare_utils.py",
+      "baseline_sha256": "8e6da27176861eb58ad5a9ca1a3f2424c498051460b108c579432625fd8cb220",
+      "candidate_sha256": "5ea7433a0d63616771d88eb971362d78329db16fde1dc4bf6e574b1983aa4013"
+    },
+    {
+      "path": "tests/test_market_signal_boundary_regressions.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "2aede5d6281e6b3ec4dbc48cdb585d5f876bb584ddb93b150995d7f55fe0efeb"
+    },
+    {
+      "path": "tests/test_market_signal_boundary_mysql57.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "ce0bf4384dfc8b7635a887ec5f82ba6f90078e4907b2a324b6a2b48280368a7e"
+    }
+  ]
+}

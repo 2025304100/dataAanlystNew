@@ -9,6 +9,7 @@ from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.models.journal_entry import JournalEntry
 from app.models.portfolio import Portfolio, Position
 from app.models.daily_bar import DailyBar
@@ -520,7 +521,7 @@ def get_symbol_detail_panel(
         and raw_latest_score.trade_date > latest_bar_date
         and (latest_score is None or latest_score.trade_date < latest_bar_date)
     )
-    if needs_market_date_score:
+    if needs_market_date_score and not settings.APP_VALIDATION_MODE:
         universe_symbol = db.execute(
             select(UniverseSymbol).where(UniverseSymbol.symbol == symbol.symbol)
         ).scalars().first()
@@ -581,7 +582,8 @@ def get_symbol_detail_panel(
     recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=6, symbol_id=symbol_id)]
     latest_position_price = bar_rows[0].close if bar_rows else None
 
-    if bar_rows and latest_score is not None and (latest_setup is None or latest_setup.score_id != latest_score.id):
+    if (not settings.APP_VALIDATION_MODE and bar_rows and latest_score is not None
+            and (latest_setup is None or latest_setup.score_id != latest_score.id)):
         try:
             latest_setup = upsert_trade_setup(
                 db=db,

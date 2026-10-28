@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>dataAanlystNew protected validation host v1 | D:\ai_project\dataAanlystNew</Description>
+    <URI>\DataAanlystNew\ValidationServices-862a64183494</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Owner">
+      <UserId>S-1-5-21-2625014325-3521745638-1333436639-1001</UserId>
+      <LogonType>InteractiveToken</LogonType>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Hidden>true</Hidden>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <RestartOnFailure>
+      <Count>3</Count>
+      <Interval>PT1M</Interval>
+    </RestartOnFailure>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+  </Settings>
+  <Triggers />
+  <Actions Context="Owner">
+    <Exec>
+      <Command>C:\Python312\pythonw.exe</Command>
+      <Arguments>D:\ai_project\dataAanlystNew\scripts\validation_service_host.py host</Arguments>
+      <WorkingDirectory>D:\ai_project\dataAanlystNew</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

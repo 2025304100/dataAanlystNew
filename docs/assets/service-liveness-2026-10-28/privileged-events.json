@@ -1,0 +1,14 @@
+[
+  {
+    "log": "Application",
+    "success": false,
+    "error_type": "EventLogException",
+    "error_id": "找不到映像文件中指定的资源类型。,Microsoft.PowerShell.Commands.GetWinEventCommand"
+  },
+  {
+    "log": "Security",
+    "success": false,
+    "error_type": "Exception",
+    "error_id": "NoMatchingEventsFound,Microsoft.PowerShell.Commands.GetWinEventCommand"
+  }
+]

@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>机会中心 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<script src="assets/proto.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== 侧栏 ===================== -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item is-active" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <!-- ===================== 主区 ===================== -->
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">机会中心</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ===================== 页面内容 ===================== -->
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">机会中心 · OPPORTUNITY</p>
+          <h1 class="page-title">机会中心</h1>
+          <p class="page-sub">全市场扫描 → 候选池 → 观察池 → 排除，四段闭环 · 最近一次扫描 2026-10-27 08:30 · 覆盖 5,124 只标的</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.6 4.4h3.2l1.2 2h6.4"/><path d="M2.6 4.4v7.8h10.8V6.4"/></svg>
+            数据准备
+          </button>
+          <button class="btn btn--primary" type="button">立即扫描</button>
+        </div>
+      </div>
+
+      <div data-tab-scope>
+
+        <!-- 二级 Tab -->
+        <nav class="tabs2" data-tabs aria-label="机会中心视图">
+          <button class="tab2 is-active" data-tab="candidate" aria-selected="true" type="button">候选池</button>
+          <button class="tab2" data-tab="observation" aria-selected="false" type="button">观察池</button>
+          <button class="tab2" data-tab="excluded" aria-selected="false" type="button">已排除</button>
+          <button class="tab2" data-tab="scan-history" aria-selected="false" type="button">扫描记录</button>
+        </nav>
+
+        <!-- ===================== 候选池 ===================== -->
+        <section data-panel="candidate">
+
+          <div class="alert alert--info mb-16">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+            <div class="flex-1">
+              <p class="alert-title">行情覆盖率 98.2%</p>
+              <p class="alert-body">6 只标的缺少近 3 日数据，不影响本轮扫描结论。</p>
+            </div>
+            <button class="btn btn--secondary btn--sm" type="button">补齐缺失数据</button>
+          </div>
+
+          <div class="filter-bar">
+            <div class="field">
+              <label for="f-scope">扫描范围</label>
+              <div class="select-wrap">
+                <select class="input select" id="f-scope">
+                  <option>沪深A股</option>
+                  <option>创业板</option>
+                  <option>科创板</option>
+                  <option>ETF</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+              </div>
+            </div>
+            <div class="field">
+              <label for="f-score">最低评分</label>
+              <input class="input" id="f-score" type="text" value="60">
+            </div>
+            <div class="field">
+              <label for="f-status">状态</label>
+              <div class="select-wrap">
+                <select class="input select" id="f-status">
+                  <option>全部</option>
+                  <option>新发现</option>
+                  <option>已复核</option>
+                  <option>待确认</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+              </div>
+            </div>
+            <div class="field">
+              <label for="f-sort">排序</label>
+              <div class="select-wrap">
+                <select class="input select" id="f-sort">
+                  <option>综合评分降序</option>
+                  <option>发现时间降序</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+              </div>
+            </div>
+            <div class="filter-end">
+              <button class="btn btn--secondary btn--sm" type="button">重置</button>
+              <button class="btn btn--primary btn--sm" type="button">应用</button>
+            </div>
+          </div>
+
+          <section class="card card--flush">
+            <div class="card-head">
+              <h2 class="card-title">候选池</h2>
+              <span class="muted">共 42 只</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th class="col-sticky">代码</th>
+                    <th>名称</th>
+                    <th class="num">综合评分</th>
+                    <th>评级</th>
+                    <th>来源策略</th>
+                    <th class="num">发现时间</th>
+                    <th class="num">现价</th>
+                    <th class="num">涨跌幅</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="is-selected">
+                    <td class="col-sticky mono">601899</td>
+                    <td>紫金矿业</td>
+                    <td class="num">74.8</td>
+                    <td><span class="pill pill--pass">A 级</span></td>
+                    <td>趋势突破</td>
+                    <td class="num mono">10-27 08:31</td>
+                    <td class="num">18.72</td>
+                    <td class="num val-up">+2.18%</td>
+                    <td><span class="pill pill--pass">新发现</span></td>
+                    <td><button class="btn btn--secondary btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">600036</td>
+                    <td>招商银行</td>
+                    <td class="num">72.3</td>
+                    <td><span class="pill pill--pass">A 级</span></td>
+                    <td>均线回踩</td>
+                    <td class="num mono">10-27 08:29</td>
+                    <td class="num">38.94</td>
+                    <td class="num val-up">+0.42%</td>
+                    <td><span class="pill pill--pass">新发现</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">002415</td>
+                    <td>海康威视</td>
+                    <td class="num">70.6</td>
+                    <td><span class="pill pill--pass">A 级</span></td>
+                    <td>低估值反转</td>
+                    <td class="num mono">10-27 08:27</td>
+                    <td class="num">31.56</td>
+                    <td class="num val-down">-0.94%</td>
+                    <td><span class="pill pill--pending">已复核</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">688981</td>
+                    <td>中芯国际</td>
+                    <td class="num">69.4</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>板块轮动</td>
+                    <td class="num mono">10-27 08:26</td>
+                    <td class="num">86.40</td>
+                    <td class="num val-up">+1.36%</td>
+                    <td><span class="pill pill--pass">新发现</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">600276</td>
+                    <td>恒瑞医药</td>
+                    <td class="num">68.1</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>业绩超预期</td>
+                    <td class="num mono">10-27 08:24</td>
+                    <td class="num">45.80</td>
+                    <td class="num val-down">-1.62%</td>
+                    <td><span class="pill pill--warn">待确认</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000651</td>
+                    <td>格力电器</td>
+                    <td class="num">66.7</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>低估值反转</td>
+                    <td class="num mono">10-27 08:22</td>
+                    <td class="num">42.18</td>
+                    <td class="num val-down">-0.38%</td>
+                    <td><span class="pill pill--pending">已复核</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">002594</td>
+                    <td>比亚迪</td>
+                    <td class="num">65.9</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>趋势突破</td>
+                    <td class="num mono">10-27 08:19</td>
+                    <td class="num">248.30</td>
+                    <td class="num val-down">-3.05%</td>
+                    <td><span class="pill pill--warn">待确认</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000001</td>
+                    <td>平安银行</td>
+                    <td class="num">64.2</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>均线回踩</td>
+                    <td class="num mono">10-27 08:17</td>
+                    <td class="num">11.64</td>
+                    <td class="num val-up">+0.17%</td>
+                    <td><span class="pill pill--pending">已复核</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">600519</td>
+                    <td>贵州茅台</td>
+                    <td class="num">63.5</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>业绩超预期</td>
+                    <td class="num mono">10-27 08:15</td>
+                    <td class="num">1,642.00</td>
+                    <td class="num val-down">-1.24%</td>
+                    <td><span class="pill pill--pending">已复核</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">300750</td>
+                    <td>宁德时代</td>
+                    <td class="num">62.8</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>板块轮动</td>
+                    <td class="num mono">10-27 08:12</td>
+                    <td class="num">196.80</td>
+                    <td class="num val-up">+3.12%</td>
+                    <td><span class="pill pill--pass">新发现</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000858</td>
+                    <td>五粮液</td>
+                    <td class="num">61.7</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>均线回踩</td>
+                    <td class="num mono">10-27 08:09</td>
+                    <td class="num">138.60</td>
+                    <td class="num val-up">+0.86%</td>
+                    <td><span class="pill pill--pending">已复核</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">601318</td>
+                    <td>中国平安</td>
+                    <td class="num">60.4</td>
+                    <td><span class="pill pill--pending">B 级</span></td>
+                    <td>低估值反转</td>
+                    <td class="num mono">10-27 08:06</td>
+                    <td class="num">46.20</td>
+                    <td class="num val-flat">0.00%</td>
+                    <td><span class="pill pill--warn">待确认</span></td>
+                    <td><button class="btn btn--ghost btn--sm" type="button">加入观察</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== 观察池 ===================== -->
+        <section data-panel="observation" hidden>
+
+          <div class="alert alert--info mb-16">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+            <div class="flex-1">
+              <p class="alert-title">2 只标的已进入买点区间</p>
+              <p class="alert-body">600276 恒瑞医药、002415 海康威视 现价已低于目标买点，可在今日决策页发起模拟买入。</p>
+            </div>
+            <button class="btn btn--secondary btn--sm" type="button">前往今日决策 →</button>
+          </div>
+
+          <section class="card card--flush">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">观察池</h2>
+                <span class="card-sub">8 只 · 平均观察 4.5 个交易日</span>
+              </div>
+              <div class="row gap-8">
+                <span class="pill pill--pass">已到买点 2</span>
+                <span class="pill pill--pending">等待回踩 6</span>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th class="col-sticky">代码</th>
+                    <th>名称</th>
+                    <th class="num">加入时间</th>
+                    <th>观察理由</th>
+                    <th class="num">目标买点</th>
+                    <th class="num">当前价</th>
+                    <th class="num">距目标</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="col-sticky mono">600519</td>
+                    <td>贵州茅台</td>
+                    <td class="num mono">10-24</td>
+                    <td>回踩 20 日线</td>
+                    <td class="num">1,580.00</td>
+                    <td class="num">1,642.00</td>
+                    <td class="num val-down">-3.78%</td>
+                    <td><span class="pill pill--pending">观察中</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">300750</td>
+                    <td>宁德时代</td>
+                    <td class="num mono">10-23</td>
+                    <td>等待季报确认</td>
+                    <td class="num">188.00</td>
+                    <td class="num">196.80</td>
+                    <td class="num val-down">-4.47%</td>
+                    <td><span class="pill pill--pending">观察中</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">002594</td>
+                    <td>比亚迪</td>
+                    <td class="num mono">10-22</td>
+                    <td>回踩 20 日线</td>
+                    <td class="num">236.00</td>
+                    <td class="num">248.30</td>
+                    <td class="num val-down">-4.95%</td>
+                    <td><span class="pill pill--pending">观察中</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">601318</td>
+                    <td>中国平安</td>
+                    <td class="num mono">10-21</td>
+                    <td>板块轮动初期</td>
+                    <td class="num">44.80</td>
+                    <td class="num">46.20</td>
+                    <td class="num val-down">-3.03%</td>
+                    <td><span class="pill pill--pending">观察中</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">688981</td>
+                    <td>中芯国际</td>
+                    <td class="num mono">10-20</td>
+                    <td>等待季报确认</td>
+                    <td class="num">82.50</td>
+                    <td class="num">86.40</td>
+                    <td class="num val-down">-4.51%</td>
+                    <td><span class="pill pill--pending">观察中</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000651</td>
+                    <td>格力电器</td>
+                    <td class="num mono">10-17</td>
+                    <td>回踩 20 日线</td>
+                    <td class="num">40.60</td>
+                    <td class="num">42.18</td>
+                    <td class="num val-down">-3.75%</td>
+                    <td><span class="pill pill--pending">观察中</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">600276</td>
+                    <td>恒瑞医药</td>
+                    <td class="num mono">10-16</td>
+                    <td>板块轮动初期</td>
+                    <td class="num">47.00</td>
+                    <td class="num">45.80</td>
+                    <td class="num val-up">+2.62%</td>
+                    <td><span class="pill pill--pass">已到买点</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">002415</td>
+                    <td>海康威视</td>
+                    <td class="num mono">10-15</td>
+                    <td>等待季报确认</td>
+                    <td class="num">32.40</td>
+                    <td class="num">31.56</td>
+                    <td class="num val-up">+2.66%</td>
+                    <td><span class="pill pill--pass">已到买点</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== 已排除 ===================== -->
+        <section data-panel="excluded" hidden>
+
+          <div class="alert alert--warn mb-16">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.4 14.4 13.2H1.6L8 2.4Z"/><path d="M8 6.6v3"/><path d="M8 11.6h.01"/></svg>
+            <div class="flex-1">
+              <p class="alert-title">排除不是永久拉黑</p>
+              <p class="alert-body">满足恢复条件的标的会在下次扫描时自动回到候选池，无需人工解封。</p>
+            </div>
+            <button class="btn btn--secondary btn--sm" type="button">查看排除规则</button>
+          </div>
+
+          <section class="card card--flush">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">已排除</h2>
+                <span class="card-sub">8 只 · 近 30 天</span>
+              </div>
+              <span class="pill pill--blocked">自动恢复已禁止</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th class="col-sticky">代码</th>
+                    <th>名称</th>
+                    <th class="num">排除时间</th>
+                    <th>排除原因</th>
+                    <th class="num">当时评分</th>
+                    <th>恢复条件</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="col-sticky mono">000002</td>
+                    <td>万科A</td>
+                    <td class="num mono">10-25</td>
+                    <td>连续 3 季营收下滑</td>
+                    <td class="num">41.2</td>
+                    <td>单季营收同比转正</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">601166</td>
+                    <td>兴业银行</td>
+                    <td class="num mono">10-24</td>
+                    <td>日均成交额低于 5000 万</td>
+                    <td class="num">48.6</td>
+                    <td>20 日均额回升至 8000 万</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">300059</td>
+                    <td>东方财富</td>
+                    <td class="num mono">10-23</td>
+                    <td>商誉占净资产 42%</td>
+                    <td class="num">52.4</td>
+                    <td>商誉占比降至 20% 以下</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">600030</td>
+                    <td>中信证券</td>
+                    <td class="num mono">10-21</td>
+                    <td>大股东减持未完成</td>
+                    <td class="num">55.1</td>
+                    <td>减持计划公告结束</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">002304</td>
+                    <td>洋河股份</td>
+                    <td class="num mono">10-20</td>
+                    <td>连续 3 季营收下滑</td>
+                    <td class="num">46.8</td>
+                    <td>单季营收同比转正</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">601988</td>
+                    <td>中国银行</td>
+                    <td class="num mono">10-17</td>
+                    <td>日均成交额低于 5000 万</td>
+                    <td class="num">44.3</td>
+                    <td>20 日均额回升至 8000 万</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000725</td>
+                    <td>京东方A</td>
+                    <td class="num mono">10-15</td>
+                    <td>商誉占净资产 42%</td>
+                    <td class="num">39.7</td>
+                    <td>商誉占比降至 20% 以下</td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">601012</td>
+                    <td>隆基绿能</td>
+                    <td class="num mono">10-14</td>
+                    <td>大股东减持未完成</td>
+                    <td class="num">51.9</td>
+                    <td>减持计划公告结束</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===================== 扫描记录 ===================== -->
+        <section data-panel="scan-history" hidden>
+
+          <section class="card card--flush">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">扫描记录</h2>
+                <span class="card-sub">近 30 天 · 每日 08:30 定时扫描</span>
+              </div>
+              <div class="row gap-8">
+                <span class="pill pill--pass">成功 8</span>
+                <span class="pill pill--warn">部分失败 2</span>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th class="col-sticky">扫描时间</th>
+                    <th>范围</th>
+                    <th class="num">标的数</th>
+                    <th class="num">候选数</th>
+                    <th class="num">耗时</th>
+                    <th>触发方式</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="is-selected">
+                    <td class="col-sticky mono">2026-10-27 08:30</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,124</td>
+                    <td class="num">42</td>
+                    <td class="num">3 分 12 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-27 07:00</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,124</td>
+                    <td class="num">38</td>
+                    <td class="num">3 分 05 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-26 20:00</td>
+                    <td>沪深A股 + ETF</td>
+                    <td class="num">5,812</td>
+                    <td class="num">51</td>
+                    <td class="num">3 分 44 秒</td>
+                    <td>手动</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-26 08:30</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,118</td>
+                    <td class="num">44</td>
+                    <td class="num">3 分 09 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--warn">部分失败</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-25 08:30</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,118</td>
+                    <td class="num">40</td>
+                    <td class="num">3 分 01 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-24 08:30</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,110</td>
+                    <td class="num">36</td>
+                    <td class="num">2 分 58 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-23 20:00</td>
+                    <td>创业板</td>
+                    <td class="num">1,352</td>
+                    <td class="num">18</td>
+                    <td class="num">1 分 22 秒</td>
+                    <td>手动</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-23 08:30</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,104</td>
+                    <td class="num">33</td>
+                    <td class="num">3 分 02 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-22 08:30</td>
+                    <td>沪深A股</td>
+                    <td class="num">5,104</td>
+                    <td class="num">29</td>
+                    <td class="num">2 分 55 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--warn">部分失败</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">2026-10-21 08:30</td>
+                    <td>科创板</td>
+                    <td class="num">572</td>
+                    <td class="num">11</td>
+                    <td class="num">0 分 48 秒</td>
+                    <td>定时</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3 1.8"/></svg>
+              <p class="empty-title">当前已展示全部扫描记录</p>
+              <p class="empty-desc">更早的扫描记录保留 30 天，过期后自动清理。</p>
+            </div>
+          </section>
+        </section>
+
+      </div><!-- /[data-tab-scope] -->
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

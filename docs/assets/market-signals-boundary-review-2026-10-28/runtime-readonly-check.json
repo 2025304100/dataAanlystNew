@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-28T09:41:59.201741+08:00",
+  "boot_time": "2026-10-28T09:04:36.252265+08:00",
+  "listeners": [],
+  "previous_processes": [
+    {
+      "pid": 39556,
+      "exists": false
+    },
+    {
+      "pid": 55720,
+      "exists": false
+    }
+  ]
+}

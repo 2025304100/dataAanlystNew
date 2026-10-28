@@ -1,0 +1,91 @@
+{
+  "passed": false,
+  "origin": "http://127.0.0.1:5173",
+  "started_at": "2026-10-27T15:51:39.395493+00:00",
+  "writes": 0,
+  "finished_at": "2026-10-27T15:51:43.039901+00:00",
+  "responses": [
+    {
+      "path": "/src/api/client.ts",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/inspection-acceptance/status",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/notifications/inbox",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-events/collect-runs",
+      "status": 200
+    },
+    {
+      "path": "/src/api/marketSignals.ts",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-events/hotspots",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/signal-rules/presets",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-data/sync-tasks",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-events",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/portfolios/1/signal-rule",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/discovery/tasks",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/market-events/hotspots",
+      "status": 200
+    }
+  ],
+  "page_errors": [],
+  "blocked_requests": []
+}

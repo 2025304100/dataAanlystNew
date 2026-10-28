@@ -231,7 +231,10 @@ def test_batched_coverage_matches_original_on_duplicates_gaps_and_report_revisio
         for key in stats:
             spec=catalog.FIELD_CATALOG[key]
             physical="close" if key=="prev_close" else catalog.physical_field_column(spec.source_table,key)
-            expected=catalog._query_cross_section_coverage(conn,table=spec.source_table,field=physical,minimum_coverage=0,_calendar_ready=True)
+            # ROE's existing acceptance policy requires 70% daily coverage;
+            # the 50%-covered fixture must not gain seven continuity days.
+            minimum=.70 if key=="roe_ttm" else 0
+            expected=catalog._query_cross_section_coverage(conn,table=spec.source_table,field=physical,minimum_coverage=minimum,_calendar_ready=True)
             for metric,value in expected.items():
                 assert stats[key][metric]==value,(key,metric,stats[key],expected)
 

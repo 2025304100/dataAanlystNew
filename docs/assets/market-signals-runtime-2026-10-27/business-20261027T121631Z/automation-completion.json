@@ -1,0 +1,7 @@
+{
+  "automation_id": "automation",
+  "mode": "delete",
+  "delete_status": "deleted",
+  "recorded_at_utc": "2026-10-27T14:50:57.077853+00:00",
+  "reason": "Protected deployment, restart and UI acceptance completed; do not repeat deployment"
+}

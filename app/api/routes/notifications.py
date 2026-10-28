@@ -1082,9 +1082,9 @@ def retry_outbox(outbox_id: int, db: Session = Depends(get_db)):
     updated = manual_retry(db, outbox_id=outbox_id)
     if updated is None:
         _raise(
-            "UNKNOWN_ERROR",
-            status_code=500,
-            user_message="重发失败，请稍后重试",
+            "VALIDATION_ERROR",
+            status_code=409,
+            user_message="记录已被其他请求处理，请刷新状态后再操作",
         )
     return {"ok": True, "id": outbox_id, "status": updated.status}
 

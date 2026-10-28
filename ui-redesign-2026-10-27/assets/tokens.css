@@ -1,0 +1,139 @@
+/* ==========================================================================
+   tokens.css — 量化工作台 · 设计令牌（唯一允许出现硬编码色值的文件）
+   规则：全站只有本文件的 :root 内可以写 # 色值；其余文件一律 var(--token)。
+   ========================================================================== */
+
+:root {
+  /* ---------- 表面 ---------- */
+  --surface-canvas: #F6F7F9;
+  --surface-card: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #EFF1F4;
+  --surface-overlay: rgba(15, 23, 42, .48);
+
+  /* ---------- 边框 ---------- */
+  --line-hairline: #E8EBEF;
+  --line-base: #DDE1E7;
+  --line-strong: #C3C9D2;
+
+  /* ---------- 文本（白底对比度） ---------- */
+  --text-1: #14181F;        /* 17.8:1 */
+  --text-2: #5A6474;        /* 5.99:1 */
+  --text-3: #6B7484;        /* 4.71:1 */
+  --text-disabled: #A8B0BC; /* 禁用态专用，不承载信息 */
+  --text-inverse: #FFFFFF;
+
+  /* ---------- 主色（仅交互语义） ---------- */
+  --brand: #0F766E;
+  --brand-hover: #0D6862;
+  --brand-active: #0A544F;
+  --brand-soft: #E6F2F0;
+  --ring: 2px solid #0F766E;
+
+  /* ---------- 数据语义（硬约束：涨红跌绿） ---------- */
+  --up: #D92D20;            /* 4.83:1 */
+  --down: #087F45;          /* 5.08:1 */
+  --flat: #6B7484;
+  --up-soft: #FEF0EE;
+  --down-soft: #E8F5EE;
+
+  /* ---------- 状态（避开红绿轴，用蓝/赭/朱砂橙/石板灰） ---------- */
+  --success: #1D4ED8;
+  --success-soft: #EAF0FE;
+  --warning: #A16207;
+  --warning-soft: #FBF3E2;
+  --danger: #C2410C;
+  --danger-soft: #FCEDE6;
+  --info: #475569;
+  --info-soft: #F1F4F8;
+
+  /* ---------- 深色数据带 ---------- */
+  --band-bg: #0F172A;
+  --band-panel: #172033;
+  --band-grid: #22304A;
+  --band-axis: #3B4A63;
+  --band-text: #C7D2E0;
+  --band-text-strong: #F5F8FC;
+  --band-muted: #8494AB;
+  --band-up: #F26D62;
+  --band-down: #35C08A;
+  /* Okabe-Ito 色盲安全盘，刻意不含红绿 */
+  --band-series-1: #56B4E9;
+  --band-series-2: #E69F00;
+  --band-series-3: #CC79A7;
+  --band-series-4: #F0E442;
+  --band-series-5: #9AA7B8;
+
+  /* ---------- 中性数据（浅底图表：表达量级，不表达方向） ---------- */
+  --chart-neutral: #64748B;
+  --chart-neutral-soft: #CBD5E1;
+
+  /* ---------- 中性数据条（量级编码，不表达涨跌） ----------
+   * 用途：分布占比、进度条、评分强度等"只表示大小、不表示方向"的条形。
+   * 禁止用 --up/--down 表达量级 —— 红色在本系统里只能是"涨"。
+   * 也禁止用 --brand —— 主色不进入数据语境。 */
+  --chart-neutral: #64748B;
+  --chart-neutral-soft: #CBD5E1;
+
+  /* ---------- 间距（4px 基准） ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ---------- 圆角（只 4 档） ---------- */
+  --r-xs: 4px;   /* 按钮 · 输入 · 下拉项 · Tab 块 */
+  --r-sm: 6px;   /* 卡片 · 面板 · 图表 · 弹层 */
+  --r-md: 10px;  /* 抽屉 · 模态 */
+  --r-full: 999px; /* pill · 圆点 */
+
+  /* ---------- 阴影 ---------- */
+  --shadow-none: none; /* 卡片默认，靠 1px 边框分层 */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .06); /* 下拉 · Popover · sticky 表头 */
+  --shadow-md: 0 4px 14px rgba(16, 24, 40, .08); /* 模态 · 抽屉 · AI 面板 */
+
+  /* ---------- 字体 ---------- */
+  --font-ui: -apple-system, "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
+  /* ---------- 字号 / 行高 / 字重 ---------- */
+  --fs-11: 11px; --lh-11: 16px;  /* 表头 · pill · 单位 · 轴标签 */
+  --fs-12: 12px; --lh-12: 18px;  /* 表格正文 · 表单值 */
+  --fs-13: 13px; --lh-13: 20px;  /* 正文 · 卡片标题 · 按钮 */
+  --fs-15: 15px; --lh-15: 22px;  /* 区块小标题 */
+  --fs-20: 20px; --lh-20: 28px;  /* 页面内区块标题 */
+  --fs-28: 28px; --lh-28: 34px;  /* 页面标题 · KPI 主值 */
+  --fs-36: 36px; --lh-36: 44px;  /* 全站唯一：今日决策结论 */
+
+  --fw-400: 400;
+  --fw-500: 500;
+  --fw-600: 600;
+  --fw-700: 700;
+
+  /* ---------- 字距 ---------- */
+  --ls-title: -0.01em;
+  --ls-label: 0.02em;
+
+  /* ---------- 实现补充（为遵守「页面零硬编码色值」而外置） ---------- */
+  --surface-hover: #F6F7F9;      /* 表格行 hover */
+  --surface-danger-zone: #FEF7F4; /* 危险操作区底色 */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  background: var(--surface-canvas);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 20px;
+}

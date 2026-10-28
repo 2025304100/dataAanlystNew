@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="10.211" timestamp="2026-10-28T10:14:21.870492+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_market_signal_boundary_regressions" name="test_actual_receipt_date_must_occupy_delivery_day_budget[False]" time="1.854" /><testcase classname="tests.test_market_signal_boundary_regressions" name="test_actual_receipt_date_must_occupy_delivery_day_budget[True]" time="0.673"><failure message="AssertionError: Actual delivery day lost its quota reservation&#10;assert ('2026-10-27', 1) == ('2026-10-28', 0)&#10;  &#10;  At index 0 diff: '2026-10-27' != '2026-10-28'&#10;  Use -v to get more diff">tests\test_market_signal_boundary_regressions.py:81: in test_actual_receipt_date_must_occupy_delivery_day_budget
+    assert (snapshot['budget_day'],generated)==(expected_day,0), 'Actual delivery day lost its quota reservation'
+E   AssertionError: Actual delivery day lost its quota reservation
+E   assert ('2026-10-27', 1) == ('2026-10-28', 0)
+E     
+E     At index 0 diff: '2026-10-27' != '2026-10-28'
+E     Use -v to get more diff</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="6.372" timestamp="2026-10-28T12:48:27.927824+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_notification_worker_regressions" name="test_late_success_cannot_complete_a_newer_attempt" time="1.112"><failure message="AssertionError: assert ('sent', 2) == ('sending', 1)&#10;  &#10;  At index 0 diff: 'sent' != 'sending'&#10;  Use -v to get more diff">tests\test_notification_worker_regressions.py:326: in test_late_success_cannot_complete_a_newer_attempt
+    assert (row.status,row.attempt_count)==('sending',1)
+E   AssertionError: assert ('sent', 2) == ('sending', 1)
+E     
+E     At index 0 diff: 'sent' != 'sending'
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.test_notification_worker_regressions" name="test_duplicate_success_receipt_is_idempotent" time="0.370"><failure message="AssertionError: assert ('sent', 2) == ('sent', 1)&#10;  &#10;  At index 1 diff: 2 != 1&#10;  Use -v to get more diff">tests\test_notification_worker_regressions.py:339: in test_duplicate_success_receipt_is_idempotent
+    assert (row.status,row.attempt_count)==('sent',1)
+E   AssertionError: assert ('sent', 2) == ('sent', 1)
+E     
+E     At index 1 diff: 2 != 1
+E     Use -v to get more diff</failure></testcase></testsuite></testsuites>

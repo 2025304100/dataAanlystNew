@@ -1,0 +1,132 @@
+{
+  "state": {
+    "revision": "wps_0024_092_market_signals",
+    "profiles": [
+      {
+        "id": 1,
+        "daily_request_count": 1,
+        "daily_request_reset_at": "2026-08-11 12:43:28",
+        "updated_at": "2026-09-05 14:22:35"
+      },
+      {
+        "id": 2,
+        "daily_request_count": 0,
+        "daily_request_reset_at": null,
+        "updated_at": "2026-09-05 14:22:56"
+      },
+      {
+        "id": 3,
+        "daily_request_count": 3,
+        "daily_request_reset_at": "2026-10-25 09:52:34",
+        "updated_at": "2026-10-25 09:55:22"
+      }
+    ],
+    "deliveries": [
+      {
+        "status": "failed",
+        "total": 23,
+        "max_id": 838
+      },
+      {
+        "status": "success",
+        "total": 41,
+        "max_id": 863
+      }
+    ],
+    "outbox": [
+      {
+        "status": "dead_letter",
+        "total": 4,
+        "max_id": 448
+      },
+      {
+        "status": "failed",
+        "total": 5,
+        "max_id": 158
+      },
+      {
+        "status": "sent",
+        "total": 41,
+        "max_id": 473
+      }
+    ],
+    "active_async": [],
+    "active_discovery": [],
+    "signal_counts": {
+      "market_signal_rules": 2,
+      "market_signal_rule_versions": 5,
+      "market_signal_evidence": 190,
+      "market_signal_assessments": 0,
+      "market_signal_predictions": 0,
+      "market_signal_settings": 0,
+      "market_signal_outcomes": 0
+    },
+    "monitor_count": 0,
+    "capital_flows": {
+      "rows_count": 99363,
+      "max_id": 99363,
+      "max_date": "2026-10-26"
+    },
+    "existing_rules": {
+      "1": "1c1afb2516eef3c006a84d49e7d4376e2671506372e18dedba07043c6c40fb43",
+      "2": "40494a1eb04b3ba8b2d2b829d0a56c5bcff6ed1d53fc62193ed86bba0f2f6f43"
+    },
+    "existing_versions": {
+      "1": "7c173499ab8ac0e8d0d8da49104194ea38b111dba08332e0d619e899a7bae0d7",
+      "2": "0b941243397f940e65fae16e532992a896d89e65b017ba18775d87945022a004",
+      "3": "edb02ae4c11f2cf989dfe79d262a4b7e0c3b2b1701416b237fe4b916ded43a8f",
+      "4": "1719c338654309dd7babf8179dd98ef342a60636add82e2c3651cb151e449225",
+      "5": "a7e249d421a0034d136c29dcc77bfa409cd1a6df230648b7bbd73b1b6fa5363d"
+    }
+  },
+  "content_hashes": {
+    "market_signal_evidence": {
+      "rows": 190,
+      "sha256": "ac6614985908fae09a5541c1cd39b287a79553c213bc733c662bb51d6e7bc2ae"
+    },
+    "market_signal_assessments": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "market_signal_predictions": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "market_signal_outcomes": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "market_signal_settings": {
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "notification_outbox": {
+      "rows": 50,
+      "sha256": "4eb4f93e8d4a1adbf8089b21f5123341c247f5820c06b6aec5c87e00f6867a2d"
+    },
+    "notification_deliveries": {
+      "rows": 64,
+      "sha256": "3c9b1fa4e9d366b36b6f57bf4f600cbe3e45f76d9c6ceb7c8a32a9928c3ba625"
+    },
+    "ai_profiles": {
+      "rows": 3,
+      "sha256": "987ba5209240cfd35195a62e7edda2d1b5b90e1f83c9eeb3b3bde71d171d88fb"
+    },
+    "portfolios": {
+      "rows": 12,
+      "sha256": "66c9cd83294898831fa102f8b43ba9c42ae9195ef56316c538b50dab0283bfce"
+    },
+    "original_task": {
+      "rows": 1,
+      "sha256": "7bb1db8b9fc23a9123baa8e7c35c8844b3180f08e8fbafb571d3ae8832c4cd77"
+    },
+    "original_plan": {
+      "rows": 1,
+      "sha256": "b697c559e666d362716bae832e4bf554abf5889978253d8c2223b50698488260"
+    },
+    "original_partitions": {
+      "rows": 5367,
+      "sha256": "d4f89c74acffdb5be060b1f2fa150c1661e744a20beeccb77259235025a9bc2c"
+    }
+  }
+}

@@ -171,19 +171,23 @@ def mark_sending(db: Session, *, outbox_id: int) -> NotificationOutbox | None:
     return db.get(NotificationOutbox, outbox_id, populate_existing=True)
 
 
-def mark_sent(db: Session, *, outbox_id: int, delivery: NotificationDelivery) -> None:
-    """标记为已发送。"""
-    outbox = db.get(NotificationOutbox, outbox_id)
-    if outbox is None:
-        return
-    outbox.status = "sent"
-    # 成功也计一次尝试：此前只有 mark_failed 递增 attempt_count，导致已发送记录
-    # 在 UI「尝试次数」列恒显示 0/N（delivery.attempt_number=1 与 attempt_count=0 自相矛盾）
-    outbox.attempt_count += 1
-    outbox.sent_at = _now_utc()
-    outbox.updated_at = _now_utc()
+def mark_sent(db: Session, *, outbox_id: int, delivery: NotificationDelivery) -> bool:
+    """Complete only the claimed generation; duplicate/late receipts are no-ops."""
+    generation = delivery.attempt_number - 1
+    result = db.execute(update(NotificationOutbox).where(
+        NotificationOutbox.id == outbox_id,
+        NotificationOutbox.status == "sending",
+        NotificationOutbox.attempt_count == generation,
+    ).values(status="sent", attempt_count=generation+1,
+        sent_at=delivery.sent_at or _now_utc(), updated_at=_now_utc(),
+        next_retry_at=None, last_error_code=None, last_error_message=None)
+        .execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        db.rollback()
+        return False
     db.add(delivery)
     db.commit()
+    return True
 
 
 def mark_failed(
@@ -196,6 +200,8 @@ def mark_failed(
     duration_ms: int = 0,
     response_summary: str | None = None,
     is_auth_fail: bool = False,
+    expected_attempt_count: int | None = None,
+    transport_started: bool = False,
 ) -> NotificationOutbox | None:
     """标记为失败，记录 delivery，计算下次重试或进 dead-letter。
 
@@ -208,17 +214,33 @@ def mark_failed(
         return None
 
     now = _now_utc()
-    outbox.attempt_count += 1
-    outbox.last_error_code = error_code
-    outbox.last_error_message = (
-        sanitize_message(error_message) if error_message else None
-    )
+    generation = outbox.attempt_count if expected_attempt_count is None else expected_attempt_count
+    count = generation + 1
+    status = "failed" if is_auth_fail else "dead_letter" if count >= outbox.max_attempts else "pending"
+    retry_at = now + timedelta(seconds=min(60 * (2 ** (count - 1)), 1800)) if status == "pending" else None
+    allowed = ("sending",) if expected_attempt_count is not None else ("pending", "sending")
+    values = dict(status=status, attempt_count=count, next_retry_at=retry_at, updated_at=now,
+        last_error_code=error_code, last_error_message=sanitize_message(error_message) if error_message else None)
+    if not transport_started and generation == 0:
+        from app.services.notifications.delivery_state import STATE_KEY, state_of
+        if not state_of(outbox):
+            payload = json.loads(outbox.payload_json or "{}")
+            payload[STATE_KEY] = {"v": 1, "frozen": False}
+            values["payload_json"] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    result = db.execute(update(NotificationOutbox).where(
+        NotificationOutbox.id == outbox_id, NotificationOutbox.status.in_(allowed),
+        NotificationOutbox.attempt_count == generation,
+    ).values(**values)
+        .execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        db.rollback()
+        return None
 
     # 记录 delivery
     delivery = NotificationDelivery(
         outbox_id=outbox_id,
         channel_id=outbox.channel_id,
-        attempt_number=outbox.attempt_count,
+        attempt_number=count,
         status="auth_failed" if is_auth_fail else "failed",
         status_code=status_code,
         response_summary=(
@@ -243,22 +265,8 @@ def mark_failed(
             body=f"渠道 ID={outbox.channel_id} 鉴权失败，已自动暂停。请检查配置。",
             severity="error",
         )
-        outbox.status = "failed"
-        outbox.next_retry_at = None
-    # 达到上限：进 dead-letter
-    elif outbox.attempt_count >= outbox.max_attempts:
-        outbox.status = "dead_letter"
-        outbox.next_retry_at = None
-    # 临时错误：指数退避
-    else:
-        outbox.status = "pending"
-        # 指数退避：base * 2^attempt，封顶 30 分钟
-        backoff_seconds = min(60 * (2 ** (outbox.attempt_count - 1)), 1800)
-        outbox.next_retry_at = now + timedelta(seconds=backoff_seconds)
-
-    outbox.updated_at = now
     db.commit()
-    return outbox
+    return db.get(NotificationOutbox, outbox_id, populate_existing=True)
 
 
 def _suspend_channel(db: Session, *, channel_id: int, reason: str) -> None:
@@ -271,6 +279,18 @@ def _suspend_channel(db: Session, *, channel_id: int, reason: str) -> None:
     channel.last_error_code = "auth_failed"
     channel.last_error_message = sanitize_message(reason)
     channel.updated_at = _now_utc()
+    db.commit()
+
+
+def hold_for_review(db: Session, *, outbox_id: int, expected_attempt_count: int,
+                    error_code: str, error_message: str) -> None:
+    """Keep uncertain deliveries owned, without exposing them to automatic retry."""
+    db.execute(update(NotificationOutbox).where(
+        NotificationOutbox.id == outbox_id, NotificationOutbox.status == "sending",
+        NotificationOutbox.attempt_count == expected_attempt_count,
+    ).values(next_retry_at=None, last_error_code=error_code,
+        last_error_message=sanitize_message(error_message), updated_at=_now_utc())
+        .execution_options(synchronize_session=False))
     db.commit()
 
 
@@ -326,11 +346,19 @@ def manual_retry(db: Session, *, outbox_id: int) -> NotificationOutbox | None:
     if outbox.status not in ("failed", "dead_letter"):
         return None  # 只有 failed/dead_letter 可重发
 
-    outbox.status = "pending"
-    outbox.next_retry_at = _now_utc()
-    outbox.updated_at = _now_utc()
+    # The HTTP request may have read this object before another request
+    # retried/claimed it. Check state and generation in the UPDATE itself.
+    now = _now_utc()
+    result = db.execute(update(NotificationOutbox).where(
+        NotificationOutbox.id == outbox_id,
+        NotificationOutbox.status.in_(("failed", "dead_letter")),
+        NotificationOutbox.attempt_count == outbox.attempt_count,
+    ).values(status="pending", next_retry_at=now, updated_at=now)
+        .execution_options(synchronize_session=False))
     db.commit()
-    return outbox
+    if result.rowcount != 1:
+        return None
+    return db.get(NotificationOutbox, outbox_id, populate_existing=True)
 
 
 __all__ = [

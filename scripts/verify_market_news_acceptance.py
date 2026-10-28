@@ -98,9 +98,9 @@ def main():
         env["NOTIFICATION_DELIVERY_MYSQL57_URL"] = server_url.set(database=databases["delivery"]).render_as_string(hide_password=False)
         results.append(run_suite("mysql57-delivery", ["tests/test_notification_delivery_mysql57.py"], env, folder))
     if "e2e" in stages:
-        from tests.market_news_acceptance_support import migrate, REV91
+        from tests.market_news_acceptance_support import migrate, REV92
         url = server_url.set(database=databases["e2e"])
-        migrate(url, REV91)
+        migrate(url, REV92)
         from sqlalchemy.orm import Session
         from app.models.portfolio import Portfolio
         with Session(create_engine(url)) as db:

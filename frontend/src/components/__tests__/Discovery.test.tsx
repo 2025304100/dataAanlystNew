@@ -10,6 +10,7 @@ const { mockContext, mockApi } = vi.hoisted(() => ({
     discoveryScopeStats: null as any,
     newsSnapshot: null as any,
     discoveryPolling: false,
+    syncTask: null as any,
     locale: "zh-CN" as const,
     portfolioId: 1,
     primaryWatchlistSymbolIds: new Set<number>(),
@@ -57,11 +58,13 @@ const { mockContext, mockApi } = vi.hoisted(() => ({
 // Mock i18n: t 返回 key，template 返回拼接后的字符串
 // 必须包含 getLocale / setLocale，因为 utils/format.ts 引用了 getLocale
 vi.mock("../../i18n", () => ({
-  t: (key: string) => key === "yes" ? "是" : key === "no" ? "否" : key,
+  t: (key: string) => key === "yes" ? "是" : key === "no" ? "否"
+    : key === "caliberUnknown" ? "口径未知" : key,
   template: (key: string, params: Record<string, string | number> = {}) => key === "discoverySimpleSummary"
     ? `${key} ${params.total} ${params.cached} ${params.count}`
     : key === "discoveryFilteredEmpty" ? `已有 ${params.total} 条候选，当前 ${params.count} 项筛选条件没有匹配结果。`
     : key === "matchedIndicators" ? `符合 ${params.matched}/${params.total} 项条件`
+    : key === "totalProgress" ? `本次 ${params.total} / 已完成 ${params.processed}`
     : key.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? "")),
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
@@ -117,6 +120,7 @@ vi.mock("../ai/ExplainButton", () => ({
 
 import Discovery from "../Discovery";
 import OpportunityCenter from "../OpportunityCenter";
+import { DataPrepActions } from "../opportunity/DataPrepActions";
 
 describe("Discovery 组件渲染测试", () => {
   beforeEach(() => {
@@ -270,6 +274,85 @@ describe("Discovery 组件渲染测试", () => {
     expect(screen.getByText("stepDone")).toBeInTheDocument();
   });
 
+  it.each([
+    ["cancelled", "interrupted"],
+    ["failed", "error"],
+    ["expired", "interrupted"],
+    ["paused", "interrupted"],
+    ["partial", "warning"],
+    ["running", "active"],
+  ])("shows completed steps and the current step state for %s", async (status, currentClass) => {
+    mockContext.discoveryTask = {
+      id: 1, scope: "cn-stock", status, stage: "scan", percent: 40,
+      message: "Current task progress", total: 10, processed: 4,
+      ok_count: 4, failed_count: 0, empty_count: 0, scored_count: 4,
+      current_symbol: null, scan_run_id: null, executable_count: 0, errors: [],
+      can_resume: status === "paused", can_retry: status === "failed",
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    const { container } = render(<Discovery />);
+    await screen.findByText("noDiscoveryResults");
+    expect(container.querySelector('[data-discovery-step="prepare"]')).toHaveClass("done");
+    expect(container.querySelector('[data-discovery-step="sync"]')).toHaveClass("done");
+    expect(container.querySelector('[data-discovery-step="scan"]')).toHaveClass(currentClass);
+    expect(container.querySelector('[data-discovery-step="news"]')).toHaveAttribute("class", "");
+    expect(container.querySelector('[data-discovery-step="done"]')).toHaveAttribute("class", "");
+  });
+
+  it("keeps every step completed for a done task", async () => {
+    mockContext.discoveryTask = {
+      id: 1, scope: "cn-stock", status: "done", stage: "done", percent: 100,
+      message: "Task completed", total: 10, processed: 10,
+      ok_count: 10, failed_count: 0, empty_count: 0, scored_count: 10,
+      errors: [], can_resume: false, can_retry: false,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    const { container } = render(<Discovery />);
+    await screen.findByText("noDiscoveryResults");
+    const steps = container.querySelectorAll("[data-discovery-step]");
+    expect(steps).toHaveLength(5);
+    steps.forEach(step => expect(step).toHaveClass("done"));
+    expect(container.querySelector(".progress-track")).toHaveAttribute("data-state", "normal");
+    expect(container.querySelector(".progress-fill")).toHaveStyle({ width: "100%" });
+    expect(screen.getByText("100% | 本次 10 / 已完成 10")).toBeInTheDocument();
+  });
+
+  it.each(["cancelled", "failed", "expired"])("keeps the bar and completed count at zero for an interrupted %s task", async status => {
+    mockContext.discoveryTask = {
+      id: 1, scope: "cn-stock", status, stage: "scan", percent: 100,
+      message: "Interrupted task", total: 1, processed: 0,
+      ok_count: 0, failed_count: 0, empty_count: 0, scored_count: 0,
+      errors: [], can_resume: false, can_retry: status === "failed",
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    const { container } = render(<Discovery />);
+    await screen.findByText("noDiscoveryResults");
+    expect(container.querySelector(".progress-track")).toHaveAttribute("data-state", "abnormal");
+    expect(container.querySelector(".progress-fill")).toHaveStyle({ width: "0%" });
+    expect(screen.getByText("0% | 本次 1 / 已完成 0")).toBeInTheDocument();
+  });
+
+  it.each([
+    { status: "partial", total: 10, processed: 5, percent: 50 },
+    { status: "partial", total: 0, processed: 0, percent: 0 },
+    { status: "failed", total: 0, processed: 0, percent: 0 },
+    { status: "cancelled", total: 0, processed: 0, percent: 0 },
+    { status: "running", total: 8, processed: 1, percent: 13 },
+    { status: "done", total: 0, processed: 0, percent: 0 },
+    { status: "queued", total: 0, processed: 0, percent: 0 },
+  ])("matches discovery progress to $processed/$total for $status", async ({ status, total, processed, percent }) => {
+    mockContext.discoveryTask = {
+      id: 1, scope: "cn-stock", status, stage: status === "done" ? "done" : "scan", percent: 100,
+      message: "Count-based task progress", total, processed, ok_count: processed, failed_count: 0,
+      empty_count: 0, scored_count: processed, errors: [], can_resume: false, can_retry: false,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    const { container } = render(<Discovery />);
+    await screen.findByText("noDiscoveryResults");
+    expect(container.querySelector(".progress-fill")).toHaveStyle({ width: `${percent}%` });
+    expect(screen.getByText(`${percent}% | 本次 ${total} / 已完成 ${processed}`)).toBeVisible();
+  });
+
   it("should render pool tabs with all labels", () => {
     render(<Discovery />);
     // POOL_TABS 通过 t("discoveryPool" + pascalCaseKey(key)) 渲染 label
@@ -398,6 +481,80 @@ describe("Discovery 交互测试", () => {
     mockApi.getDiscoveryPlans.mockImplementation(async () => []);
     mockApi.getActiveScoringConfig.mockImplementation(async () => null);
     mockApi.getDiscoveryScopeStats.mockImplementation(async (scope: string) => ({ scope, total_symbols: 0, cached_symbols: 0, active_symbols: 0 }));
+  });
+
+  it.each([
+    { version: 3, label: "v3", unknown: "0" },
+    { version: null, label: "口径未知", unknown: "1" },
+    { version: undefined, label: "口径未知", unknown: "1" },
+  ])("keeps the scoring caliber visible for version $version", async ({ version, label, unknown }) => {
+    mockApi.getLatestDiscoveryCandidates.mockResolvedValue([
+      makeCandidate({ scoring_config_version: version, scoring_preset_name: "测试预设" }),
+    ]);
+    const { container } = render(<Discovery />);
+    await screen.findByText("600000");
+    const chip = container.querySelector(".ant-table-tbody .caliber-chip");
+    expect(chip).toBeVisible();
+    expect(chip).toHaveTextContent(label);
+    expect(chip).toHaveAttribute("data-unknown", unknown);
+    expect(chip).toHaveAttribute("title", version == null ? "caliberUnknownTip" : "测试预设 · v3");
+  });
+
+  it.each([
+    { label: "single known caliber", version: 3 },
+    { label: "all unknown calibers", version: null },
+  ])("does not show a mixed-caliber notice for $label", async ({ version }) => {
+    mockApi.getLatestDiscoveryCandidates.mockResolvedValue([
+      makeCandidate({ symbol_id: 1, symbol: "600001", scoring_preset_key: "balanced", scoring_config_version: version }),
+      makeCandidate({ symbol_id: 2, symbol: "600002", scoring_preset_key: version == null ? "other" : "balanced", scoring_config_version: version }),
+    ]);
+    const { container } = render(<Discovery />);
+    await screen.findByText("600001");
+    await screen.findByText("600002");
+    expect(container.querySelector(".caliber-mixed-hint")).toBeNull();
+    expect(screen.queryByRole("switch", { name: "仅看当前口径" })).not.toBeInTheDocument();
+    if (version == null) expect(screen.getAllByText("口径未知")).toHaveLength(2);
+  });
+
+  it("does not show a mixed-caliber notice for an empty result", async () => {
+    const { container } = render(<Discovery />);
+    await screen.findByText("noDiscoveryResults");
+    expect(container.querySelector(".caliber-mixed-hint")).toBeNull();
+  });
+
+  it.each(["two versions", "two presets with the same version", "known and unknown"])("shows two calibers and filters to the active preset for %s", async scenario => {
+    const version = scenario === "known and unknown" ? null : scenario === "two versions" ? 1 : 2;
+    mockApi.getLatestDiscoveryCandidates.mockResolvedValue([
+      makeCandidate({ symbol_id: 1, symbol: "600001", scoring_preset_key: scenario === "two versions" ? "current" : "other", scoring_config_version: version }),
+      makeCandidate({ symbol_id: 2, symbol: "600002", scoring_preset_key: "current", scoring_config_version: 2 }),
+    ]);
+    mockApi.getActiveScoringConfig.mockResolvedValue({ preset_key: "current", name: "当前预设", version: 2, asset_type: "stock" } as any);
+    const { container } = render(<Discovery />);
+    await screen.findByText("600001");
+    await screen.findByText("600002");
+    expect(screen.getByText("当前结果含 2 个评分口径，跨口径排序仅供参考").closest(".ant-alert")).toBeNull();
+    if (version == null) expect(screen.getByText("口径未知")).toBeVisible();
+    const toggle = screen.getByRole("switch", { name: "仅看当前口径" });
+    await waitFor(() => expect(toggle).not.toBeDisabled());
+    await userEvent.click(toggle);
+    await waitFor(() => expect(container.querySelector(".ant-table-tbody")?.textContent).not.toContain("600001"));
+    expect(container.querySelector(".ant-table-tbody")?.textContent).toContain("600002");
+    expect(screen.getByText("当前结果含 2 个评分口径，跨口径排序仅供参考")).toBeVisible();
+    await userEvent.click(toggle);
+    expect(await screen.findByText("600001")).toBeVisible();
+    expect(mockApi.getLatestDiscoveryCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps all rows when the current preset cannot be read", async () => {
+    mockApi.getLatestDiscoveryCandidates.mockResolvedValue([
+      makeCandidate({ symbol_id: 1, symbol: "600001", scoring_config_version: 1 }),
+      makeCandidate({ symbol_id: 2, symbol: "600002", scoring_config_version: 2 }),
+    ]);
+    mockApi.getActiveScoringConfig.mockRejectedValueOnce(new Error("active preset unavailable"));
+    render(<Discovery />);
+    await screen.findByText("600001");
+    await screen.findByText("600002");
+    expect(screen.getByRole("switch", { name: "仅看当前口径" })).toBeDisabled();
   });
 
   it("简洁入口始终显示扫描操作和进度，仅采集参数默认收起", async () => {
@@ -878,5 +1035,101 @@ describe("Discovery 交互测试", () => {
     await act(async () => { resolveOld([makeCandidate({ symbol: "OLD", name: "Old scope" })]); });
     expect(container.querySelector(".ant-table-tbody")?.textContent).toContain("CURRENT");
     expect(container.querySelector(".ant-table-tbody")?.textContent).not.toContain("OLD");
+  });
+});
+
+describe("评分链路提示条动作", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockContext.syncTask = null;
+    mockApi.getSnapshotStatus.mockImplementation(async scope => ({
+      scope, has_ready_snapshot: true, ready_snapshot_generated_at: "2026-10-19",
+      has_building_snapshot: false,
+      last_data_prep_task_id: "previous-preparation", last_data_prep_status: "done",
+    }));
+    mockApi.getAsyncTask.mockImplementation(async () => ({
+      id: "previous-preparation", status: "done", percent: 100,
+      result: { fast_scan: { status: "failed" } },
+    }));
+    mockApi.startDataPrep.mockResolvedValue({ id: "prepared-scan-1", status: "queued" });
+  });
+
+  it.each(["preparation", "synchronization"])("matches active %s progress to its actual counts", async source => {
+    if (source === "synchronization") {
+      mockContext.syncTask = { id: "sync-counts", status: "running", percent: 100, stage: "sync", processed: 5, total: 10 };
+    } else {
+      mockApi.getSnapshotStatus.mockImplementation(async scope => ({
+        scope, has_ready_snapshot: false, ready_snapshot_generated_at: "", has_building_snapshot: true,
+        last_data_prep_task_id: "previous-preparation", last_data_prep_status: "running",
+      }));
+      mockApi.getAsyncTask.mockImplementation(async () => ({
+        id: "previous-preparation", status: "running", percent: 100, processed: 5, total: 10,
+        result: { fast_scan: { status: "pending" } },
+      }));
+    }
+    const { container } = render(<DataPrepActions simpleMode />);
+    await waitFor(() => expect(container.querySelector(".data-prep-progress")).not.toBeNull());
+    await waitFor(() => expect(screen.getByText("5/10")).toBeVisible());
+    expect(container.querySelector(".data-prep-progress .ant-progress-bg")).toHaveStyle({ width: "50%" });
+  });
+
+  it.each(["cancelled", "failed"])("renders a distinct preparation state tag for %s", async status => {
+    mockApi.getSnapshotStatus.mockImplementation(async scope => ({
+      scope, has_ready_snapshot: false, ready_snapshot_generated_at: "", has_building_snapshot: false,
+      last_data_prep_task_id: "previous-preparation", last_data_prep_status: status,
+    }));
+    mockApi.getAsyncTask.mockImplementation(async () => ({ id: "previous-preparation", status, percent: 100, result: { fast_scan: { status: "failed" } } }));
+    render(<DataPrepActions simpleMode />);
+    const key = status === "cancelled" ? "opportunity.prepCancelled" : "opportunity.dataPrepFailed";
+    await waitFor(() => expect(screen.getAllByText(key).some(node => node.closest(".ant-tag"))).toBe(true));
+    const tag = screen.getAllByText(key).map(node => node.closest(".ant-tag")).find(Boolean);
+    expect(tag).toHaveClass(status === "cancelled" ? "ant-tag-orange" : "ant-tag-error");
+    if (status === "cancelled") expect(tag).not.toHaveClass("ant-tag-error");
+  });
+
+  it("shows the warning action, starts screening through the existing path, and hides it while busy", async () => {
+    let finishStart!: (task: { id: string; status: string }) => void;
+    const pendingStart = new Promise<{ id: string; status: string }>(resolve => { finishStart = resolve; });
+    mockApi.startDataPrep.mockReturnValueOnce(pendingStart);
+    const { container } = render(<DataPrepActions simpleMode />);
+    const primary = await screen.findByRole("button", { name: "opportunity.updateAndScreen" });
+    expect(primary).not.toBeDisabled();
+    const action = screen.getByRole("button", { name: "opportunity.continueScan" });
+    expect(action.closest(".ant-alert")).toHaveClass("ant-alert-warning");
+    expect(container.querySelectorAll(".ant-btn-primary")).toHaveLength(1);
+
+    await userEvent.click(action);
+
+    expect(mockApi.startDataPrep).toHaveBeenCalledTimes(1);
+    expect(mockApi.startDataPrep).toHaveBeenCalledWith({ scope: "cn-stock", trigger_fast_scan_after_ready: true });
+    expect(screen.queryByRole("button", { name: "opportunity.continueScan" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "opportunity.updatingAndScreening" })).toBeDisabled();
+
+    mockApi.getAsyncTask.mockImplementation(async () => ({
+      id: "prepared-scan-1", status: "done", percent: 100,
+      result: { fast_scan: { status: "ok" } },
+    }));
+    await act(async () => { finishStart({ id: "prepared-scan-1", status: "queued" }); });
+    await screen.findByText("opportunity.prepCompleted");
+    expect(screen.queryByRole("button", { name: "opportunity.continueScan" })).not.toBeInTheDocument();
+  });
+
+  it.each(["queued", "running"])("hides the warning action while market synchronization is %s", async status => {
+    mockContext.syncTask = { id: "sync-1", status, percent: 20, stage: "sync", processed: 2, total: 10 };
+    render(<DataPrepActions simpleMode />);
+    await waitFor(() => expect(mockApi.getAsyncTask).toHaveBeenCalledWith("previous-preparation"));
+    expect(screen.queryByRole("button", { name: "opportunity.continueScan" })).not.toBeInTheDocument();
+    expect(mockApi.startDataPrep).not.toHaveBeenCalled();
+  });
+
+  it("does not show the warning action after screening succeeds", async () => {
+    mockApi.getAsyncTask.mockImplementation(async () => ({
+      id: "previous-preparation", status: "done", percent: 100,
+      result: { fast_scan: { status: "ok" } },
+    }));
+    render(<DataPrepActions simpleMode />);
+    await screen.findByText("opportunity.prepCompleted");
+    expect(screen.queryByRole("button", { name: "opportunity.continueScan" })).not.toBeInTheDocument();
+    expect(mockApi.startDataPrep).not.toHaveBeenCalled();
   });
 });

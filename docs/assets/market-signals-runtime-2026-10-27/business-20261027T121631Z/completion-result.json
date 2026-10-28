@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "recorded_at_utc": "2026-10-27T12:19:34.415961+00:00",
+  "user_authorized_after_external_interruption": true,
+  "original_task_naturally_completed": false,
+  "backend_restarted_in_validation_mode": true,
+  "new_pid": 53856,
+  "frontend_untouched": true,
+  "migration_executed": false,
+  "business_sync_retried": false,
+  "accepted_rules": [
+    1,
+    2
+  ],
+  "only_added_rows": {
+    "market_signal_rules": 2,
+    "market_signal_rule_versions": 5
+  },
+  "test_groups": {
+    "capital_flow_regression": 198,
+    "mysql57_faults": 6,
+    "runtime_and_guard": 36,
+    "isolated_browser": 1
+  },
+  "unique_test_count": 241,
+  "real_business_ui_passed": true,
+  "model_calls": 0,
+  "business_notifications_sent": 0
+}

@@ -1,4 +1,4 @@
-"""Real MySQL paths for old-0090 compensation and fresh deployment to 0091."""
+"""Real MySQL paths for old-0090 compensation and fresh deployment to head."""
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -10,7 +10,7 @@ from app.models.market_event import MarketEvent
 from app.schemas.market_event import MarketEventCreate
 from app.services.market_events import create_market_event
 from tests.market_news_acceptance_support import (
-    REV90, REV91, assert_identity, engine_for, evidence, isolated_url, migrate,
+    REV90, REV91, REV92, assert_identity, engine_for, evidence, isolated_url, migrate,
 )
 
 pytestmark = [pytest.mark.whitebox, pytest.mark.skipif(
@@ -110,7 +110,7 @@ def test_old_0090_is_actually_broken_before_compensation(compensated):
 
 
 def test_upgrade_head_repairs_constraints_preserving_all_values_and_origins(compensated):
-    assert compensated["version"] == REV91
+    assert compensated["version"] == REV92
     assert compensated["upgraded"] == compensated["before"]
     assert all(compensated["after_columns"][name]["nullable"] for name in ("event_type", "event_date"))
     for name in ("event_type", "event_date"):
@@ -140,7 +140,7 @@ def test_reupgrade_after_compensation_rollback_keeps_all_rows_and_origins(compen
     assert compensated["reupgraded"] == compensated["rollback_written"]
 
 
-def test_fresh_schema_full_chain_to_head_and_current_writer():
+def test_fresh_schema_full_chain_to_head_and_current_writer(monkeypatch):
     url = isolated_url("MARKET_NEWS_FRESH_MYSQL57_URL")
     engine = engine_for(url)
     try:
@@ -152,13 +152,18 @@ def test_fresh_schema_full_chain_to_head_and_current_writer():
         with engine.connect() as connection:
             version = connection.scalar(sa.text("SELECT version_num FROM alembic_version"))
             metadata, rows = columns(connection), snapshot(connection)
-        assert version == REV91
+        assert version == REV92
         assert all(metadata[name]["nullable"] for name in ("event_type", "event_date", "sector_tag_source"))
         assert len(rows) == 2 and {row["sector_tag_source"] for row in rows} == {"auto", "manual"}
         from app.models.notification import (NotificationChannel, NotificationDelivery, NotificationOutbox,
             NotificationPolicy, NotificationPolicyChannel)
         from app.services.notifications.dispatcher import Dispatcher
         from app.services.notifications.event_emitter import emit_market_news_collect_failed
+        # DATETIME(0) may round a due time up to the next second on MySQL 5.7.
+        # Freeze the external clock at whole-second precision for this roundtrip.
+        from app.services.notifications import outbox as queue_clock
+        instant = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+        monkeypatch.setattr(queue_clock, "_now_utc", lambda: instant)
         with Session(engine) as db:
             channel = NotificationChannel(name="MySQL隔离站内验收", channel_type="in_app", enabled=True, status="enabled")
             policy = NotificationPolicy(name="MySQL隔离采集告警", enabled=True, source_types_json='["system"]',

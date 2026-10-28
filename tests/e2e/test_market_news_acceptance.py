@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.investment_theme import ThemeCatalyst
 from app.models.market_event import MarketEvent, MarketEventCollectRun, SectorConceptConfig
-from tests.market_news_acceptance_support import REV91, assert_identity, engine_for, isolated_url
+from tests.market_news_acceptance_support import REV92, assert_identity, engine_for, isolated_url
 
 pytestmark = [pytest.mark.e2e, pytest.mark.skipif(
     not os.environ.get("MARKET_NEWS_E2E_MYSQL57_URL") and os.environ.get("REQUIRE_MARKET_NEWS_ACCEPTANCE") != "1",
@@ -32,7 +32,7 @@ def case_db():
     engine = engine_for(url)
     with engine.begin() as connection:
         assert_identity(connection, url)
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == REV91
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == REV92
         connection.execute(delete(ThemeCatalyst).where(ThemeCatalyst.market_event_id.is_not(None)))
         connection.execute(delete(MarketEvent))
         connection.execute(delete(MarketEventCollectRun))

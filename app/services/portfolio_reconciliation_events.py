@@ -190,8 +190,14 @@ def _after(conn, stmt, multiparams, params, options, result):
 
 
 def _clear_transaction(conn, *_):
-    conn.info.pop("inspection_source_stack", None)
-    conn.info.pop("inspection_own_receipts", None)
+    try:
+        conn.info.pop("inspection_source_stack", None)
+        conn.info.pop("inspection_own_receipts", None)
+    except Exception:
+        # 回滚的连接可能已被服务端断开（例如 MySQL wait_timeout），此时访问
+        # conn.info 会重新校验连接并抛 PendingRollbackError。清理标记属于
+        # 簿记动作，不能反过来让调用方的 rollback 失败。
+        pass
 
 
 def _clear_error(context):

@@ -1,0 +1,135 @@
+{
+  "observed_at_utc": "2026-10-27T12:05:52.558481+00:00",
+  "task": {
+    "id": "aa250d8c3fb7419bad5492bd78b46079",
+    "task_type": "external_sync_capital_flow",
+    "status": "failed",
+    "stage": "interrupted",
+    "processed": 522,
+    "total": 5367,
+    "ok_count": 302,
+    "failed_count": 219,
+    "current_item": "301687",
+    "errors_json": "[{\"code\": \"BACKEND_RESTART_INTERRUPTED\", \"severity\": \"error\", \"category\": \"infra\", \"title_zh\": \"BACKEND_RESTART_INTERRUPTED\", \"detail_zh\": \"Backend restarted before the in-process worker completed\", \"correlation_id\": \"137e9c15\", \"evidence\": {\"correlation_id\": \"137e9c15\", \"stage\": \"sync\"}}]",
+    "started_at": "2026-10-27 02:36:42",
+    "finished_at": "2026-10-27 12:01:29",
+    "updated_at": "2026-10-27 12:01:29",
+    "heartbeat_at": "2026-10-27 10:53:55",
+    "cancel_requested": 0,
+    "is_terminal_locked": 1
+  },
+  "plan": {
+    "id": "25abe7418c33493982b1f8f849ae0c30",
+    "task_id": "aa250d8c3fb7419bad5492bd78b46079",
+    "status": "running",
+    "total_partitions": 5367,
+    "completed_partitions": 0,
+    "skipped_partitions": 0,
+    "failed_partitions": 0,
+    "started_at": "2026-10-27 02:36:43",
+    "finished_at": null,
+    "updated_at": "2026-10-27 02:36:44"
+  },
+  "partition_counts": [
+    {
+      "status": "done",
+      "partitions": 302,
+      "rows_written": "15173"
+    },
+    {
+      "status": "failed",
+      "partitions": 219,
+      "rows_written": "0"
+    },
+    {
+      "status": "queued",
+      "partitions": 4844,
+      "rows_written": "0"
+    },
+    {
+      "status": "running",
+      "partitions": 1,
+      "rows_written": "0"
+    },
+    {
+      "status": "skipped",
+      "partitions": 1,
+      "rows_written": "0"
+    }
+  ],
+  "database": {
+    "revision": "wps_0024_092_market_signals",
+    "profiles": [
+      {
+        "id": 1,
+        "daily_request_count": 1,
+        "daily_request_reset_at": "2026-08-11 12:43:28",
+        "updated_at": "2026-09-05 14:22:35"
+      },
+      {
+        "id": 2,
+        "daily_request_count": 0,
+        "daily_request_reset_at": null,
+        "updated_at": "2026-09-05 14:22:56"
+      },
+      {
+        "id": 3,
+        "daily_request_count": 3,
+        "daily_request_reset_at": "2026-10-25 09:52:34",
+        "updated_at": "2026-10-25 09:55:22"
+      }
+    ],
+    "deliveries": [
+      {
+        "status": "failed",
+        "total": 23,
+        "max_id": 838
+      },
+      {
+        "status": "success",
+        "total": 41,
+        "max_id": 863
+      }
+    ],
+    "outbox": [
+      {
+        "status": "dead_letter",
+        "total": 4,
+        "max_id": 448
+      },
+      {
+        "status": "failed",
+        "total": 5,
+        "max_id": 158
+      },
+      {
+        "status": "sent",
+        "total": 41,
+        "max_id": 473
+      }
+    ],
+    "active_async": [],
+    "active_discovery": [],
+    "signal_counts": {
+      "market_signal_rules": 0,
+      "market_signal_rule_versions": 0,
+      "market_signal_evidence": 190,
+      "market_signal_assessments": 0,
+      "market_signal_predictions": 0,
+      "market_signal_settings": 0,
+      "market_signal_outcomes": 0
+    },
+    "monitor_count": 0
+  },
+  "unchanged_since_1600": {
+    "profiles": true,
+    "deliveries": true,
+    "outbox": true,
+    "signal_counts": true,
+    "monitor_count": true
+  },
+  "natural_completion": false,
+  "this_turn_process_stop": false,
+  "deployment_executed": false,
+  "user_authorization": "Preserve interrupted results; integrate and reverify; continue protected deployment and acceptance; do not retry business task"
+}

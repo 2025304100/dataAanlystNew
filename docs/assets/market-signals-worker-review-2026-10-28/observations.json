@@ -1,0 +1,208 @@
+[
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "manual_retry_sending",
+    "delayed_retry_accepted": true,
+    "adapter_substitute_calls": 2,
+    "success_rows": 2,
+    "final_state": "sent"
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "manual_retry_sent",
+    "delayed_retry_accepted": true,
+    "adapter_substitute_calls": 2,
+    "success_rows": 2,
+    "final_state": "sent"
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "success_persistence_exception",
+    "state_after_transport_success": "pending",
+    "adapter_substitute_calls": 2,
+    "fault_injection": "before success persistence"
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "mutable_payload_same_key",
+    "keys": [
+      "notify-v1-23b1528c8c56569b648e05bf91ecea780a0ddf6892b69d65fb1d004420fe6576",
+      "notify-v1-23b1528c8c56569b648e05bf91ecea780a0ddf6892b69d65fb1d004420fe6576"
+    ],
+    "requested_prediction_ids": [
+      [
+        1
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "receiver_effect_prediction_ids": [
+      [
+        1
+      ]
+    ],
+    "stored_predictions": [
+      [
+        1,
+        "sent"
+      ],
+      [
+        2,
+        "sent"
+      ]
+    ],
+    "actual_transport_calls": 0,
+    "adapter_substitute_calls": 2
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "same_row_atomic_claim",
+    "workers": [
+      false,
+      true
+    ],
+    "adapter_substitute_calls": 1
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "interruption_False",
+    "stub_effects": 0,
+    "adapter_substitute_calls": 1,
+    "reclaimed": false
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "interruption_True",
+    "stub_effects": 1,
+    "adapter_substitute_calls": 1,
+    "reclaimed": false
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "unchanged_payload_retry",
+    "adapter_substitute_calls": 2,
+    "receiver_effects": 1
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "analytics_callback_failure",
+    "adapter_substitute_calls": 1,
+    "requeued": false
+  },
+  {
+    "stage": "offline-probes-final.log",
+    "probe": "two_process_atomic_claim",
+    "workers": [
+      {
+        "worker": "a",
+        "processed": 1,
+        "adapter_substitute_calls": 1
+      },
+      {
+        "worker": "b",
+        "processed": 0,
+        "adapter_substitute_calls": 0
+      }
+    ]
+  },
+  {
+    "stage": "mysql-probes-final.log",
+    "probe": "manual_retry_sending",
+    "delayed_retry_accepted": true,
+    "adapter_substitute_calls": 2,
+    "success_rows": 2,
+    "final_state": "sent"
+  },
+  {
+    "stage": "mysql-probes-final.log",
+    "probe": "manual_retry_sent",
+    "delayed_retry_accepted": true,
+    "adapter_substitute_calls": 2,
+    "success_rows": 2,
+    "final_state": "sent"
+  },
+  {
+    "stage": "mysql-probes-final.log",
+    "probe": "success_persistence_exception",
+    "state_after_transport_success": "pending",
+    "adapter_substitute_calls": 2,
+    "fault_injection": "before success persistence"
+  },
+  {
+    "stage": "mysql-probes-final.log",
+    "probe": "mutable_payload_same_key",
+    "keys": [
+      "notify-v1-a3c7cd373ecd032c24a15a8252c207eae2a92e3cf2fde09b874f42331a21f1d0",
+      "notify-v1-a3c7cd373ecd032c24a15a8252c207eae2a92e3cf2fde09b874f42331a21f1d0"
+    ],
+    "requested_prediction_ids": [
+      [
+        1
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "receiver_effect_prediction_ids": [
+      [
+        1
+      ]
+    ],
+    "stored_predictions": [
+      [
+        1,
+        "sent"
+      ],
+      [
+        2,
+        "sent"
+      ]
+    ],
+    "actual_transport_calls": 0,
+    "adapter_substitute_calls": 2
+  },
+  {
+    "stage": "mysql-probes-final.log",
+    "probe": "same_row_atomic_claim",
+    "workers": [
+      false,
+      true
+    ],
+    "adapter_substitute_calls": 1
+  },
+  {
+    "stage": "mysql-probes-final.log",
+    "probe": "two_process_atomic_claim",
+    "workers": [
+      {
+        "worker": "a",
+        "processed": 1,
+        "adapter_substitute_calls": 1
+      },
+      {
+        "worker": "b",
+        "processed": 0,
+        "adapter_substitute_calls": 0
+      }
+    ]
+  },
+  {
+    "stage": "controls.log",
+    "probe": "two_process_atomic_claim",
+    "workers": [
+      {
+        "worker": "a",
+        "processed": 1,
+        "adapter_substitute_calls": 1
+      },
+      {
+        "worker": "b",
+        "processed": 0,
+        "adapter_substitute_calls": 0
+      }
+    ]
+  }
+]

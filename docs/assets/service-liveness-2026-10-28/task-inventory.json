@@ -1,0 +1,15 @@
+{
+  "name": "ValidationServices-862a64183494",
+  "description": "dataAanlystNew protected validation host v1 | D:\\ai_project\\dataAanlystNew",
+  "state": 4,
+  "enabled": true,
+  "user": "demo",
+  "run_level": 0,
+  "logon_type": 3,
+  "triggers": 0,
+  "execution_limit": "PT0S",
+  "restart_count": 3,
+  "restart_interval": "PT1M",
+  "command": "C:\\Python312\\pythonw.exe",
+  "arguments": "D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py host"
+}

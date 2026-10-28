@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="29.127" timestamp="2026-10-27T15:08:57.217317+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_capital_flow_resilience_mysql57" name="test_idle_disconnect_keeps_fetched_history_and_continues_next_symbol" time="19.889"><properties><property name="mysql_version" value="5.7.26" /><property name="isolated_database" value="codex_cap_recovery_8e29fec519ca4fbe" /></properties><failure message="AssertionError: {'id': 'e686f2fb03244fbf975c0a5a65d3a83a', 'task_type': 'external_sync_capital_flow', 'status': 'failed', 'stage': 'failed', ...}&#10;assert 'failed' == 'done'&#10;  &#10;  - done&#10;  + failed">tests\test_capital_flow_resilience_mysql57.py:126: in test_idle_disconnect_keeps_fetched_history_and_continues_next_symbol
+    assert result["status"]=="done", result
+E   AssertionError: {'id': 'e686f2fb03244fbf975c0a5a65d3a83a', 'task_type': 'external_sync_capital_flow', 'status': 'failed', 'stage': 'failed', ...}
+E   assert 'failed' == 'done'
+E     
+E     - done
+E     + failed</failure></testcase></testsuite></testsuites>

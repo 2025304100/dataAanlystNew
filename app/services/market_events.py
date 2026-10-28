@@ -147,7 +147,7 @@ def _looks_like_url(text: str) -> bool:
 
 
 def _pick_title(row: dict[str, Any]) -> str | None:
-    preferred_keys = ["title", "标题", "新闻标题", "文章标题", "资讯标题", "articleTitle", "infoTitle"]
+    preferred_keys = ["title", "标题", "新闻标题", "公告标题", "文章标题", "资讯标题", "articleTitle", "infoTitle"]
     for key in preferred_keys:
         value = row.get(key)
         if value is not None and not pd.isna(value):
@@ -161,7 +161,7 @@ def _pick_title(row: dict[str, Any]) -> str | None:
 
 
 def _pick_summary(row: dict[str, Any], title: str) -> str | None:
-    preferred_keys = ["summary", "摘要", "内容", "正文", "description", "digest"]
+    preferred_keys = ["summary", "摘要", "内容", "新闻内容", "正文", "description", "digest"]
     for key in preferred_keys:
         value = row.get(key)
         if value is None or pd.isna(value):
@@ -173,7 +173,7 @@ def _pick_summary(row: dict[str, Any], title: str) -> str | None:
 
 
 def _pick_url(row: dict[str, Any]) -> str | None:
-    for key in ["url", "链接", "网址", "新闻链接", "source_url", "articleUrl"]:
+    for key in ["url", "链接", "网址", "新闻链接", "公告链接", "source_url", "articleUrl"]:
         value = row.get(key)
         if value is not None and not pd.isna(value):
             text = str(value).strip()
@@ -186,7 +186,7 @@ def _pick_url(row: dict[str, Any]) -> str | None:
 
 
 def _pick_published_at(row: dict[str, Any], *, assume_timezone=None) -> datetime | None:
-    for key in ["date", "日期", "时间", "发布时间", "publish_time", "showTime", "time"]:
+    for key in ["date", "日期", "时间", "发布时间", "公告时间", "publish_time", "showTime", "time"]:
         if key in row:
             parsed = _parse_datetime(row.get(key), assume_timezone=assume_timezone)
             if parsed is not None:
@@ -446,12 +446,19 @@ def _fetch_from_ak(fetcher: Callable[..., Any], source: str, limit: int = 40, **
             # stored/API timestamps use naive UTC. Explicit offsets are already
             # normalized by _parse_datetime and must not be shifted twice.
             published_at = _pick_published_at(row, assume_timezone=timezone(timedelta(hours=8)))
+            quality = "unknown"
+            if published_at:
+                quality = "date_only" if (published_at + timedelta(hours=8)).time().isoformat() == "00:00:00" else "supplier"
+            full_text = next((str(row[key]).strip()[:40000] for key in ("正文", "新闻内容", "内容", "content")
+                             if row.get(key) is not None and not pd.isna(row[key])), None)
             events.append({
                 "title": title,
                 "summary": _pick_summary(row, title),
                 "source": source,
                 "source_url": _pick_url(row),
                 "published_at": published_at,
+                "time_quality": quality,
+                "full_text": full_text,
             })
     except Exception as exc:
         logger.warning("Failed to fetch %s: %s", source, exc)
@@ -636,6 +643,11 @@ def _collect_market_events_inner(db: Session, payload: MarketEventCollectRequest
 
 def _store_market_events(db: Session, payload: MarketEventCollectRequest,
                          all_raw: list[dict], errors: list[str]) -> MarketEventCollectResponse:
+    from app.services.market_signal_sources import capture_evidence
+    # Preserve trustworthy source time and changed content before the legacy
+    # title-only dedup path. Neither legacy labels nor publication times change.
+    for raw in all_raw:
+        capture_evidence(db, raw)
     cutoff = _now() - timedelta(days=payload.days)
     # P0-4：先自愈回填历史行，再用本批候选 hash 做索引查询去重，
     # 替代原先"全表拉所有标题"的内存 MD5 集合（表越大采集越慢）。

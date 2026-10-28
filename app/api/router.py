@@ -6,6 +6,7 @@ from app.api.routes import security_status
 from app.api.routes import portfolio_inspection, portfolio_inspection_history, portfolio_inspection_workflow, portfolio_inspection_coverage
 from app.api.routes import g5_admission_governance
 from app.api.routes import etf_history
+from app.api.routes import market_signals
 
 
 api_router = APIRouter(prefix=settings.api_prefix)
@@ -43,6 +44,7 @@ api_router.include_router(etf_history.router, tags=["etf-history"])
 api_router.include_router(news.router, tags=["news"])
 api_router.include_router(macro.router, tags=["macro"])
 api_router.include_router(market_events.router, tags=["market-events"])
+api_router.include_router(market_signals.router, tags=["market-signals"])
 api_router.include_router(investment_themes.router, tags=["investment-themes"])
 api_router.include_router(discovery.router, tags=["discovery"])
 api_router.include_router(portfolios.router, tags=["portfolios"])

@@ -1,0 +1,108 @@
+{
+  "created_at_utc": "2026-10-27T15:08:56.037220+00:00",
+  "purpose": "confirmed-bug-review-red-probes",
+  "counts": {
+    "tests": 5,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 0
+  },
+  "passed_control": 1,
+  "confirmed_bugs": 4,
+  "business_source_files_unchanged": true,
+  "sources": {
+    "app/services/market_signal_engine.py": "3943d0fdc567f1f8fa0feb18eeaf32e596dcd2e59cf928b7be2b3a149e96f57e",
+    "app/services/market_signal_delivery.py": "e869966a057bc46ff1570d3227710459f26bdad703478d01186fb622c983a313",
+    "app/services/akshare_utils.py": "6d63fc4a074ea6109668664d595dda023139db6577df7593c6c9300556609bd3",
+    "app/services/akshare_guard.py": "d1bf6abb82195d0a467cbdda9e58e202f8a578fa84a330321d01775f834f0874",
+    "app/main.py": "7361405a9c0d547af530513b9dc0ab36d8b586a4b63ac123a2f6c5d991cf46a9",
+    "app/api/routes/portfolios.py": "d8fce5a834ecbe7eb5e079f19f1b327152c91e82295004d9561acd87e763236b",
+    "app/api/routes/dashboard.py": "c753cc89aa68b651287c5573f9b7ecc06e8f475fe8b3209920b0f06221d8acfd"
+  },
+  "report": {
+    "path": "docs/代码审查-资金流与行情异动剩余问题-2026-10-27.md",
+    "sha256": "68c3678c5acbbab8629191d1e5e7218e8a308cfebcd8ba4d1e931224a2aa28f1"
+  },
+  "files": [
+    {
+      "path": "observations.json",
+      "bytes": 1319,
+      "sha256": "e6750b9a7b32faa37508ef0db8ca538ba836ab3fd0e358c6c1ea38a23e093034"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1819,
+      "sha256": "01de7807e54b2df87ee672ed00911586593a6b91748b734df7879be88316ffc3"
+    },
+    {
+      "path": "review-final.log",
+      "bytes": 3033,
+      "sha256": "8595bdf62df3bb8006528196c2c37140503c2a1f5f2583df3683006d4ce7b963"
+    },
+    {
+      "path": "review-final.xml",
+      "bytes": 2934,
+      "sha256": "ce17be9632ee7a6107be632056fb7b54ce8736ddb5234a0c8971c45683f9b831"
+    },
+    {
+      "path": "review-initial.log",
+      "bytes": 7167,
+      "sha256": "69b0d155048c7a0453030d120b3c8ea2e8e16d25d12d1396ce56c043c714bffc"
+    },
+    {
+      "path": "review-initial.xml",
+      "bytes": 5229,
+      "sha256": "236eb51dd40ab02a10ecb0abcfbf96db57ced2f4fdef2b6dbf4c26de893724fb"
+    },
+    {
+      "path": "runtime-readonly-inspection.json",
+      "bytes": 430,
+      "sha256": "fd95a7b833de52eac07a7c5776095db4590b029f9b0f7df615be3e7be70b1ea7"
+    },
+    {
+      "path": "source-baseline.json",
+      "bytes": 726,
+      "sha256": "2168db8ceddb51975433fc82913bbaba5600871dc8244e28e869f0d025192c26"
+    },
+    {
+      "path": "source-files/app/api/routes/dashboard.py",
+      "bytes": 30348,
+      "sha256": "c753cc89aa68b651287c5573f9b7ecc06e8f475fe8b3209920b0f06221d8acfd"
+    },
+    {
+      "path": "source-files/app/api/routes/portfolios.py",
+      "bytes": 82945,
+      "sha256": "d8fce5a834ecbe7eb5e079f19f1b327152c91e82295004d9561acd87e763236b"
+    },
+    {
+      "path": "source-files/app/main.py",
+      "bytes": 41465,
+      "sha256": "7361405a9c0d547af530513b9dc0ab36d8b586a4b63ac123a2f6c5d991cf46a9"
+    },
+    {
+      "path": "source-files/app/services/akshare_guard.py",
+      "bytes": 11854,
+      "sha256": "d1bf6abb82195d0a467cbdda9e58e202f8a578fa84a330321d01775f834f0874"
+    },
+    {
+      "path": "source-files/app/services/akshare_utils.py",
+      "bytes": 15938,
+      "sha256": "6d63fc4a074ea6109668664d595dda023139db6577df7593c6c9300556609bd3"
+    },
+    {
+      "path": "source-files/app/services/market_signal_delivery.py",
+      "bytes": 12699,
+      "sha256": "e869966a057bc46ff1570d3227710459f26bdad703478d01186fb622c983a313"
+    },
+    {
+      "path": "source-files/app/services/market_signal_engine.py",
+      "bytes": 15583,
+      "sha256": "3943d0fdc567f1f8fa0feb18eeaf32e596dcd2e59cf928b7be2b3a149e96f57e"
+    },
+    {
+      "path": "test_additional_bug_review.py",
+      "bytes": 9572,
+      "sha256": "ef0b889613a210201aba97e894fe635e7b3aeef6e7d92fe2972d7a6e7bdbe19c"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "url": "http://127.0.0.1:8000/health",
+    "error_type": "URLError"
+  },
+  {
+    "url": "http://127.0.0.1:5173/api/v1/market-signals/settings",
+    "error_type": "URLError"
+  }
+]

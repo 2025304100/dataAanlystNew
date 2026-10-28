@@ -1,0 +1,186 @@
+{
+  "scope": "deterministic supplier faults and virtual clock, not production performance",
+  "external_network": false,
+  "model_calls": 0,
+  "notification_sends": 0,
+  "scenarios": [
+    {
+      "scenario": "healthy",
+      "symbols": 5,
+      "succeeded": 5,
+      "failed": 0,
+      "http_requests": 5,
+      "simulated_wait_seconds": 60.0,
+      "errors": {},
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600001",
+          "at": 15.0
+        },
+        {
+          "symbol": "600002",
+          "at": 30.0
+        },
+        {
+          "symbol": "600003",
+          "at": 45.0
+        },
+        {
+          "symbol": "600004",
+          "at": 60.0
+        }
+      ]
+    },
+    {
+      "scenario": "transient_timeout",
+      "symbols": 5,
+      "succeeded": 5,
+      "failed": 0,
+      "http_requests": 10,
+      "simulated_wait_seconds": 135.0,
+      "errors": {},
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 15.0
+        },
+        {
+          "symbol": "600001",
+          "at": 30.0
+        },
+        {
+          "symbol": "600001",
+          "at": 45.0
+        },
+        {
+          "symbol": "600002",
+          "at": 60.0
+        },
+        {
+          "symbol": "600002",
+          "at": 75.0
+        },
+        {
+          "symbol": "600003",
+          "at": 90.0
+        },
+        {
+          "symbol": "600003",
+          "at": 105.0
+        },
+        {
+          "symbol": "600004",
+          "at": 120.0
+        },
+        {
+          "symbol": "600004",
+          "at": 135.0
+        }
+      ]
+    },
+    {
+      "scenario": "transient_503",
+      "symbols": 5,
+      "succeeded": 5,
+      "failed": 0,
+      "http_requests": 10,
+      "simulated_wait_seconds": 135.0,
+      "errors": {},
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 15.0
+        },
+        {
+          "symbol": "600001",
+          "at": 30.0
+        },
+        {
+          "symbol": "600001",
+          "at": 45.0
+        },
+        {
+          "symbol": "600002",
+          "at": 60.0
+        },
+        {
+          "symbol": "600002",
+          "at": 75.0
+        },
+        {
+          "symbol": "600003",
+          "at": 90.0
+        },
+        {
+          "symbol": "600003",
+          "at": 105.0
+        },
+        {
+          "symbol": "600004",
+          "at": 120.0
+        },
+        {
+          "symbol": "600004",
+          "at": 135.0
+        }
+      ]
+    },
+    {
+      "scenario": "persistent_reset",
+      "symbols": 5,
+      "succeeded": 0,
+      "failed": 5,
+      "http_requests": 8,
+      "simulated_wait_seconds": 345.0,
+      "errors": {
+        "FundFlowProviderError": 5
+      },
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 15.0
+        },
+        {
+          "symbol": "600000",
+          "at": 45.0
+        },
+        {
+          "symbol": "600001",
+          "at": 105.0
+        },
+        {
+          "symbol": "600002",
+          "at": 165.0
+        },
+        {
+          "symbol": "600003",
+          "at": 225.0
+        },
+        {
+          "symbol": "600004",
+          "at": 285.0
+        }
+      ]
+    }
+  ]
+}

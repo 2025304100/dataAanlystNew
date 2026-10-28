@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.models.portfolio import Portfolio, PortfolioRule, Position
 from app.models.review import Review
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
@@ -235,7 +236,7 @@ def list_portfolios(
     """
     rows = db.execute(select(Portfolio).order_by(Portfolio.id.desc())).scalars().all()
 
-    if auto_tag_tests:
+    if auto_tag_tests and not settings.APP_VALIDATION_MODE:
         # 已知测试组合关键字：匹配名称大小写不敏感。
         # 例：API_TEST_PORTFOLIO、ZERO_CAPITAL_TEST、浏览器验证组合、验证测试、验收残留等。
         TEST_NAME_KEYWORDS = (

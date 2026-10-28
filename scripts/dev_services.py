@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 RUNTIME_DIR = ROOT / "tmp" / "dev-services"
 STATE_FILE = RUNTIME_DIR / "state.json"
 BACKEND_PORT = 8000
@@ -409,6 +411,11 @@ def print_status(state: dict[str, Any]) -> None:
 
 def command_start() -> int:
     ensure_runtime_dir()
+    from scripts import validation_service_host as managed
+    if (managed.RUNTIME / "task-request.json").exists():
+        managed.start()
+        print_status(load_state())
+        return 0
     state = prune_state(load_state())
     backend_started = False
     try:
@@ -430,6 +437,11 @@ def command_start() -> int:
 
 def command_stop() -> int:
     ensure_runtime_dir()
+    from scripts.validation_service_host import stop_managed
+    managed = stop_managed()
+    if managed.get("managed"):
+        print_status(load_state())
+        return 0
     success = stop_services(load_state())
     print_status(load_state())
     return 0 if success else 1
@@ -437,7 +449,7 @@ def command_stop() -> int:
 
 def command_restart() -> int:
     ensure_runtime_dir()
-    success = stop_services(load_state())
+    success = command_stop() == 0
     if not success:
         print("ERROR: stop phase did not finish cleanly", file=sys.stderr)
         print_status(load_state())

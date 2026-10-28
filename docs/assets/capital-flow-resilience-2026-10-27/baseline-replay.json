@@ -1,0 +1,180 @@
+{
+  "scope": "deterministic supplier faults and virtual clock, not production performance",
+  "external_network": false,
+  "model_calls": 0,
+  "notification_sends": 0,
+  "scenarios": [
+    {
+      "scenario": "healthy",
+      "symbols": 5,
+      "succeeded": 5,
+      "failed": 0,
+      "http_requests": 5,
+      "simulated_wait_seconds": 60.0,
+      "errors": {},
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600001",
+          "at": 15.0
+        },
+        {
+          "symbol": "600002",
+          "at": 30.0
+        },
+        {
+          "symbol": "600003",
+          "at": 45.0
+        },
+        {
+          "symbol": "600004",
+          "at": 60.0
+        }
+      ]
+    },
+    {
+      "scenario": "transient_timeout",
+      "symbols": 5,
+      "succeeded": 5,
+      "failed": 0,
+      "http_requests": 10,
+      "simulated_wait_seconds": 140.0,
+      "errors": {},
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 16.0
+        },
+        {
+          "symbol": "600001",
+          "at": 31.0
+        },
+        {
+          "symbol": "600001",
+          "at": 47.0
+        },
+        {
+          "symbol": "600002",
+          "at": 62.0
+        },
+        {
+          "symbol": "600002",
+          "at": 78.0
+        },
+        {
+          "symbol": "600003",
+          "at": 93.0
+        },
+        {
+          "symbol": "600003",
+          "at": 109.0
+        },
+        {
+          "symbol": "600004",
+          "at": 124.0
+        },
+        {
+          "symbol": "600004",
+          "at": 140.0
+        }
+      ]
+    },
+    {
+      "scenario": "transient_503",
+      "symbols": 5,
+      "succeeded": 0,
+      "failed": 5,
+      "http_requests": 5,
+      "simulated_wait_seconds": 60.0,
+      "errors": {
+        "FundFlowProviderError": 5
+      },
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600001",
+          "at": 15.0
+        },
+        {
+          "symbol": "600002",
+          "at": 30.0
+        },
+        {
+          "symbol": "600003",
+          "at": 45.0
+        },
+        {
+          "symbol": "600004",
+          "at": 60.0
+        }
+      ]
+    },
+    {
+      "scenario": "persistent_reset",
+      "symbols": 5,
+      "succeeded": 0,
+      "failed": 5,
+      "http_requests": 11,
+      "simulated_wait_seconds": 720.0,
+      "errors": {
+        "FundFlowProviderError": 5
+      },
+      "http_timeline": [
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 0.0
+        },
+        {
+          "symbol": "600000",
+          "at": 30.0
+        },
+        {
+          "symbol": "600001",
+          "at": 90.0
+        },
+        {
+          "symbol": "600001",
+          "at": 180.0
+        },
+        {
+          "symbol": "600002",
+          "at": 270.0
+        },
+        {
+          "symbol": "600002",
+          "at": 360.0
+        },
+        {
+          "symbol": "600003",
+          "at": 450.0
+        },
+        {
+          "symbol": "600003",
+          "at": 540.0
+        },
+        {
+          "symbol": "600004",
+          "at": 630.0
+        },
+        {
+          "symbol": "600004",
+          "at": 720.0
+        }
+      ]
+    }
+  ]
+}

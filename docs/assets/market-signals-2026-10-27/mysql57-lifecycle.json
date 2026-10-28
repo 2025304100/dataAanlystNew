@@ -1,0 +1,31 @@
+{
+  "identity": {
+    "version": "5.7.26",
+    "database_name": "codex_market_sig271006_mysql",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+    "isolation_level": "REPEATABLE-READ",
+    "server_uuid_sha256": "088b56a8a8e91d5fa24b0eeba44e32559d84593a7f32a33e35ff422996a577d9"
+  },
+  "revision": "wps_0024_092_market_signals",
+  "tables": [
+    "market_signal_assessments",
+    "market_signal_evidence",
+    "market_signal_outcomes",
+    "market_signal_predictions",
+    "market_signal_rule_versions",
+    "market_signal_rules",
+    "market_signal_settings"
+  ],
+  "engines": {
+    "market_signal_assessments": "InnoDB",
+    "market_signal_evidence": "InnoDB",
+    "market_signal_outcomes": "InnoDB",
+    "market_signal_predictions": "InnoDB",
+    "market_signal_rule_versions": "InnoDB",
+    "market_signal_rules": "InnoDB",
+    "market_signal_settings": "InnoDB"
+  },
+  "rollback_evidence_retained": true,
+  "legacy_sentinel_preserved": true,
+  "reupgrade_idempotent": true
+}

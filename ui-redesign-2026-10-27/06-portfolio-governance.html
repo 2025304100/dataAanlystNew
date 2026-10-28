@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>检查与对账 · 量化工作台</title>
+<!-- 样式只有两个来源，顺序不可颠倒 -->
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<script src="assets/proto.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== 侧栏 ===================== -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item is-active" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <!-- ===================== 主区 ===================== -->
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <a href="02-portfolio-overview.html">组合交易</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">检查与对账</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ===================== 页头 ===================== -->
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">组合交易 · PORTFOLIO</p>
+          <h1 class="page-title">检查与对账</h1>
+          <p class="page-sub">组合「稳健成长一号」· 当前状态 CAUTION · 最近对账 2026-10-27 · 连续 12 个交易日无缺口</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v7.2"/><path d="M4.8 6.6 8 9.8l3.2-3.2"/><path d="M2.6 12.4h10.8"/></svg>
+            导出检查报告
+          </button>
+          <button class="btn btn--primary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.7"/><path d="M13.4 2.6v3.2h-3.2"/></svg>
+            重新预检
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================== 二级 Tab ===================== -->
+      <nav class="tabs2" aria-label="组合交易二级导航">
+        <a class="tab2" href="02-portfolio-overview.html">总览</a>
+        <a class="tab2" href="03-portfolio-members.html">持仓成员</a>
+        <a class="tab2" href="04-portfolio-strategy.html">策略规则</a>
+        <a class="tab2" href="05-portfolio-backtest.html">回测中心</a>
+        <a class="tab2 is-active" href="06-portfolio-governance.html">检查与对账</a>
+      </nav>
+
+      <!-- ===================== ① 状态横幅 ===================== -->
+      <div class="alert alert--warn mb-16">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6 14 13H2L8 2.6Z"/><path d="M8 6.6v3"/><path d="M8 11.6h.01"/></svg>
+        <div class="flex-1">
+          <p class="alert-title">当前状态：CAUTION（需要人工确认）</p>
+          <p class="alert-body">HG1 综合预检通过，HG2 时间窗未到，自动推演按 fail-closed 规则禁用。</p>
+        </div>
+        <div class="row gap-8 wrap">
+          <span class="pill pill--pass">新买单 允许</span>
+          <span class="pill pill--pass">风险退出 允许</span>
+          <span class="pill pill--blocked">自动恢复 禁止</span>
+          <span class="pill pill--warn">人工确认 需要</span>
+        </div>
+      </div>
+
+      <!-- ===================== ② 三级分段 + 面板 ===================== -->
+      <div data-tab-scope>
+
+        <div class="row between gap-12 mb-16">
+          <div class="seg" data-tabs>
+            <button class="seg-item is-active" type="button" data-tab="state" aria-selected="true">组合状态</button>
+            <button class="seg-item" type="button" data-tab="permissions" aria-selected="false">权限矩阵</button>
+            <button class="seg-item" type="button" data-tab="reconciliation" aria-selected="false">对账连续性</button>
+            <button class="seg-item" type="button" data-tab="actions" aria-selected="false">行动项</button>
+            <button class="seg-item" type="button" data-tab="audit" aria-selected="false">操作记录</button>
+          </div>
+          <span class="muted">状态机由 HG1 预检结果驱动，每 5 分钟刷新</span>
+        </div>
+
+        <!-- ---------- 面板：组合状态 ---------- -->
+        <section data-panel="state">
+          <div class="card card--flush mb-16">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">9 状态矩阵</h2>
+                <span class="card-sub">互斥 · 同一时刻仅命中一个</span>
+              </div>
+              <span class="muted">当前命中 CAUTION</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>状态码</th>
+                    <th>中文含义</th>
+                    <th>触发条件</th>
+                    <th>允许新买单</th>
+                    <th>允许风险退出</th>
+                    <th>当前</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="mono cell-strong">READY</td>
+                    <td>就绪</td>
+                    <td>HG1 预检通过，且 HG2 处于有效时间窗内</td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr class="is-selected">
+                    <td class="mono cell-strong">CAUTION</td>
+                    <td>谨慎</td>
+                    <td>单一标的超出目标占比，或浮亏接近止损线</td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td><span class="pill pill--warn">当前</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">DATA_STALE</td>
+                    <td>行情过期</td>
+                    <td>最新行情时间戳距当前超过 15 分钟</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">SCORE_STALE</td>
+                    <td>评分过期</td>
+                    <td>评分生成时间超过 1 个交易日未刷新</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">RECONCILIATION_BLOCKED</td>
+                    <td>对账阻断</td>
+                    <td>券商回报与本地账本差异超过 100 元</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">ADMIN_PAUSED</td>
+                    <td>管理员暂停</td>
+                    <td>人工打开全局暂停开关，忽略其他状态</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">RISK_LIMIT_HIT</td>
+                    <td>触发风控上限</td>
+                    <td>单日亏损或单一标的敞口超过风控阈值</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--pass">是</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">PENDING_ACK</td>
+                    <td>待确认</td>
+                    <td>存在未确认的成交回报或参数变更</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="mono cell-strong">UNKNOWN</td>
+                    <td>未知</td>
+                    <td>状态机无匹配分支，按 fail-closed 兜底</td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td><span class="pill pill--fail">否</span></td>
+                    <td class="muted">—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="alert alert--info">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+            <div>
+              <p class="alert-title">匹配优先级</p>
+              <p class="alert-body">ADMIN_PAUSED ＞ RECONCILIATION_BLOCKED ＞ RISK_LIMIT_HIT ＞ DATA_STALE ＞ SCORE_STALE ＞ PENDING_ACK ＞ CAUTION ＞ READY；无分支命中时落到 UNKNOWN 并按 fail-closed 处理。</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- 面板：权限矩阵 ---------- -->
+        <section data-panel="permissions" hidden>
+          <div class="card mb-16">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">权限矩阵</h2>
+                <span class="card-sub">CAUTION 状态下的实际生效范围</span>
+              </div>
+              <span class="muted">最后更新 2026-10-27 09:32</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>动作</th>
+                    <th>是否允许</th>
+                    <th>限制条件</th>
+                    <th>生效范围</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="cell-strong">新建买入单</td>
+                    <td><span class="pill pill--pass">允许</span></td>
+                    <td>仅限 HG1 预检通过的标的，单笔金额不超过组合净值 5%</td>
+                    <td>当前组合</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">风险退出单</td>
+                    <td><span class="pill pill--pass">允许</span></td>
+                    <td>仅限减仓方向，可突破单笔金额上限，不占用新买单额度</td>
+                    <td>当前组合</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">自动恢复</td>
+                    <td><span class="pill pill--fail">禁止</span></td>
+                    <td>需连续 2 个交易日 HG2 预检通过，方可解除 CAUTION</td>
+                    <td>全局</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">自动推演</td>
+                    <td><span class="pill pill--fail">禁止</span></td>
+                    <td>HG2 时间窗未到，按 fail-closed 规则直接拒绝执行</td>
+                    <td>全局</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">参数修改</td>
+                    <td><span class="pill pill--warn">需确认</span></td>
+                    <td>修改后需人工确认并重新预检，确认结果 30 分钟内有效</td>
+                    <td>组合级</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">删除组合</td>
+                    <td><span class="pill pill--fail">禁止</span></td>
+                    <td>CAUTION 及以上状态不可执行，需先由管理员解除并留痕</td>
+                    <td>组合级</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- 面板：对账连续性 ---------- -->
+        <section data-panel="reconciliation" hidden>
+          <div class="alert alert--info mb-16">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+            <div>
+              <p class="alert-title">对账数据来源</p>
+              <p class="alert-body">券商回报 + 本地账本双向比对，差异超过 100 元自动阻断新买单。</p>
+            </div>
+          </div>
+
+          <div class="card card--flush mb-16">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">对账连续性 · 最近 12 个交易日</h2>
+                <span class="card-sub">T+1 09:30 自动执行</span>
+              </div>
+              <span class="muted">缺口 0 天</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>交易日</th>
+                    <th class="num">持仓差异</th>
+                    <th class="num">现金差异</th>
+                    <th class="num">差异金额</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="mono">2026-10-27</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-26</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-23</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-22</td>
+                    <td class="num">0 股</td>
+                    <td class="num">+12.40 元</td>
+                    <td class="num">12.40</td>
+                    <td><span class="pill pill--warn">有差异已修正</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-21</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-20</td>
+                    <td class="num">200 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">39,360.00</td>
+                    <td><span class="pill pill--warn">有差异已修正</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-19</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-16</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-15</td>
+                    <td class="num">0 股</td>
+                    <td class="num">-86.50 元</td>
+                    <td class="num">-86.50</td>
+                    <td><span class="pill pill--warn">有差异已修正</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-14</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-13</td>
+                    <td class="num">100 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">24,830.00</td>
+                    <td><span class="pill pill--warn">有差异已修正</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-12</td>
+                    <td class="num">0 股</td>
+                    <td class="num">0.00 元</td>
+                    <td class="num">0.00</td>
+                    <td><span class="pill pill--pass">已对平</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- 面板：行动项 ---------- -->
+        <section data-panel="actions" hidden>
+          <div class="card mb-16">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">待处理行动项 · 3 项</h2>
+                <span class="card-sub">按优先级排序</span>
+              </div>
+              <span class="muted">2 项可自动执行</span>
+            </div>
+            <div class="card-body">
+
+              <div class="row between items-start gap-12">
+                <div class="row items-start gap-12 flex-1">
+                  <span class="pill pill--fail">高</span>
+                  <div class="flex-1">
+                    <p class="card-title">300750 宁德时代 实际占比 13.9%，超目标 1.9 个百分点</p>
+                    <p class="card-sub mt-4">目标占比 12.0%，当前市值 178,400 元；建议减仓 200 股回到目标区间。</p>
+                  </div>
+                </div>
+                <button class="btn btn--ghost btn--sm" type="button">直达</button>
+              </div>
+
+              <hr class="hr">
+
+              <div class="row between items-start gap-12">
+                <div class="row items-start gap-12 flex-1">
+                  <span class="pill pill--warn">中</span>
+                  <div class="flex-1">
+                    <p class="card-title">600036 招商银行 浮亏 -5.94%，接近止损线 -8%</p>
+                    <p class="card-sub mt-4">成本 41.06 元，现价 38.62 元，持仓 1,000 股；距止损线还有 2.06 个百分点。</p>
+                  </div>
+                </div>
+                <button class="btn btn--ghost btn--sm" type="button">直达</button>
+              </div>
+
+              <hr class="hr">
+
+              <div class="row between items-start gap-12">
+                <div class="row items-start gap-12 flex-1">
+                  <span class="pill pill--pending">低</span>
+                  <div class="flex-1">
+                    <p class="card-title">本周尚未导出检查报告</p>
+                    <p class="card-sub mt-4">按合规要求每周五 17:00 前归档一次，当前周期剩余 2 个工作日。</p>
+                  </div>
+                </div>
+                <button class="btn btn--ghost btn--sm" type="button">直达</button>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- 面板：操作记录 ---------- -->
+        <section data-panel="audit" hidden>
+          <div class="card card--flush mb-16">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">操作记录</h2>
+                <span class="card-sub">近 7 天 · 共 8 条</span>
+              </div>
+              <span class="muted">含系统自动操作</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>操作人</th>
+                    <th>动作</th>
+                    <th>对象</th>
+                    <th>结果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="mono">2026-10-27 09:32</td>
+                    <td>张岚</td>
+                    <td>执行预检</td>
+                    <td>组合 稳健成长一号</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-27 09:30</td>
+                    <td>系统</td>
+                    <td>同步券商回报</td>
+                    <td>12 只标的</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-27 08:55</td>
+                    <td>系统</td>
+                    <td>自动推演</td>
+                    <td>策略 评分驱动 v3</td>
+                    <td><span class="pill pill--fail">被拦截</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-26 22:14</td>
+                    <td>李哲</td>
+                    <td>运行回测</td>
+                    <td>bt-20261026-03</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-26 21:48</td>
+                    <td>系统</td>
+                    <td>自动对账</td>
+                    <td>2026-10-26 交易日</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-26 15:20</td>
+                    <td>张岚</td>
+                    <td>修改止损线</td>
+                    <td>600036 招商银行</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-24 11:05</td>
+                    <td>系统</td>
+                    <td>自动恢复尝试</td>
+                    <td>组合状态</td>
+                    <td><span class="pill pill--fail">被拦截</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono">2026-10-23 16:40</td>
+                    <td>王珂</td>
+                    <td>导出检查报告</td>
+                    <td>2026-10-23 归档</td>
+                    <td><span class="pill pill--pass">成功</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="empty">
+              <p class="empty-desc">更早的记录保留 90 天，当前已展示全部</p>
+            </div>
+          </div>
+        </section>
+
+      </div><!-- /[data-tab-scope] -->
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-27",
+  "scope": "0092 existing-table compatibility and explicitly authorized business upgrade",
+  "junit": {
+    "mysql57-regression.xml": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "sqlite-regression.xml": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "guarded_isolated_deployment_passed": true,
+  "business_upgrade_passed": true,
+  "business_revision": "wps_0024_092_market_signals",
+  "business_evidence_rows_preserved": 190,
+  "business_old_rows_equal": true,
+  "business_old_constraints_equal": true,
+  "service_restart_performed": false,
+  "business_sql_write_count": 7,
+  "business_table_dml_count": 0,
+  "source_files": [
+    {
+      "path": "alembic/versions/2026_10_27_0092_market_signals.py",
+      "sha256": "3571725946f602323e12ea1564b8832ced820d79ac6329cb1ca3ab665d594a02"
+    },
+    {
+      "path": "tests/test_market_signals_mysql57_existing_tables.py",
+      "sha256": "443bff04060634da220b6bd5e81e90e036a8cc8171c6950b615c8773ce9c1b86"
+    },
+    {
+      "path": "tests/test_market_signals_mysql57.py",
+      "sha256": "5720f771a01d18aac55113557bb2490e446c789740de56b60d7555a4f5e424e9"
+    },
+    {
+      "path": "tests/test_market_signals_migration.py",
+      "sha256": "048b3c331bc6c32c0f80ebcd4702c51a8d48bea0db15223d148e60b1c69709c9"
+    },
+    {
+      "path": "scripts/verify_market_signals_acceptance.py",
+      "sha256": "7db5deced54f0a80b7b6947ef3579242db367af728cb698a7c45f58b5f27bfa6"
+    },
+    {
+      "path": "scripts/upgrade_market_signals_0092.py",
+      "sha256": "566cc252a4e6bc3c717a6edb8124951ded3b30832be5bbbaf30860463f5b5d15"
+    },
+    {
+      "path": "scripts/guarded_database_migration.py",
+      "sha256": "f0198eed86d79e47ce9de8287c5c8533c33ae466f320f051fe9c978027d10b5f"
+    },
+    {
+      "path": "scripts/review_migration_integrity.py",
+      "sha256": "7ba1175b910bef5a992301a3e4bf531366ebba3f9828e9e47375af6d588f92e1"
+    },
+    {
+      "path": "app/services/market_event_collection_lock.py",
+      "sha256": "22bca8813257c1030c9f768668d4b4cfc0ee0efef4d54c462c260b961e0f816a"
+    }
+  ],
+  "files": [
+    {
+      "name": "business-postcheck-readonly.json",
+      "bytes": 3909,
+      "sha256": "a4c6258e6fbef4c273546a01e3a3ef3fffdf580cb29cb674adffd5a33ce85340"
+    },
+    {
+      "name": "business-upgrade.json",
+      "bytes": 73337,
+      "sha256": "5fafb0e686800d14e6babee090d5ef7da331a8dfd8250570c6a277a0691ee4a9"
+    },
+    {
+      "name": "business-upgrade.log",
+      "bytes": 415,
+      "sha256": "61971d8033dc13a22942019ee574dc4257904898294d395fc78474b1784709c6"
+    },
+    {
+      "name": "existing-text-roundtrip.json",
+      "bytes": 939,
+      "sha256": "c0659b215fff8e41500860556a3948619097e2ae34d7e653c279bb6758e1ae35"
+    },
+    {
+      "name": "existing-text-upgrade.json",
+      "bytes": 865,
+      "sha256": "6c8346040a4443a7223218a2b0091d764c72bbe58a49d11f27a917d67146e3bb"
+    },
+    {
+      "name": "guard-probe.json",
+      "bytes": 75869,
+      "sha256": "d19ee387e5bf114b2a327589df9664f136ef5f6b3a9084e133007fff44c664bd"
+    },
+    {
+      "name": "isolated-identity.json",
+      "bytes": 278,
+      "sha256": "3e2898be8ae0b78d4debf10d6c71a3318c2ca8edfc9b4ae49d27e7bdfa61f625"
+    },
+    {
+      "name": "isolated-result.json",
+      "bytes": 577,
+      "sha256": "d4347a9ffe96a73e2577a02f5b8d546abf5ef762e2bfdaf472768729ab594f76"
+    },
+    {
+      "name": "mysql57-regression.log",
+      "bytes": 599,
+      "sha256": "d2f3c180b9456bca65fc4262d2d18f8f91e50c740d707c152e097f6f9545de78"
+    },
+    {
+      "name": "mysql57-regression.xml",
+      "bytes": 833,
+      "sha256": "713a57ec3973aa86513f8c3a1b567096aa9b3c7d504ea048f0b059f8049f3d7a"
+    },
+    {
+      "name": "red-regression.log",
+      "bytes": 22712,
+      "sha256": "1c24d5467c26bfb28fa50ec707e8c9dc10fcba998e3c2147af6e1abaa45e0bfe"
+    },
+    {
+      "name": "red-result.json",
+      "bytes": 434,
+      "sha256": "b469ac11a99f27db22ca2599fd25b8cdcd49cc7b2e47125d09e0811c988ad737"
+    },
+    {
+      "name": "sqlite-regression.log",
+      "bytes": 100,
+      "sha256": "f62f8b49a0c0582a3d3af75ca059dfe4c1b68e73ee109ae4f47246fbd5402894"
+    },
+    {
+      "name": "sqlite-regression.xml",
+      "bytes": 387,
+      "sha256": "6d3b0d2e37a32ee4db8d2abd0bb8a253141e0b5c20c8f1e34b60f9fa6ff5da3d"
+    }
+  ]
+}

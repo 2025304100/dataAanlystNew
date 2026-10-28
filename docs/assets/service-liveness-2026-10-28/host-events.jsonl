@@ -1,0 +1,12 @@
+{"time": "2026-10-28T06:09:16.616480+00:00", "event": "host_start", "pid": 33600, "parent": 2624}
+{"time": "2026-10-28T06:11:04.143068+00:00", "event": "controlled_stop", "service": "backend", "pid": 69992}
+{"time": "2026-10-28T06:11:06.301131+00:00", "event": "process_start", "service": "backend", "pid": 70640, "created": 1793167866.2948103}
+{"time": "2026-10-28T06:11:18.600977+00:00", "event": "control_blocked", "error_type": "RuntimeError"}
+{"time": "2026-10-28T06:14:58.892973+00:00", "event": "process_exit", "service": "frontend", "pid": 69712, "created": 1793163724.7768407, "exit_code": null}
+{"time": "2026-10-28T06:14:59.114198+00:00", "event": "controlled_stop", "service": "backend", "pid": 70640}
+{"time": "2026-10-28T06:14:59.233889+00:00", "event": "host_stop", "pid": 33600}
+{"time": "2026-10-28T06:16:31.829301+00:00", "event": "host_start", "pid": 70756, "parent": 2624}
+{"time": "2026-10-28T06:16:31.931078+00:00", "event": "process_start", "service": "backend", "pid": 38220, "created": 1793168191.9259877}
+{"time": "2026-10-28T06:16:32.083415+00:00", "event": "process_start", "service": "frontend", "pid": 49532, "created": 1793168192.0723336}
+{"time": "2026-10-28T06:17:06.707609+00:00", "event": "controlled_stop", "service": "frontend", "pid": 49532}
+{"time": "2026-10-28T06:17:08.884782+00:00", "event": "process_start", "service": "frontend", "pid": 73548, "created": 1793168228.8786747}

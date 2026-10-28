@@ -1,0 +1,480 @@
+{
+  "passed": true,
+  "writes": 0,
+  "http": [
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/health",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-events?limit=1",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/evidence?limit=1",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/rules/5/versions",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:8000",
+      "path": "/api/v1/market-signals/rules/6/versions",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:5173",
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "origin": "http://127.0.0.1:5173",
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "validation_mode": "1"
+    }
+  ],
+  "pages": [
+    {
+      "passed": true,
+      "origin": "http://127.0.0.1:8000",
+      "writes": 0,
+      "started_at": "2026-10-28T06:18:22.208355+00:00",
+      "responses": [
+        {
+          "path": "/src/api/client.ts",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/inspection-acceptance/status",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/notifications/inbox",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/portfolios",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-data/sync-tasks",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/signal-rules/presets",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/portfolios/1/signal-rule",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/discovery/tasks",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events/collect-runs",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events/hotspots",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/discovery/scopes/cn-stock/stats",
+          "status": 200
+        },
+        {
+          "path": "/src/api/marketSignals.ts",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/rules",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/settings",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/dashboard",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/evidence",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/predictions",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/metadata",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/assessments",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/dashboard/workbench",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/watchlists/1/items",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/system/capabilities",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        }
+      ],
+      "page_errors": [],
+      "blocked_requests": [],
+      "finished_at": "2026-10-28T06:18:27.689622+00:00"
+    },
+    {
+      "passed": true,
+      "origin": "http://127.0.0.1:5173",
+      "writes": 0,
+      "started_at": "2026-10-28T06:18:28.155298+00:00",
+      "responses": [
+        {
+          "path": "/src/api/client.ts",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/inspection-acceptance/status",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/notifications/inbox",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/portfolios",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-data/sync-tasks",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/signal-rules/presets",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/portfolios/1/signal-rule",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/discovery/tasks",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events/collect-runs",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events/hotspots",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-events/hotspots",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/discovery/scopes/cn-stock/stats",
+          "status": 200
+        },
+        {
+          "path": "/src/api/marketSignals.ts",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/rules",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/settings",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/dashboard",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/evidence",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/assessments",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/metadata",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/market-signals/predictions",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/dashboard/workbench",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/watchlists/1/items",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/system/capabilities",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/symbols",
+          "status": 200
+        }
+      ],
+      "page_errors": [],
+      "blocked_requests": [],
+      "finished_at": "2026-10-28T06:18:31.358460+00:00"
+    }
+  ]
+}

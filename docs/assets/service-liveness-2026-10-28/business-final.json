@@ -1,0 +1,250 @@
+{
+  "passed": true,
+  "checked_at_utc": "2026-10-28T06:25:36.721576+00:00",
+  "business_unchanged": true,
+  "source_hashes_verified": true,
+  "unrelated_sources_unchanged": true,
+  "after": {
+    "state": {
+      "revision": "wps_0024_092_market_signals",
+      "profiles": [
+        {
+          "id": 1,
+          "daily_request_count": 1,
+          "daily_request_reset_at": "2026-08-11 12:43:28",
+          "updated_at": "2026-09-05 14:22:35"
+        },
+        {
+          "id": 2,
+          "daily_request_count": 0,
+          "daily_request_reset_at": null,
+          "updated_at": "2026-09-05 14:22:56"
+        },
+        {
+          "id": 3,
+          "daily_request_count": 3,
+          "daily_request_reset_at": "2026-10-25 09:52:34",
+          "updated_at": "2026-10-25 09:55:22"
+        }
+      ],
+      "deliveries": [
+        {
+          "status": "failed",
+          "total": 23,
+          "max_id": 838
+        },
+        {
+          "status": "success",
+          "total": 41,
+          "max_id": 863
+        }
+      ],
+      "outbox": [
+        {
+          "status": "dead_letter",
+          "total": 4,
+          "max_id": 448
+        },
+        {
+          "status": "failed",
+          "total": 5,
+          "max_id": 158
+        },
+        {
+          "status": "sent",
+          "total": 41,
+          "max_id": 473
+        }
+      ],
+      "active_async": [],
+      "active_discovery": [],
+      "signal_counts": {
+        "market_signal_rules": 6,
+        "market_signal_rule_versions": 15,
+        "market_signal_evidence": 190,
+        "market_signal_assessments": 0,
+        "market_signal_predictions": 0,
+        "market_signal_settings": 0,
+        "market_signal_outcomes": 0
+      },
+      "monitor_count": 0,
+      "capital_flows": {
+        "rows_count": 99363,
+        "max_id": 99363,
+        "max_date": "2026-10-26"
+      },
+      "existing_rules": {
+        "1": "1c1afb2516eef3c006a84d49e7d4376e2671506372e18dedba07043c6c40fb43",
+        "2": "40494a1eb04b3ba8b2d2b829d0a56c5bcff6ed1d53fc62193ed86bba0f2f6f43",
+        "3": "408b681b80666fe1615c1693836855b628621b7916149a8ae1a634223c2e0b61",
+        "4": "cadfd5e54b4558365e9cc06f6b1a898a0b3b91f9a9d08d6f3d1b862d3b64d682",
+        "5": "a46f6cd61a737737fdd1fb8b07e6b0c0a2ce232aaa54d346b8fad530c8007f95",
+        "6": "87be173faceac4fca00298fb47dec8ef0bd73c78e6361c4ceb2006906c6b2719"
+      },
+      "existing_versions": {
+        "1": "7c173499ab8ac0e8d0d8da49104194ea38b111dba08332e0d619e899a7bae0d7",
+        "2": "0b941243397f940e65fae16e532992a896d89e65b017ba18775d87945022a004",
+        "3": "edb02ae4c11f2cf989dfe79d262a4b7e0c3b2b1701416b237fe4b916ded43a8f",
+        "4": "1719c338654309dd7babf8179dd98ef342a60636add82e2c3651cb151e449225",
+        "5": "a7e249d421a0034d136c29dcc77bfa409cd1a6df230648b7bbd73b1b6fa5363d",
+        "6": "38d17b402850b4579ecbc778a284df847383acf41191bef132d7a58deb5d90b7",
+        "7": "9f4d1778085c55702fd4cd2872c5deb3a07aaacf57534e588b4580438c4725b7",
+        "8": "52bf133f19f079c937789d6a4d524380ad2c56b1cb8e84e64f158f5c95c74d71",
+        "9": "8237c1d143f0a1ead0e78269a69af1a56480f87e54489d6f785e54b0e070d377",
+        "10": "129a118d37357fdb8249331c58c466e773ec0ee1a47b5eb52616c2c686cd553f",
+        "11": "4694ffb6ee2fb6a51edbfd618992937c58784637ac18face1969dd15e91b11ea",
+        "12": "85d2a7805c69e18931bf6cabb3678676145ceb95e55ac5202badeef83f021f70",
+        "13": "efa50af0790959431ac2a2e1fd22d09711cd8d5b00cf3752c2e7db715cf5f7fe",
+        "14": "370f11b2f043d74f1f1a301767db018bcd9bf2a82de0596d9eaaf4145ecf5426",
+        "15": "a56ba2f8df442bca24c6782e8361d873a40f6507a860ade3e80c893cdcb33f64"
+      }
+    },
+    "content_hashes": {
+      "market_signal_evidence": {
+        "rows": 190,
+        "sha256": "ac6614985908fae09a5541c1cd39b287a79553c213bc733c662bb51d6e7bc2ae"
+      },
+      "market_signal_assessments": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "market_signal_predictions": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "market_signal_outcomes": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "market_signal_settings": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "notification_outbox": {
+        "rows": 50,
+        "sha256": "4eb4f93e8d4a1adbf8089b21f5123341c247f5820c06b6aec5c87e00f6867a2d"
+      },
+      "notification_deliveries": {
+        "rows": 64,
+        "sha256": "3c9b1fa4e9d366b36b6f57bf4f600cbe3e45f76d9c6ceb7c8a32a9928c3ba625"
+      },
+      "ai_profiles": {
+        "rows": 3,
+        "sha256": "987ba5209240cfd35195a62e7edda2d1b5b90e1f83c9eeb3b3bde71d171d88fb"
+      },
+      "portfolios": {
+        "rows": 12,
+        "sha256": "66c9cd83294898831fa102f8b43ba9c42ae9195ef56316c538b50dab0283bfce"
+      },
+      "original_task": {
+        "rows": 1,
+        "sha256": "7bb1db8b9fc23a9123baa8e7c35c8844b3180f08e8fbafb571d3ae8832c4cd77"
+      },
+      "original_plan": {
+        "rows": 1,
+        "sha256": "b697c559e666d362716bae832e4bf554abf5889978253d8c2223b50698488260"
+      },
+      "original_partitions": {
+        "rows": 5367,
+        "sha256": "d4f89c74acffdb5be060b1f2fa150c1661e744a20beeccb77259235025a9bc2c"
+      }
+    }
+  },
+  "host": {
+    "pid": 70756,
+    "created": 1793168191.0631387,
+    "cwd": "D:\\ai_project\\dataAanlystNew",
+    "command": [
+      "C:\\Python312\\pythonw.exe",
+      "D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py",
+      "host"
+    ]
+  },
+  "host_parent": {
+    "pid": 2624,
+    "exe": "C:\\Windows\\System32\\svchost.exe"
+  },
+  "services": {
+    "backend": {
+      "name": "backend",
+      "pid": 38220,
+      "created": 1793168191.9259877,
+      "cwd": "D:\\ai_project\\dataAanlystNew",
+      "command": [
+        "C:\\Python312\\python.exe",
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000,
+      "mode": "uvicorn",
+      "started_at": "2026-10-28 14:16:31",
+      "stdout_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\backend.out.log",
+      "stderr_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\backend.err.log",
+      "validation_mode": true,
+      "background_work_enabled": false,
+      "managed_host_pid": 70756
+    },
+    "frontend": {
+      "name": "frontend",
+      "pid": 73548,
+      "created": 1793168228.8786747,
+      "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+      "command": [
+        "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+        "./node_modules/vite/bin/vite.js",
+        "--config",
+        "vite.codex.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5173"
+      ],
+      "port": 5173,
+      "mode": "vite",
+      "started_at": "2026-10-28 14:17:08",
+      "stdout_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\frontend.out.log",
+      "stderr_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\frontend.err.log",
+      "validation_mode": true,
+      "background_work_enabled": false,
+      "managed_host_pid": 70756
+    }
+  },
+  "host_uptime_seconds": 545.7,
+  "task": {
+    "name": "ValidationServices-862a64183494",
+    "description": "dataAanlystNew protected validation host v1 | D:\\ai_project\\dataAanlystNew",
+    "state": 4,
+    "enabled": true,
+    "user": "demo",
+    "run_level": 0,
+    "logon_type": 3,
+    "triggers": 0,
+    "execution_limit": "PT0S",
+    "restart_count": 3,
+    "restart_interval": "PT1M",
+    "command": "C:\\Python312\\pythonw.exe",
+    "arguments": "D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py host"
+  },
+  "http": [
+    {
+      "url": "http://127.0.0.1:8000/health",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "url": "http://127.0.0.1:5173/api/v1/market-signals/settings",
+      "status": 200,
+      "validation_mode": "1"
+    }
+  ],
+  "real_models": 0,
+  "notifications": 0,
+  "migrations": 0,
+  "business_tasks_cancelled": 0,
+  "business_rules_added": 0
+}

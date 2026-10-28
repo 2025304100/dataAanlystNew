@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>行情消息 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item is-active" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="index.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">行情消息</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">行情消息 · MARKET NEWS</p>
+          <h1 class="page-title">行情消息</h1>
+          <p class="page-sub">近 7 天 1,284 条 · 其中重要及以上 47 条 · 最后同步 2026-10-27 16:40</p>
+        </div>
+        <div class="page-actions">
+          <a class="btn btn--secondary" href="07-opportunity.html">信号中心</a>
+          <button class="btn btn--primary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.9"/><path d="M13.2 2.8v3.4h-3.4"/></svg>
+            刷新
+          </button>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="field">
+          <label for="n-range">时间范围</label>
+          <div class="select-wrap">
+            <select class="input select" id="n-range">
+              <option>近 7 天</option>
+              <option>近 30 天</option>
+              <option>近 90 天</option>
+              <option>近 1 年</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="field">
+          <label for="n-scope">影响范围</label>
+          <div class="select-wrap">
+            <select class="input select" id="n-scope">
+              <option>全部</option>
+              <option>宏观政策</option>
+              <option>行业动态</option>
+              <option>国际形势</option>
+              <option>突发事件</option>
+              <option>资金流向</option>
+              <option>市场情绪</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="field">
+          <label for="n-level">最低级别</label>
+          <div class="select-wrap">
+            <select class="input select" id="n-level">
+              <option>全部</option>
+              <option>关注及以上</option>
+              <option>重要及以上</option>
+              <option>紧急</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="field">
+          <label for="n-dir">方向</label>
+          <div class="select-wrap">
+            <select class="input select" id="n-dir">
+              <option>全部</option>
+              <option>利多</option>
+              <option>利空</option>
+              <option>中性</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="field filter-grow">
+          <label for="n-keyword">关键词</label>
+          <input class="input" id="n-keyword" type="text" placeholder="搜索标题或正文">
+        </div>
+        <div class="field">
+          <label for="n-fav">收藏</label>
+          <div class="select-wrap">
+            <select class="input select" id="n-fav">
+              <option>全部</option>
+              <option>仅收藏</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="filter-end">
+          <button class="btn btn--ghost btn--sm" type="button">重置</button>
+        </div>
+      </div>
+
+      <div class="grid">
+
+        <section class="card card--flush col-8">
+          <div class="card-head">
+            <div class="row gap-8">
+              <h2 class="card-title">今天 · 10-27</h2>
+              <span class="card-sub">6 条</span>
+            </div>
+            <span class="tag">按级别排序</span>
+          </div>
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--warn">重要</span>
+                <h3 class="card-title flex-1">央行开展 5,000 亿元 MLF 操作，中标利率维持 2.30% 不变</h3>
+              </div>
+              <span class="mono muted">16:38</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">财联社</span>
+              <span class="tag">宏观政策</span>
+              <span class="tag">银行</span>
+              <span class="tag">非银金融</span>
+            </div>
+            <div class="muted mt-8">操作量与上月持平，利率连续第四个月保持不变，市场解读为数量宽松、价格维稳。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--fail">紧急</span>
+                <h3 class="card-title flex-1">工信部发布新能源汽车下乡细则，补贴力度超市场预期</h3>
+              </div>
+              <span class="mono muted">16:12</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">证券时报</span>
+              <span class="tag">行业动态</span>
+              <span class="tag">新能源</span>
+              <span class="tag">汽车零部件</span>
+            </div>
+            <div class="muted mt-8">细则明确农村户籍购车补贴上限提高至 1.2 万元/辆，覆盖车型由 18 款扩至 34 款。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--pending">关注</span>
+                <h3 class="card-title flex-1">9 月社会消费品零售总额同比增长 4.6%，环比回落 0.2 个百分点</h3>
+              </div>
+              <span class="mono muted">15:40</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">国家统计局</span>
+              <span class="tag">宏观政策</span>
+              <span class="tag">食品饮料</span>
+              <span class="tag">商贸零售</span>
+            </div>
+            <div class="muted mt-8">餐饮收入同比增长 3.1%，商品零售增长 4.9%，汽车类零售额连续两个月负增长。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--warn">重要</span>
+                <h3 class="card-title flex-1">北向资金单日净买入 128.4 亿元，创近三个月新高</h3>
+              </div>
+              <span class="mono muted">14:58</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">上海证券报</span>
+              <span class="tag">资金流向</span>
+              <span class="tag">全市场</span>
+            </div>
+            <div class="muted mt-8">主要买入电力设备与食品饮料，贵州茅台、宁德时代合计获净买入 21.6 亿元。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--pending">关注</span>
+                <h3 class="card-title flex-1">美联储 11 月议息会议纪要偏鹰，点阵图暗示降息节奏放缓</h3>
+              </div>
+              <span class="mono muted">11:26</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">路透社</span>
+              <span class="tag">国际形势</span>
+              <span class="tag">有色金属</span>
+              <span class="tag">贵金属</span>
+            </div>
+            <div class="muted mt-8">点阵图中位数显示 2027 年降息次数由 3 次下调至 2 次，美元指数盘中走高。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--blocked">一般</span>
+                <h3 class="card-title flex-1">多家白酒企业发布三季报预告，头部企业营收增速维持在两位数</h3>
+              </div>
+              <span class="mono muted">09:32</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">中国证券报</span>
+              <span class="tag">行业动态</span>
+              <span class="tag">白酒</span>
+            </div>
+            <div class="muted mt-8">已披露的 7 家白酒企业中 5 家营收增速超过 10%，渠道库存环比下降。</div>
+          </div>
+
+          <div class="card-head">
+            <div class="row gap-8">
+              <h2 class="card-title">昨天 · 10-26</h2>
+              <span class="card-sub">3 条</span>
+            </div>
+            <span class="tag">按级别排序</span>
+          </div>
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--warn">重要</span>
+                <h3 class="card-title flex-1">国家发改委召开新闻发布会，部署扩大有效投资相关举措</h3>
+              </div>
+              <span class="mono muted">17:05</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">中国证券报</span>
+              <span class="tag">宏观政策</span>
+              <span class="tag">建筑装饰</span>
+              <span class="tag">机械设备</span>
+            </div>
+            <div class="muted mt-8">提出加快专项债发行使用进度，重点支持城市更新与水利工程。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--pending">关注</span>
+                <h3 class="card-title flex-1">三季报披露进入密集期，已有 1,842 家公司公布业绩</h3>
+              </div>
+              <span class="mono muted">15:18</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">上海证券报</span>
+              <span class="tag">市场情绪</span>
+              <span class="tag">全市场</span>
+            </div>
+            <div class="muted mt-8">已披露公司中 61% 实现净利润同比增长，电力设备与电子行业增速居前。</div>
+          </div>
+          <hr class="hr">
+
+          <div class="card-body">
+            <div class="row between gap-8">
+              <div class="row gap-8 flex-1">
+                <span class="pill pill--blocked">一般</span>
+                <h3 class="card-title flex-1">国际油价小幅回落，布伦特原油收于 78.6 美元/桶</h3>
+              </div>
+              <span class="mono muted">08:44</span>
+            </div>
+            <div class="row gap-8 mt-8 wrap">
+              <span class="muted">路透社</span>
+              <span class="tag">国际形势</span>
+              <span class="tag">石油石化</span>
+            </div>
+            <div class="muted mt-8">单日下跌 0.9%，市场关注下周 OPEC+ 产量会议表态。</div>
+          </div>
+
+          <div class="empty">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 4.6h11.6v8.2H2.2z"/><path d="M2.2 7.4h11.6"/><path d="M6 10.2h4"/></svg>
+            <p class="empty-title">已加载近 7 天全部消息</p>
+            <p class="empty-desc">共 1,284 条 · 重要及以上 47 条 · 更早消息请调整时间范围</p>
+          </div>
+        </section>
+
+        <div class="col-4">
+
+          <div class="chart chart--420 mb-16">
+            <div class="chart-head">
+              <div>
+                <h3 class="chart-title">板块多空情绪</h3>
+                <p class="chart-sub">近 7 天消息方向统计 · 看多为红、看空为绿 · 百分比为看多占比</p>
+              </div>
+              <div class="chart-legend">
+                <span><i class="legend-dot legend-dot--up"></i>看多</span>
+                <span><i class="legend-dot legend-dot--down"></i>看空</span>
+              </div>
+            </div>
+            <div class="chart-body">
+              <svg viewBox="0 0 320 330" role="img" aria-label="板块多空情绪横向堆叠条">
+                <line class="c-grid" x1="137" y1="4" x2="137" y2="314"/>
+
+                <text class="c-label" x="0" y="23">食品饮料</text>
+                <rect class="c-bar-up" x="62" y="14" width="102" height="10"/>
+                <rect class="c-bar-down" x="164" y="14" width="48" height="10"/>
+                <text class="c-label-strong" x="316" y="23" text-anchor="end">68%</text>
+
+                <text class="c-label" x="0" y="63">电力设备</text>
+                <rect class="c-bar-up" x="62" y="54" width="111" height="10"/>
+                <rect class="c-bar-down" x="173" y="54" width="39" height="10"/>
+                <text class="c-label-strong" x="316" y="63" text-anchor="end">74%</text>
+
+                <text class="c-label" x="0" y="103">非银金融</text>
+                <rect class="c-bar-up" x="62" y="94" width="78" height="10"/>
+                <rect class="c-bar-down" x="140" y="94" width="72" height="10"/>
+                <text class="c-label-strong" x="316" y="103" text-anchor="end">52%</text>
+
+                <text class="c-label" x="0" y="143">有色金属</text>
+                <rect class="c-bar-up" x="62" y="134" width="61.5" height="10"/>
+                <rect class="c-bar-down" x="123.5" y="134" width="88.5" height="10"/>
+                <text class="c-label-strong" x="316" y="143" text-anchor="end">41%</text>
+
+                <text class="c-label" x="0" y="183">银行</text>
+                <rect class="c-bar-up" x="62" y="174" width="94.5" height="10"/>
+                <rect class="c-bar-down" x="156.5" y="174" width="55.5" height="10"/>
+                <text class="c-label-strong" x="316" y="183" text-anchor="end">63%</text>
+
+                <text class="c-label" x="0" y="223">医药生物</text>
+                <rect class="c-bar-up" x="62" y="214" width="57" height="10"/>
+                <rect class="c-bar-down" x="119" y="214" width="93" height="10"/>
+                <text class="c-label-strong" x="316" y="223" text-anchor="end">38%</text>
+
+                <text class="c-label" x="0" y="263">汽车零部件</text>
+                <rect class="c-bar-up" x="62" y="254" width="106.5" height="10"/>
+                <rect class="c-bar-down" x="168.5" y="254" width="43.5" height="10"/>
+                <text class="c-label-strong" x="316" y="263" text-anchor="end">71%</text>
+
+                <text class="c-label" x="0" y="303">房地产</text>
+                <rect class="c-bar-up" x="62" y="294" width="43.5" height="10"/>
+                <rect class="c-bar-down" x="105.5" y="294" width="106.5" height="10"/>
+                <text class="c-label-strong" x="316" y="303" text-anchor="end">29%</text>
+              </svg>
+            </div>
+          </div>
+
+          <section class="card mb-16">
+            <div class="card-head">
+              <h2 class="card-title">重要事件评估</h2>
+              <span class="card-sub">新能源下乡细则</span>
+            </div>
+            <div class="card-body">
+              <div class="row between gap-16">
+                <span class="muted">影响方向</span>
+                <span>利好</span>
+              </div>
+              <div class="row between gap-16 mt-12">
+                <span class="muted">影响程度</span>
+                <span>中等</span>
+              </div>
+              <div class="row between gap-16 mt-12">
+                <span class="muted">持续时长</span>
+                <span class="mono">5–10 个交易日</span>
+              </div>
+              <div class="muted mt-16">操作建议</div>
+              <div class="mt-4">维持现有仓位，关注细则落地</div>
+            </div>
+          </section>
+
+          <section class="card mb-16">
+            <div class="card-head">
+              <h2 class="card-title">今日信号</h2>
+              <span class="card-sub">3 条触发</span>
+            </div>
+            <div class="card-body">
+              <div class="row between gap-8">
+                <div class="row gap-8">
+                  <span class="pill pill--warn">放量突破</span>
+                  <span class="mono">600519</span>
+                </div>
+                <span class="muted">贵州茅台</span>
+              </div>
+              <div class="row between gap-8 mt-12">
+                <div class="row gap-8">
+                  <span class="pill pill--pending">量价背离</span>
+                  <span class="mono">300750</span>
+                </div>
+                <span class="muted">宁德时代</span>
+              </div>
+              <div class="row between gap-8 mt-12">
+                <div class="row gap-8">
+                  <span class="pill pill--pass">均线多头排列</span>
+                  <span class="mono">601318</span>
+                </div>
+                <span class="muted">中国平安</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2 class="card-title">消息级别构成</h2>
+              <span class="card-sub">近 7 天 · 1,284 条</span>
+            </div>
+            <div class="card-body">
+              <div class="row between gap-8">
+                <span class="pill pill--fail">紧急</span>
+                <span class="row gap-8"><span class="mono">3</span><span class="muted">0.2%</span></span>
+              </div>
+              <div class="row between gap-8 mt-12">
+                <span class="pill pill--warn">重要</span>
+                <span class="row gap-8"><span class="mono">44</span><span class="muted">3.4%</span></span>
+              </div>
+              <div class="row between gap-8 mt-12">
+                <span class="pill pill--pending">关注</span>
+                <span class="row gap-8"><span class="mono">218</span><span class="muted">17.0%</span></span>
+              </div>
+              <div class="row between gap-8 mt-12">
+                <span class="pill pill--blocked">一般</span>
+                <span class="row gap-8"><span class="mono">1,019</span><span class="muted">79.4%</span></span>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

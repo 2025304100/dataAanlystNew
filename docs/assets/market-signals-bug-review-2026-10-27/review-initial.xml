@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="3" failures="2" skipped="0" tests="5" time="20.316" timestamp="2026-10-27T23:02:07.598968+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_additional_bug_review" name="test_real_failures_must_open_supplier_breaker" time="1.114"><failure message="AssertionError: Two 429s did not open breaker; supplier was called 3 times&#10;assert False">tests\test_additional_bug_review.py:83: in test_real_failures_must_open_supplier_breaker
+    assert blocked, f'Two 429s did not open breaker; supplier was called {len(calls)} times'
+E   AssertionError: Two 429s did not open breaker; supplier was called 3 times
+E   assert False</failure></testcase><testcase classname="tests.test_additional_bug_review" name="test_fresh_candidate_must_not_be_starved_by_expired_scores[499]" time="0.848"><error message="failed on setup with &quot;AssertionError: This offline review must not open a network connection&quot;">tests\test_additional_bug_review.py:31: in forbidden
+    raise AssertionError('This offline review must not open a network connection')
+E   AssertionError: This offline review must not open a network connection</error></testcase><testcase classname="tests.test_additional_bug_review" name="test_fresh_candidate_must_not_be_starved_by_expired_scores[500]" time="0.726"><error message="failed on setup with &quot;AssertionError: This offline review must not open a network connection&quot;">tests\test_additional_bug_review.py:31: in forbidden
+    raise AssertionError('This offline review must not open a network connection')
+E   AssertionError: This offline review must not open a network connection</error></testcase><testcase classname="tests.test_additional_bug_review" name="test_delayed_alert_must_respect_target_daily_cap_at_send_time" time="0.549"><error message="failed on setup with &quot;AssertionError: This offline review must not open a network connection&quot;">tests\test_additional_bug_review.py:31: in forbidden
+    raise AssertionError('This offline review must not open a network connection')
+E   AssertionError: This offline review must not open a network connection</error></testcase><testcase classname="tests.test_additional_bug_review" name="test_validation_get_must_not_mutate_portfolio" time="6.162"><failure message="AssertionError: This offline review must not open a network connection">tests\test_additional_bug_review.py:160: in test_validation_get_must_not_mutate_portfolio
+    with TestClient(main.app) as client:
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\testclient.py:671: in __enter__
+    self.portal = portal = stack.enter_context(anyio.from_thread.start_blocking_portal(**self.async_backend))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\contextlib.py:526: in enter_context
+    result = _enter(cm)
+             ^^^^^^^^^^
+C:\Python312\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\anyio\from_thread.py:544: in start_blocking_portal
+    portal = future.result()
+             ^^^^^^^^^^^^^^^
+C:\Python312\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\anyio\from_thread.py:532: in run_blocking_portal
+    run_eventloop(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\anyio\_core\_eventloop.py:77: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\anyio\_backends\_asyncio.py:2341: in run
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
+C:\Python312\Lib\asyncio\runners.py:58: in __enter__
+    self._lazy_init()
+C:\Python312\Lib\asyncio\runners.py:137: in _lazy_init
+    self._loop = events.new_event_loop()
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\asyncio\events.py:823: in new_event_loop
+    return get_event_loop_policy().new_event_loop()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\asyncio\events.py:720: in new_event_loop
+    return self._loop_factory()
+           ^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\asyncio\windows_events.py:315: in __init__
+    super().__init__(proactor)
+C:\Python312\Lib\asyncio\proactor_events.py:640: in __init__
+    self._make_self_pipe()
+C:\Python312\Lib\asyncio\proactor_events.py:785: in _make_self_pipe
+    self._ssock, self._csock = socket.socketpair()
+                               ^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\socket.py:642: in socketpair
+    csock.connect((addr, port))
+tests\test_additional_bug_review.py:31: in forbidden
+    raise AssertionError('This offline review must not open a network connection')
+E   AssertionError: This offline review must not open a network connection</failure></testcase></testsuite></testsuites>

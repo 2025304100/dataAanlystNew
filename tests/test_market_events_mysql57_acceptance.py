@@ -151,6 +151,10 @@ with Session(engine_for(isolated_url())) as db:
 
 def test_mysql_repeatable_read_old_snapshot_does_not_allow_duplicate(lifecycle, monkeypatch):
     engine, _ = lifecycle
+    # The preceding lifecycle snapshots still prove 0089/0090 compatibility.
+    # Exercise the current collector only after installing its new evidence tables.
+    from tests.market_news_acceptance_support import REV92
+    migrate(isolated_url(), REV92)
     from app.models.market_event import MarketEvent
     from app.schemas.market_event import MarketEventCollectRequest
     from app.services import market_events as service

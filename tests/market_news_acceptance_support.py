@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REV89 = "wps_0024_089_ai_session_surface"
 REV90 = "wps_0024_090_market_sector_source"
 REV91 = "wps_0024_091_market_compat"
+REV92 = "wps_0024_092_market_signals"
 
 
 def isolated_url(variable="MARKET_NEWS_MYSQL57_URL"):

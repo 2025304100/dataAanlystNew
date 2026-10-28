@@ -1,0 +1,9 @@
+{
+  "version": "5.7.26",
+  "selected_database": null,
+  "server_uuid_sha256": "088b56a8a8e91d5fa24b0eeba44e32559d84593a7f32a33e35ff422996a577d9",
+  "isolated_schemas": {
+    "mysql": "codex_market_sig271006_mysql",
+    "e2e": "codex_market_sig271006_e2e"
+  }
+}

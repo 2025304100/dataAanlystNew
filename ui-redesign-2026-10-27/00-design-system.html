@@ -1,0 +1,1081 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>设计系统说明书 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">设计系统说明书</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">设计系统 · DESIGN SYSTEM</p>
+          <h1 class="page-title">设计系统说明书</h1>
+          <p class="page-sub">全站重构的唯一样式基准。令牌在 tokens.css，组件在 proto.css，页面骨架见 _template.html。本页即验收标准。</p>
+        </div>
+        <div class="page-actions">
+          <a class="btn btn--secondary" href="_template.html">打开模板</a>
+          <a class="btn btn--primary" href="#sec-rule">查看硬规则</a>
+        </div>
+      </div>
+
+      <div class="alert alert--info mb-16">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+        <div>
+          <p class="alert-title">本页是规范说明书，唯一豁免硬编码色值规则</p>
+          <p class="alert-body">其余 12 个页面（01–11、index）中，除 <span class="mono">assets/tokens.css</span> 的 <span class="mono">:root</span> 外，硬编码色值必须为 0。本页需要展示真实色值供核对与复制，故豁免。除此之外，本页同样遵守全部硬规则。</p>
+        </div>
+      </div>
+
+      <nav class="tabs2" aria-label="章节">
+        <a class="tab2 is-active" href="#sec-color">色彩</a>
+        <a class="tab2" href="#sec-type">排版</a>
+        <a class="tab2" href="#sec-space">间距与圆角</a>
+        <a class="tab2" href="#sec-shadow">阴影</a>
+        <a class="tab2" href="#sec-comp">组件</a>
+        <a class="tab2" href="#sec-data">涨跌色</a>
+        <a class="tab2" href="#sec-rule">硬规则</a>
+      </nav>
+
+      <!-- ================= 色彩 ================= -->
+      <section class="card mb-16" id="sec-color">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">色彩</h2>
+            <span class="card-sub">8 组 · 46 个色值令牌</span>
+          </div>
+          <span class="tag">tokens.css</span>
+        </div>
+        <div class="card-body">
+
+          <p class="spec-label">表面与边框 · 层级靠 1px 边框，不靠阴影</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-canvas"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--surface-canvas</span>
+                <span class="swatch-hex">#F6F7F9</span>
+                <span class="swatch-use">页面底色</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-card"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--surface-card</span>
+                <span class="swatch-hex">#FFFFFF</span>
+                <span class="swatch-use">卡片 / 侧栏 / 顶栏</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-raised"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--surface-raised</span>
+                <span class="swatch-hex">#FFFFFF</span>
+                <span class="swatch-use">浮起层（下拉 / 弹层）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-sunken"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--surface-sunken</span>
+                <span class="swatch-hex">#EFF1F4</span>
+                <span class="swatch-use">表头 / 筛选条 / hover</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-overlay"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--surface-overlay</span>
+                <span class="swatch-hex">rgba(15,23,42,.48)</span>
+                <span class="swatch-use">模态遮罩</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-hairline"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--line-hairline</span>
+                <span class="swatch-hex">#E8EBEF</span>
+                <span class="swatch-use">卡片 / 行分隔线</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-base"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--line-base</span>
+                <span class="swatch-hex">#DDE1E7</span>
+                <span class="swatch-use">输入框 / 次按钮边框</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-strong"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--line-strong</span>
+                <span class="swatch-hex">#C3C9D2</span>
+                <span class="swatch-use">强调分隔 / 禁用态描边</span>
+              </span>
+            </div>
+          </div>
+
+          <p class="spec-label">文本 · 括号内为白底对比度，全部达到 WCAG AA</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-text1"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--text-1</span>
+                <span class="swatch-hex">#14181F · 17.8:1</span>
+                <span class="swatch-use">标题 / 数值</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-text2"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--text-2</span>
+                <span class="swatch-hex">#5A6474 · 5.99:1</span>
+                <span class="swatch-use">正文 / 说明</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-text3"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--text-3</span>
+                <span class="swatch-hex">#6B7484 · 4.71:1</span>
+                <span class="swatch-use">标签 / 元信息</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-disabled"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--text-disabled</span>
+                <span class="swatch-hex">#A8B0BC</span>
+                <span class="swatch-use">禁用文字（不承载信息）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-inverse"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--text-inverse</span>
+                <span class="swatch-hex">#FFFFFF</span>
+                <span class="swatch-use">深底反白文字</span>
+              </span>
+            </div>
+          </div>
+          <p class="swatch-use mb-16">已弃用 <span class="mono">#98A2B3</span>：白底对比度仅 2.9:1，不达标，全站不再出现。</p>
+
+          <p class="spec-label">主色 · 只表达交互，不表达数据</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-brand"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--brand</span>
+                <span class="swatch-hex">#0F766E</span>
+                <span class="swatch-use">主按钮 / 选中 / 焦点环</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-brand-hover"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--brand-hover</span>
+                <span class="swatch-hex">#0D6862</span>
+                <span class="swatch-use">悬停</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-brand-active"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--brand-active</span>
+                <span class="swatch-hex">#0A544F</span>
+                <span class="swatch-use">按下</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-brand-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--brand-soft</span>
+                <span class="swatch-hex">#E6F2F0</span>
+                <span class="swatch-use">选中行 / 侧栏激活底</span>
+              </span>
+            </div>
+          </div>
+          <p class="swatch-use mb-16">焦点环 <span class="mono">--ring: 2px solid #0F766E</span>，用于键盘可见焦点。</p>
+
+          <p class="spec-label">数据语义 · 硬约束：涨红跌绿</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-up"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--up</span>
+                <span class="swatch-hex">#D92D20 · 4.83:1</span>
+                <span class="swatch-use">涨（hue 4°）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-down"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--down</span>
+                <span class="swatch-hex">#087F45 · 5.08:1</span>
+                <span class="swatch-use">跌（hue 150°）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-flat"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--flat</span>
+                <span class="swatch-hex">#6B7484</span>
+                <span class="swatch-use">平盘</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-up-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--up-soft</span>
+                <span class="swatch-hex">#FEF0EE</span>
+                <span class="swatch-use">仅深色带外的弱提示底</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-down-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--down-soft</span>
+                <span class="swatch-hex">#E8F5EE</span>
+                <span class="swatch-use">仅深色带外的弱提示底</span>
+              </span>
+            </div>
+          </div>
+
+          <p class="spec-label">状态 · 刻意避开红绿轴（红绿已被涨跌占用）</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-success"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--success</span>
+                <span class="swatch-hex">#1D4ED8</span>
+                <span class="swatch-use">通过 / 成功（用蓝）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-success-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--success-soft</span>
+                <span class="swatch-hex">#EAF0FE</span>
+                <span class="swatch-use">通过 pill 底色</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-warning"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--warning</span>
+                <span class="swatch-hex">#A16207</span>
+                <span class="swatch-use">警告 / 待观察</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-warning-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--warning-soft</span>
+                <span class="swatch-hex">#FBF3E2</span>
+                <span class="swatch-use">警告 pill 底色</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-danger"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--danger</span>
+                <span class="swatch-hex">#C2410C</span>
+                <span class="swatch-use">危险操作（与涨红差 24°）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-danger-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--danger-soft</span>
+                <span class="swatch-hex">#FCEDE6</span>
+                <span class="swatch-use">失败 / 危险 pill 底色</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-info"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--info</span>
+                <span class="swatch-hex">#475569</span>
+                <span class="swatch-use">中性信息</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-info-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--info-soft</span>
+                <span class="swatch-hex">#F1F4F8</span>
+                <span class="swatch-use">信息条底色</span>
+              </span>
+            </div>
+          </div>
+
+          <p class="spec-label">深色数据带 · 全站唯一的深色区域，只放图表</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-band-bg"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-bg</span>
+                <span class="swatch-hex">#0F172A</span>
+                <span class="swatch-use">图表底色</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-panel"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-panel</span>
+                <span class="swatch-hex">#172033</span>
+                <span class="swatch-use">带内浮层</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-grid"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-grid</span>
+                <span class="swatch-hex">#22304A</span>
+                <span class="swatch-use">网格线</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-axis"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-axis</span>
+                <span class="swatch-hex">#3B4A63</span>
+                <span class="swatch-use">坐标轴</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-text"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-text</span>
+                <span class="swatch-hex">#C7D2E0</span>
+                <span class="swatch-use">带内正文</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-text-strong"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-text-strong</span>
+                <span class="swatch-hex">#F5F8FC</span>
+                <span class="swatch-use">带内标题</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-muted"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-muted</span>
+                <span class="swatch-hex">#8494AB</span>
+                <span class="swatch-use">轴标签 / 说明</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-up"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-up</span>
+                <span class="swatch-hex">#F26D62</span>
+                <span class="swatch-use">深底上的涨（提亮版）</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-band-down"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-down</span>
+                <span class="swatch-hex">#35C08A</span>
+                <span class="swatch-use">深底上的跌（提亮版）</span>
+              </span>
+            </div>
+          </div>
+
+          <p class="spec-label">图表系列 · Okabe-Ito 色盲安全盘，刻意不含红绿</p>
+          <div class="swatch-grid">
+            <div class="swatch">
+              <span class="swatch-chip chip-s1"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-series-1</span>
+                <span class="swatch-hex">#56B4E9</span>
+                <span class="swatch-use">主序列</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-s2"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-series-2</span>
+                <span class="swatch-hex">#E69F00</span>
+                <span class="swatch-use">对比序列</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-s3"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-series-3</span>
+                <span class="swatch-hex">#CC79A7</span>
+                <span class="swatch-use">第三序列</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-s4"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-series-4</span>
+                <span class="swatch-hex">#F0E442</span>
+                <span class="swatch-use">第四序列</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-s5"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--band-series-5</span>
+                <span class="swatch-hex">#9AA7B8</span>
+                <span class="swatch-use">第五 / 背景序列</span>
+              </span>
+            </div>
+          </div>
+
+          <p class="spec-label mt-24">中性数据色 · 浅底图表表达量级（分布 / 占比 / 进度 / 评分强度），不表达方向</p>
+          <div class="swatch-grid mb-16">
+            <div class="swatch">
+              <span class="swatch-chip chip-chart-neutral"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--chart-neutral</span>
+                <span class="swatch-hex">#64748B</span>
+                <span class="swatch-use">浅底中性数据条 / 折线</span>
+              </span>
+            </div>
+            <div class="swatch">
+              <span class="swatch-chip chip-chart-neutral-soft"></span>
+              <span class="swatch-meta">
+                <span class="swatch-name">--chart-neutral-soft</span>
+                <span class="swatch-hex">#CBD5E1</span>
+                <span class="swatch-use">量级底色 / 对比条 / 进度槽</span>
+              </span>
+            </div>
+          </div>
+          <p class="swatch-use mb-16">白底卡片里的折线用 <span class="mono">.c-line-neutral</span>（<span class="mono">--chart-neutral</span>），网格用 <span class="mono">.c-grid-light</span>（<span class="mono">--line-hairline</span>）。深色带专用的 <span class="mono">.c-grid</span> / <span class="mono">.c-line-1…5</span> 在浅底上对比度不足，禁止在浅底使用。</p>
+
+        </div>
+      </section>
+
+      <!-- ================= 排版 ================= -->
+      <section class="card mb-16" id="sec-type">
+        <div class="card-head">
+          <h2 class="card-title">排版</h2>
+          <span class="card-sub">7 档字号 · 不许出现中间值</span>
+        </div>
+        <div class="card-body">
+          <div class="type-row">
+            <span class="type-sample t-36">今日结论：减仓两只高波动标的</span>
+            <span class="type-token">36 / 44 / 700 · --fs-36</span>
+          </div>
+          <div class="type-row">
+            <span class="type-sample t-28">组合总览</span>
+            <span class="type-token">28 / 34 / 600 · --fs-28</span>
+          </div>
+          <div class="type-row">
+            <span class="type-sample t-20">持仓结构</span>
+            <span class="type-token">20 / 28 / 600 · --fs-20</span>
+          </div>
+          <div class="type-row">
+            <span class="type-sample t-15">风险敞口明细</span>
+            <span class="type-token">15 / 22 / 600 · --fs-15</span>
+          </div>
+          <div class="type-row">
+            <span class="type-sample t-13">正文使用 13px，承载说明性语句与卡片标题，行高 20px 保证中文阅读节奏。</span>
+            <span class="type-token">13 / 20 / 400 · --fs-13</span>
+          </div>
+          <div class="type-row">
+            <span class="type-sample t-12 mono">600519　1,642.00　-1.24%</span>
+            <span class="type-token">12 / 18 / 400 · --fs-12</span>
+          </div>
+          <div class="type-row">
+            <span class="type-sample t-11 muted">数据截止 2026-10-27 15:00</span>
+            <span class="type-token">11 / 16 / 500 · --fs-11</span>
+          </div>
+
+          <hr class="hr">
+          <p class="spec-label">字体族与字距</p>
+          <p class="swatch-use mb-8"><span class="mono">--font-ui</span>：-apple-system / Inter / PingFang SC / Microsoft YaHei / Noto Sans SC</p>
+          <p class="swatch-use mb-8"><span class="mono">--font-mono</span>：JetBrains Mono / SF Mono / ui-monospace，仅用于代码、数字对齐场景</p>
+          <p class="swatch-use">标题字距 <span class="mono">-0.01em</span>；11px 标签字距 <span class="mono">0.02em</span>；中文不使用 uppercase。</p>
+        </div>
+      </section>
+
+      <!-- ================= 间距与圆角 ================= -->
+      <section class="card mb-16" id="sec-space">
+        <div class="card-head">
+          <h2 class="card-title">间距与圆角</h2>
+          <span class="card-sub">4px 基准 · 圆角只 4 档</span>
+        </div>
+        <div class="card-body">
+          <div class="grid">
+            <div class="col-6">
+              <p class="spec-label">间距标尺</p>
+              <div class="ruler-row"><span class="ruler-label">--sp-1 · 4</span><span class="ruler-bar w-4"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-2 · 8</span><span class="ruler-bar w-8"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-3 · 12</span><span class="ruler-bar w-12"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-4 · 16</span><span class="ruler-bar w-16"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-5 · 20</span><span class="ruler-bar w-20"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-6 · 24</span><span class="ruler-bar w-24"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-8 · 32</span><span class="ruler-bar w-32"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-10 · 40</span><span class="ruler-bar w-40"></span></div>
+              <div class="ruler-row"><span class="ruler-label">--sp-12 · 48</span><span class="ruler-bar w-48"></span></div>
+            </div>
+            <div class="col-6">
+              <p class="spec-label">固定绑定（不自由发挥）</p>
+              <p class="swatch-use mb-8">卡片内边距 20 · 卡片间距 16 · 区块间距 24</p>
+              <p class="swatch-use mb-8">表格行高 40 · 表头 36 · 单元格水平内边距 12</p>
+              <p class="swatch-use mb-16">侧栏宽 240 · 顶栏高 56 · 内容区最大宽 1600</p>
+
+              <p class="spec-label">圆角</p>
+              <div class="radius-demo">
+                <span class="radius-box r-xs">4</span>
+                <span class="radius-box r-sm">6</span>
+                <span class="radius-box r-md">10</span>
+                <span class="radius-box r-full">999</span>
+              </div>
+              <p class="swatch-use mt-12">4 = 按钮 / 输入 / 下拉项 / Tab 块；6 = 卡片 / 面板 / 图表；10 = 抽屉 / 模态；999 = pill / 圆点。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 阴影 ================= -->
+      <section class="card mb-16" id="sec-shadow">
+        <div class="card-head">
+          <h2 class="card-title">阴影</h2>
+          <span class="card-sub">铁律：border 与 shadow 不并用</span>
+        </div>
+        <div class="card-body">
+          <div class="shadow-demo">
+            <div class="shadow-box shadow-box--none">
+              <p class="swatch-name">--shadow-none</p>
+              <p class="swatch-use">卡片默认值。用 1px 边框表达层级，页面才不会发灰。</p>
+            </div>
+            <div class="shadow-box shadow-box--sm">
+              <p class="swatch-name">--shadow-sm</p>
+              <p class="swatch-use">下拉、Popover、sticky 表头。轻微离地。</p>
+            </div>
+            <div class="shadow-box shadow-box--md">
+              <p class="swatch-name">--shadow-md</p>
+              <p class="swatch-use">模态、抽屉、AI 助手面板。唯一允许的大阴影。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 组件 ================= -->
+      <section class="card mb-16" id="sec-comp">
+        <div class="card-head">
+          <h2 class="card-title">组件</h2>
+          <span class="card-sub">以下即全站可用的全部形态</span>
+        </div>
+        <div class="card-body">
+
+          <p class="spec-label">Button</p>
+          <div class="row wrap gap-8 mb-16">
+            <button class="btn btn--primary" type="button">主操作</button>
+            <button class="btn btn--secondary" type="button">次操作</button>
+            <button class="btn btn--ghost" type="button">幽灵按钮</button>
+            <button class="btn btn--danger" type="button">删除</button>
+            <button class="btn btn--primary btn--sm" type="button">小号</button>
+            <button class="btn btn--primary btn--lg" type="button">大号</button>
+            <button class="btn btn--secondary" type="button" disabled>禁用</button>
+            <button class="btn btn--secondary" type="button">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.2v9.6"/><path d="M3.2 8h9.6"/></svg>
+              带图标
+            </button>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">Input / Select</p>
+          <div class="grid mb-16">
+            <div class="field col-4">
+              <label for="d-input">关键词</label>
+              <input class="input" id="d-input" type="text" placeholder="代码 / 名称 / 备注">
+            </div>
+            <div class="field col-4">
+              <label for="d-select">账户</label>
+              <div class="select-wrap">
+                <select class="input select" id="d-select">
+                  <option>全部账户</option>
+                  <option>主账户</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+              </div>
+            </div>
+            <div class="field col-4">
+              <label for="d-disabled">只读字段</label>
+              <input class="input" id="d-disabled" type="text" value="本地环境" disabled>
+            </div>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">导航四形态对照：side-item（一级） / tab2（二级） / seg（三级） / subnav-item（页内分区）</p>
+          <nav class="tabs2" aria-label="二级导航示例">
+            <a class="tab2 is-active" href="#sec-comp">持仓总览</a>
+            <a class="tab2" href="#sec-comp">交易流水</a>
+            <a class="tab2" href="#sec-comp">风险敞口</a>
+          </nav>
+          <div class="seg mb-16">
+            <button class="seg-item is-active" type="button">近 1 周</button>
+            <button class="seg-item" type="button">近 1 月</button>
+            <button class="seg-item" type="button">近 1 年</button>
+          </div>
+          <div class="grid mb-16">
+            <div class="card col-3">
+              <nav class="subnav" aria-label="页内分区示例">
+                <a class="subnav-item is-active" href="#sec-comp">概览</a>
+                <a class="subnav-item" href="#sec-comp">成交明细</a>
+                <a class="subnav-item" href="#sec-comp">费用与税</a>
+                <a class="subnav-item" href="#sec-comp">风控记录</a>
+              </nav>
+            </div>
+            <div class="card col-9">
+              <h3 class="card-title mb-8">页内多分区用 .subnav-item，不用 .side-item</h3>
+              <p class="swatch-use">左侧 2px 品牌竖条 + 600 加粗 + 无填色。它与 .side-item（填色底 + 品牌色文字）在形态上完全不同，因此同屏不会出现两条长得一样的竖导航。禁止在内容区用 .side-item 做分区。</p>
+            </div>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">DataTable · 8 行真实数据 · 含选中行与右对齐数值列</p>
+          <div class="card card--flush mb-16">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h3 class="card-title">今日决策候选池</h3>
+                <span class="card-sub">按评分降序</span>
+              </div>
+              <span class="tag">2026-10-27</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th class="col-sticky">标的</th>
+                    <th>名称</th>
+                    <th class="num">最新价</th>
+                    <th class="num">涨跌幅</th>
+                    <th class="num">量比</th>
+                    <th class="num">评分</th>
+                    <th>信号</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="col-sticky mono">600519</td>
+                    <td>贵州茅台</td>
+                    <td class="num">1,642.00</td>
+                    <td class="num val-down">-1.24%</td>
+                    <td class="num">0.86</td>
+                    <td class="num">82</td>
+                    <td>均线多头</td>
+                    <td><span class="pill pill--pass">通过</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000858</td>
+                    <td>五粮液</td>
+                    <td class="num">138.60</td>
+                    <td class="num val-up">+0.72%</td>
+                    <td class="num">1.04</td>
+                    <td class="num">76</td>
+                    <td>突破前高</td>
+                    <td><span class="pill pill--pass">通过</span></td>
+                  </tr>
+                  <tr class="is-selected">
+                    <td class="col-sticky mono">300750</td>
+                    <td>宁德时代</td>
+                    <td class="num">196.80</td>
+                    <td class="num val-up">+3.12%</td>
+                    <td class="num">1.62</td>
+                    <td class="num">91</td>
+                    <td>放量突破</td>
+                    <td><span class="pill pill--pass">通过</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">601318</td>
+                    <td>中国平安</td>
+                    <td class="num">46.20</td>
+                    <td class="num val-flat">0.00%</td>
+                    <td class="num">0.94</td>
+                    <td class="num">64</td>
+                    <td>区间震荡</td>
+                    <td><span class="pill pill--warn">观察</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">002594</td>
+                    <td>比亚迪</td>
+                    <td class="num">248.30</td>
+                    <td class="num val-down">-0.58%</td>
+                    <td class="num">0.78</td>
+                    <td class="num">71</td>
+                    <td>回踩支撑</td>
+                    <td><span class="pill pill--warn">观察</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">600036</td>
+                    <td>招商银行</td>
+                    <td class="num">36.84</td>
+                    <td class="num val-up">+1.06%</td>
+                    <td class="num">1.12</td>
+                    <td class="num">79</td>
+                    <td>均线多头</td>
+                    <td><span class="pill pill--pass">通过</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">688981</td>
+                    <td>中芯国际</td>
+                    <td class="num">58.42</td>
+                    <td class="num val-up">+2.41%</td>
+                    <td class="num">1.38</td>
+                    <td class="num">85</td>
+                    <td>放量突破</td>
+                    <td><span class="pill pill--pending">待定</span></td>
+                  </tr>
+                  <tr>
+                    <td class="col-sticky mono">000001</td>
+                    <td>平安银行</td>
+                    <td class="num">11.26</td>
+                    <td class="num val-down">-0.35%</td>
+                    <td class="num">0.69</td>
+                    <td class="num">58</td>
+                    <td>弱势整理</td>
+                    <td><span class="pill pill--blocked">拦截</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">KPI Stat · 涨 / 跌 / 平三种 delta</p>
+          <div class="card card--flush mb-16">
+            <div class="card-body">
+              <div class="kpi-row">
+                <div class="kpi">
+                  <p class="kpi-label">组合总市值</p>
+                  <div class="kpi-value">1,284,600<span class="kpi-unit">元</span></div>
+                  <div class="kpi-delta is-up">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+                    +2.34%
+                  </div>
+                </div>
+                <div class="kpi">
+                  <p class="kpi-label">当日盈亏</p>
+                  <div class="kpi-value">-8,420<span class="kpi-unit">元</span></div>
+                  <div class="kpi-delta is-down">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+                    -0.65%
+                  </div>
+                </div>
+                <div class="kpi">
+                  <p class="kpi-label">仓位</p>
+                  <div class="kpi-value">68.5<span class="kpi-unit">%</span></div>
+                  <div class="kpi-delta is-flat">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 5.4h7.2v1.2H2.4z" fill="currentColor"/></svg>
+                    持平
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">StatusPill · 5 种状态，必带 12px 图标</p>
+          <div class="row wrap gap-8 mb-16">
+            <span class="pill pill--pass">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.4 8.4 6.4 11.4 12.6 5.2"/></svg>
+              通过
+            </span>
+            <span class="pill pill--warn">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6 14 13H2L8 2.6Z"/><path d="M8 6.4v3"/><path d="M8 11.4h.01"/></svg>
+              观察
+            </span>
+            <span class="pill pill--fail">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M5.8 5.8 10.2 10.2"/><path d="M10.2 5.8 5.8 10.2"/></svg>
+              失败
+            </span>
+            <span class="pill pill--pending">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M8 4.8V8l2.2 1.4"/></svg>
+              待定
+            </span>
+            <span class="pill pill--blocked">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M4.2 11.8 11.8 4.2"/></svg>
+              拦截
+            </span>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">ChartFrame · 深色数据带（手绘 SVG，无图表库）</p>
+          <div class="grid mb-16">
+          <div class="chart chart--320 col-8">
+            <div class="chart-head">
+              <div>
+                <h3 class="chart-title">沪深 300 · 日线</h3>
+                <p class="chart-sub">近 13 个交易日 · 本地缓存快照</p>
+              </div>
+              <div class="chart-legend">
+                <span><i class="legend-dot legend-dot--up"></i>收涨</span>
+                <span><i class="legend-dot legend-dot--down"></i>收跌</span>
+                <span><i class="legend-dot legend-dot--2"></i>MA5</span>
+              </div>
+            </div>
+            <div class="chart-body">
+              <svg viewBox="0 0 600 240" role="img" aria-label="沪深 300 日线示意">
+                <line class="c-grid" x1="40" y1="40" x2="580" y2="40"/>
+                <line class="c-grid" x1="40" y1="90" x2="580" y2="90"/>
+                <line class="c-grid" x1="40" y1="140" x2="580" y2="140"/>
+                <line class="c-grid" x1="40" y1="190" x2="580" y2="190"/>
+                <line class="c-axis" x1="40" y1="220" x2="580" y2="220"/>
+                <line class="c-axis" x1="40" y1="30" x2="40" y2="220"/>
+                <rect class="c-bar-up" x="60" y="160" width="12" height="40"/>
+                <rect class="c-bar-up" x="100" y="145" width="12" height="55"/>
+                <rect class="c-bar-down" x="140" y="170" width="12" height="30"/>
+                <rect class="c-bar-up" x="180" y="138" width="12" height="62"/>
+                <rect class="c-bar-down" x="220" y="152" width="12" height="48"/>
+                <rect class="c-bar-up" x="260" y="130" width="12" height="70"/>
+                <rect class="c-bar-up" x="300" y="142" width="12" height="58"/>
+                <rect class="c-bar-down" x="340" y="164" width="12" height="36"/>
+                <rect class="c-bar-up" x="380" y="136" width="12" height="64"/>
+                <rect class="c-bar-down" x="420" y="148" width="12" height="52"/>
+                <rect class="c-bar-up" x="460" y="124" width="12" height="76"/>
+                <rect class="c-bar-up" x="500" y="156" width="12" height="44"/>
+                <rect class="c-bar-down" x="540" y="140" width="12" height="60"/>
+                <polyline class="c-line-2" points="66,168 106,160 146,166 186,152 226,158 266,146 306,148 346,156 386,148 426,152 466,140 506,146 546,144"/>
+                <text class="c-label" x="40" y="234">10-09</text>
+                <text class="c-label" x="280" y="234">10-20</text>
+                <text class="c-label" x="530" y="234">10-27</text>
+                <text class="c-label" x="10" y="44">4,120</text>
+                <text class="c-label" x="10" y="144">3,980</text>
+                <text class="c-label" x="10" y="224">3,840</text>
+              </svg>
+            </div>
+          </div>
+          <div class="card col-4">
+            <h3 class="card-title mb-12">深色带使用规则</h3>
+            <p class="swatch-use mb-12">深色带只承载图表本体，不承载表单、按钮、状态 pill。带内文字用 <span class="mono">--band-text</span>，标题用 <span class="mono">--band-text-strong</span>，轴标签用 <span class="mono">--band-muted</span>。</p>
+            <p class="swatch-use mb-12">深色带必须被白色卡片或页面底色完整包住，不得与侧栏、顶栏直接相接。</p>
+            <p class="swatch-use mb-12">带内涨跌用提亮版 <span class="mono">--band-up</span> / <span class="mono">--band-down</span>，直接沿用浅底涨跌色会导致对比度不足。</p>
+            <p class="swatch-use">单页深色面积控制在 35% 以内。</p>
+          </div>
+          </div>
+
+          <hr class="hr">
+
+          <p class="spec-label">EmptyState / Alert / DangerZone</p>
+          <div class="grid mb-16">
+            <div class="card col-4">
+              <div class="empty">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 4.6h11.6v8.2H2.2z"/><path d="M2.2 7.4h11.6"/><path d="M6 10.2h4"/></svg>
+                <p class="empty-title">暂无交易记录</p>
+                <p class="empty-desc">切换账户或调整时间区间后重试</p>
+              </div>
+            </div>
+            <div class="col-8">
+              <div class="alert alert--info mb-12">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+                <div>
+                  <p class="alert-title">信息</p>
+                  <p class="alert-body">行情为本地缓存快照，非实时推送。</p>
+                </div>
+              </div>
+              <div class="alert alert--warn mb-12">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6 14 13H2L8 2.6Z"/><path d="M8 6.4v3"/><path d="M8 11.4h.01"/></svg>
+                <div>
+                  <p class="alert-title">警告</p>
+                  <p class="alert-body">当前仓位已超过策略上限 5 个百分点。</p>
+                </div>
+              </div>
+              <div class="alert alert--danger">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M5.8 5.8 10.2 10.2"/><path d="M10.2 5.8 5.8 10.2"/></svg>
+                <div>
+                  <p class="alert-title">危险</p>
+                  <p class="alert-body">数据源连接失败，本次决策未写入历史。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="danger-zone">
+            <p class="danger-zone-title">危险操作区</p>
+            <p class="danger-zone-desc">清空本地缓存会删除全部历史快照与回测结果，且不可恢复。此操作不会影响券商账户。</p>
+            <button class="btn btn--danger" type="button">清空本地缓存</button>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= 涨跌色 ================= -->
+      <section class="card mb-16" id="sec-data">
+        <div class="card-head">
+          <h2 class="card-title">涨跌色规范</h2>
+          <span class="card-sub">本次重构必须翻转的既有实现</span>
+        </div>
+        <div class="card-body">
+          <div class="compare mb-16">
+            <div class="compare-col is-ok">
+              <p class="compare-head is-ok">正确 · 涨红跌绿</p>
+              <div class="bars mb-12">
+                <span class="bar-item"><span class="bar bar--up bar--h56"></span><span class="bar-cap">涨</span></span>
+                <span class="bar-item"><span class="bar bar--down bar--h32"></span><span class="bar-cap">跌</span></span>
+              </div>
+              <p class="swatch-use">涨 = <span class="mono">#D92D20</span>（--up），跌 = <span class="mono">#087F45</span>（--down）。与 A 股行情软件一致，用户无需二次翻译。</p>
+            </div>
+            <div class="compare-col is-bad">
+              <p class="compare-head is-bad">错误 · 旧代码反向实现</p>
+              <div class="bars mb-12">
+                <span class="bar-item"><span class="bar bar--wrong-up bar--h56"></span><span class="bar-cap">涨</span></span>
+                <span class="bar-item"><span class="bar bar--wrong-down bar--h32"></span><span class="bar-cap">跌</span></span>
+              </div>
+              <p class="swatch-use"><span class="wrong">workbench.css:6270 的 .mn-bar--bull 使用绿色</span>，与 A 股习惯相反。同一张图上，涨跌语义被彻底读反，属于会直接导致误判的功能性缺陷，不是审美问题。</p>
+            </div>
+          </div>
+
+          <p class="spec-label">三层隔离，保证涨跌色不会被误读</p>
+          <div class="grid">
+            <div class="card col-4">
+              <p class="card-title mb-8">① 色相轴隔离</p>
+              <p class="swatch-use">涨红 hue 4° / 跌绿 hue 150° / 主色墨绿 hue 177°。三者互不接近，深色带上再用提亮版 <span class="mono">--band-up / --band-down</span>。</p>
+            </div>
+            <div class="card col-4">
+              <p class="card-title mb-8">② 位置隔离</p>
+              <p class="swatch-use">涨跌色只许出现在右对齐数值列与 K 线。左侧文字、标签、图标一律禁用。</p>
+            </div>
+            <div class="card col-4">
+              <p class="card-title mb-8">③ 形态隔离</p>
+              <p class="swatch-use">状态色必带 12px 图标 + 浅底 pill；涨跌色一律纯文字、无底色。两者在形态上不可能混淆。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 硬规则 ================= -->
+      <section class="card" id="sec-rule">
+        <div class="card-head">
+          <h2 class="card-title">硬规则与细则</h2>
+          <span class="card-sub">5 条硬规则 + 3 条补充细则，违反即不合格</span>
+        </div>
+        <div class="card-body">
+          <ol class="rule-list">
+            <li class="rule-item">
+              <span class="rule-no">01</span>
+              <p class="rule-text">除 <span class="mono">assets/tokens.css</span> 的 <span class="mono">:root</span> 与 <span class="mono">00-design-system.html</span>（本页，需展示真实色值）外，任何文件中 <span class="mono">#</span> 开头的硬编码色值出现次数必须为 <span class="mono">0</span>；强制覆盖声明（important）出现次数必须为 <span class="mono">0</span>。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">02</span>
+              <p class="rule-text">涨 = <span class="mono">#D92D20</span>、跌 = <span class="mono">#087F45</span>，只许出现在右对齐数值单元格与 K 线；任何带浅色底色的 pill 内不得出现这两个色值。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">03</span>
+              <p class="rule-text">所有数值 <span class="mono">tabular-nums</span> 且右对齐；字号只许 11 / 12 / 13 / 15 / 20 / 28 / 36，出现 11.5 / 12.5 即不合格。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">04</span>
+              <p class="rule-text">圆角只许 4 / 6 / 10 / 999；同一元素不得同时用 border 与 shadow；状态表达只许 <span class="mono">.pill</span>，全站 emoji 出现次数为 0。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">05</span>
+              <p class="rule-text">主色只有 <span class="mono">#0F766E</span> 一个，不得出现在任何数值 / 图表 / 涨跌 / 评分语境；单页深色面积 ≤ 35%，深色带不得与侧栏、顶栏相接。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">06</span>
+              <p class="rule-text">量级与方向必须分开。表达<strong>方向</strong>的图表（K 线涨跌、月度收益正负、板块多空情绪）用 <span class="mono">.c-bar-up</span> / <span class="mono">.c-bar-down</span>；表达<strong>量级</strong>的图表（分布、占比、进度、评分强度）必须用 <span class="mono">.c-bar-neutral</span> / <span class="mono">.c-bar-neutral-soft</span>。二者不得混用——把持仓占比画成红绿，用户会误读成涨跌。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">07</span>
+              <p class="rule-text">浅底与深底各有一套图表色。白底卡片里的折线与网格用 <span class="mono">.c-line-neutral</span> / <span class="mono">.c-grid-light</span>；<span class="mono">.c-grid</span> / <span class="mono">.c-line-1…5</span> 只用于深色数据带，<span class="mono">--band-*</span> 系在浅底上对比度不足。</p>
+            </li>
+            <li class="rule-item">
+              <span class="rule-no">08</span>
+              <p class="rule-text">导航只许四形态：一级 <span class="mono">.side-item</span>（填色底 + 品牌色文字）、二级 <span class="mono">.tab2</span>（下划线）、三级 <span class="mono">.seg</span>（分段控件）、页内多分区 <span class="mono">.subnav-item</span>（左侧 2px 品牌竖条 + 加粗，无填色）。禁止用 <span class="mono">.side-item</span> 在内容区做分区导航，否则同屏会出现两条长得一样的竖导航。</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

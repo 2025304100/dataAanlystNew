@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>全站 UI 重构原型 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="index.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">重构原型</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">重构原型 · REDESIGN PROTOTYPE</p>
+          <h1 class="page-title">全站 UI 重构原型</h1>
+          <p class="page-sub">12 个界面 · 1 套设计系统 · 2026-10-27 · 静态原型，不接数据、不改项目代码</p>
+        </div>
+        <div class="page-actions">
+          <a class="btn btn--primary" href="00-design-system.html">查看设计系统 →</a>
+        </div>
+      </div>
+
+      <div class="grid mb-16">
+
+        <section class="card col-4">
+          <p class="page-kicker">问题 01 · 主题分裂</p>
+          <h2 class="card-title">从两套主题到一套</h2>
+          <div class="muted mt-8">原前端主体是浅色（<span class="mono">workbench.css:4-30</span>），但组合交易整块是深色（<span class="mono">workbench.css:9442-9470</span>，<span class="mono">--pt-background</span> 覆盖为深蓝黑）。本次统一为冷灰工程台，把深色收进图表数据带，用局部深色保留盯盘沉浸感。</div>
+        </section>
+
+        <section class="card col-4">
+          <p class="page-kicker">问题 02 · 层级混乱</p>
+          <h2 class="card-title">从三层顶栏到三层形态</h2>
+          <div class="muted mt-8">原来 6 个一级 Tab 横排在顶部，下面压着 5 个二级 Tab、治理里还有 5 个三级。本次一级进左侧栏、二级用下划线 Tab、三级用分段控件，三种层级三种形态。</div>
+        </section>
+
+        <section class="card col-4">
+          <p class="page-kicker">问题 03 · 数值失控</p>
+          <h2 class="card-title">从 13 种圆角到 4 种</h2>
+          <div class="muted mt-8">原样式有 13 种圆角取值、11 档字号（含 11.5 / 12.5 半像素）、123 处 CSS 强制覆盖声明。本次收敛为 4 档圆角、7 档字号、0 处强制覆盖。</div>
+        </section>
+
+      </div>
+
+      <section class="card card--flush mb-16">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">12 个界面</h2>
+            <span class="card-sub">点击进入，全部可离线打开</span>
+          </div>
+          <span class="tag">静态原型</span>
+        </div>
+        <div class="card-body">
+          <div class="grid">
+
+            <div class="card col-4">
+              <p class="page-kicker">00 / DESIGN SYSTEM</p>
+              <h3 class="card-title">设计系统</h3>
+              <div class="card-sub mt-4">Token、组件、涨跌色规范与 5 条硬规则</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="00-design-system.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">01 / DECISION</p>
+              <h3 class="card-title">今日决策</h3>
+              <div class="card-sub mt-4">结论式标题 + 门禁状态 + 候选决策表 + 评分解释</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="01-decision.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">02 / PORTFOLIO</p>
+              <h3 class="card-title">组合总览</h3>
+              <div class="card-sub mt-4">5 列账户摘要 + 净值曲线 + 持仓分布</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="02-portfolio-overview.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">03 / HOLDINGS</p>
+              <h3 class="card-title">持仓成员</h3>
+              <div class="card-sub mt-4">12 列持仓表 + 集中度 + 再平衡建议</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="03-portfolio-members.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">04 / STRATEGY</p>
+              <h3 class="card-title">策略规则</h3>
+              <div class="card-sub mt-4">四组规则表单 + 变更影响预览</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="04-portfolio-strategy.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">05 / BACKTEST</p>
+              <h3 class="card-title">回测中心</h3>
+              <div class="card-sub mt-4">配置 → 结果 → 明细 → 历史</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="05-portfolio-backtest.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">06 / GOVERNANCE</p>
+              <h3 class="card-title">检查与对账</h3>
+              <div class="card-sub mt-4">9 状态矩阵 + 权限矩阵 + 对账连续性</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="06-portfolio-governance.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">07 / OPPORTUNITY</p>
+              <h3 class="card-title">机会中心</h3>
+              <div class="card-sub mt-4">候选池 / 观察池 / 已排除 / 扫描记录</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="07-opportunity.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">08 / RESEARCH</p>
+              <h3 class="card-title">标的研究</h3>
+              <div class="card-sub mt-4">K 线 + 因子解释 + 交易计划 + 风险参考</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="08-symbol-research.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">09 / MACRO</p>
+              <h3 class="card-title">宏观数据</h3>
+              <div class="card-sub mt-4">市场脉搏 + 12 项指标卡 + 历史曲线</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="09-macro.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">10 / NEWS</p>
+              <h3 class="card-title">行情消息</h3>
+              <div class="card-sub mt-4">筛选 + 时间分组列表 + 板块情绪</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="10-news.html">查看 →</a></div>
+            </div>
+
+            <div class="card col-4">
+              <p class="page-kicker">11 / SETTINGS</p>
+              <h3 class="card-title">设置</h3>
+              <div class="card-sub mt-4">16 个分区导航 + 配置表单</div>
+              <div class="mt-12"><a class="btn btn--ghost btn--sm" href="11-settings.html">查看 →</a></div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <section class="card card--flush mb-16">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">关键变化</h2>
+            <span class="card-sub">重构前后对照</span>
+          </div>
+          <span class="tag">6 项</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>项目</th>
+                <th>重构前</th>
+                <th>重构后</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-strong">主题</td>
+                <td class="muted">浅色主体 + 组合交易整块深色</td>
+                <td>单一冷灰浅色 + 图表深色带</td>
+              </tr>
+              <tr>
+                <td class="cell-strong">一级导航</td>
+                <td class="muted">顶部横排 6 个 Tab</td>
+                <td>左侧固定侧栏 <span class="mono">240px</span></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">圆角</td>
+                <td class="muted"><span class="mono">13</span> 种取值</td>
+                <td><span class="mono">4</span> 档（4 / 6 / 10 / 999）</td>
+              </tr>
+              <tr>
+                <td class="cell-strong">字号</td>
+                <td class="muted"><span class="mono">11</span> 档（含 11.5、12.5 半像素）</td>
+                <td><span class="mono">7</span> 档整数</td>
+              </tr>
+              <tr>
+                <td class="cell-strong">CSS 强制覆盖声明</td>
+                <td class="muted"><span class="mono">123</span> 处</td>
+                <td><span class="mono">0</span> 处</td>
+              </tr>
+              <tr>
+                <td class="cell-strong">涨跌配色</td>
+                <td class="muted"><span class="mono">.mn-bar--bull</span> 用绿、<span class="mono">.mn-bar--bear</span> 用红（与 A 股相反）</td>
+                <td>涨红跌绿，且只出现在右对齐数值列</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="alert alert--info">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+        <div>
+          <p class="alert-title">交付说明</p>
+          <p class="alert-body">本原型为静态设计稿，数据均为示意。所有页面可离线打开，无外部依赖、无 JS 库、无网络请求。</p>
+        </div>
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

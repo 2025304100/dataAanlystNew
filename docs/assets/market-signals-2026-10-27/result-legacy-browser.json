@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "outcomes": [
+    {
+      "name": "browser-e2e",
+      "exit_code": 0,
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": true
+    }
+  ],
+  "schemas_retained": {
+    "e2e": "codex_market_sigold271001_e2e"
+  }
+}

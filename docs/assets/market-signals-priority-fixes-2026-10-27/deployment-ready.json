@@ -1,0 +1,109 @@
+{
+  "passed": true,
+  "verified_at": "2026-10-27T15:47:03.169574+00:00",
+  "regressions": [
+    {
+      "junit": "signal-regression-final.xml",
+      "tests": 68,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "junit": "fund-regression-final/regression.xml",
+      "tests": 198,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "junit": "fund-mysql-final/mysql.xml",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "junit": "signal-mysql.xml",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "junit": "isolated-ui.xml",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "unique_tests": 275,
+  "files": [
+    {
+      "path": "app/core/validation_runtime.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "37f36ada8e820b52e9955fbd9d69200cf498c27ad2b78ff8e981097368275916"
+    },
+    {
+      "path": "app/main.py",
+      "baseline_sha256": "7361405a9c0d547af530513b9dc0ab36d8b586a4b63ac123a2f6c5d991cf46a9",
+      "candidate_sha256": "838b14762330a0e8d8eb14c313ebabc91e52b274267e571b1113ec1b36184c44"
+    },
+    {
+      "path": "app/api/routes/dashboard.py",
+      "baseline_sha256": "c753cc89aa68b651287c5573f9b7ecc06e8f475fe8b3209920b0f06221d8acfd",
+      "candidate_sha256": "2aa7ffcb8ac4aa5f0b405524487d864d9794c856daecac6f75c93bfa1c162607"
+    },
+    {
+      "path": "app/api/routes/portfolios.py",
+      "baseline_sha256": "d8fce5a834ecbe7eb5e079f19f1b327152c91e82295004d9561acd87e763236b",
+      "candidate_sha256": "7bb16f7f5242d9c885312cd37e04124f6a4c98b87a0d37f132999e386ac27002"
+    },
+    {
+      "path": "app/services/market_signal_engine.py",
+      "baseline_sha256": "3943d0fdc567f1f8fa0feb18eeaf32e596dcd2e59cf928b7be2b3a149e96f57e",
+      "candidate_sha256": "d6e36410a004299ee93c1f6656fbc8dfc51f73e3464b215868770c5f51d13456"
+    },
+    {
+      "path": "app/services/market_signal_delivery.py",
+      "baseline_sha256": "e869966a057bc46ff1570d3227710459f26bdad703478d01186fb622c983a313",
+      "candidate_sha256": "d21f6c4e4e07734e414971cff70df0be1d32c26ed220e80e54d57e821ec6fff8"
+    },
+    {
+      "path": "app/services/akshare_utils.py",
+      "baseline_sha256": "6d63fc4a074ea6109668664d595dda023139db6577df7593c6c9300556609bd3",
+      "candidate_sha256": "8e6da27176861eb58ad5a9ca1a3f2424c498051460b108c579432625fd8cb220"
+    },
+    {
+      "path": "app/services/akshare_registry.py",
+      "baseline_sha256": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d",
+      "candidate_sha256": "2491b136470246bd468307c12cd63bd11e208767298cb8b50a99142001389f31"
+    },
+    {
+      "path": "app/services/akshare_guard.py",
+      "baseline_sha256": "d1bf6abb82195d0a467cbdda9e58e202f8a578fa84a330321d01775f834f0874",
+      "candidate_sha256": "73130c1ca6e0c2982f66ecd57ffd49151a8f4be7e820f0e4839b8a03564d2b36"
+    },
+    {
+      "path": "tests/conftest.py",
+      "baseline_sha256": "8e173900deb67db4d9ecc2a20b0c6caa84d18776725d547e7c333cc4a0a6344f",
+      "candidate_sha256": "909d3852af09f73a938097e0fdf24d474c23e4c5322effbfe107e3899ab0f8a4"
+    },
+    {
+      "path": "tests/test_market_signal_priority_regressions.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "df0c7ff3b0c9eb6204bf48d19774ab6428185f74d7c25feaa06d9259ec363a37"
+    },
+    {
+      "path": "tests/test_market_signal_priority_mysql57.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "99f77bfb08224843301129930f9ac0505963ab483d390362e595ae293046fba3"
+    },
+    {
+      "path": "scripts/restore_validation_environment.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "e1b7dad746ab4009e69696e25224809af6c27116d4b0f6f163a7c0f2e864971b"
+    }
+  ]
+}

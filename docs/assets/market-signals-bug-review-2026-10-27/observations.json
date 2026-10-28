@@ -1,0 +1,63 @@
+{
+  "supplier_breaker": {
+    "network_allowed": false,
+    "supplier_stub_calls": 3,
+    "third_call_blocked": false,
+    "guard": {
+      "breakers": {},
+      "pacers": {},
+      "enabled": {
+        "pacer": true,
+        "breaker": true
+      }
+    }
+  },
+  "candidate_history_499": {
+    "response": {
+      "created": 1,
+      "settled": 0
+    },
+    "fresh_score": 85,
+    "fresh_decision_reason": "已生成影子预测，未发送通知",
+    "expired_score": 95,
+    "expired_age_days": 10,
+    "max_age_hours": 24
+  },
+  "candidate_history_500": {
+    "response": {
+      "created": 0,
+      "settled": 0
+    },
+    "fresh_score": 85,
+    "fresh_decision_reason": null,
+    "expired_score": 95,
+    "expired_age_days": 10,
+    "max_age_hours": 24
+  },
+  "delayed_per_target_budget": {
+    "configured_max_daily": 1,
+    "actual_transport_calls": 0,
+    "send_preflight_allowed": [
+      true,
+      true
+    ],
+    "budget_days": [
+      "2026-10-29",
+      "2026-10-29"
+    ],
+    "delivery_statuses": [
+      "queued",
+      "queued"
+    ],
+    "target_keys": [
+      "000001",
+      "000001"
+    ]
+  },
+  "validation_get_write": {
+    "response_status": 200,
+    "validation_header": "1",
+    "is_test_before": 0,
+    "is_test_after": 1
+  }
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Input, Pagination, Select, Space, Tag, Tooltip, Typography } from "antd";
 import { CalendarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, StarFilled, StarOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
@@ -7,6 +7,9 @@ import { t, template } from "../i18n";
 import type { MarketEvent, MarketEventListResponse, MarketEventHotspotsResponse, MarketEventCollectRun, MarketEventQuery } from "../types";
 import { aggregateMarketSectors, CONCEPT_DAYS, fetchCompleteMarketEvents, marketEventsCsv, marketTime, storedSectorIds } from "../utils/marketNews";
 import ThemeManagementModal from "./ThemeManagementModal";
+import { signalLabels } from "../i18n/marketSignals";
+
+const MarketSignalCenter = lazy(() => import("./MarketSignalCenter"));
 
 const { Paragraph, Text } = Typography;
 
@@ -239,6 +242,18 @@ export default function MarketNews() {
   const [collecting, setCollecting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [themeManagerOpen, setThemeManagerOpen] = useState(false);
+  const [signalsOpen, setSignalsOpen] = useState(() => new URLSearchParams(window.location.search).get("marketSignals") === "1");
+  useEffect(() => {
+    const show = () => setSignalsOpen(true);
+    window.addEventListener("market-signals:open", show);
+    return () => window.removeEventListener("market-signals:open", show);
+  }, []);
+  const closeSignals = () => {
+    setSignalsOpen(false);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("marketSignals");
+    window.history.replaceState(null, "", url);
+  };
   const [error, setError] = useState<string | null>(null);
 
   // 筛选状态
@@ -509,6 +524,7 @@ export default function MarketNews() {
           <p className="mn-subtitle">{t("market_news_subtitle")}</p>
         </div>
         <Space wrap>
+          <Button aria-label={signalLabels(locale).title} icon={<ThunderboltOutlined />} onClick={() => setSignalsOpen(true)}>{signalLabels(locale).title}</Button>
           <Button icon={<ReloadOutlined />} loading={loading} onClick={() => { listSnapshot.current = null; void loadData(); }}>{t("market_news_refresh")}</Button>
           <Button icon={<DownloadOutlined />} loading={exporting} disabled={loading || !data?.total} onClick={exportCsv}>{t("market_news_export")}</Button>
           <Button type="primary" icon={<ThunderboltOutlined />} loading={collecting} onClick={handleCollect}>
@@ -790,6 +806,7 @@ export default function MarketNews() {
           </div>
         </>
       <ThemeManagementModal open={themeManagerOpen} onClose={() => setThemeManagerOpen(false)} />
+      {signalsOpen && <Suspense fallback={null}><MarketSignalCenter open onClose={closeSignals} /></Suspense>}
     </div>
   );
 }

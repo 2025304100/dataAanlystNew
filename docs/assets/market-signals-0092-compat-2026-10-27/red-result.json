@@ -1,0 +1,20 @@
+{
+  "passed": false,
+  "results": [
+    {
+      "name": "signals-mysql57",
+      "exit_code": 1,
+      "tests": 3,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "passed": false
+    }
+  ],
+  "schemas_retained": {
+    "mysql": "codex_market_s92c_red02_mysql",
+    "legacy": "codex_market_s92c_red02_legacy"
+  },
+  "configured_business_database_selected": false,
+  "third_party_recipients": false
+}

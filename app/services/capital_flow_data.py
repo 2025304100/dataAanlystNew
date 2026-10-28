@@ -22,6 +22,7 @@ import akshare as ak
 import pandas as pd
 from sqlalchemy import desc, select, union_all
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import DBAPIError, PendingRollbackError, SQLAlchemyError
 
 from app.models.capital_flow import CapitalFlow, NorthboundFlow
 from app.models.symbol import Symbol
@@ -100,7 +101,8 @@ def _fetch_individual_fund_flow_history(
     market = _market_prefix(symbol)
     try:
         with _proxy_bypass(), quiet_akshare_output():
-            df = call_akshare_with_retry(fetch_capital_flow_history, stock=code, market=market, api_key="stock_individual_fund_flow", db=db, max_attempts=2)
+            # The dated adapter owns its attempts, cooldown and elapsed budget.
+            df = call_akshare_with_retry(fetch_capital_flow_history, stock=code, market=market, api_key="stock_individual_fund_flow", db=db, max_attempts=1)
         if df is None or df.empty:
             return []
         # 列名：日期、收盘价、涨跌幅、主力净流入-净额、主力净流入-净占比、
@@ -256,6 +258,7 @@ def sync_symbol_capital_flow_range(
     end_date: date,
     fill_missing_only: bool = False,
     allowed_dates: set[date] | None = None,
+    recover_connection: bool = False,
 ) -> int:
     """Upsert all real fund-flow rows in a requested bounded date range."""
     if start_date > end_date:
@@ -267,16 +270,36 @@ def sync_symbol_capital_flow_range(
     from app.services.sync_write_policy import DateWriteCount
     if allowed_dates is not None and not any(start_date <= day <= end_date for day in allowed_dates):
         return DateWriteCount(0, [])
+    symbol_id = symbol.id
     rows = _fetch_individual_fund_flow_history(
         db, symbol, start_date=start_date, end_date=end_date
     )
-    written_dates = []
-    for row in rows:
-        if (start_date <= row["trade_date"] <= end_date
-                and (allowed_dates is None or row["trade_date"] in allowed_dates)
-                and _upsert_capital_flow(db, symbol, row, fill_missing_only=fill_missing_only) is not None):
-            written_dates.append(row["trade_date"])
-    return DateWriteCount(len(written_dates), written_dates)
+    # Only the async worker opts in: it commits the partition boundary before
+    # fetching, so rolling back cannot discard unrelated caller changes.
+    for attempt in range(2):
+        try:
+            current = db.get(Symbol, symbol_id)
+            written_dates = []
+            for row in rows:
+                if (start_date <= row["trade_date"] <= end_date
+                        and (allowed_dates is None or row["trade_date"] in allowed_dates)
+                        and _upsert_capital_flow(db, current, row, fill_missing_only=fill_missing_only) is not None):
+                    written_dates.append(row["trade_date"])
+            result = DateWriteCount(len(written_dates), written_dates)
+            result.db_recoveries = attempt
+            return result
+        except (DBAPIError, PendingRollbackError) as exc:
+            if (not recover_connection or attempt or
+                    isinstance(exc, DBAPIError) and not exc.connection_invalidated):
+                raise
+            logger.warning("Recovering disconnected fund-flow transaction for symbol id=%s; reusing fetched rows", symbol_id)
+            try:
+                db.rollback()
+            except SQLAlchemyError:
+                # A failed DBAPI rollback may still leave a logical transaction
+                # to close. Do not expunge the worker's remaining symbol/partition
+                # objects with Session.invalidate(); finish rollback once more.
+                db.rollback()
 
 
 _RANK_FIELD_MAP = {

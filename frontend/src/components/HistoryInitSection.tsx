@@ -27,6 +27,13 @@ const HISTORY_PRESET_VALUES: Array<{ i18nKey: string; value: HistoryInitializati
   { i18nKey: "histPreset3y", value: "3y" },
 ];
 
+const HISTORY_PRESET_TRADING_DAYS: Record<HistoryInitializationTask["preset"], number> = {
+  "1m": 21,
+  "1q": 61,
+  "1y": 244,
+  "3y": 732,
+};
+
 const HISTORY_STAGE_I18N: Record<string, string> = {
   prepare: "histStagePrepare",
   sync_bars: "histStageSyncBars",
@@ -136,13 +143,12 @@ function formatDateRange(startDate?: string | null, endDate?: string | null): st
 }
 
 function stagePercent(stage: HistoryInitializationStage): number {
-  if (stage.total > 0) return Math.round((stage.done / stage.total) * 100);
-  if (stage.status === "completed") return 100;
+  if (stage.total > 0) return Math.max(0, Math.min(100, Math.round((stage.done / stage.total) * 100)));
   return 0;
 }
 
 function stageProgressStatus(status: string): "success" | "exception" | "active" | "normal" {
-  if (status === "failed" || status === "cancelled") return "exception";
+  if (status === "failed") return "exception";
   if (status === "completed") return "success";
   if (status === "running") return "active";
   return "normal";
@@ -443,8 +449,20 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
 
   const recentRuns = historyTask?.recent_runs ?? [];
   const lastDuration = formatDuration(deriveDurationSeconds(latestRun));
-  const latestFailure = latestRun?.status === "failed" || latestRun?.status === "partial" || latestRun?.status === "cancelled" ? latestRun.message : null;
+  const latestAbnormal = latestRun
+    && (latestRun.status === "failed" || latestRun.status === "partial" || latestRun.status === "cancelled")
+    ? latestRun
+    : null;
+  const latestAbnormalTone: "info" | "warning" | "error" =
+    latestAbnormal?.status === "cancelled" ? "info"
+      : latestAbnormal?.status === "partial" ? "warning" : "error";
+  const latestAbnormalTitle =
+    latestAbnormal?.status === "cancelled" ? t("histLastCancelled")
+      : latestAbnormal?.status === "partial" ? t("histStatusPartial") : t("histLastFailed");
   const isRunning = historyTask?.status === "running";
+  const historyTotal = (historyTask?.stages ?? []).reduce((sum, stage) => sum + Math.max(0, stage.total), 0);
+  const historyProcessed = (historyTask?.stages ?? []).reduce((sum, stage) => sum + Math.max(0, Math.min(stage.done, stage.total)), 0);
+  const historyPercent = historyTotal > 0 ? Math.round(historyProcessed * 100 / historyTotal) : 0;
   const requestedSymbolIds = context?.symbolIds ?? (scopedSymbolId ? [scopedSymbolId] : []);
   const historyTaskMatchesRequest = !requestedRange || (
     historyTask?.start_date === requestedRange.start && historyTask.end_date === requestedRange.end
@@ -541,7 +559,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
                   : t("histStageWaiting")}
           </span>
         </div>
-            <Progress percent={percent} size="small" status={progressStatus as any} strokeColor={stage.status === "partial" ? "#faad14" : undefined} showInfo={false} />
+            <Progress percent={percent} size="small" status={progressStatus as any} strokeColor={stage.status === "partial" || stage.status === "cancelled" ? "#faad14" : undefined} showInfo={false} />
         {stage.message && <div className="history-init-stage__message">{stage.message}</div>}
       </div>
     );
@@ -616,7 +634,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           {runScopeLabel && <span>{template("histScopeCurrentSymbol", { symbol: runScopeLabel })}</span>}
         </div>
         {run.message && (run.status === "failed" || run.status === "partial" || run.status === "cancelled") && (
-          <div className="history-run-item__message" style={{ color: run.status === "partial" ? "#d48806" : "#cf1322" }}>{run.message}</div>
+          <div className="history-run-item__message" style={{ color: run.status === "failed" ? "#cf1322" : "#d48806" }}>{run.message}</div>
         )}
         {expanded && (
           <div className="history-run-item__details" style={{ marginTop: 12, padding: "12px 16px", background: "#fafafa", borderRadius: 6 }}>
@@ -782,11 +800,16 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         )}
 
         <div ref={presetFocusRef} className="history-init-toolbar" tabIndex={-1} style={focusFlash ? { outline: "none", borderRadius: 8, background: "rgba(22, 119, 255, 0.06)", padding: 8, margin: "0 -8px 0 -8px", transition: "background 0.2s ease" } : undefined}>
-          {requestedRange ? <strong>本次补充日期：{requestedRange.start} 至 {requestedRange.end}</strong> : <Radio.Group value={historyPreset} onChange={(e) => setHistoryPreset(e.target.value)} optionType="button" buttonStyle="solid">
-            {HISTORY_PRESET_VALUES.map((item) => (
-              <Radio.Button key={item.value} value={item.value} disabled={isRunning}>{t(item.i18nKey)}</Radio.Button>
-            ))}
-          </Radio.Group>}
+          {requestedRange ? <strong>本次补充日期：{requestedRange.start} 至 {requestedRange.end}</strong> : <div>
+            <Radio.Group value={historyPreset} onChange={(e) => setHistoryPreset(e.target.value)} optionType="button" buttonStyle="solid">
+              {HISTORY_PRESET_VALUES.map((item) => (
+                <Radio.Button key={item.value} value={item.value} disabled={isRunning}>{t(item.i18nKey)}</Radio.Button>
+              ))}
+            </Radio.Group>
+            <div className="panel-meta history-init-trading-days-hint" aria-live="polite" style={{ marginTop: 4 }}>
+              {template("histTradingDaysHint", { days: HISTORY_PRESET_TRADING_DAYS[historyPreset] })}
+            </div>
+          </div>}
           {!requestedRange && <><Tooltip title={activeScopedSymbolId ? t("histSourceDisabledByScope") : t("histSourceHint")}>
             <Select
               value={symbolSource}
@@ -855,8 +878,14 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           <Alert type={retryFailedMsg.type} showIcon closable style={{ marginBottom: 16 }} message={retryFailedMsg.text} onClose={() => setRetryFailedMsg(null)} />
         )}
 
-        {latestFailure && (
-          <Alert type={latestRun?.status === "partial" ? "warning" : "error"} showIcon style={{ marginBottom: 16 }} message={t(latestRun?.status === "partial" ? "histStatusPartial" : "histLastFailed")} description={latestFailure} />
+        {latestAbnormal && (
+          <Alert
+            type={latestAbnormalTone}
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={latestAbnormalTitle}
+            description={latestAbnormal.message}
+          />
         )}
 
         {historyTask && historyTask.status !== "idle" && (
@@ -866,9 +895,9 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
                 <strong>{t("histOverallProgress")}</strong>
                 <Tag color={repairModeColor(historyTask.repair_mode)}>{repairModeLabel(historyTask.repair_mode)}</Tag>
               </div>
-              <span>{historyTask.progress_pct}%</span>
+              <span className="history-init-overall-count">{historyProcessed}/{historyTotal} · {historyPercent}%</span>
             </div>
-            <Progress percent={historyTask.progress_pct} strokeColor={historyTask.status === "partial" ? "#faad14" : undefined} status={historyTask.status === "failed" || historyTask.status === "cancelled" ? "exception" : historyTask.status === "partial" ? "normal" : historyTask.status === "completed" ? "success" : "active"} />
+            <Progress percent={historyPercent} strokeColor={historyTask.status === "partial" || historyTask.status === "cancelled" ? "#faad14" : undefined} status={historyTask.status === "failed" ? "exception" : historyTask.status === "partial" || historyTask.status === "cancelled" ? "normal" : historyTask.status === "completed" ? "success" : "active"} />
             {historyTask.message && <div className="history-init-status-text">{historyTask.message}</div>}
             <div className="item-subline" style={{ marginTop: 6 }}>{repairModeHint(historyTask.repair_mode)}</div>
 

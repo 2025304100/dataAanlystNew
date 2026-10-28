@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-10-27T23:43:28.0907188+08:00",
+  "system_events": [
+    {
+      "action": "关闭电源",
+      "provider": "User32",
+      "time": "2026-10-27T20:25:39.2033108+08:00",
+      "reason": "其他(计划外)",
+      "process": "C:\\Windows\\System32\\RuntimeBroker.exe",
+      "id": 1074,
+      "reason_code": "0x0"
+    },
+    {
+      "time": "2026-10-27T20:26:05.8421829+08:00",
+      "id": 6006,
+      "provider": "EventLog"
+    },
+    {
+      "time": "2026-10-27T21:44:27.3629122+08:00",
+      "id": 6005,
+      "provider": "EventLog"
+    }
+  ],
+  "application_query_succeeded": false,
+  "matching_application_faults": [],
+  "application_query_error": "找不到映像文件中指定的资源类型。,Microsoft.PowerShell.Commands.GetWinEventCommand"
+}

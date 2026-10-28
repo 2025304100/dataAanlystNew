@@ -222,6 +222,20 @@ class AkshareApiDisabledError(RuntimeError):
     """An explicitly disabled supplier endpoint must never be contacted."""
 
 
+# 限流/风控类失败的识别词。这类失败不是"网络抖动"，重试只会加深封禁，
+# 因此走熔断（更低的打开阈值 + 更长的冷却）而不是普通退避重试。
+_RATE_LIMIT_HINTS = (
+    "429", "403", "too many requests", "rate limit", "ratelimit",
+    "forbidden", "blocked", "captcha",
+    "频繁", "风控", "访问受限", "拒绝访问",
+)
+
+
+def _is_rate_limited(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return any(hint in message for hint in _RATE_LIMIT_HINTS)
+
+
 def assert_akshare_api_enabled(api_key: str | None) -> None:
     if api_key:
         from app.services.akshare_registry import is_api_enabled
@@ -267,6 +281,8 @@ def call_akshare_with_retry(
     # Check outside the retry/error-statistics path: a policy block is not a
     # supplier failure and must not sleep, contact the supplier or be retried.
     assert_enabled()
+    # 熔断检查同样必须在任何等待/网络动作之前：冷却期内的调用应当"立即失败"，
+    # 既不排队也不发请求，否则整批任务会被一个已知不可用的源拖住。
     # 解析重试次数：显式参数 > api_key 配置 > 默认 3
     if max_attempts is None:
         if api_key:
@@ -284,24 +300,44 @@ def call_akshare_with_retry(
         else:
             max_attempts = 3
 
-    # 调用前应用防风控延时
-    if api_key:
-        try:
-            from app.services.akshare_registry import apply_delay
-            apply_delay(api_key)
-        except Exception:
-            # 风控加固：apply_delay 失败意味着防风控延时被跳过，akshare 调用立即发出
-            # 极易触发东财/新浪 WAF 限流，导致后续大批量调用失败。必须 warning
-            logger.warning(
-                "akshare %s: apply_delay failed, rate-limit delay SKIPPED — high WAF risk",
-                api_key, exc_info=True,
-            )
-
     last_exc: Exception | None = None
+    if not isinstance(max_attempts, int) or max_attempts < 1:
+        raise ValueError("max_attempts must be a positive integer")
+    permit = None
+    if api_key:
+        from app.services import akshare_guard as guard
+        permit = guard.ensure_available(api_key)
     for attempt in range(max_attempts):
-        assert_enabled()
+        try:
+            assert_enabled()
+        except BaseException:
+            if api_key and permit:
+                guard.release_probe(api_key, permit=permit)
+            raise
+        if api_key:
+            # The first check may own a half-open probe: do not acquire that
+            # permit twice. Every subsequent attempt must recheck the breaker.
+            if attempt:
+                permit = guard.ensure_available(api_key)
+            try:
+                from app.services.akshare_registry import apply_delay
+                apply_delay(api_key)
+            except guard.SupplierCoolingDown:
+                if permit:
+                    guard.release_probe(api_key, permit=permit)
+                raise
+            except Exception:
+                logger.warning("akshare %s: configured pacing failed, using safe default", api_key, exc_info=True)
+                try:
+                    guard.acquire(api_key, min_interval_ms=300)
+                except guard.SupplierCoolingDown:
+                    if permit:
+                        guard.release_probe(api_key, permit=permit)
+                    raise
         try:
             result = func(*args, **kwargs)
+            if api_key:
+                guard.record_success(api_key, permit=permit)
             # 记录成功
             if api_key and db is not None:
                 try:
@@ -328,6 +364,16 @@ def call_akshare_with_retry(
                 or "reset" in exc_msg
                 or "broken pipe" in exc_msg
             )
+            if api_key:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                severe = status in (403, 429) or _is_rate_limited(exc)
+                if retryable or severe or (isinstance(status, int) and status >= 500):
+                    guard.record_failure(api_key, severe=severe,
+                        error=f"{type(exc).__name__}"+(f" HTTP {status}" if status else ""), permit=permit)
+                else:
+                    # A format/argument error must not poison supplier health
+                    # or leave a granted half-open probe permanently occupied.
+                    guard.record_success(api_key, permit=permit)
             if not retryable or attempt == max_attempts - 1:
                 # 记录失败
                 if api_key and db is not None:

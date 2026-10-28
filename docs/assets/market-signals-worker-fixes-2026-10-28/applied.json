@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "unique_tests": 315,
+  "stages": [
+    {
+      "junit": "main-regression-final.xml",
+      "passed": 93
+    },
+    {
+      "junit": "mysql-final.xml",
+      "passed": 16
+    },
+    {
+      "junit": "legacy-regression.xml",
+      "passed": 206
+    }
+  ],
+  "files": [
+    {
+      "path": "app/api/routes/notifications.py",
+      "baseline_sha256": "a680784a94c4f4a5419bc889ea999f630dab0cf939857c5bfef4738c37c355ac",
+      "candidate_sha256": "5633660c16bd3750751d1fff38467eb63a24b009eb39d65ebc77bda4e20ea5f9"
+    },
+    {
+      "path": "app/services/notifications/outbox.py",
+      "baseline_sha256": "91be8e3f66ae948de0f80c1222885450e97f27cbb9d599c0919c21af5a39b37f",
+      "candidate_sha256": "42fc7dbe75cba9b0f4d1b994d973fa2c046c7d1177c2c113c660ebc6da466456"
+    },
+    {
+      "path": "app/services/notifications/dispatcher.py",
+      "baseline_sha256": "28f7ac10647bec98e804cac54eb2077352babbf086acdc4dd27b58c9cc2ad2e9",
+      "candidate_sha256": "06ffabfbeefb31acb70a3c5422188b7c43382169ea4e44e5079ced4a8852f1eb"
+    },
+    {
+      "path": "app/services/market_signal_delivery.py",
+      "baseline_sha256": "a3fe64891eddf13f1cc4d59d7475528fa7b7349d02a5c3f6195a88efa833a043",
+      "candidate_sha256": "94e4099e63eb77b365462546f2d1d42dd0669c28d34dc9f046fcf7306767ccf9"
+    },
+    {
+      "path": "app/services/notifications/delivery_state.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "d3935738deeb4dbabc287b2248eb80d1d6aa66e9246288cf8dfae8a8cdf8551f"
+    },
+    {
+      "path": "tests/test_notification_worker_regressions.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "214b0d196b182615adfaf219ba7cfbe87e39a0af661b3e75baf003a462862a9b"
+    },
+    {
+      "path": "tests/test_notification_worker_mysql57.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "a28f5f9272e28e70c6c9fb573aa337ff8bdc8d2cbc2938dcd43f4738b1578568"
+    },
+    {
+      "path": "tests/offline_notification_regression_worker.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "ca4091055b5763eb76f9ad7af04f60f40ce1ba4b4e9bc273d8ac765980e9411f"
+    }
+  ],
+  "verified_at_utc": "2026-10-28T05:00:37.975215+00:00",
+  "applied_at_utc": "2026-10-28T05:00:38.023559+00:00"
+}

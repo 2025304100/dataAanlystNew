@@ -1,0 +1,64 @@
+{
+  "revision": "wps_0024_092_market_signals",
+  "profiles": [
+    {
+      "id": 1,
+      "daily_request_count": 1,
+      "daily_request_reset_at": "2026-08-11 12:43:28",
+      "updated_at": "2026-09-05 14:22:35"
+    },
+    {
+      "id": 2,
+      "daily_request_count": 0,
+      "daily_request_reset_at": null,
+      "updated_at": "2026-09-05 14:22:56"
+    },
+    {
+      "id": 3,
+      "daily_request_count": 3,
+      "daily_request_reset_at": "2026-10-25 09:52:34",
+      "updated_at": "2026-10-25 09:55:22"
+    }
+  ],
+  "deliveries": [
+    {
+      "status": "failed",
+      "total": 23,
+      "max_id": 838
+    },
+    {
+      "status": "success",
+      "total": 41,
+      "max_id": 863
+    }
+  ],
+  "outbox": [
+    {
+      "status": "dead_letter",
+      "total": 4,
+      "max_id": 448
+    },
+    {
+      "status": "failed",
+      "total": 5,
+      "max_id": 158
+    },
+    {
+      "status": "sent",
+      "total": 41,
+      "max_id": 473
+    }
+  ],
+  "active_async": [],
+  "active_discovery": [],
+  "signal_counts": {
+    "market_signal_rules": 2,
+    "market_signal_rule_versions": 5,
+    "market_signal_evidence": 190,
+    "market_signal_assessments": 0,
+    "market_signal_predictions": 0,
+    "market_signal_settings": 0,
+    "market_signal_outcomes": 0
+  },
+  "monitor_count": 0
+}

@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>宏观数据 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<script src="assets/proto.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item is-active" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">宏观数据</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">宏观数据 · MACRO</p>
+          <h1 class="page-title">宏观数据</h1>
+          <p class="page-sub">12 项核心指标 · 更新至 2026-10 · 数据来源 国家统计局 / 中国人民银行 / FRED</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v7.2"/><path d="M4.8 6.6 8 9.8l3.2-3.2"/><path d="M2.6 12.4h10.8"/></svg>
+            导出快照
+          </button>
+          <button class="btn btn--primary" type="button">刷新数据</button>
+        </div>
+      </div>
+
+      <!-- ① 市场脉搏 -->
+      <section class="card mb-16">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">市场脉搏</h2>
+            <span class="card-sub">5 个维度 · 0–100 分</span>
+          </div>
+          <div class="seg" data-tabs>
+            <button class="seg-item is-active" data-tab="all" aria-selected="true" type="button">全部</button>
+            <button class="seg-item" data-tab="cn" aria-selected="false" type="button">中国</button>
+            <button class="seg-item" data-tab="us" aria-selected="false" type="button">美国</button>
+            <button class="seg-item" data-tab="eu" aria-selected="false" type="button">欧洲</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="kpi-row">
+            <div class="kpi">
+              <p class="kpi-label">增长</p>
+              <div class="kpi-value">72<span class="kpi-unit">分</span></div>
+              <div class="chart-body mt-8"><svg viewBox="0 0 120 6" role="img" aria-label="增长维度 72 分"><rect class="c-area-1" x="0" y="1" width="120" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="86.4" height="4"/></svg></div>
+              <p class="muted mt-8">制造业 PMI 连续 3 月位于扩张区间</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">通胀</p>
+              <div class="kpi-value">58<span class="kpi-unit">分</span></div>
+              <div class="chart-body mt-8"><svg viewBox="0 0 120 6" role="img" aria-label="通胀维度 58 分"><rect class="c-area-1" x="0" y="1" width="120" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="69.6" height="4"/></svg></div>
+              <p class="muted mt-8">CPI 同比 0.8%，PPI 降幅连续 2 月收窄</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">流动性</p>
+              <div class="kpi-value">81<span class="kpi-unit">分</span></div>
+              <div class="chart-body mt-8"><svg viewBox="0 0 120 6" role="img" aria-label="流动性维度 81 分"><rect class="c-area-1" x="0" y="1" width="120" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="97.2" height="4"/></svg></div>
+              <p class="muted mt-8">M2 同比 8.4%，银行间回购利率下行</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">风险偏好</p>
+              <div class="kpi-value">64<span class="kpi-unit">分</span></div>
+              <div class="chart-body mt-8"><svg viewBox="0 0 120 6" role="img" aria-label="风险偏好维度 64 分"><rect class="c-area-1" x="0" y="1" width="120" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="76.8" height="4"/></svg></div>
+              <p class="muted mt-8">两融余额回升，北向资金连续 2 周净流入</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">估值</p>
+              <div class="kpi-value">47<span class="kpi-unit">分</span></div>
+              <div class="chart-body mt-8"><svg viewBox="0 0 120 6" role="img" aria-label="估值维度 47 分"><rect class="c-area-1" x="0" y="1" width="120" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="56.4" height="4"/></svg></div>
+              <p class="muted mt-8">上证 PE 13.6 倍，处近十年 62% 分位</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ② 立场横幅 -->
+      <div class="alert alert--info mb-16">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+        <div>
+          <p class="alert-title">当前宏观立场：中性偏松</p>
+          <p class="alert-body">流动性分项 81 分为近两年高位，但估值分项 47 分显示权益资产性价比一般。建议维持 60%–70% 仓位中枢，不做方向性加仓。</p>
+        </div>
+      </div>
+
+      <!-- ③ 指标卡片网格 -->
+      <div class="grid mb-16">
+
+        <section class="card col-4">
+          <p class="kpi-label">GDP 同比</p>
+          <div class="kpi-value">5.2<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.1 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="GDP 同比近八期走势">
+              <polyline class="c-line-neutral" points="10,30 36,26 62,18 88,22 114,20 140,28 166,25 190,14"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个季度 · 截至 2026Q3</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">CPI 同比</p>
+          <div class="kpi-value">0.8<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.2 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="CPI 同比近八期走势">
+              <polyline class="c-line-neutral" points="10,32 36,30 62,27 88,24 114,27 140,20 166,20 190,12"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">PPI 同比</p>
+          <div class="kpi-value">-1.4<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.3 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="PPI 同比近八期走势">
+              <polyline class="c-line-neutral" points="10,34 36,31 62,28 88,24 114,22 140,20 166,20 190,16"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">制造业 PMI</p>
+          <div class="kpi-value">51.2</div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.4 点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="制造业 PMI 近八期走势">
+              <polyline class="c-line-neutral" points="10,26 36,32 62,30 88,24 114,16 140,22 166,18 190,10"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">社会消费品零售总额同比</p>
+          <div class="kpi-value">4.6<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-down">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+            -0.2 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="社会消费品零售总额同比近八期走势">
+              <polyline class="c-line-neutral" points="10,10 36,16 62,20 88,14 114,18 140,20 166,20 190,24"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">固定资产投资同比</p>
+          <div class="kpi-value">3.1<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.1 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="固定资产投资同比近八期走势">
+              <polyline class="c-line-neutral" points="10,26 36,24 62,26 88,20 114,24 140,20 166,20 190,16"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">M2 同比</p>
+          <div class="kpi-value">8.4<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.3 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="M2 同比近八期走势">
+              <polyline class="c-line-neutral" points="10,28 36,30 62,29 88,24 114,22 140,20 166,20 190,14"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">社融存量同比</p>
+          <div class="kpi-value">9.1<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.2 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="社融存量同比近八期走势">
+              <polyline class="c-line-neutral" points="10,30 36,32 62,31 88,26 114,22 140,20 166,20 190,16"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">10 年期国债收益率</p>
+          <div class="kpi-value">2.18<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta is-down">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+            -0.04 个百分点
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="10 年期国债收益率近八期走势">
+              <polyline class="c-line-neutral" points="10,8 36,12 62,15 88,20 114,23 140,26 166,28 190,32"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">美元兑人民币</p>
+          <div class="kpi-value">7.12</div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.01
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="美元兑人民币近八期走势">
+              <polyline class="c-line-neutral" points="10,26 36,32 62,30 88,24 114,22 140,20 166,20 190,16"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">布伦特原油</p>
+          <div class="kpi-value">82.4<span class="kpi-unit">美元/桶</span></div>
+          <div class="kpi-delta is-down">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+            -1.2 美元
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="布伦特原油近八期走势">
+              <polyline class="c-line-neutral" points="10,32 36,28 62,26 88,22 114,12 140,8 166,12 190,18"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 周 · 截至 2026-10-24</p>
+        </section>
+
+        <section class="card col-4">
+          <p class="kpi-label">上证指数 PE(TTM)</p>
+          <div class="kpi-value">13.6<span class="kpi-unit">倍</span></div>
+          <div class="kpi-delta is-up">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+            +0.2 倍
+          </div>
+          <div class="chart-body mt-12">
+            <svg viewBox="0 0 200 40" role="img" aria-label="上证指数市盈率近八期走势">
+              <polyline class="c-line-neutral" points="10,32 36,28 62,24 88,30 114,22 140,18 166,14 190,10"/>
+            </svg>
+          </div>
+          <p class="card-sub mt-8">近 8 个月 · 截至 2026-10</p>
+        </section>
+
+      </div>
+
+      <!-- ④ 历史曲线 -->
+      <div class="chart chart--320">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">制造业 PMI · 近 36 个月</h2>
+            <p class="chart-sub">荣枯线 50.0 · 国家统计局</p>
+          </div>
+          <div class="row gap-16">
+            <div class="chart-legend">
+              <span><i class="legend-dot legend-dot--1"></i>PMI</span>
+              <span><i class="legend-dot legend-dot--2"></i>荣枯线</span>
+            </div>
+            <div class="seg" data-tabs>
+              <button class="seg-item" data-tab="m12" aria-selected="false" type="button">12月</button>
+              <button class="seg-item" data-tab="m24" aria-selected="false" type="button">24月</button>
+              <button class="seg-item is-active" data-tab="m36" aria-selected="true" type="button">36月</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-body">
+          <svg viewBox="0 0 1160 280" role="img" aria-label="制造业 PMI 近 36 个月走势，最新 51.2">
+            <line class="c-grid" x1="20" y1="40" x2="1090" y2="40"/>
+            <line class="c-grid" x1="20" y1="74" x2="1090" y2="74"/>
+            <line class="c-grid" x1="20" y1="108" x2="1090" y2="108"/>
+            <line class="c-grid" x1="20" y1="142" x2="1090" y2="142"/>
+            <line class="c-grid" x1="20" y1="176" x2="1090" y2="176"/>
+            <line class="c-grid" x1="20" y1="210" x2="1090" y2="210"/>
+            <line class="c-axis" x1="20" y1="240" x2="1090" y2="240"/>
+
+            <path class="c-area-1" d="M40 162.4 70 176 100 169.2 130 114.8 160 172.6 190 114.8 220 159 250 162.4 280 128.4 310 114.8 340 84.2 370 80.8 400 138.6 430 172.6 460 159 490 128.4 520 108 550 125 580 148.8 610 162.4 640 131.8 670 111.4 700 91 730 108 760 125 790 114.8 820 101.2 850 118.2 880 108 910 87.6 940 111.4 970 104.6 1000 80.8 1030 128.4 1060 114.8 1090 101.2V240H40Z"/>
+            <polyline class="c-line-1" points="40,162.4 70,176 100,169.2 130,114.8 160,172.6 190,114.8 220,159 250,162.4 280,128.4 310,114.8 340,84.2 370,80.8 400,138.6 430,172.6 460,159 490,128.4 520,108 550,125 580,148.8 610,162.4 640,131.8 670,111.4 700,91 730,108 760,125 790,114.8 820,101.2 850,118.2 880,108 910,87.6 940,111.4 970,104.6 1000,80.8 1030,128.4 1060,114.8 1090,101.2"/>
+            <line class="c-line-2" x1="40" y1="142" x2="1090" y2="142"/>
+
+            <circle class="c-dot-strong" cx="1090" cy="101.2" r="3"/>
+            <text class="c-label-strong" x="1096" y="105">51.2</text>
+            <text class="c-label" x="1096" y="146">50.0</text>
+            <text class="c-label" x="1096" y="44">53.0</text>
+            <text class="c-label" x="1096" y="214">48.0</text>
+
+            <text class="c-label" x="28" y="264">2023-11</text>
+            <text class="c-label" x="388" y="264">2024-11</text>
+            <text class="c-label" x="748" y="264">2025-11</text>
+            <text class="c-label" x="1018" y="264">2026-10</text>
+          </svg>
+        </div>
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

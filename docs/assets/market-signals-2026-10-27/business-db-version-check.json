@@ -1,0 +1,819 @@
+{
+  "checked_at": "2026-10-27T04:46:48.448285+00:00",
+  "configuration_source": "config/db_config.json (use_mysql=true)",
+  "target": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "gpfx"
+  },
+  "identity": {
+    "database_name": "gpfx",
+    "server_version": "5.7.26",
+    "session_read_only": 1
+  },
+  "runtime_database_url_override_set": false,
+  "alembic_database_url_override_set": false,
+  "repository_heads": [
+    "wps_0024_092_market_signals"
+  ],
+  "database_revisions": [
+    "wps_0024_091_market_compat"
+  ],
+  "pending_migrations": [
+    {
+      "revision": "wps_0024_092_market_signals",
+      "down_revision": "wps_0024_091_market_compat",
+      "file": "alembic/versions/2026_10_27_0092_market_signals.py"
+    }
+  ],
+  "chain_error": null,
+  "market_signal_tables_present": [
+    "market_signal_assessments",
+    "market_signal_evidence",
+    "market_signal_outcomes",
+    "market_signal_predictions",
+    "market_signal_rules",
+    "market_signal_rule_versions",
+    "market_signal_settings"
+  ],
+  "market_signal_columns": [
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "evidence_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "rule_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "rule_revision",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "request_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "varchar(32)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "score",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "event_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "fact_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "analysis_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "input_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "model_name",
+      "COLUMN_TYPE": "varchar(128)",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "total_tokens",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "decision_reason",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "fingerprint",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "title",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "text",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "source",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "source_url",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "published_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "time_quality",
+      "COLUMN_TYPE": "varchar(24)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "kind",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "metadata_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "COLUMN_NAME": "first_seen_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "prediction_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "version",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "varchar(24)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "result_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "dedup_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "event_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "fact_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "assessment_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "rule_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "rule_revision",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "target_type",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "target_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "delivery_status",
+      "COLUMN_TYPE": "varchar(24)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "outbox_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "snapshot_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "outcome_status",
+      "COLUMN_TYPE": "varchar(24)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "outcome_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "sent_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "due_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(80)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "target_type",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "target_key",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "revision",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "config_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "COLUMN_NAME": "rule_id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "COLUMN_NAME": "revision",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "COLUMN_NAME": "config_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_settings",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int(11)",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_settings",
+      "COLUMN_NAME": "config_json",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "TABLE_NAME": "market_signal_settings",
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    }
+  ],
+  "market_signal_indexes": [
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "ix_market_signal_assessments_created_at",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "created_at",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "ix_market_signal_assessments_event_key",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "event_key",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "ix_market_signal_assessments_evidence_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "evidence_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "ix_market_signal_assessments_request_key",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "request_key",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "ix_market_signal_assessments_rule_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "rule_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "ix_market_signal_assessments_status",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "status",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "INDEX_NAME": "fingerprint",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "fingerprint",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "INDEX_NAME": "ix_market_signal_evidence_first_seen_at",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "first_seen_at",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "INDEX_NAME": "ix_market_signal_evidence_published_at",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "published_at",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "INDEX_NAME": "ix_market_signal_outcomes_prediction_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "prediction_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "INDEX_NAME": "uq_ms_outcome_version",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "prediction_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "INDEX_NAME": "uq_ms_outcome_version",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "version",
+      "SEQ_IN_INDEX": 2
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "dedup_key",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "dedup_key",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_assessment_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "assessment_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_created_at",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "created_at",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_delivery_status",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "delivery_status",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_due_at",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "due_at",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_event_key",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "event_key",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_outbox_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "outbox_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_outcome_status",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "outcome_status",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_rule_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "rule_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "ix_market_signal_predictions_target_key",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "target_key",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "INDEX_NAME": "ix_market_signal_rules_target_key",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "target_key",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "INDEX_NAME": "ix_market_signal_rules_target_type",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "target_type",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "INDEX_NAME": "ix_market_signal_rule_versions_rule_id",
+      "NON_UNIQUE": 1,
+      "COLUMN_NAME": "rule_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "INDEX_NAME": "uq_ms_rule_version",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "rule_id",
+      "SEQ_IN_INDEX": 1
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "INDEX_NAME": "uq_ms_rule_version",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "revision",
+      "SEQ_IN_INDEX": 2
+    },
+    {
+      "TABLE_NAME": "market_signal_settings",
+      "INDEX_NAME": "PRIMARY",
+      "NON_UNIQUE": 0,
+      "COLUMN_NAME": "id",
+      "SEQ_IN_INDEX": 1
+    }
+  ],
+  "table_storage": [
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:36:21"
+    },
+    {
+      "TABLE_NAME": "market_signal_evidence",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:24:57"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:46:13"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:36:21"
+    },
+    {
+      "TABLE_NAME": "market_signal_rules",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:24:57"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:24:57"
+    },
+    {
+      "TABLE_NAME": "market_signal_settings",
+      "ENGINE": "InnoDB",
+      "TABLE_COLLATION": "utf8_general_ci",
+      "CREATE_TIME": "2026-10-27 09:36:21"
+    }
+  ],
+  "table_has_existing_rows": {
+    "market_signal_assessments": false,
+    "market_signal_evidence": true,
+    "market_signal_outcomes": false,
+    "market_signal_predictions": false,
+    "market_signal_rules": false,
+    "market_signal_rule_versions": false,
+    "market_signal_settings": false
+  },
+  "foreign_keys": [
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "evidence_id",
+      "REFERENCED_TABLE_NAME": "market_signal_evidence",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "TABLE_NAME": "market_signal_assessments",
+      "COLUMN_NAME": "rule_id",
+      "REFERENCED_TABLE_NAME": "market_signal_rules",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "TABLE_NAME": "market_signal_outcomes",
+      "COLUMN_NAME": "prediction_id",
+      "REFERENCED_TABLE_NAME": "market_signal_predictions",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "assessment_id",
+      "REFERENCED_TABLE_NAME": "market_signal_assessments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "TABLE_NAME": "market_signal_predictions",
+      "COLUMN_NAME": "rule_id",
+      "REFERENCED_TABLE_NAME": "market_signal_rules",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "TABLE_NAME": "market_signal_rule_versions",
+      "COLUMN_NAME": "rule_id",
+      "REFERENCED_TABLE_NAME": "market_signal_rules",
+      "REFERENCED_COLUMN_NAME": "id"
+    }
+  ],
+  "database_revision_unchanged_after_check": true,
+  "application_port_8000_reachable": true,
+  "only_0092_pending": true,
+  "mode": "Read-only session; SELECT and metadata only; no Alembic execution or application initialization",
+  "schema_differences_against_0092": {
+    "missing_tables": [],
+    "missing_columns": [],
+    "column_type_mismatches": [
+      {
+        "table": "market_signal_evidence",
+        "column": "text",
+        "actual": "text",
+        "expected": "longtext"
+      },
+      {
+        "table": "market_signal_assessments",
+        "column": "analysis_json",
+        "actual": "text",
+        "expected": "longtext"
+      },
+      {
+        "table": "market_signal_assessments",
+        "column": "input_json",
+        "actual": "text",
+        "expected": "longtext"
+      },
+      {
+        "table": "market_signal_predictions",
+        "column": "snapshot_json",
+        "actual": "text",
+        "expected": "longtext"
+      },
+      {
+        "table": "market_signal_predictions",
+        "column": "outcome_json",
+        "actual": "text",
+        "expected": "longtext"
+      },
+      {
+        "table": "market_signal_outcomes",
+        "column": "result_json",
+        "actual": "text",
+        "expected": "longtext"
+      }
+    ],
+    "nullability_mismatches": [],
+    "missing_indexes": [],
+    "missing_unique_constraints": [],
+    "missing_foreign_keys": []
+  },
+  "direct_0092_upgrade_will_fix_existing_text_columns": false
+}

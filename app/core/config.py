@@ -26,6 +26,8 @@ class Settings:
         default_db_path = Path(tempfile.gettempdir()) / "quant_workbench.db"
         default_factor_warehouse_path = base_dir / "tmp" / "factor_warehouse.duckdb"
         self.app_name = "Personal Quant Workbench API"
+        # Temporary HTTP acceptance: no startup jobs, AI actions or deliveries.
+        self.APP_VALIDATION_MODE = _env_bool("APP_VALIDATION_MODE", False)
         self.api_prefix = "/api/v1"
         self.base_dir = base_dir
         self.database_url = os.getenv(

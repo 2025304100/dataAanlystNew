@@ -540,6 +540,26 @@ body[data-active-view="detail"] .detail-panel {
   letter-spacing: 0;
 }
 
+.symbol-title:has(.caliber-chip) {
+  display: flex;
+}
+
+.caliber-chip {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 4px;
+  border: 0.5px solid var(--border);
+  color: var(--muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.caliber-chip[data-unknown="1"] {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
 .symbol-name {
   min-width: 0;
   overflow: hidden;
@@ -801,6 +821,10 @@ tr .today-score-wrap .score-tooltip {
   transition: width 0.22s ease;
 }
 
+.progress-track[data-state="abnormal"] .progress-fill {
+  background: #d97706;
+}
+
 .discovery-steps span {
   position: relative;
   flex: 1;
@@ -810,6 +834,27 @@ tr .today-score-wrap .score-tooltip {
 .discovery-steps span.active,
 .discovery-steps span.done {
   color: var(--accent);
+  font-weight: 700;
+}
+
+.discovery-steps span.warning {
+  color: #d48806;
+  font-weight: 700;
+}
+
+.discovery-steps span.interrupted {
+  color: #d97706;
+  font-weight: 700;
+}
+
+.discovery-steps span.interrupted::after {
+  content: "（已中断）";
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.discovery-steps span.error {
+  color: #cf1322;
   font-weight: 700;
 }
 

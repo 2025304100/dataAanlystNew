@@ -3,6 +3,16 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 
 
+class ScoringCaliberBucket(BaseModel):
+    config_id: int | None = None
+    preset_key: str | None = None
+    preset_name: str | None = None
+    version: int | None = None
+    trade_date_min: date | None = None
+    trade_date_max: date | None = None
+    score_count: int = 0
+
+
 class ScoreCalculationRequest(BaseModel):
     symbol_ids: list[int]
     trade_date: date

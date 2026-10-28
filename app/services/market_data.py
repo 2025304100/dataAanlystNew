@@ -945,7 +945,7 @@ def _persist_history_task_snapshot(task: dict) -> None:
         return
 
     snapshot = _history_task_result_payload(task)
-    active_stage = _history_active_stage(snapshot) or {}
+    processed, total = _history_progress_counts(snapshot)
     summary = snapshot.get("summary") or {}
 
     try:
@@ -962,8 +962,8 @@ def _persist_history_task_snapshot(task: dict) -> None:
             stage=_history_async_stage(snapshot),
             percent=float(snapshot.get("progress_pct") or 0),
             message=snapshot.get("message") or "",
-            total=int(active_stage.get("total") or 0),
-            processed=int(active_stage.get("done") or 0),
+            total=total,
+            processed=processed,
             ok_count=int(summary.get("sync_ok_count") or 0) + int(summary.get("score_days_completed") or 0),
             failed_count=int(summary.get("sync_failed_count") or 0) + int(summary.get("empty_count") or 0) + sum(max(1, int(item.get("failed_days") or 0)) for item in snapshot.get("failed_items", []) if item.get("stage") == "calc_scores"),
             current_item=None,
@@ -1068,12 +1068,20 @@ def _history_stage(task: dict, key: str) -> dict | None:
     return None
 
 
+def _history_count_percent(done: int, total: int) -> int:
+    return max(0, min(100, int(done * 100 / total + 0.5))) if total > 0 else 0
+
+
+def _history_progress_counts(task: dict) -> tuple[int, int]:
+    counts = [(max(0, int(stage.get("done") or 0)), max(0, int(stage.get("total") or 0))) for stage in task.get("stages") or []]
+    return sum(min(done, total) for done, total in counts), sum(total for _, total in counts)
+
+
 def _recompute_history_progress(task: dict) -> None:
-    stages = task.get("stages") or []
-    if not stages:
-        task["progress_pct"] = 0
-        return
-    task["progress_pct"] = round(sum(int(stage.get("percent", 0)) for stage in stages) / len(stages))
+    for stage in task.get("stages") or []:
+        stage["percent"] = _history_count_percent(int(stage.get("done") or 0), int(stage.get("total") or 0))
+    done, total = _history_progress_counts(task)
+    task["progress_pct"] = _history_count_percent(done, total)
 
 
 def get_history_initialization_status() -> dict:
@@ -1377,12 +1385,6 @@ def _update_history_stage(
             stage["total"] = total
         if done is not None:
             stage["done"] = done
-        if stage.get("total", 0) > 0:
-            stage["percent"] = max(0, min(100, round(stage.get("done", 0) * 100 / stage["total"])))
-        elif stage.get("status") == "completed":
-            stage["percent"] = 100
-        else:
-            stage["percent"] = 0
         if message is not None:
             stage["message"] = message
             task["message"] = message
@@ -1409,11 +1411,9 @@ def _complete_history_task(task_id: str, message: str) -> dict:
                 "status": status,
                 "done": 1,
                 "total": 1,
-                "percent": 100,
                 "message": final_message,
             })
         _recompute_history_progress(task)
-        task["progress_pct"] = 100
 
     return _mutate_history_task(task_id, _apply)
 

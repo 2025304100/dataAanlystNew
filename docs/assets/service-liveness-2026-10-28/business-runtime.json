@@ -1,0 +1,92 @@
+{
+  "passed": true,
+  "checked_at_utc": "2026-10-28T06:17:12.685631+00:00",
+  "host": {
+    "pid": 70756,
+    "created": 1793168191.0631387,
+    "cwd": "D:\\ai_project\\dataAanlystNew",
+    "command": [
+      "C:\\Python312\\pythonw.exe",
+      "D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py",
+      "host"
+    ]
+  },
+  "host_parent": {
+    "pid": 2624,
+    "exe": "C:\\Windows\\System32\\svchost.exe"
+  },
+  "services": {
+    "backend": {
+      "name": "backend",
+      "pid": 38220,
+      "created": 1793168191.9259877,
+      "cwd": "D:\\ai_project\\dataAanlystNew",
+      "command": [
+        "C:\\Python312\\python.exe",
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000,
+      "mode": "uvicorn",
+      "started_at": "2026-10-28 14:16:31",
+      "stdout_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\backend.out.log",
+      "stderr_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\backend.err.log",
+      "validation_mode": true,
+      "background_work_enabled": false,
+      "managed_host_pid": 70756
+    },
+    "frontend": {
+      "name": "frontend",
+      "pid": 73548,
+      "created": 1793168228.8786747,
+      "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+      "command": [
+        "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+        "./node_modules/vite/bin/vite.js",
+        "--config",
+        "vite.codex.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5173"
+      ],
+      "port": 5173,
+      "mode": "vite",
+      "started_at": "2026-10-28 14:17:08",
+      "stdout_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\frontend.out.log",
+      "stderr_log": "D:\\ai_project\\dataAanlystNew\\tmp\\validation-service-host\\frontend.err.log",
+      "validation_mode": true,
+      "background_work_enabled": false,
+      "managed_host_pid": 70756
+    }
+  },
+  "controlled_recycles": [
+    {
+      "service": "frontend",
+      "old_pid": 49532,
+      "new_pid": 73548,
+      "created": 1793168228.8786747,
+      "parent_pid": 70756
+    }
+  ],
+  "http": [
+    {
+      "url": "http://127.0.0.1:8000/health",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "url": "http://127.0.0.1:5173/api/v1/market-signals/settings",
+      "status": 200,
+      "validation_mode": "1"
+    }
+  ],
+  "business_unchanged": true,
+  "real_models": 0,
+  "notifications": 0
+}

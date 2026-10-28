@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.scoring_config import ScoringConfig
+from app.models.score import Score
+from app.schemas.score import ScoringCaliberBucket
 from app.services.scoring_direction import prepare_scoring_config
 from app.schemas.scoring_config import (
     ScoringConfigCreate,
@@ -113,6 +116,42 @@ def create_scoring_config(payload: ScoringConfigCreate, db: Session = Depends(ge
     db.commit()
     db.refresh(cfg)
     return _to_parsed(cfg)
+
+
+@router.get("/settings/scoring-configs/caliber-coverage", response_model=list[ScoringCaliberBucket])
+def get_caliber_coverage(
+    asset_type: Literal["stock", "etf"],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: Session = Depends(get_db),
+):
+    """按评分口径（config_id + version）聚合历史评分覆盖情况。"""
+    query = db.query(
+        Score.scoring_config_id,
+        Score.scoring_preset_key,
+        Score.scoring_preset_name,
+        Score.scoring_config_version,
+        func.min(Score.trade_date),
+        func.max(Score.trade_date),
+        func.count(Score.id),
+    ).filter(Score.scoring_asset_type == asset_type)
+    if start_date:
+        query = query.filter(Score.trade_date >= start_date)
+    if end_date:
+        query = query.filter(Score.trade_date <= end_date)
+    rows = query.group_by(
+        Score.scoring_config_id,
+        Score.scoring_preset_key,
+        Score.scoring_preset_name,
+        Score.scoring_config_version,
+    ).order_by(func.min(Score.trade_date)).all()
+    return [
+        ScoringCaliberBucket(
+            config_id=r[0], preset_key=r[1], preset_name=r[2], version=r[3],
+            trade_date_min=r[4], trade_date_max=r[5], score_count=r[6],
+        )
+        for r in rows
+    ]
 
 
 @router.put("/settings/scoring-configs/{config_id}", response_model=ScoringConfigParsed)

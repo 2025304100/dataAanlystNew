@@ -1,0 +1,227 @@
+{
+  "created_at_utc": "2026-10-28T03:23:45.768522+00:00",
+  "audit_completed": true,
+  "fixes_applied": false,
+  "report": {
+    "path": "docs/代码审查-行情异动多worker发送中断与重复推送-2026-10-28.md",
+    "sha256": "2c4270e7622090b668fc9c084e7eab48cfe9a89d2eecc880807ff9346b58eff3"
+  },
+  "test_summary": {
+    "audit_completed": true,
+    "fixes_applied": false,
+    "quality_gate_passed": false,
+    "findings": {
+      "P0": 0,
+      "P1": 3
+    },
+    "unique_cases": 52,
+    "passed": 44,
+    "defect_assertion_failures": 8,
+    "errors": 0,
+    "skipped": 0,
+    "stages": [
+      {
+        "junit": "offline-probes-final.xml",
+        "cases": 13,
+        "passed": 9,
+        "defect_assertion_failures": 4,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "junit": "mysql-probes-final.xml",
+        "cases": 6,
+        "passed": 2,
+        "defect_assertion_failures": 4,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "junit": "controls.xml",
+        "cases": 34,
+        "passed": 34,
+        "defect_assertion_failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "real_models": 0,
+    "real_notification_transports": 0,
+    "business_unchanged": true,
+    "source_files_unchanged": 1256,
+    "current_business_listeners": [],
+    "page_acceptance_executed": false
+  },
+  "files": [
+    {
+      "path": "archive.py",
+      "bytes": 6823,
+      "sha256": "a024a890054b3b70334047affc57528c804a64c5eae4ae65019efde1c5b9402a"
+    },
+    {
+      "path": "business-before.json",
+      "bytes": 5077,
+      "sha256": "154f2c8d48f61aa00614abb3d9a58dc517b14912732a2773f714ce9c4e5b8bf0"
+    },
+    {
+      "path": "business-final.json",
+      "bytes": 6234,
+      "sha256": "073648d61f0cbb004eabe4d91d1617c48460abdaeee13c8ba947410fc3b0395a"
+    },
+    {
+      "path": "controls.log",
+      "bytes": 3168,
+      "sha256": "ce0b53f22cb56549d4b44af05c054c7fcbad0a8b0cf3451048b37ca9b6ff3850"
+    },
+    {
+      "path": "controls.xml",
+      "bytes": 5672,
+      "sha256": "4e9a60e1edaf51d448386ac5081768860f94a6858df83fa5861868c984e4fabd"
+    },
+    {
+      "path": "final_state.py",
+      "bytes": 2188,
+      "sha256": "62ab38af17c06a3f00ea248c80cb953cf4dc8c1677cb27081891d8363623d2f2"
+    },
+    {
+      "path": "mysql-probes-final.log",
+      "bytes": 6540,
+      "sha256": "0abed37f87f07e015db91ef05ec43606a213e1fd401855ae185abf0febde3452"
+    },
+    {
+      "path": "mysql-probes-final.xml",
+      "bytes": 7284,
+      "sha256": "2b5169d46a2b425f3e7dfedfc8321e09f0e8c88ad79f224ee8852cf05b71b1d3"
+    },
+    {
+      "path": "mysql-probes.log",
+      "bytes": 6434,
+      "sha256": "5c3d4461fbe2d6ff7fb02bd8022e0205803b1e9a8d76b421c08c961f0edeb7d9"
+    },
+    {
+      "path": "mysql-probes.xml",
+      "bytes": 7896,
+      "sha256": "6758b4fc458bcaa6967758484b9542beac63e094389ccf4497ce8270b4a9aa9c"
+    },
+    {
+      "path": "observations.json",
+      "bytes": 4680,
+      "sha256": "dac110b24c810f4fa94bbf47440afbf88cd9a7d877af52706b4b5a31c5234bf8"
+    },
+    {
+      "path": "offline-probes-final.log",
+      "bytes": 7053,
+      "sha256": "d57ec2cdfb1ab0ce2723a5a1bd057d24b090c3859b41ce99e0c02b864bd4609a"
+    },
+    {
+      "path": "offline-probes-final.xml",
+      "bytes": 7124,
+      "sha256": "121cbc6b32cd96e2b178c515820a5fc4a3c6fdf614a7547767be821a8e98c121"
+    },
+    {
+      "path": "offline-probes.log",
+      "bytes": 7218,
+      "sha256": "5293daa865cdba46e38146b9d44b2abed418fb10b10c20d091d196e094286f4a"
+    },
+    {
+      "path": "offline-probes.xml",
+      "bytes": 7743,
+      "sha256": "da4744b848b74be6a49eaf7dc5b90dba86162057dd44f5608bf6702f2477f590"
+    },
+    {
+      "path": "offline_delivery_review_worker.py",
+      "bytes": 2104,
+      "sha256": "8bd9b3f6e660cf09d3f3ab03434b6f8018b5ceca48a16e605822261acf6fa693"
+    },
+    {
+      "path": "prepare.py",
+      "bytes": 1947,
+      "sha256": "2174dc98e104be560226b2b0c282ce23910e20ebeb0faf3540191aeadb756d47"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1311,
+      "sha256": "82eae9be37e6d804b5c5032ddbe2158b4ffb3661a54ef39ac84a963d59280e0b"
+    },
+    {
+      "path": "run_mysql.py",
+      "bytes": 1489,
+      "sha256": "dae89dc1b41c07f88a63553c569160d6ff57d99d8e522c4f51be23e29062aac1"
+    },
+    {
+      "path": "runtime-before.json",
+      "bytes": 197,
+      "sha256": "0e5e0b0b9e37a6de149be0e63dfe90b5c664311221adc4a38c52d0d6f7132b91"
+    },
+    {
+      "path": "source-baseline.json",
+      "bytes": 142570,
+      "sha256": "cda5c62a7cf34f789bc0be84a561ee23e83b06c511c1be90ed7a92e9ac699a6e"
+    },
+    {
+      "path": "source-files/app/api/routes/notifications.py",
+      "bytes": 47745,
+      "sha256": "a680784a94c4f4a5419bc889ea999f630dab0cf939857c5bfef4738c37c355ac"
+    },
+    {
+      "path": "source-files/app/db/manager.py",
+      "bytes": 10233,
+      "sha256": "1d240d98ad84118f4dc2f3047a3b4de3d0c3badd27dda56f18556d5f11b67993"
+    },
+    {
+      "path": "source-files/app/models/notification.py",
+      "bytes": 21438,
+      "sha256": "71d47e8e1929e174facb6903d152c895bc787ed8a5390f7cd7b163c3a3cfca84"
+    },
+    {
+      "path": "source-files/app/services/market_signal_delivery.py",
+      "bytes": 15838,
+      "sha256": "a3fe64891eddf13f1cc4d59d7475528fa7b7349d02a5c3f6195a88efa833a043"
+    },
+    {
+      "path": "source-files/app/services/market_signal_engine.py",
+      "bytes": 19419,
+      "sha256": "cf8b99ab870ed0eea518ae1c2fa52efae9dba6cb6247dfa0e593c9ef7adfc7a7"
+    },
+    {
+      "path": "source-files/app/services/notifications/base.py",
+      "bytes": 10116,
+      "sha256": "769485e7db26cba21233ae54ac2c8fb6db30aee14f2773a3331c980eed49df3a"
+    },
+    {
+      "path": "source-files/app/services/notifications/dispatcher.py",
+      "bytes": 10917,
+      "sha256": "28f7ac10647bec98e804cac54eb2077352babbf086acdc4dd27b58c9cc2ad2e9"
+    },
+    {
+      "path": "source-files/app/services/notifications/in_app.py",
+      "bytes": 2788,
+      "sha256": "d4e3d7420fb47644df089efa32a936b2ff6dc5f305f79730a7abdcfa03ae58b4"
+    },
+    {
+      "path": "source-files/app/services/notifications/outbox.py",
+      "bytes": 10838,
+      "sha256": "91be8e3f66ae948de0f80c1222885450e97f27cbb9d599c0919c21af5a39b37f"
+    },
+    {
+      "path": "source-files/app/services/notifications/webhook.py",
+      "bytes": 7899,
+      "sha256": "8520b1f2399df0dd5f6e804ec9027c40afa346f81ed3d79c79a45312f85e9a69"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 989,
+      "sha256": "4686d96983b31bdae5d2c4495e08ea5bbbb95b77de28b93c382078a7259d007c"
+    },
+    {
+      "path": "test_worker_delivery_review.py",
+      "bytes": 15344,
+      "sha256": "981c49602aa6e870af494480c4dffd15a9a9a59f7592442ab3017f768cdeb19a"
+    },
+    {
+      "path": "test_worker_mysql_review.py",
+      "bytes": 2507,
+      "sha256": "218b5b77719281b6b7af3fcf759e13a4fe2d5d9bbdb298be27ca660c48f9985c"
+    }
+  ]
+}

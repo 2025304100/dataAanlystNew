@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "started_at": "2026-10-28T02:39:02.381271+00:00",
+  "validation_mode": true,
+  "backend": {
+    "pid": 18212,
+    "created": 1793155143.7685635,
+    "cwd": "D:\\ai_project\\dataAanlystNew",
+    "exe": "C:\\Python312\\python.exe",
+    "command": [
+      "C:\\Python312\\python.exe",
+      "-m",
+      "uvicorn",
+      "app.main:app",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8000"
+    ]
+  },
+  "frontend": {
+    "pid": 56128,
+    "created": 1793155155.121624,
+    "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+    "exe": "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+    "command": [
+      "node",
+      "./node_modules/vite/bin/vite.js",
+      "--config",
+      "vite.codex.config.ts",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "5173"
+    ]
+  },
+  "business_state_unchanged": true,
+  "real_model_calls": 0,
+  "notifications_sent": 0,
+  "migrations_executed": 0,
+  "processes_stopped": 0,
+  "finished_at": "2026-10-28T02:39:17.010329+00:00"
+}

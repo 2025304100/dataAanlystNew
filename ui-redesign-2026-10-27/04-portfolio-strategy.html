@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>策略规则 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<script src="assets/proto.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== 侧栏 ===================== -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item is-active" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <!-- ===================== 主区 ===================== -->
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <a href="02-portfolio-overview.html">组合交易</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">策略规则</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 页头 -->
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">组合交易 · PORTFOLIO</p>
+          <h1 class="page-title">策略规则</h1>
+          <p class="page-sub">当前生效：评分驱动 v3 · 上次修改 2026-10-12 · 修改后需重新回测才可自动接管</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">重置</button>
+          <button class="btn btn--primary" type="button">保存并应用</button>
+        </div>
+      </div>
+
+      <!-- 二级 Tab -->
+      <nav class="tabs2" aria-label="组合交易二级导航">
+        <a class="tab2" href="02-portfolio-overview.html">总览</a>
+        <a class="tab2" href="03-portfolio-members.html">持仓成员</a>
+        <a class="tab2 is-active" href="04-portfolio-strategy.html">策略规则</a>
+        <a class="tab2" href="05-portfolio-backtest.html">回测中心</a>
+        <a class="tab2" href="06-portfolio-governance.html">检查与对账</a>
+      </nav>
+
+      <div data-tab-scope>
+
+        <!-- 三级分段控件 -->
+        <div class="mb-16">
+          <div class="seg" data-tabs aria-label="规则分组">
+            <button class="seg-item is-active" type="button" data-tab="select" aria-selected="true">选股规则</button>
+            <button class="seg-item" type="button" data-tab="position" aria-selected="false">仓位规则</button>
+            <button class="seg-item" type="button" data-tab="risk" aria-selected="false">风控规则</button>
+            <button class="seg-item" type="button" data-tab="exec" aria-selected="false">执行规则</button>
+          </div>
+        </div>
+
+        <div class="grid">
+
+          <!-- 左列 -->
+          <div class="col-8">
+
+            <section data-panel="select">
+              <section class="card">
+                <div class="card-head">
+                  <h2 class="card-title">选股范围</h2>
+                  <span class="card-sub">候选池准入条件</span>
+                </div>
+                <div class="card-body">
+                  <div class="grid">
+                    <div class="field col-6">
+                      <label for="s-market">市场范围</label>
+                      <div class="select-wrap">
+                        <select class="input select" id="s-market">
+                          <option>沪深A股</option>
+                          <option>沪深A股 + 港股通</option>
+                          <option>全市场</option>
+                        </select>
+                        <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+                      </div>
+                    </div>
+                    <div class="field col-6">
+                      <label for="s-st">排除 ST</label>
+                      <div class="select-wrap">
+                        <select class="input select" id="s-st">
+                          <option>是</option>
+                          <option>否</option>
+                        </select>
+                        <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+                      </div>
+                    </div>
+                    <div class="field col-12">
+                      <label for="s-white">行业白名单</label>
+                      <input class="input" id="s-white" type="text" value="食品饮料、电力设备、非银金融、有色金属、银行">
+                    </div>
+                    <div class="field col-12">
+                      <label for="s-black">行业黑名单</label>
+                      <input class="input" id="s-black" type="text" value="房地产、传媒">
+                    </div>
+                    <div class="field col-6">
+                      <label for="s-turnover">最小日均成交额</label>
+                      <input class="input" id="s-turnover" type="text" value="5,000 万">
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="card mt-16">
+                <div class="card-head">
+                  <h2 class="card-title">评分阈值</h2>
+                  <span class="card-sub">低于下限进入观察池</span>
+                </div>
+                <div class="card-body">
+                  <div class="grid">
+                    <div class="field col-6">
+                      <label for="s-score">综合评分下限</label>
+                      <input class="input" id="s-score" type="text" value="60">
+                    </div>
+                    <div class="field col-6">
+                      <label for="s-factor">单因子最低分</label>
+                      <input class="input" id="s-factor" type="text" value="40">
+                    </div>
+                    <div class="field col-6">
+                      <label for="s-news">新闻乘数上限</label>
+                      <input class="input" id="s-news" type="text" value="1.20x">
+                    </div>
+                    <div class="field col-6">
+                      <label for="s-conf">置信度下限</label>
+                      <input class="input" id="s-conf" type="text" value="0.60">
+                    </div>
+                  </div>
+                  <p class="muted mt-16">评分低于下限的标的进入观察池，不进入候选池；连续 3 日达标可自动回补。</p>
+                </div>
+              </section>
+            </section>
+
+            <section data-panel="position" hidden>
+              <section class="card">
+                <div class="card-head">
+                  <h2 class="card-title">仓位规则</h2>
+                  <span class="card-sub">单票与行业上限</span>
+                </div>
+                <div class="card-body">
+                  <div class="grid">
+                    <div class="field col-6">
+                      <label for="p-single">单票最大仓位</label>
+                      <input class="input" id="p-single" type="text" value="20%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="p-industry">单行业最大仓位</label>
+                      <input class="input" id="p-industry" type="text" value="40%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="p-min">最小建仓单位</label>
+                      <input class="input" id="p-min" type="text" value="5%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="p-mode">建仓方式</label>
+                      <div class="select-wrap">
+                        <select class="input select" id="p-mode">
+                          <option>三阶分批</option>
+                          <option>一次性</option>
+                        </select>
+                        <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+                      </div>
+                    </div>
+                    <div class="field col-12">
+                      <label for="p-batch">分批比例</label>
+                      <input class="input" id="p-batch" type="text" value="40% / 35% / 25%">
+                    </div>
+                  </div>
+                  <p class="muted mt-16">三阶分批按建仓当日、第 3 个交易日、第 6 个交易日执行，遇停牌顺延。</p>
+                </div>
+              </section>
+            </section>
+
+            <section data-panel="risk" hidden>
+              <section class="card">
+                <div class="card-head">
+                  <h2 class="card-title">风控规则</h2>
+                  <span class="card-sub">个股与组合双层</span>
+                </div>
+                <div class="card-body">
+                  <div class="grid">
+                    <div class="field col-6">
+                      <label for="r-stop">止损线</label>
+                      <input class="input" id="r-stop" type="text" value="-8%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="r-take">止盈线</label>
+                      <input class="input" id="r-take" type="text" value="+25%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="r-trail">移动止盈回撤</label>
+                      <input class="input" id="r-trail" type="text" value="-6%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="r-day">单日最大亏损</label>
+                      <input class="input" id="r-day" type="text" value="-2.5%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="r-fuse">连续亏损熔断</label>
+                      <input class="input" id="r-fuse" type="text" value="3 次">
+                    </div>
+                  </div>
+                  <p class="muted mt-16">熔断触发后暂停自动推演 1 个交易日，恢复需人工在今日决策页确认。</p>
+                </div>
+              </section>
+            </section>
+
+            <section data-panel="exec" hidden>
+              <section class="card">
+                <div class="card-head">
+                  <h2 class="card-title">执行规则</h2>
+                  <span class="card-sub">委托与成交控制</span>
+                </div>
+                <div class="card-body">
+                  <div class="grid">
+                    <div class="field col-6">
+                      <label for="e-order">下单方式</label>
+                      <div class="select-wrap">
+                        <select class="input select" id="e-order">
+                          <option>限价</option>
+                          <option>市价</option>
+                        </select>
+                        <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+                      </div>
+                    </div>
+                    <div class="field col-6">
+                      <label for="e-tolerance">委托价格容差</label>
+                      <input class="input" id="e-tolerance" type="text" value="0.3%">
+                    </div>
+                    <div class="field col-6">
+                      <label for="e-amount">单笔最大金额</label>
+                      <input class="input" id="e-amount" type="text" value="50 万元">
+                    </div>
+                    <div class="field col-6">
+                      <label for="e-session">交易时段</label>
+                      <div class="select-wrap">
+                        <select class="input select" id="e-session">
+                          <option>连续竞价</option>
+                          <option>集合竞价</option>
+                        </select>
+                        <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+                      </div>
+                    </div>
+                    <div class="field col-6">
+                      <label for="e-retry">撤单重试次数</label>
+                      <input class="input" id="e-retry" type="text" value="2 次">
+                    </div>
+                  </div>
+                  <p class="muted mt-16">限价单未成交时按容差逐档追价，超出容差即撤单，不转为市价单。</p>
+                </div>
+              </section>
+            </section>
+
+          </div>
+
+          <!-- 右列 -->
+          <div class="col-4">
+
+            <section class="card">
+              <div class="card-head">
+                <h2 class="card-title">变更影响预览</h2>
+                <span class="card-sub">对比当前生效版本</span>
+              </div>
+              <div class="card-body">
+                <div class="alert alert--info">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+                  <div>
+                    <p class="alert-title">预计影响 3 项</p>
+                    <p class="alert-body">基于近 250 个交易日数据回推，实际结果可能偏离。</p>
+                  </div>
+                </div>
+                <div class="row between mt-16">
+                  <span class="text-2">候选池</span>
+                  <span class="mono">42 只 → 37 只</span>
+                </div>
+                <hr class="hr">
+                <div class="row between">
+                  <span class="text-2">预计年换手率</span>
+                  <span class="mono">186% → 152%</span>
+                </div>
+                <hr class="hr">
+                <div class="row between">
+                  <span class="text-2">历史回测收益</span>
+                  <span class="mono">+64.8% → +61.2%</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="card mt-16">
+              <div class="card-head">
+                <h2 class="card-title">生效条件</h2>
+                <span class="card-sub">全部满足才可接管</span>
+              </div>
+              <div class="card-body">
+                <div class="row between">
+                  <span class="text-2">回测校验</span>
+                  <span class="pill pill--pass">已通过回测</span>
+                </div>
+                <hr class="hr">
+                <div class="row between">
+                  <span class="text-2">参数校验</span>
+                  <span class="pill pill--pass">风控参数合法</span>
+                </div>
+                <hr class="hr">
+                <div class="row between">
+                  <span class="text-2">人工复核</span>
+                  <span class="pill pill--warn">待人工确认</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="card mt-16">
+              <div class="card-head">
+                <h2 class="card-title">操作</h2>
+                <span class="card-sub">评分驱动 v3</span>
+              </div>
+              <div class="card-body">
+                <button class="btn btn--primary" type="button">保存并应用</button>
+                <div class="mt-8">
+                  <button class="btn btn--secondary" type="button">保存为草稿</button>
+                </div>
+                <p class="muted mt-12">应用后自动接管将暂停，直至新一轮回测通过。</p>
+              </div>
+            </section>
+
+          </div>
+        </div>
+
+        <!-- 危险区 -->
+        <section class="danger-zone mt-16">
+          <h2 class="danger-zone-title">删除策略规则集</h2>
+          <p class="danger-zone-desc">删除后组合将退回手动模式，历史回测记录保留。此操作不可撤销。</p>
+          <button class="btn btn--danger" type="button">删除规则集</button>
+        </section>
+
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

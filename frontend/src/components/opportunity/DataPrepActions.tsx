@@ -38,6 +38,9 @@ function ScopedDataPrepActions({ scope = "cn-stock", onPrepared, simpleMode = fa
   const onPreparedRef = useRef(onPrepared);
   onPreparedRef.current = onPrepared;
   const prepActive = !!prepTask && ["queued", "running"].includes(prepTask.status);
+  const prepProcessed = prepTask?.processed ?? 0;
+  const prepTotal = prepTask?.total ?? 0;
+  const prepPercent = prepTotal > 0 ? Math.max(0, Math.min(100, Math.round(prepProcessed * 100 / prepTotal))) : 0;
   const scanCompleted = (prepTask?.result?.fast_scan as { status?: string } | undefined)?.status === "ok";
   const hasIntradayData = prepTask?.result?.source_data_status === "intraday";
   const prepOutcomeKey = prepActive ? "opportunity.dataPrepRunning"
@@ -55,11 +58,11 @@ function ScopedDataPrepActions({ scope = "cn-stock", onPrepared, simpleMode = fa
 
   const syncTask = ctx.syncTask as any;
   const isSyncing = !!syncTask && ["queued", "running"].includes(syncTask.status);
-  const syncPercent = syncTask?.percent ?? 0;
   const syncStage = syncTask?.stage ?? "";
   const syncMessage = syncTask?.message ?? "";
   const syncProcessed = syncTask?.processed ?? 0;
   const syncTotal = syncTask?.total ?? 0;
+  const syncPercent = syncTotal > 0 ? Math.max(0, Math.min(100, Math.round(syncProcessed * 100 / syncTotal))) : 0;
 
   const refreshStatus = useCallback(async () => {
     const request = ++statusRequest.current;
@@ -183,7 +186,10 @@ function ScopedDataPrepActions({ scope = "cn-stock", onPrepared, simpleMode = fa
     if (snapshotStatus.has_building_snapshot || snapshotStatus.last_data_prep_status === "running") {
       return <Tag icon={<LoadingOutlined />} color="processing">{t("opportunity.dataPrepRunning")}</Tag>;
     }
-    if (["failed", "cancelled"].includes(prepTask?.status ?? snapshotStatus.last_data_prep_status ?? "")) {
+    if ((prepTask?.status ?? snapshotStatus.last_data_prep_status) === "cancelled") {
+      return <Tag color="orange">{t("opportunity.prepCancelled")}</Tag>;
+    }
+    if ((prepTask?.status ?? snapshotStatus.last_data_prep_status) === "failed") {
       return <Tag color="error">{t("opportunity.dataPrepFailed")}</Tag>;
     }
     if (snapshotStatus.has_ready_snapshot) {
@@ -250,8 +256,20 @@ function ScopedDataPrepActions({ scope = "cn-stock", onPrepared, simpleMode = fa
             </Button>
           </Tooltip>
         </div>
-        <Alert type={noticeType} message={notice} showIcon />
-        {(prepActive || isSyncing) && <Progress percent={Math.round(prepActive ? prepTask.percent ?? 0 : syncPercent)} size="small" />}
+        <Alert
+          type={noticeType}
+          message={notice}
+          showIcon
+          action={
+            noticeType === "warning" && !busy && !isSyncing ? (
+              <Button size="small" onClick={retryOrStart}>{t("opportunity.continueScan")}</Button>
+            ) : undefined
+          }
+        />
+        {(prepActive || isSyncing) && <div className="data-prep-progress">
+          <Progress percent={prepActive ? prepPercent : syncPercent} size="small" />
+          <Text type="secondary">{prepActive ? `${prepProcessed}/${prepTotal}` : `${syncProcessed}/${syncTotal}`}</Text>
+        </div>}
         <details style={{ marginTop: 8 }}>
           <summary style={{ cursor: "pointer" }}>{t("opportunity.showDetails")}</summary>
           <Space direction="vertical" style={{ marginTop: 8, width: "100%" }}>
@@ -290,7 +308,10 @@ function ScopedDataPrepActions({ scope = "cn-stock", onPrepared, simpleMode = fa
             type={prepActive ? "info" : prepTask.status === "done" && scanCompleted ? "success" : ["done", "partial", "cancelled"].includes(prepTask.status) ? "warning" : "error"}
             message={t(prepOutcomeKey)}
             description={<Space direction="vertical" style={{ width: "100%" }}>
-              {prepActive && <Progress percent={Math.round(prepTask.percent ?? 0)} size="small" status="active" />}
+              {prepActive && <>
+                <Progress percent={prepPercent} size="small" status="active" />
+                <Text type="secondary">{prepProcessed}/{prepTotal}</Text>
+              </>}
               <Text>{(prepActive && prepTask.current_step_description) || prepTask.message || prepTask.stage}</Text>
               {(prepTask.errors ?? []).slice(0, 3).map((entry, index) => (
                 <Text type="danger" key={index}>{String(entry.error || entry.message || "")}</Text>

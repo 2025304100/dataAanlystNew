@@ -253,7 +253,7 @@ export default function TaskCenter() {
 
   const renderTaskDetail = (task: UnifiedTask) => {
     const shownStatus = displayStatus(task);
-    const progressPct = Math.round(task.percent);
+    const progressPct = task.total > 0 ? Math.max(0, Math.min(100, Math.round(task.processed * 100 / task.total))) : 0;
     const hasErrors = task.errors && task.errors.length > 0;
     const duration = task.duration_sec;
     const abortable = canAbort(task);
@@ -302,7 +302,7 @@ export default function TaskCenter() {
         <div className="task-detail-section">
           <div className="task-detail-row">
             <span className="task-detail-label">{t("taskProgress")}</span>
-            <Progress percent={progressPct} size="small" style={{ flex: 1, marginLeft: 12 }} strokeColor={shownStatus === "partial" ? "#d97706" : undefined} status={shownStatus === "failed" ? "exception" : shownStatus === "partial" || shownStatus === "skipped" ? "normal" : shownStatus === "done" ? "success" : "active"} />
+            <Progress percent={progressPct} size="small" style={{ flex: 1, marginLeft: 12 }} strokeColor={["partial", "cancelled", "expired", "paused"].includes(shownStatus) ? "#d97706" : undefined} status={shownStatus === "failed" ? "exception" : ["partial", "skipped", "cancelled", "expired", "paused"].includes(shownStatus) ? "normal" : shownStatus === "done" ? "success" : "active"} />
           </div>
           <div className="task-detail-row">
             <span className="task-detail-label">{t("taskProcessed")}</span>
@@ -312,7 +312,7 @@ export default function TaskCenter() {
             <span className="task-detail-label">{t("taskResult")}</span>
             <Space>
               <Tag color="green">{t("taskOk")}: {task.ok_count}</Tag>
-              <Tag color="red">{t("taskFailed")}: {task.failed_count}</Tag>
+              <Tag color={shownStatus === "cancelled" ? "orange" : "red"}>{t("taskFailed")}: {task.failed_count}</Tag>
             </Space>
           </div>
           <ExternalResult task={task} />

@@ -15,7 +15,87 @@ from app.schemas.scoring_config import ScoringConfigDuplicate
 from app.services import scoring_config_engine as engine
 from app.services.scans import run_scan
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from app.api.routes import scoring_configs
+from app.db.session import get_db
+
 pytestmark = pytest.mark.whitebox
+
+
+def _coverage_client(db_session):
+    app = FastAPI()
+    app.include_router(scoring_configs.router)
+    app.dependency_overrides[get_db] = lambda: db_session
+    return TestClient(app)
+
+
+def _coverage_score(db_session, symbol_id, day, version, *, asset_type="stock"):
+    db_session.add(Score(
+        symbol_id=symbol_id, trade_date=date(2026, 10, day),
+        calc_batch_id=f"coverage-{asset_type}-{version}-{day}",
+        quality_score=50, quality_grade="C", timing_score=50,
+        stage="start", action="hold", priority_score=50,
+        scoring_asset_type=asset_type, scoring_config_id=version,
+        scoring_preset_key="coverage" if version is not None else None,
+        scoring_preset_name="Coverage" if version is not None else None,
+        scoring_config_version=version,
+    ))
+    db_session.flush()
+
+
+def test_scoring_config_coverage_single_version_has_counts_and_date_bounds(db_session):
+    symbol, _ = _add_symbol_with_bars(db_session)
+    _coverage_score(db_session, symbol.id, 2, 1)
+    _coverage_score(db_session, symbol.id, 8, 1)
+    response = _coverage_client(db_session).get("/settings/scoring-configs/caliber-coverage?asset_type=stock")
+    assert response.status_code == 200, response.text
+    assert response.json() == [{
+        "config_id": 1, "preset_key": "coverage", "preset_name": "Coverage", "version": 1,
+        "trade_date_min": "2026-10-02", "trade_date_max": "2026-10-08", "score_count": 2,
+    }]
+
+
+def test_scoring_config_coverage_multiple_versions_are_sorted_by_first_date(db_session):
+    symbol, _ = _add_symbol_with_bars(db_session)
+    _coverage_score(db_session, symbol.id, 8, 1)
+    _coverage_score(db_session, symbol.id, 2, 2)
+    _coverage_score(db_session, symbol.id, 5, 2)
+    response = _coverage_client(db_session).get("/settings/scoring-configs/caliber-coverage?asset_type=stock")
+    assert response.status_code == 200, response.text
+    rows = response.json()
+    assert [row["version"] for row in rows] == [2, 1]
+    assert [row["score_count"] for row in rows] == [2, 1]
+    assert [row["trade_date_min"] for row in rows] == ["2026-10-02", "2026-10-08"]
+    assert [row["trade_date_max"] for row in rows] == ["2026-10-05", "2026-10-08"]
+
+
+def test_scoring_config_coverage_preserves_unknown_version(db_session):
+    symbol, _ = _add_symbol_with_bars(db_session)
+    _coverage_score(db_session, symbol.id, 1, None)
+    response = _coverage_client(db_session).get("/settings/scoring-configs/caliber-coverage?asset_type=stock")
+    assert response.status_code == 200, response.text
+    assert response.json()[0]["version"] is None
+    assert response.json()[0]["score_count"] == 1
+
+
+def test_scoring_config_coverage_filters_asset_type_and_inclusive_dates(db_session):
+    symbol, _ = _add_symbol_with_bars(db_session)
+    _coverage_score(db_session, symbol.id, 1, 1)
+    _coverage_score(db_session, symbol.id, 2, 1)
+    _coverage_score(db_session, symbol.id, 8, 2)
+    _coverage_score(db_session, symbol.id, 2, 3, asset_type="etf")
+    response = _coverage_client(db_session).get(
+        "/settings/scoring-configs/caliber-coverage?asset_type=stock&start_date=2026-10-02&end_date=2026-10-08"
+    )
+    assert response.status_code == 200, response.text
+    assert [row["version"] for row in response.json()] == [1, 2]
+    assert [row["score_count"] for row in response.json()] == [1, 1]
+
+
+def test_scoring_config_coverage_rejects_invalid_asset_type(db_session):
+    response = _coverage_client(db_session).get("/settings/scoring-configs/caliber-coverage?asset_type=bond")
+    assert response.status_code == 422, response.text
 
 
 def _stock_config(*, preset_key: str = "test_preset", external: bool = False) -> dict:

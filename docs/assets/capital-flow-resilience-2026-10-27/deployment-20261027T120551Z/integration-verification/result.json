@@ -1,0 +1,44 @@
+{
+  "passed": true,
+  "stages": [
+    {
+      "stage": "regression",
+      "exit_code": 0,
+      "passed": true,
+      "tests": 198,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "mysql",
+      "exit_code": 0,
+      "passed": true,
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "replay",
+      "exit_code": 0,
+      "passed": true
+    }
+  ],
+  "started_at": "2026-10-27T12:06:20.812300+00:00",
+  "finished_at": "2026-10-27T12:09:50.732917+00:00",
+  "source_hashes": {
+    "app/services/capital_flow_history_provider.py": "fd8efbd6d47468f6970513768fdc630369062c865081944d363236dd7babdb68",
+    "app/services/capital_flow_data.py": "8100a4c7a700b65ebc6645e1c3d35a69bbe48f3926ecc3842e0682c2fb049916",
+    "app/services/external_data_sync_task.py": "4ab53fdc1c3008505b6fcb47bd49630e12914f2dbfd75da01c63e0e39aef8065",
+    "tests/test_capital_flow_retry_contract.py": "2f97431b0578a89caa7c293aa62c6c9ad0a944385e551b67fcf44a97984a1526",
+    "tests/test_capital_flow_resilience_mysql57.py": "cbbaff27d3d32b53ec7331bc6b1cf0a092a73a5649719d59529619c011c15083",
+    "tests/test_sync_io_optimization.py": "743f184c68b1b15d3ce652709f207879daa17621d4b1470e3f8f205d9e7e658a",
+    "scripts/replay_capital_flow_resilience.py": "4781ef5311d9d535b5626bd1cdcbb8e1dba03dee006f46c898747a5bf266ef04",
+    "scripts/verify_capital_flow_resilience.py": "794fed232a50a3b5699cbc32fa4837584a80feb3cb7491e3d97517d936c45228"
+  },
+  "source_unchanged": true,
+  "business_database_selected": false,
+  "real_models": false,
+  "notifications_sent": false
+}

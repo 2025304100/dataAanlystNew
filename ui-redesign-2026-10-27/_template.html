@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>页面名 · 量化工作台</title>
+<!-- 样式只有两个来源，顺序不可颠倒 -->
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+</head>
+<body>
+<!--
+  ============================================================================
+  页面模板 · 复制本文件到 ui-redesign-2026-10-27/ 根目录后，只改 4 处：
+    1) <title> 改成「页面名 · 量化工作台」
+    2) 顶栏 .crumb 的最后一项（.crumb-current）改成当前页面名
+    3) 侧栏 6 个 .side-item 中，把当前页对应项加 is-active（其余去掉）
+    4) 替换 .content 内部内容
+  禁止：内嵌样式块、行内样式属性、important 声明、emoji、外部 CDN、JS 库。
+  ============================================================================
+-->
+<div class="app">
+
+  <!-- ===================== 侧栏（6 项固定，顺序不可改） ===================== -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item is-active" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <!-- ===================== 主区 ===================== -->
+  <div class="main">
+
+    <!-- 顶栏：面包屑 + 右侧固定 4 个工具按钮 -->
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <a href="02-portfolio-overview.html">组合交易</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">页面名</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ===================== 页面内容 ===================== -->
+    <div class="content">
+
+      <!-- 页头 -->
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">组合交易 · PORTFOLIO</p>
+          <h1 class="page-title">页面名</h1>
+          <p class="page-sub">一句话说明本页回答什么问题、数据截止到什么时候。</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v7.2"/><path d="M4.8 6.6 8 9.8l3.2-3.2"/><path d="M2.6 12.4h10.8"/></svg>
+            导出
+          </button>
+          <button class="btn btn--primary" type="button">新建交易</button>
+        </div>
+      </div>
+
+      <!-- 二级 Tab -->
+      <nav class="tabs2" aria-label="二级导航">
+        <a class="tab2 is-active" href="#">持仓总览</a>
+        <a class="tab2" href="#">交易流水</a>
+        <a class="tab2" href="#">风险敞口</a>
+        <a class="tab2" href="#">归因分析</a>
+      </nav>
+
+      <!-- 筛选条 -->
+      <div class="filter-bar">
+        <div class="field">
+          <label for="f-account">账户</label>
+          <div class="select-wrap">
+            <select class="input select" id="f-account">
+              <option>全部账户</option>
+              <option>主账户</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="field filter-grow">
+          <label for="f-keyword">关键词</label>
+          <input class="input" id="f-keyword" type="text" placeholder="代码 / 名称">
+        </div>
+        <div class="field">
+          <label for="f-range">区间</label>
+          <div class="select-wrap">
+            <select class="input select" id="f-range">
+              <option>近 1 个月</option>
+              <option>近 3 个月</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="filter-end">
+          <button class="btn btn--secondary btn--sm" type="button">重置</button>
+          <button class="btn btn--primary btn--sm" type="button">查询</button>
+        </div>
+      </div>
+
+      <!-- 栅格：KPI 卡 -->
+      <section class="card mb-16">
+        <div class="kpi-row">
+          <div class="kpi">
+            <p class="kpi-label">总市值</p>
+            <div class="kpi-value">1,284,600<span class="kpi-unit">元</span></div>
+            <div class="kpi-delta is-up">
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+              2.34%
+            </div>
+          </div>
+          <div class="kpi">
+            <p class="kpi-label">当日盈亏</p>
+            <div class="kpi-value">+18,240<span class="kpi-unit">元</span></div>
+            <div class="kpi-delta is-up">
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+              1.44%
+            </div>
+          </div>
+          <div class="kpi">
+            <p class="kpi-label">仓位</p>
+            <div class="kpi-value">68.5<span class="kpi-unit">%</span></div>
+            <div class="kpi-delta is-flat">
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 5.4h7.2v1.2H2.4z" fill="currentColor"/></svg>
+              持平
+            </div>
+          </div>
+          <div class="kpi">
+            <p class="kpi-label">最大回撤</p>
+            <div class="kpi-value">-6.12<span class="kpi-unit">%</span></div>
+            <div class="kpi-delta is-down">
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+              0.38%
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 栅格：8 + 4 -->
+      <div class="grid mb-16">
+
+        <!-- 表格卡 -->
+        <section class="card card--flush col-8">
+          <div class="card-head">
+            <div class="row gap-8">
+              <h2 class="card-title">持仓明细</h2>
+              <span class="card-sub">共 12 只</span>
+            </div>
+            <div class="seg">
+              <button class="seg-item is-active" type="button">按市值</button>
+              <button class="seg-item" type="button">按盈亏</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th class="col-sticky">代码</th>
+                  <th>名称</th>
+                  <th class="num">持仓</th>
+                  <th class="num">成本</th>
+                  <th class="num">现价</th>
+                  <th class="num">涨跌幅</th>
+                  <th class="num">盈亏</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="is-selected">
+                  <td class="col-sticky mono">300750</td>
+                  <td>宁德时代</td>
+                  <td class="num">1,200</td>
+                  <td class="num">182.40</td>
+                  <td class="num">196.80</td>
+                  <td class="num val-up">+3.12%</td>
+                  <td class="num val-up">+17,280</td>
+                  <td><span class="pill pill--pass">持有</span></td>
+                </tr>
+                <tr>
+                  <td class="col-sticky mono">600519</td>
+                  <td>贵州茅台</td>
+                  <td class="num">200</td>
+                  <td class="num">1,680.00</td>
+                  <td class="num">1,642.00</td>
+                  <td class="num val-down">-1.24%</td>
+                  <td class="num val-down">-7,600</td>
+                  <td><span class="pill pill--warn">观察</span></td>
+                </tr>
+                <tr>
+                  <td class="col-sticky mono">601318</td>
+                  <td>中国平安</td>
+                  <td class="num">3,000</td>
+                  <td class="num">46.20</td>
+                  <td class="num">46.20</td>
+                  <td class="num val-flat">0.00%</td>
+                  <td class="num val-flat">0</td>
+                  <td><span class="pill pill--pending">待确认</span></td>
+                </tr>
+                <tr>
+                  <td class="col-sticky mono">000858</td>
+                  <td>五粮液</td>
+                  <td class="num">800</td>
+                  <td class="num">132.60</td>
+                  <td class="num">138.60</td>
+                  <td class="num val-up">+4.52%</td>
+                  <td class="num val-up">+4,800</td>
+                  <td><span class="pill pill--pass">持有</span></td>
+                </tr>
+                <tr>
+                  <td class="col-sticky mono">002594</td>
+                  <td>比亚迪</td>
+                  <td class="num">500</td>
+                  <td class="num">256.10</td>
+                  <td class="num">248.30</td>
+                  <td class="num val-down">-3.05%</td>
+                  <td class="num val-down">-3,900</td>
+                  <td><span class="pill pill--blocked">已拦截</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- 图表卡 -->
+        <section class="card col-4">
+          <div class="card-head">
+            <h2 class="card-title">净值曲线</h2>
+            <span class="card-sub">近 30 日</span>
+          </div>
+          <div class="card-body">
+            <div class="chart chart--240">
+              <div class="chart-head">
+                <div>
+                  <h3 class="chart-title">组合净值</h3>
+                  <p class="chart-sub">基准：沪深 300</p>
+                </div>
+                <div class="chart-legend">
+                  <span><i class="legend-dot legend-dot--1"></i>组合</span>
+                  <span><i class="legend-dot legend-dot--2"></i>基准</span>
+                </div>
+              </div>
+              <div class="chart-body">
+                <svg viewBox="0 0 600 200" role="img" aria-label="组合净值折线示意">
+                  <line class="c-grid" x1="20" y1="20" x2="580" y2="20"/>
+                  <line class="c-grid" x1="20" y1="60" x2="580" y2="60"/>
+                  <line class="c-grid" x1="20" y1="100" x2="580" y2="100"/>
+                  <line class="c-grid" x1="20" y1="140" x2="580" y2="140"/>
+                  <line class="c-axis" x1="20" y1="180" x2="580" y2="180"/>
+                  <path class="c-area-1" d="M20 150 70 132 120 140 170 110 220 120 270 88 320 96 370 70 420 78 470 52 520 60 580 44V180H20Z"/>
+                  <polyline class="c-line-1" points="20,150 70,132 120,140 170,110 220,120 270,88 320,96 370,70 420,78 470,52 520,60 580,44"/>
+                  <polyline class="c-line-2" points="20,158 70,150 120,152 170,140 220,142 270,132 320,136 370,124 420,128 470,116 520,120 580,112"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 提示条 -->
+      <div class="alert alert--info">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+        <div>
+          <p class="alert-title">数据说明</p>
+          <p class="alert-body">行情为本地缓存快照，非实时推送；数值仅用于界面演示。</p>
+        </div>
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

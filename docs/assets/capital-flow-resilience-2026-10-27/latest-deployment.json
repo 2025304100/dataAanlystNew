@@ -1,0 +1,8 @@
+{
+  "status": "completed_validation_mode",
+  "deployment_folder": "deployment-20261027T120551Z",
+  "deployment_manifest_sha256": "66b442dcfed726e0312b80a6dde19698f5b2cc5e5d663ae74ed84aed37b45d96",
+  "runtime_folder": "docs/assets/market-signals-runtime-2026-10-27/business-20261027T121631Z",
+  "runtime_manifest_sha256": "9a8bc18c9ed7ff3a5c7f67649e7c32e988354d2a1004bcba307095edba99ef61",
+  "automation_deleted": true
+}

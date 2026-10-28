@@ -119,6 +119,14 @@ async def lifespan(_: FastAPI):
     initialize_runtime_database()
     mgr = DatabaseManager.get()
 
+    if settings.APP_VALIDATION_MODE:
+        logger.warning("APP_VALIDATION_MODE=1: API only; schema initialization, startup cleanup, scheduler, notifications and auto-sync are paused")
+        try:
+            yield
+        finally:
+            mgr.dispose()
+        return
+
     init_db()
 
     # WP9.5：检测旧默认值迁移状态，记录日志便于运维定位
@@ -497,6 +505,34 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
+
+
+from app.core.validation_runtime import install_write_guard, read_allowed, read_only_request
+install_write_guard()
+
+
+@app.middleware("http")
+async def validation_runtime_guard(request: Request, call_next):
+    read_only = False
+    if settings.APP_VALIDATION_MODE:
+        rules = settings.api_prefix+"/market-signals/rules"
+        rule_write = (request.method == "POST" and request.url.path == rules) or (
+            request.method == "PUT" and request.url.path.startswith(rules+"/")
+            and request.url.path[len(rules)+1:].isdecimal())
+        read_only = request.method in ("GET", "HEAD", "OPTIONS")
+        if (read_only and not read_allowed(request.url.path, settings.api_prefix)) or (not read_only and not rule_write):
+            return JSONResponse(status_code=409, content={"detail":
+                "当前为验收模式，仅开放查询和关注规则保存；自动任务、模型分析和通知发送暂未启用。"},
+                headers={"X-App-Validation-Mode":"1", "Cache-Control":"no-store"})
+    token = read_only_request.set(read_only)
+    try:
+        response = await call_next(request)
+    finally:
+        read_only_request.reset(token)
+    if settings.APP_VALIDATION_MODE:
+        response.headers["X-App-Validation-Mode"] = "1"
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ── WP9.6 API 废弃期访问日志中间件 ──────────────────────

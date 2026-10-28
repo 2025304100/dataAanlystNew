@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "started_at": "2026-10-28T06:16:28.805815+00:00",
+  "validation_mode": true,
+  "managed_host": {
+    "pid": 70756,
+    "created": 1793168191.0631387,
+    "cwd": "D:\\ai_project\\dataAanlystNew",
+    "command": [
+      "C:\\Python312\\pythonw.exe",
+      "D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py",
+      "host"
+    ]
+  },
+  "hosting": "on-demand-windows-task",
+  "backend": {
+    "pid": 38220,
+    "created": 1793168191.9259877,
+    "cwd": "D:\\ai_project\\dataAanlystNew",
+    "exe": "C:\\Python312\\python.exe",
+    "command": [
+      "C:\\Python312\\python.exe",
+      "-m",
+      "uvicorn",
+      "app.main:app",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8000"
+    ]
+  },
+  "frontend": {
+    "pid": 49532,
+    "created": 1793168192.0723336,
+    "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+    "exe": "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+    "command": [
+      "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+      "./node_modules/vite/bin/vite.js",
+      "--config",
+      "vite.codex.config.ts",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "5173"
+    ]
+  },
+  "business_state_unchanged": true,
+  "real_model_calls": 0,
+  "notifications_sent": 0,
+  "migrations_executed": 0,
+  "processes_stopped": 0,
+  "finished_at": "2026-10-28T06:16:43.053295+00:00"
+}

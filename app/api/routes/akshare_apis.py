@@ -86,6 +86,8 @@ class ApiStatus(BaseModel):
     last_call_error: str | None = None
     total_calls: int = 0
     total_failures: int = 0
+    data_contracts: list[dict[str, Any]] = Field(default_factory=list)
+    contract_status: str = "unverified"
 
 
 class StrategyInfo(BaseModel):
@@ -117,6 +119,8 @@ class ProbeResult(BaseModel):
 # ----------------------------------------------------------------------------
 
 def _to_status(entry: dict[str, Any], cfg: AkshareApiConfig | None, locale: str = "zh-CN") -> ApiStatus:
+    from app.services.data_source_contracts import endpoint_contracts
+    contracts = endpoint_contracts(entry["key"])
     is_zh = locale == "zh-CN"
     return ApiStatus(
         key=entry["key"],
@@ -125,6 +129,8 @@ def _to_status(entry: dict[str, Any], cfg: AkshareApiConfig | None, locale: str 
         module=entry["module"],
         description=entry["desc_zh"] if is_zh else entry["desc_en"],
         default_strategy=entry["default_strategy"],
+        data_contracts=contracts,
+        contract_status="declared" if contracts else "unverified",
         enabled=bool(cfg.enabled) if cfg else True,
         anti_risk_strategy=cfg.anti_risk_strategy if cfg else entry["default_strategy"],
         delay_min_ms=cfg.delay_min_ms if cfg else 300,

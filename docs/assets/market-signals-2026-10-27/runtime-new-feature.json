@@ -1,0 +1,8 @@
+{
+  "origin": "http://127.0.0.1:50508",
+  "database": "codex_market_sig271006_e2e",
+  "lifespan": "off",
+  "frontend": "production build",
+  "business_api_mocks": false,
+  "ai_vendor": "local deterministic fixture"
+}

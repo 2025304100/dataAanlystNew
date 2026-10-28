@@ -1,0 +1,12 @@
+{
+  "prepared_at": "2026-10-27T07:04:09.196019+00:00",
+  "workspace": "D:\\ai_project\\dataAanlystNew\\tmp\\capital-flow-resilience-20261027\\workspace",
+  "business_files_modified": false,
+  "files": {
+    "app/services/capital_flow_history_provider.py": "49ff9b593c776af6f520f13f5c79e6960d777f37d810c99dc647950e0a34c216",
+    "app/services/capital_flow_data.py": "2cebf51406e166649250a9112594b9b1586795b0608fe9062f43c9888629cf6e",
+    "app/services/akshare_utils.py": "5bb9a4915d0514a7b0e3e8edc356809f05074a3cce5c58f4a1f7f8b18acccb71",
+    "app/services/akshare_registry.py": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d",
+    "app/services/external_data_sync_task.py": "0ffb9ce37c8a20e0eb5ff842b512700acc8fcb538645e2ebb45509429a649a4b"
+  }
+}

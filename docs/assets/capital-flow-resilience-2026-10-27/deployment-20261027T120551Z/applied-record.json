@@ -1,0 +1,115 @@
+{
+  "passed": true,
+  "validated_at_utc": "2026-10-27T12:11:44.863711+00:00",
+  "user_authorization": "Preserve interrupted results; integrate and reverify; continue protected deployment and acceptance without retrying business sync",
+  "original_task_naturally_completed": false,
+  "integration_stages": [
+    {
+      "stage": "regression",
+      "exit_code": 0,
+      "passed": true,
+      "tests": 198,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "mysql",
+      "exit_code": 0,
+      "passed": true,
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "stage": "replay",
+      "exit_code": 0,
+      "passed": true
+    }
+  ],
+  "additional_tests": {
+    "runtime-regression": {
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "isolated-browser-final": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "guard-integration-final": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "files": [
+    {
+      "path": "app/services/capital_flow_history_provider.py",
+      "baseline_sha256": "49ff9b593c776af6f520f13f5c79e6960d777f37d810c99dc647950e0a34c216",
+      "candidate_sha256": "fd8efbd6d47468f6970513768fdc630369062c865081944d363236dd7babdb68"
+    },
+    {
+      "path": "app/services/capital_flow_data.py",
+      "baseline_sha256": "2cebf51406e166649250a9112594b9b1586795b0608fe9062f43c9888629cf6e",
+      "candidate_sha256": "8100a4c7a700b65ebc6645e1c3d35a69bbe48f3926ecc3842e0682c2fb049916"
+    },
+    {
+      "path": "app/services/external_data_sync_task.py",
+      "baseline_sha256": "0ffb9ce37c8a20e0eb5ff842b512700acc8fcb538645e2ebb45509429a649a4b",
+      "candidate_sha256": "4ab53fdc1c3008505b6fcb47bd49630e12914f2dbfd75da01c63e0e39aef8065"
+    },
+    {
+      "path": "tests/test_capital_flow_retry_contract.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "2f97431b0578a89caa7c293aa62c6c9ad0a944385e551b67fcf44a97984a1526"
+    },
+    {
+      "path": "tests/test_capital_flow_resilience_mysql57.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "cbbaff27d3d32b53ec7331bc6b1cf0a092a73a5649719d59529619c011c15083"
+    },
+    {
+      "path": "tests/test_sync_io_optimization.py",
+      "baseline_sha256": "28b721fb79ae3cf771ab4ba28f4465477a0eca07c9f9afb7c7a751c80ac969d3",
+      "candidate_sha256": "743f184c68b1b15d3ce652709f207879daa17621d4b1470e3f8f205d9e7e658a"
+    },
+    {
+      "path": "scripts/replay_capital_flow_resilience.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "4781ef5311d9d535b5626bd1cdcbb8e1dba03dee006f46c898747a5bf266ef04"
+    },
+    {
+      "path": "scripts/verify_capital_flow_resilience.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "794fed232a50a3b5699cbc32fa4837584a80feb3cb7491e3d97517d936c45228"
+    },
+    {
+      "path": "tests/test_capital_flow_guard_integration.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "a48f20822fdb0cc4c64f8307be5a226b512eb0798ab7c75fbf46db2720b9ca72"
+    },
+    {
+      "path": "tests/e2e/test_validation_runtime_acceptance.py",
+      "baseline_sha256": "7eef5c027bcf0fc38da9e3903cc8ecf2050aa56c0097579499f5ef6efa20c895",
+      "candidate_sha256": "d37fdc1bf2ecb858d3924c5c0eb668a731d0b302923d0ee96c1b3c9f26445820"
+    }
+  ],
+  "preserved_dependencies": {
+    "app/services/akshare_utils.py": "6d63fc4a074ea6109668664d595dda023139db6577df7593c6c9300556609bd3",
+    "app/services/akshare_guard.py": "d1bf6abb82195d0a467cbdda9e58e202f8a578fa84a330321d01775f834f0874",
+    "app/services/akshare_registry.py": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d"
+  },
+  "business_task_modified": false,
+  "business_partition_retry": false,
+  "model_calls": 0,
+  "notifications_sent": 0,
+  "applied_at_utc": "2026-10-27T12:11:44.909073+00:00",
+  "applied_files": 10,
+  "backend_restarted": false
+}

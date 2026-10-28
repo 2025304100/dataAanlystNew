@@ -1,0 +1,27 @@
+{
+  "revision": "wps_0024_092_market_signals",
+  "large_payload_bytes": 96000,
+  "types": {
+    "market_signal_evidence.text": "longtext",
+    "market_signal_assessments.analysis_json": "longtext",
+    "market_signal_assessments.input_json": "longtext",
+    "market_signal_predictions.snapshot_json": "longtext",
+    "market_signal_predictions.outcome_json": "longtext",
+    "market_signal_outcomes.result_json": "longtext"
+  },
+  "row_counts": {
+    "market_signal_rules": 1,
+    "market_signal_rule_versions": 1,
+    "market_signal_evidence": 2,
+    "market_signal_settings": 1,
+    "market_signal_assessments": 2,
+    "market_signal_predictions": 2,
+    "market_signal_outcomes": 2
+  },
+  "old_rows_equal": true,
+  "large_payload_all_six_fields_retained": true,
+  "repeat_upgrade_equal": true,
+  "downgrade_preserves_longtext_and_data": true,
+  "reupgrade_equal": true,
+  "unrelated_sentinel_unchanged": true
+}

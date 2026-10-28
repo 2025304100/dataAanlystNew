@@ -1,0 +1,69 @@
+{
+  "scope": "virtual-time replay; each transient read timeout consumes 15 seconds; not production effectiveness",
+  "scenarios": [
+    {
+      "scenario": "healthy",
+      "symbols": 5,
+      "baseline": {
+        "succeeded": 5,
+        "failed": 0,
+        "http_requests": 5,
+        "simulated_wait_seconds": 60.0
+      },
+      "candidate": {
+        "succeeded": 5,
+        "failed": 0,
+        "http_requests": 5,
+        "simulated_wait_seconds": 60.0
+      }
+    },
+    {
+      "scenario": "transient_timeout",
+      "symbols": 5,
+      "baseline": {
+        "succeeded": 5,
+        "failed": 0,
+        "http_requests": 10,
+        "simulated_wait_seconds": 140.0
+      },
+      "candidate": {
+        "succeeded": 5,
+        "failed": 0,
+        "http_requests": 10,
+        "simulated_wait_seconds": 135.0
+      }
+    },
+    {
+      "scenario": "transient_503",
+      "symbols": 5,
+      "baseline": {
+        "succeeded": 0,
+        "failed": 5,
+        "http_requests": 5,
+        "simulated_wait_seconds": 60.0
+      },
+      "candidate": {
+        "succeeded": 5,
+        "failed": 0,
+        "http_requests": 10,
+        "simulated_wait_seconds": 135.0
+      }
+    },
+    {
+      "scenario": "persistent_reset",
+      "symbols": 5,
+      "baseline": {
+        "succeeded": 0,
+        "failed": 5,
+        "http_requests": 11,
+        "simulated_wait_seconds": 720.0
+      },
+      "candidate": {
+        "succeeded": 0,
+        "failed": 5,
+        "http_requests": 8,
+        "simulated_wait_seconds": 345.0
+      }
+    }
+  ]
+}

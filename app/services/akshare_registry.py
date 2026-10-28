@@ -636,7 +636,7 @@ def get_runtime_config(api_key: str) -> dict[str, Any]:
 
 
 def apply_delay(api_key: str) -> None:
-    """在调用 akshare 前，根据 api_key 的配置 sleep 随机延时。
+    """按配置预约进程共享时间片；关闭全局限速时保留随机延时。
 
     若接口被禁用，调用方应自行判断是否跳过（本函数不抛异常，仅记录日志）。
     """
@@ -647,7 +647,11 @@ def apply_delay(api_key: str) -> None:
         return
     delay = random.uniform(dmin, dmax) / 1000.0
     if delay > 0:
-        time.sleep(delay)
+        from app.services.akshare_guard import acquire, pacing_enabled
+        if pacing_enabled():
+            acquire(api_key, min_interval_ms=delay*1000)
+        else:
+            time.sleep(delay)
 
 
 def is_api_enabled(api_key: str) -> bool:

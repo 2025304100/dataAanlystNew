@@ -1,0 +1,601 @@
+{
+  "passed": true,
+  "started_at": "2026-10-28T02:35:08.062359+00:00",
+  "rules": [
+    {
+      "name": "验收专用-股票-20261028-103510",
+      "target_type": "symbol",
+      "target_key": "000001",
+      "quote_key": "000001",
+      "quote_type": "symbol",
+      "min_score": 98,
+      "window_days": 5,
+      "min_move_pct": 3.0,
+      "adaptive_threshold": false,
+      "volatility_percentile": 80,
+      "max_age_hours": 24,
+      "cooldown_hours": 6,
+      "max_daily": 1,
+      "delivery_mode": "instant",
+      "digest_time": "16:10",
+      "mode": "shadow",
+      "enabled": false,
+      "channel_ids": [],
+      "target_name": "验收银行",
+      "id": 1,
+      "revision": 3,
+      "created_at": "2026-10-28T02:35:11.450670",
+      "updated_at": "2026-10-28T02:35:12.505011"
+    },
+    {
+      "name": "验收专用-半导体-20261028-103510",
+      "target_type": "sector",
+      "target_key": "semiconductor",
+      "quote_key": "000300",
+      "quote_type": "index",
+      "min_score": 97,
+      "window_days": 3,
+      "min_move_pct": 4.0,
+      "adaptive_threshold": false,
+      "volatility_percentile": 80,
+      "max_age_hours": 24,
+      "cooldown_hours": 6,
+      "max_daily": 1,
+      "delivery_mode": "instant",
+      "digest_time": "16:10",
+      "mode": "shadow",
+      "enabled": false,
+      "channel_ids": [],
+      "target_name": "semiconductor",
+      "id": 2,
+      "revision": 2,
+      "created_at": "2026-10-28T02:35:13.465141",
+      "updated_at": "2026-10-28T02:35:13.865699"
+    }
+  ],
+  "versions": {
+    "1": [
+      {
+        "revision": 1,
+        "config": {
+          "name": "验收专用-股票-20261028-103510",
+          "target_type": "symbol",
+          "target_key": "000001",
+          "quote_key": "000001",
+          "quote_type": "symbol",
+          "min_score": 99,
+          "window_days": 1,
+          "min_move_pct": 3.0,
+          "adaptive_threshold": false,
+          "volatility_percentile": 80,
+          "max_age_hours": 24,
+          "cooldown_hours": 6,
+          "max_daily": 1,
+          "delivery_mode": "instant",
+          "digest_time": "16:10",
+          "mode": "shadow",
+          "enabled": true,
+          "channel_ids": [],
+          "target_name": "验收银行"
+        },
+        "created_at": "2026-10-28T02:35:11.454029"
+      },
+      {
+        "revision": 2,
+        "config": {
+          "name": "验收专用-股票-20261028-103510",
+          "target_type": "symbol",
+          "target_key": "000001",
+          "quote_key": "000001",
+          "quote_type": "symbol",
+          "min_score": 99,
+          "window_days": 1,
+          "min_move_pct": 3.0,
+          "adaptive_threshold": false,
+          "volatility_percentile": 80,
+          "max_age_hours": 24,
+          "cooldown_hours": 6,
+          "max_daily": 1,
+          "delivery_mode": "instant",
+          "digest_time": "16:10",
+          "mode": "shadow",
+          "enabled": false,
+          "channel_ids": [],
+          "target_name": "验收银行"
+        },
+        "created_at": "2026-10-28T02:35:11.830421"
+      },
+      {
+        "revision": 3,
+        "config": {
+          "name": "验收专用-股票-20261028-103510",
+          "target_type": "symbol",
+          "target_key": "000001",
+          "quote_key": "000001",
+          "quote_type": "symbol",
+          "min_score": 98,
+          "window_days": 5,
+          "min_move_pct": 3.0,
+          "adaptive_threshold": false,
+          "volatility_percentile": 80,
+          "max_age_hours": 24,
+          "cooldown_hours": 6,
+          "max_daily": 1,
+          "delivery_mode": "instant",
+          "digest_time": "16:10",
+          "mode": "shadow",
+          "enabled": false,
+          "channel_ids": [],
+          "target_name": "验收银行"
+        },
+        "created_at": "2026-10-28T02:35:12.506027"
+      }
+    ],
+    "2": [
+      {
+        "revision": 1,
+        "config": {
+          "name": "验收专用-半导体-20261028-103510",
+          "target_type": "sector",
+          "target_key": "semiconductor",
+          "quote_key": "000300",
+          "quote_type": "index",
+          "min_score": 97,
+          "window_days": 3,
+          "min_move_pct": 4.0,
+          "adaptive_threshold": false,
+          "volatility_percentile": 80,
+          "max_age_hours": 24,
+          "cooldown_hours": 6,
+          "max_daily": 1,
+          "delivery_mode": "instant",
+          "digest_time": "16:10",
+          "mode": "shadow",
+          "enabled": true,
+          "channel_ids": [],
+          "target_name": "semiconductor"
+        },
+        "created_at": "2026-10-28T02:35:13.467200"
+      },
+      {
+        "revision": 2,
+        "config": {
+          "name": "验收专用-半导体-20261028-103510",
+          "target_type": "sector",
+          "target_key": "semiconductor",
+          "quote_key": "000300",
+          "quote_type": "index",
+          "min_score": 97,
+          "window_days": 3,
+          "min_move_pct": 4.0,
+          "adaptive_threshold": false,
+          "volatility_percentile": 80,
+          "max_age_hours": 24,
+          "cooldown_hours": 6,
+          "max_daily": 1,
+          "delivery_mode": "instant",
+          "digest_time": "16:10",
+          "mode": "shadow",
+          "enabled": false,
+          "channel_ids": [],
+          "target_name": "semiconductor"
+        },
+        "created_at": "2026-10-28T02:35:13.867021"
+      }
+    ]
+  },
+  "real_model_calls": 0,
+  "notifications_sent": 0,
+  "finished_at": "2026-10-28T02:35:15.548830+00:00",
+  "responses": [
+    {
+      "path": "/api/v1/inspection-acceptance/status",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/notifications/inbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-data/sync-tasks",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/portfolios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/discovery/tasks",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events/collect-runs",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events/hotspots",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/system/capabilities",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events/hotspots",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/1",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/1",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/2",
+      "status": 200,
+      "method": "PUT"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/inspection-acceptance/status",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/notifications/inbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-data/sync-tasks",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/portfolios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/discovery/tasks",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events/collect-runs",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-events/hotspots",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/system/capabilities",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/metadata",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/settings",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/dashboard",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/evidence",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/assessments",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/predictions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/1/versions",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "page_errors": [],
+  "blocked_requests": [],
+  "rule_writes": [
+    {
+      "path": "/api/v1/market-signals/rules",
+      "method": "POST"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/1",
+      "method": "PUT"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/1",
+      "method": "PUT"
+    },
+    {
+      "path": "/api/v1/market-signals/rules",
+      "method": "POST"
+    },
+    {
+      "path": "/api/v1/market-signals/rules/2",
+      "method": "PUT"
+    }
+  ],
+  "created_rules": [
+    {
+      "id": 1,
+      "name": "验收专用-股票-20261028-103510"
+    },
+    {
+      "id": 2,
+      "name": "验收专用-半导体-20261028-103510"
+    }
+  ]
+}

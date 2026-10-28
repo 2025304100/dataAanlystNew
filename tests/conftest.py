@@ -519,6 +519,17 @@ def _isolate_task_cancel_state():
         _ats.reset_task_cancel()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_supplier_guard_state():
+    """Each scenario owns its supplier circuit and pacing timeline."""
+    from app.services import akshare_guard
+    akshare_guard.reset_all()
+    try:
+        yield
+    finally:
+        akshare_guard.reset_all()
+
+
 # ===========================================================================
 # e2e 闸门的「至少真跑 N 例」最低覆盖断言
 # ===========================================================================

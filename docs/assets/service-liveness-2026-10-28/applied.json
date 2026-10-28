@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "unique_tests": 49,
+  "stages": [
+    {
+      "junit": "regression-final-cli.xml",
+      "passed": 48
+    },
+    {
+      "junit": "native-complete.xml",
+      "passed": 1
+    }
+  ],
+  "files": [
+    {
+      "path": "scripts/dev_services.py",
+      "baseline_sha256": "9697b770810b80a7286856edb17bf21f9a58c0f701325b19f734e856446e20bf",
+      "candidate_sha256": "e322950d19f6617fae3aba560e6eb125286f874ca5a71dce103da6101e7b033b"
+    },
+    {
+      "path": "scripts/dev_services_admin.ps1",
+      "baseline_sha256": "d27f61b34d9359e282b59136d06e15daf0fc2258c59016793aa7b3b8ae8c8032",
+      "candidate_sha256": "f8423e971e9e4c0843889ede5aefa37704398aba7228e2ebe4f7233e93cdc895"
+    },
+    {
+      "path": "scripts/restore_validation_environment.py",
+      "baseline_sha256": "e1b7dad746ab4009e69696e25224809af6c27116d4b0f6f163a7c0f2e864971b",
+      "candidate_sha256": "8d7e330e20f697e8789bb3ce11871a4fdfbfbcf8cda5c08926b5ea31e11f0fe1"
+    },
+    {
+      "path": "scripts/validation_service_host.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "252fb18cabf2176688f9ead43e989792d64aa67bac887c6d330e5afdcd1bf7c0"
+    },
+    {
+      "path": "scripts/validation_service_task.ps1",
+      "baseline_sha256": null,
+      "candidate_sha256": "ff0e771bad5720fd2f0a4a95067c0584f18db66161fa7d0d2ce2ac765607af74"
+    },
+    {
+      "path": "tests/test_validation_service_host.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "18275b85a6e65ce9e27f7ca557a647d9f9892432d0fe0d7035387c86f9d07ef3"
+    },
+    {
+      "path": "tests/test_validation_service_task_windows.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "ac9847825f4b7e37edd1460942c6f8e5c4b356ba28cb8243bb57a95caee7b831"
+    }
+  ],
+  "verified_at_utc": "2026-10-28T06:08:31.034163+00:00"
+}

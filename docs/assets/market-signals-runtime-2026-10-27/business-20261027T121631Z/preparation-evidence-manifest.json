@@ -1,0 +1,96 @@
+{
+  "generated_at": "2026-10-27T06:07:43.571873+00:00",
+  "status": "waiting_for_natural_completion",
+  "business_restart_executed": false,
+  "business_new_api_status": 404,
+  "regression": {
+    "backend_passed": 35,
+    "isolated_browser_passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "source_hashes": {
+    "app/main.py": "7361405a9c0d547af530513b9dc0ab36d8b586a4b63ac123a2f6c5d991cf46a9",
+    "app/core/config.py": "4656bf834888291256f12f6a8493884a29d185b41c6670e7fc600656da7ad6d3",
+    "scripts/restart_backend_validation.py": "f8d34e2cb4016cc02ea794190c4b5453df74dd3872b5983db831db5071a3f592",
+    "scripts/verify_market_signals_runtime_ui.py": "267d0326c1bfa3de54fc1f987fe567fb0276b3c99d8eba49f34907ead3478e89",
+    "tests/test_validation_runtime.py": "9bd9949ffdc92676a312cb80b0e996f31401485d4aa18a4f954650e9d05cfeb9",
+    "tests/e2e/test_validation_runtime_acceptance.py": "7eef5c027bcf0fc38da9e3903cc8ecf2050aa56c0097579499f5ef6efa20c895",
+    "app/api/routes/market_signals.py": "9f038e63ab1446a8d625edf0d7515c674cecc54f8956bcbfef28b5d600be2eae",
+    "alembic/versions/2026_10_27_0092_market_signals.py": "3571725946f602323e12ea1564b8832ced820d79ac6329cb1ca3ab665d594a02",
+    "frontend/src/components/MarketSignalCenter.tsx": "130e65fbc9b4d96e2a00f4d5a618318c299930f852610a01245916fcca13904e",
+    "app/web/dist/index.html": "77c0625ab449a45a8b4ec85f9aca33940725a9b97e23d3750b42571817ef3f6a"
+  },
+  "files": [
+    {
+      "path": "acceptance-mode-red.log",
+      "bytes": 1562,
+      "sha256": "a34f70cfc009c995d4f0cfbbedcea7c22d257973fde08c6ae6e3c41c317aee3b"
+    },
+    {
+      "path": "backend-regression.log",
+      "bytes": 112,
+      "sha256": "69f8a306e85a1200a355b160d3c408af4588c19bbb22d39bec0499e651b8102a"
+    },
+    {
+      "path": "backend-regression.xml",
+      "bytes": 5240,
+      "sha256": "5336c564948558af380fe680af43dfa7d0dcf460f59f30b653d296e471cee275"
+    },
+    {
+      "path": "business-before-waiting.json",
+      "bytes": 2244,
+      "sha256": "1fe6f6addb49f8bb05709c4db9af218264451bb71cac6a236e4975f31fbfa7f0"
+    },
+    {
+      "path": "business-waiting-status.json",
+      "bytes": 2209,
+      "sha256": "7bccc5db0d8c0fe0588206c7abce1f10b07a3641e98b728478ff10b73d30df97"
+    },
+    {
+      "path": "isolated-browser.log",
+      "bytes": 101,
+      "sha256": "5204e0d2b7d87f0bab22c422de06b8546fe6a56e070e75f9219e80db27776c7c"
+    },
+    {
+      "path": "isolated-browser.xml",
+      "bytes": 406,
+      "sha256": "0cd4c82cb00569dd5273f42eac31e2b68f1496bba435779f2f03911aab26f013"
+    },
+    {
+      "path": "isolated-entry.png",
+      "bytes": 111142,
+      "sha256": "a3fcf860f4bd0e6772b063d51206d7addbafa0594deb99e07776efdd2aeff3de"
+    },
+    {
+      "path": "isolated-http-checks.json",
+      "bytes": 952,
+      "sha256": "cded0c181bb6d68df131a97223298fdee44e28f55a26f90907732df6cf13fd86"
+    },
+    {
+      "path": "isolated-rule-versions.png",
+      "bytes": 155635,
+      "sha256": "337425a385aab32b036b252cfc7e6b72148db90ee0c092e998083a51b53ae087"
+    },
+    {
+      "path": "isolated-rules-persisted.png",
+      "bytes": 155557,
+      "sha256": "f4cd05b612028c2139ec314d169f2d1ed76bfa28f9a6966ebfc3ae008b9c7969"
+    },
+    {
+      "path": "isolated-runner.log",
+      "bytes": 156,
+      "sha256": "666d9d5d2b6165cf3b85ce9f0a5cc73d33fa3cba6dbfa12c39f5d274ef7fbc83"
+    },
+    {
+      "path": "isolated-server.log",
+      "bytes": 11781,
+      "sha256": "39ec709a84481a9769c7694c3b555eb5eb0cdd2735a1d035bd8a96d54cd3af48"
+    },
+    {
+      "path": "isolated-ui-result.json",
+      "bytes": 14655,
+      "sha256": "ea3d36c1b980b1997e2dc4d724a0796a8dfd7e65619d5198d89477097d5a5573"
+    }
+  ]
+}

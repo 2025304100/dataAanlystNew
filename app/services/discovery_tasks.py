@@ -43,9 +43,6 @@ TASK_STAGE_PERCENT = {
     "scan": 86,
     "news": 94,
     "done": 100,
-    "paused": 100,
-    "cancelled": 100,
-    "failed": 100,
 }
 
 DISCOVERY_SCOPE_CONFIG = {
@@ -90,12 +87,22 @@ def _json_loads(value: str | None, fallback):
         return fallback
 
 
+def _business_stage(task: DiscoveryTaskRecord) -> str:
+    # A queued task has not left preparation; preserve every known business stage.
+    return "prepare" if task.stage == "queued" else task.stage
+
+
+def _processed_percent(task: DiscoveryTaskRecord) -> int:
+    total = int(task.total or 0)
+    return max(0, min(100, int(int(task.processed or 0) * 100 / total + 0.5))) if total > 0 else 0
+
+
 def _task_to_dict(task: DiscoveryTaskRecord) -> dict:
     return {
         "id": task.id,
         "status": task.status,
         "stage": task.stage,
-        "percent": task.percent,
+        "percent": _processed_percent(task) if task.status in {"partial", "failed", "cancelled", "expired", "paused"} else task.percent,
         "message": task.message,
         "scope": task.scope,
         "min_score": task.min_score,
@@ -164,6 +171,8 @@ def _set_task(db: Session, task_id: str, **updates) -> DiscoveryTaskRecord:
             return task
     for key, value in updates.items():
         setattr(task, key, value)
+    if task.status in {"partial", "failed", "cancelled", "expired", "paused"}:
+        task.percent = _processed_percent(task)
     task.updated_at = _now()
     db.commit()
     db.refresh(task)
@@ -221,8 +230,8 @@ def _expire_stale_tasks(db: Session) -> None:
     for task in rows:
         logger.warning("expire stale task %s: updated_at=%s stage=%s", task.id, task.updated_at, task.stage)
         task.status = "failed"
-        task.stage = "failed"
-        task.percent = 100
+        task.stage = _business_stage(task)
+        task.percent = _processed_percent(task)
         task.message = "任务长时间无进度，已自动中断，请重新开始"
         task.finished_at = _now()
         _append_error(task, {"scope": "task", "error": "stale task auto-expired"})
@@ -235,8 +244,8 @@ def _can_resume_paused_task(task: DiscoveryTaskRecord) -> bool:
 
 def _expire_paused_task(task: DiscoveryTaskRecord) -> None:
     task.status = "expired"
-    task.stage = "failed"
-    task.percent = 100
+    task.stage = _business_stage(task)
+    task.percent = _processed_percent(task)
     task.message = "暂停已超过1天，请重新开始"
     task.finished_at = _now()
     task.current_symbol = None
@@ -246,7 +255,6 @@ def _expire_paused_task(task: DiscoveryTaskRecord) -> None:
 def _resume_task(db: Session, task: DiscoveryTaskRecord, *, message: str) -> dict:
     _new_worker_generation(task)
     task.status = "queued"
-    task.stage = "queued"
     task.message = message
     task.paused_at = None
     task.cancelled_at = None
@@ -331,7 +339,8 @@ def pause_discovery_task(task_id: str) -> dict:
         if task.status not in {"queued", "running"}:
             return _task_to_dict(task)
         task.status = "paused"
-        task.stage = "paused"
+        task.stage = _business_stage(task)
+        task.percent = _processed_percent(task)
         task.message = "任务已暂停，1天内可继续"
         task.paused_at = _now()
         task.current_symbol = None
@@ -352,8 +361,8 @@ def cancel_discovery_task(task_id: str) -> dict:
         if task.status in {"done", "failed", "cancelled"}:
             return _task_to_dict(task)
         task.status = "cancelled"
-        task.stage = "cancelled"
-        task.percent = 100
+        task.stage = _business_stage(task)
+        task.percent = _processed_percent(task)
         task.message = "任务已中止"
         task.cancelled_at = _now()
         task.finished_at = _now()
@@ -1274,7 +1283,7 @@ def _run_discovery_task(task_id: str, generation: str | None = None) -> None:
             universe_pairs = _resolve_universe_symbols_for_discovery(db, payload)
             if not universe_pairs:
                 _set_task(
-                    db, task_id, status="failed", stage="failed", percent=100,
+                    db, task_id, status="failed",
                     message="基础表无已同步标的，请先在「设置 → 基础数据」完成初始化同步",
                     finished_at=_now(),
                 )
@@ -1285,7 +1294,7 @@ def _run_discovery_task(task_id: str, generation: str | None = None) -> None:
             universe_pairs = _resolve_universe_symbols_for_discovery(db, payload)
             if not universe_pairs:
                 _set_task(
-                    db, task_id, status="failed", stage="failed", percent=100,
+                    db, task_id, status="failed",
                     message="基础表无已同步标的，请先在「设置 → 基础数据」完成初始化同步",
                     finished_at=_now(),
                 )
@@ -1714,8 +1723,8 @@ def _run_discovery_task(task_id: str, generation: str | None = None) -> None:
             except Exception:
                 cleanup_cnt = 0
             task.status = "failed"
-            task.stage = "failed"
-            task.percent = 100
+            task.stage = _business_stage(task)
+            task.percent = _processed_percent(task)
             task.cleanup_count = cleanup_cnt
             task.message = f"机会挖掘失败：{exc}"
             task.finished_at = _now()

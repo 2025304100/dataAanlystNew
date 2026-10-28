@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="5" time="15.657" timestamp="2026-10-27T23:03:08.867073+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_additional_bug_review" name="test_real_failures_must_open_supplier_breaker" time="0.961"><failure message="AssertionError: Two 429s did not open breaker; supplier was called 3 times&#10;assert False">tests\test_additional_bug_review.py:90: in test_real_failures_must_open_supplier_breaker
+    assert blocked, f'Two 429s did not open breaker; supplier was called {len(calls)} times'
+E   AssertionError: Two 429s did not open breaker; supplier was called 3 times
+E   assert False</failure></testcase><testcase classname="tests.test_additional_bug_review" name="test_fresh_candidate_must_not_be_starved_by_expired_scores[499]" time="1.354" /><testcase classname="tests.test_additional_bug_review" name="test_fresh_candidate_must_not_be_starved_by_expired_scores[500]" time="1.246"><failure message="AssertionError: Fresh eligible event lost behind expired top-500 history&#10;assert 0 == 1">tests\test_additional_bug_review.py:122: in test_fresh_candidate_must_not_be_starved_by_expired_scores
+    assert response.json()['created'] == 1, 'Fresh eligible event lost behind expired top-500 history'
+E   AssertionError: Fresh eligible event lost behind expired top-500 history
+E   assert 0 == 1</failure></testcase><testcase classname="tests.test_additional_bug_review" name="test_delayed_alert_must_respect_target_daily_cap_at_send_time" time="0.556"><failure message="AssertionError: Two distinct alerts for the same target passed on one day despite max_daily=1&#10;assert 2 == 1&#10; +  where 2 = sum([True, True])">tests\test_additional_bug_review.py:153: in test_delayed_alert_must_respect_target_daily_cap_at_send_time
+    assert sum(allowed) == 1, 'Two distinct alerts for the same target passed on one day despite max_daily=1'
+E   AssertionError: Two distinct alerts for the same target passed on one day despite max_daily=1
+E   assert 2 == 1
+E    +  where 2 = sum([True, True])</failure></testcase><testcase classname="tests.test_additional_bug_review" name="test_validation_get_must_not_mutate_portfolio" time="3.311"><failure message="AssertionError: Read request mutated portfolio metadata in validation-only mode&#10;assert 1 == 0&#10; +  where 1 = &lt;app.models.portfolio.Portfolio object at 0x0000018561862570&gt;.is_test">tests\test_additional_bug_review.py:175: in test_validation_get_must_not_mutate_portfolio
+    assert after.is_test == 0, 'Read request mutated portfolio metadata in validation-only mode'
+E   AssertionError: Read request mutated portfolio metadata in validation-only mode
+E   assert 1 == 0
+E    +  where 1 = &lt;app.models.portfolio.Portfolio object at 0x0000018561862570&gt;.is_test</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>标的研究 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<script src="assets/proto.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <a href="07-opportunity.html">机会中心</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">标的研究</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">标的研究 · SYMBOL RESEARCH</p>
+          <h1 class="page-title">600519 贵州茅台</h1>
+          <p class="page-sub">白酒 · 沪市主板 · 总市值 ¥2.12 万亿 · 数据截止 2026-10-27 收盘</p>
+        </div>
+        <div class="page-actions">
+          <a class="btn btn--secondary" href="07-opportunity.html">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.4 8H2.6"/><path d="M6.8 3.8 2.6 8l4.2 4.2"/></svg>
+            返回机会中心
+          </a>
+          <button class="btn btn--secondary" type="button">加入观察池</button>
+          <button class="btn btn--primary" type="button">加入组合</button>
+        </div>
+      </div>
+
+      <!-- ① 行情带 -->
+      <div class="chart chart--320 mb-16">
+        <div class="chart-head">
+          <div>
+            <h2 class="chart-title">600519 贵州茅台</h2>
+            <p class="chart-sub">日线 · 前复权 · 最近 60 个交易日</p>
+          </div>
+          <div class="row gap-16">
+            <div class="chart-legend">
+              <span><i class="legend-dot legend-dot--up"></i>K线</span>
+              <span><i class="legend-dot legend-dot--2"></i>MA20</span>
+              <span><i class="legend-dot legend-dot--5"></i>成交量</span>
+            </div>
+            <div class="seg" data-tabs>
+              <button class="seg-item is-active" data-tab="d" aria-selected="true" type="button">日线</button>
+              <button class="seg-item" data-tab="w" aria-selected="false" type="button">周线</button>
+              <button class="seg-item" data-tab="m" aria-selected="false" type="button">月线</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-body">
+          <svg viewBox="0 0 1160 280" role="img" aria-label="贵州茅台日线 K 线图，最近 60 个交易日，收盘 1685.00 元">
+            <line class="c-grid" x1="20" y1="20" x2="1090" y2="20"/>
+            <line class="c-grid" x1="20" y1="56" x2="1090" y2="56"/>
+            <line class="c-grid" x1="20" y1="92" x2="1090" y2="92"/>
+            <line class="c-grid" x1="20" y1="128" x2="1090" y2="128"/>
+            <line class="c-grid" x1="20" y1="164" x2="1090" y2="164"/>
+            <line class="c-grid" x1="20" y1="200" x2="1090" y2="200"/>
+            <line class="c-axis" x1="20" y1="250" x2="1090" y2="250"/>
+
+            <line class="c-axis" x1="42" y1="162.2" x2="42" y2="194.6"/>
+            <rect class="c-bar-up" x="37" y="173" width="10" height="16.2"/>
+            <line class="c-axis" x1="74" y1="167.6" x2="74" y2="192.8"/>
+            <rect class="c-bar-down" x="69" y="173" width="10" height="10.8"/>
+            <line class="c-axis" x1="106" y1="155" x2="106" y2="187.4"/>
+            <rect class="c-bar-up" x="101" y="159.5" width="10" height="24.3"/>
+            <line class="c-axis" x1="138" y1="142.4" x2="138" y2="165.8"/>
+            <rect class="c-bar-up" x="133" y="149.6" width="10" height="9.9"/>
+            <line class="c-axis" x1="170" y1="144.2" x2="170" y2="169.4"/>
+            <rect class="c-bar-down" x="165" y="149.6" width="10" height="12.6"/>
+            <line class="c-axis" x1="202" y1="135.2" x2="202" y2="165.8"/>
+            <rect class="c-bar-up" x="197" y="138.8" width="10" height="23.4"/>
+            <line class="c-axis" x1="234" y1="116.8" x2="234" y2="144.2"/>
+            <rect class="c-bar-up" x="229" y="123.5" width="10" height="15.3"/>
+            <line class="c-axis" x1="266" y1="119" x2="266" y2="142.4"/>
+            <rect class="c-bar-down" x="261" y="123.5" width="10" height="11.7"/>
+            <line class="c-axis" x1="298" y1="129.8" x2="298" y2="160.4"/>
+            <rect class="c-bar-down" x="293" y="135.2" width="10" height="19.8"/>
+            <line class="c-axis" x1="330" y1="126.2" x2="330" y2="158.6"/>
+            <rect class="c-bar-up" x="325" y="131.6" width="10" height="23.4"/>
+            <line class="c-axis" x1="362" y1="106.4" x2="362" y2="137"/>
+            <rect class="c-bar-up" x="357" y="111.8" width="10" height="19.8"/>
+            <line class="c-axis" x1="394" y1="108.2" x2="394" y2="131.6"/>
+            <rect class="c-bar-down" x="389" y="111.8" width="10" height="12.6"/>
+            <line class="c-axis" x1="426" y1="101" x2="426" y2="128"/>
+            <rect class="c-bar-up" x="421" y="108.2" width="10" height="16.2"/>
+            <line class="c-axis" x1="458" y1="81.2" x2="458" y2="111.8"/>
+            <rect class="c-bar-up" x="453" y="87.5" width="10" height="20.7"/>
+            <line class="c-axis" x1="490" y1="83" x2="490" y2="110"/>
+            <rect class="c-bar-down" x="485" y="87.5" width="10" height="15.3"/>
+            <line class="c-axis" x1="522" y1="95.6" x2="522" y2="122.6"/>
+            <rect class="c-bar-down" x="517" y="102.8" width="10" height="14.4"/>
+            <line class="c-axis" x1="554" y1="88.4" x2="554" y2="120.8"/>
+            <rect class="c-bar-up" x="549" y="93.8" width="10" height="23.4"/>
+            <line class="c-axis" x1="586" y1="66.8" x2="586" y2="99.2"/>
+            <rect class="c-bar-up" x="581" y="74" width="10" height="19.8"/>
+            <line class="c-axis" x1="618" y1="68.6" x2="618" y2="97.4"/>
+            <rect class="c-bar-down" x="613" y="74" width="10" height="16.2"/>
+            <line class="c-axis" x1="650" y1="84.8" x2="650" y2="113.6"/>
+            <rect class="c-bar-down" x="645" y="90.2" width="10" height="18"/>
+            <line class="c-axis" x1="682" y1="79.4" x2="682" y2="111.8"/>
+            <rect class="c-bar-up" x="677" y="84.8" width="10" height="23.4"/>
+            <line class="c-axis" x1="714" y1="57.8" x2="714" y2="90.2"/>
+            <rect class="c-bar-up" x="709" y="65" width="10" height="19.8"/>
+            <line class="c-axis" x1="746" y1="59.6" x2="746" y2="84.8"/>
+            <rect class="c-bar-down" x="741" y="65" width="10" height="12.6"/>
+            <line class="c-axis" x1="778" y1="50.6" x2="778" y2="83"/>
+            <rect class="c-bar-up" x="773" y="57.8" width="10" height="19.8"/>
+            <line class="c-axis" x1="810" y1="52.4" x2="810" y2="75.8"/>
+            <rect class="c-bar-down" x="805" y="57.8" width="10" height="12.6"/>
+            <line class="c-axis" x1="842" y1="41.6" x2="842" y2="74"/>
+            <rect class="c-bar-up" x="837" y="48.8" width="10" height="21.6"/>
+            <line class="c-axis" x1="874" y1="43.4" x2="874" y2="66.8"/>
+            <rect class="c-bar-down" x="869" y="48.8" width="10" height="11.7"/>
+            <line class="c-axis" x1="906" y1="30.8" x2="906" y2="65"/>
+            <rect class="c-bar-up" x="901" y="39.8" width="10" height="20.7"/>
+            <line class="c-axis" x1="938" y1="32.6" x2="938" y2="56"/>
+            <rect class="c-bar-down" x="933" y="39.8" width="10" height="9"/>
+            <line class="c-axis" x1="970" y1="27.2" x2="970" y2="54.2"/>
+            <rect class="c-bar-up" x="965" y="33.5" width="10" height="15.3"/>
+
+            <polyline class="c-line-2" points="42,157 128,160 214,152 300,140 386,128 472,118 558,110 644,102 730,96 816,86 902,72 970,58"/>
+
+            <rect class="c-bar-up" x="37" y="236" width="10" height="14"/>
+            <rect class="c-bar-down" x="69" y="239" width="10" height="11"/>
+            <rect class="c-bar-up" x="101" y="232" width="10" height="18"/>
+            <rect class="c-bar-down" x="133" y="241" width="10" height="9"/>
+            <rect class="c-bar-up" x="165" y="237" width="10" height="13"/>
+            <rect class="c-bar-up" x="197" y="230" width="10" height="20"/>
+            <rect class="c-bar-up" x="229" y="234" width="10" height="16"/>
+            <rect class="c-bar-down" x="261" y="240" width="10" height="10"/>
+            <rect class="c-bar-down" x="293" y="235" width="10" height="15"/>
+            <rect class="c-bar-up" x="325" y="238" width="10" height="12"/>
+            <rect class="c-bar-up" x="357" y="228" width="10" height="22"/>
+            <rect class="c-bar-down" x="389" y="236" width="10" height="14"/>
+            <rect class="c-bar-down" x="421" y="239" width="10" height="11"/>
+            <rect class="c-bar-up" x="453" y="224" width="10" height="26"/>
+            <rect class="c-bar-up" x="485" y="232" width="10" height="18"/>
+            <rect class="c-bar-down" x="517" y="238" width="10" height="12"/>
+            <rect class="c-bar-up" x="549" y="235" width="10" height="15"/>
+            <rect class="c-bar-up" x="581" y="229" width="10" height="21"/>
+            <rect class="c-bar-down" x="613" y="237" width="10" height="13"/>
+            <rect class="c-bar-down" x="645" y="233" width="10" height="17"/>
+            <rect class="c-bar-up" x="677" y="231" width="10" height="19"/>
+            <rect class="c-bar-up" x="709" y="226" width="10" height="24"/>
+            <rect class="c-bar-down" x="741" y="238" width="10" height="12"/>
+            <rect class="c-bar-up" x="773" y="230" width="10" height="20"/>
+            <rect class="c-bar-down" x="805" y="239" width="10" height="11"/>
+            <rect class="c-bar-up" x="837" y="223" width="10" height="27"/>
+            <rect class="c-bar-down" x="869" y="236" width="10" height="14"/>
+            <rect class="c-bar-up" x="901" y="225" width="10" height="25"/>
+            <rect class="c-bar-down" x="933" y="237" width="10" height="13"/>
+            <rect class="c-bar-up" x="965" y="222" width="10" height="28"/>
+
+            <line class="c-axis" x1="978" y1="33.5" x2="996" y2="33.5"/>
+            <text class="c-label-strong" x="1000" y="37">1,685.00</text>
+
+            <text class="c-label" x="32" y="272">09-01</text>
+            <text class="c-label" x="216" y="272">09-15</text>
+            <text class="c-label" x="400" y="272">09-29</text>
+            <text class="c-label" x="584" y="272">10-13</text>
+            <text class="c-label" x="768" y="272">10-20</text>
+            <text class="c-label" x="952" y="272">10-27</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ② 主区两列 -->
+      <div class="grid mb-16">
+
+        <div class="col-8 grid">
+
+          <!-- 综合评分 -->
+          <section class="card col-12">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">综合评分</h2>
+                <span class="card-sub">多因子加权 · 满分 100</span>
+              </div>
+              <span class="card-sub">更新于 15:32</span>
+            </div>
+            <div class="card-body">
+              <div class="row gap-16 items-start">
+                <div>
+                  <p class="kpi-label">综合评分</p>
+                  <div class="kpi-value">78.6<span class="kpi-unit">分</span></div>
+                  <span class="pill pill--pass mt-8">A 级</span>
+                </div>
+                <div class="flex-1">
+                  <div class="mb-8">
+                    <div class="row between"><span class="muted">质量</span><span class="num">80.1</span></div>
+                    <div class="chart-body mt-4"><svg viewBox="0 0 240 6" role="img" aria-label="质量分项 80.1 分"><rect class="c-area-1" x="0" y="1" width="240" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="192.2" height="4"/></svg></div>
+                  </div>
+                  <div class="mb-8">
+                    <div class="row between"><span class="muted">趋势</span><span class="num">82.6</span></div>
+                    <div class="chart-body mt-4"><svg viewBox="0 0 240 6" role="img" aria-label="趋势分项 82.6 分"><rect class="c-area-1" x="0" y="1" width="240" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="198.2" height="4"/></svg></div>
+                  </div>
+                  <div class="mb-8">
+                    <div class="row between"><span class="muted">动量</span><span class="num">76.3</span></div>
+                    <div class="chart-body mt-4"><svg viewBox="0 0 240 6" role="img" aria-label="动量分项 76.3 分"><rect class="c-area-1" x="0" y="1" width="240" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="183.1" height="4"/></svg></div>
+                  </div>
+                  <div class="mb-8">
+                    <div class="row between"><span class="muted">估值</span><span class="num">64.2</span></div>
+                    <div class="chart-body mt-4"><svg viewBox="0 0 240 6" role="img" aria-label="估值分项 64.2 分"><rect class="c-area-1" x="0" y="1" width="240" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="154.1" height="4"/></svg></div>
+                  </div>
+                  <div>
+                    <div class="row between"><span class="muted">流动性</span><span class="num">91.2</span></div>
+                    <div class="chart-body mt-4"><svg viewBox="0 0 240 6" role="img" aria-label="流动性分项 91.2 分"><rect class="c-area-1" x="0" y="1" width="240" height="4"/><rect class="c-bar-neutral" x="0" y="1" width="218.9" height="4"/></svg></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 因子解释 -->
+          <section class="card card--flush col-12">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">因子解释</h2>
+                <span class="card-sub">8 个因子 · 暴露值与评分贡献</span>
+              </div>
+              <button class="btn btn--ghost btn--sm" type="button">查看全部因子</button>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>因子</th>
+                    <th class="num">暴露值</th>
+                    <th class="num">贡献</th>
+                    <th>说明</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="cell-strong">动量因子</td>
+                    <td class="num">0.82</td>
+                    <td class="num val-up">+0.18</td>
+                    <td class="muted">近 20 日相对强度居行业前 15%</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">质量因子</td>
+                    <td class="num">0.76</td>
+                    <td class="num val-up">+0.14</td>
+                    <td class="muted">ROE 连续 8 季高于 25%，经营现金流覆盖充分</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">价值因子</td>
+                    <td class="num">-0.14</td>
+                    <td class="num val-down">-0.03</td>
+                    <td class="muted">市盈率 28.4 倍，处白酒板块中位偏上</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">规模因子</td>
+                    <td class="num">0.91</td>
+                    <td class="num val-up">+0.09</td>
+                    <td class="muted">总市值 2.12 万亿，沪深 300 权重 5.2%</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">波动因子</td>
+                    <td class="num">-0.38</td>
+                    <td class="num val-down">-0.06</td>
+                    <td class="muted">60 日年化波动 24.8%，高于板块均值</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">成长因子</td>
+                    <td class="num">0.55</td>
+                    <td class="num val-up">+0.07</td>
+                    <td class="muted">近三年营业收入复合增速 14.6%</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">股息因子</td>
+                    <td class="num">0.42</td>
+                    <td class="num val-up">+0.05</td>
+                    <td class="muted">股息率 2.34%，分红比例连续 5 年提升</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-strong">情绪因子</td>
+                    <td class="num">0.67</td>
+                    <td class="num val-up">+0.11</td>
+                    <td class="muted">北向持股比例回升至 7.8%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- 单标的回测 -->
+          <section class="card col-12">
+            <div class="card-head">
+              <div class="row gap-8">
+                <h2 class="card-title">单标的回测</h2>
+                <span class="card-sub">买入持有 · 不含交易成本</span>
+              </div>
+              <div class="seg" data-tabs>
+                <button class="seg-item" data-tab="y1" aria-selected="false" type="button">近1年</button>
+                <button class="seg-item is-active" data-tab="y3" aria-selected="true" type="button">近3年</button>
+                <button class="seg-item" data-tab="all" aria-selected="false" type="button">全部</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="kpi-row mb-16">
+                <div class="kpi">
+                  <p class="kpi-label">总收益</p>
+                  <div class="kpi-value">+82.4<span class="kpi-unit">%</span></div>
+                  <div class="kpi-delta is-up">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+                    跑赢沪深 300 24.6 个百分点
+                  </div>
+                </div>
+                <div class="kpi">
+                  <p class="kpi-label">年化收益</p>
+                  <div class="kpi-value">+22.1<span class="kpi-unit">%</span></div>
+                  <div class="kpi-delta is-up">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+                    基准年化 15.3%
+                  </div>
+                </div>
+                <div class="kpi">
+                  <p class="kpi-label">最大回撤</p>
+                  <div class="kpi-value">-18.6<span class="kpi-unit">%</span></div>
+                  <div class="kpi-delta is-down">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+                    发生于 2025-02
+                  </div>
+                </div>
+                <div class="kpi">
+                  <p class="kpi-label">夏普比率</p>
+                  <div class="kpi-value">1.18</div>
+                  <div class="kpi-delta is-flat">
+                    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 5.4h7.2v1.2H2.4z" fill="currentColor"/></svg>
+                    无风险利率 1.6%
+                  </div>
+                </div>
+              </div>
+              <div class="chart chart--240">
+                <div class="chart-head">
+                  <div>
+                    <h3 class="chart-title">净值曲线</h3>
+                    <p class="chart-sub">起始净值 1.000 · 近 3 年</p>
+                  </div>
+                  <div class="chart-legend">
+                    <span><i class="legend-dot legend-dot--1"></i>600519</span>
+                    <span><i class="legend-dot legend-dot--5"></i>沪深 300</span>
+                  </div>
+                </div>
+                <div class="chart-body">
+                  <svg viewBox="0 0 700 180" role="img" aria-label="贵州茅台近三年净值曲线">
+                    <line class="c-grid" x1="20" y1="20" x2="680" y2="20"/>
+                    <line class="c-grid" x1="20" y1="55" x2="680" y2="55"/>
+                    <line class="c-grid" x1="20" y1="90" x2="680" y2="90"/>
+                    <line class="c-grid" x1="20" y1="125" x2="680" y2="125"/>
+                    <line class="c-grid" x1="20" y1="160" x2="680" y2="160"/>
+                    <line class="c-axis" x1="20" y1="160" x2="680" y2="160"/>
+                    <path class="c-area-1" d="M20 150 80 142 140 148 200 126 260 132 320 110 380 118 440 92 500 100 560 72 620 80 680 46V160H20Z"/>
+                    <polyline class="c-line-1" points="20,150 80,142 140,148 200,126 260,132 320,110 380,118 440,92 500,100 560,72 620,80 680,46"/>
+                    <polyline class="c-line-3" points="20,148 80,144 140,150 200,140 260,144 320,132 380,138 440,126 500,132 560,120 620,126 680,116"/>
+                    <text class="c-label" x="24" y="16">1.82</text>
+                    <text class="c-label" x="24" y="174">1.00</text>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <div class="col-4 grid">
+
+          <!-- 交易计划 -->
+          <section class="card col-12">
+            <div class="card-head">
+              <h2 class="card-title">交易计划</h2>
+              <span class="card-sub">2026-10-27 制定</span>
+            </div>
+            <div class="card-body">
+              <div class="row between mb-12">
+                <span class="muted">买入区间</span>
+                <span class="num">1,620 – 1,660</span>
+              </div>
+              <div class="row between mb-12">
+                <span class="muted">建议仓位</span>
+                <span class="num">12%</span>
+              </div>
+              <div class="row between mb-12">
+                <span class="muted">止损价</span>
+                <span class="num">1,548（-8%）</span>
+              </div>
+              <div class="row between">
+                <span class="muted">目标价</span>
+                <span class="num">2,105（+25%）</span>
+              </div>
+              <button class="btn btn--secondary btn--sm mt-16" type="button">编辑计划</button>
+            </div>
+          </section>
+
+          <!-- 风险参考 -->
+          <section class="card col-12">
+            <div class="card-head">
+              <h2 class="card-title">风险参考</h2>
+              <span class="card-sub">近 250 个交易日</span>
+            </div>
+            <div class="card-body">
+              <div class="row between mb-12">
+                <span class="muted">年化波动率</span>
+                <span class="num">24.8%</span>
+              </div>
+              <div class="row between mb-12">
+                <span class="muted">最大回撤</span>
+                <span class="num">-18.6%</span>
+              </div>
+              <div class="row between mb-12">
+                <span class="muted">Beta</span>
+                <span class="num">0.92</span>
+              </div>
+              <div class="row between mb-12">
+                <span class="muted">日均成交额</span>
+                <span class="num">¥48.2 亿</span>
+              </div>
+              <div class="row between">
+                <span class="muted">流动性分位</span>
+                <span class="num">前 8%</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 预警摘要 -->
+          <section class="card col-12">
+            <div class="card-head">
+              <h2 class="card-title">预警摘要</h2>
+              <span class="card-sub">3 条历史记录</span>
+            </div>
+            <div class="card-body">
+              <div class="alert alert--info mb-16">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.2v4"/><path d="M8 4.9h.01"/></svg>
+                <div>
+                  <p class="alert-title">当前无触发中的预警</p>
+                  <p class="alert-body">已设置 3 条价格与量能条件，触发后将推送至消息中心。</p>
+                </div>
+              </div>
+              <div class="row between mb-12">
+                <div>
+                  <div class="text-1">RSI 超买</div>
+                  <div class="muted">2026-10-11</div>
+                </div>
+                <span class="pill pill--pass">已解除</span>
+              </div>
+              <div class="row between mb-12">
+                <div>
+                  <div class="text-1">跌破 MA20</div>
+                  <div class="muted">2026-09-23</div>
+                </div>
+                <span class="pill pill--pass">已解除</span>
+              </div>
+              <div class="row between">
+                <div>
+                  <div class="text-1">放量突破</div>
+                  <div class="muted">2026-10-08</div>
+                </div>
+                <span class="pill pill--warn">已触发</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 关联标的 -->
+          <section class="card col-12">
+            <div class="card-head">
+              <h2 class="card-title">关联标的</h2>
+              <span class="card-sub">白酒板块</span>
+            </div>
+            <div class="card-body">
+              <div class="row between mb-12">
+                <span><span class="mono muted">000858</span> 五粮液</span>
+                <span class="num val-up">+2.14%</span>
+              </div>
+              <div class="row between mb-12">
+                <span><span class="mono muted">600809</span> 山西汾酒</span>
+                <span class="num val-down">-0.86%</span>
+              </div>
+              <div class="row between mb-12">
+                <span><span class="mono muted">000568</span> 泸州老窖</span>
+                <span class="num val-up">+1.02%</span>
+              </div>
+              <div class="row between mb-12">
+                <span><span class="mono muted">603369</span> 今世缘</span>
+                <span class="num val-down">-0.35%</span>
+              </div>
+              <div class="row between">
+                <span><span class="mono muted">600779</span> 水井坊</span>
+                <span class="num val-up">+0.61%</span>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

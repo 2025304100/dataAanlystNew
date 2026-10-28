@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="6.103" timestamp="2026-10-28T14:00:35.626457+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_validation_service_task_windows" name="test_scheduler_owned_listener_survives_caller_job_close" file="tests\test_validation_service_task_windows.py" line="21" time="2.516"><failure message="AssertionError: {'ok': False, 'action': 'Query', 'error_type': 'RuntimeException', 'hresult': -2146233087, ...}&#10;assert (1 == 0)&#10; +  where 1 = CompletedProcess(args=['powershell.exe', '-NoProfile', '-NonInteractive', '-File', 'D:\\ai_project\\dataAanlystNew\\tm...Exception&quot;,&quot;hresult&quot;:-2146233087,&quot;message&quot;:&quot;Task name is occupied by an unconfirmed owner; preserve it&quot;}\n', stderr='').returncode">tests\test_validation_service_task_windows.py:87: in test_scheduler_owned_listener_survives_caller_job_close
+    assert caller.poll() is None
+E   AssertionError: assert 1 is None
+E    +  where 1 = poll()
+E    +    where poll = &lt;Popen: returncode: 1 args: ['C:\\Python312\\python.exe', 'C:\\Users\\demo\\...&gt;.poll
+
+During handling of the above exception, another exception occurred:
+tests\test_validation_service_task_windows.py:111: in test_scheduler_owned_listener_survives_caller_job_close
+    while task('Query')['state']==4:
+          ^^^^^^^^^^^^^
+tests\test_validation_service_task_windows.py:50: in task
+    assert result.returncode==0 and value['ok'],value
+E   AssertionError: {'ok': False, 'action': 'Query', 'error_type': 'RuntimeException', 'hresult': -2146233087, ...}
+E   assert (1 == 0)
+E    +  where 1 = CompletedProcess(args=['powershell.exe', '-NoProfile', '-NonInteractive', '-File', 'D:\\ai_project\\dataAanlystNew\\tm...Exception","hresult":-2146233087,"message":"Task name is occupied by an unconfirmed owner; preserve it"}\n', stderr='').returncode</failure></testcase></testsuite></testsuites>

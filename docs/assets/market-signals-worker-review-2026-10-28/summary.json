@@ -1,0 +1,46 @@
+{
+  "audit_completed": true,
+  "fixes_applied": false,
+  "quality_gate_passed": false,
+  "findings": {
+    "P0": 0,
+    "P1": 3
+  },
+  "unique_cases": 52,
+  "passed": 44,
+  "defect_assertion_failures": 8,
+  "errors": 0,
+  "skipped": 0,
+  "stages": [
+    {
+      "junit": "offline-probes-final.xml",
+      "cases": 13,
+      "passed": 9,
+      "defect_assertion_failures": 4,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "junit": "mysql-probes-final.xml",
+      "cases": 6,
+      "passed": 2,
+      "defect_assertion_failures": 4,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "junit": "controls.xml",
+      "cases": 34,
+      "passed": 34,
+      "defect_assertion_failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "real_models": 0,
+  "real_notification_transports": 0,
+  "business_unchanged": true,
+  "source_files_unchanged": 1256,
+  "current_business_listeners": [],
+  "page_acceptance_executed": false
+}

@@ -59,6 +59,13 @@ def test_initialization_reports_real_supplier_outcome(db_session, monkeypatch, o
     task = get_async_task(snapshot["task_id"])
     assert task.status == {"completed": "done", "partial": "partial", "failed": "failed"}[expected]
     assert task.is_terminal_locked
+    total = sum(stage["total"] for stage in result["stages"])
+    processed = sum(min(stage["done"], stage["total"]) for stage in result["stages"])
+    expected_percent = int(processed * 100 / total + 0.5) if total > 0 else 0
+    assert result["progress_pct"] == expected_percent
+    assert task.total == total
+    assert task.processed == processed
+    assert task.percent == expected_percent
 
 
 def test_failed_score_commit_is_not_counted_and_does_not_erase_prior_days(db_session, monkeypatch):
@@ -102,6 +109,10 @@ def test_failed_score_commit_is_not_counted_and_does_not_erase_prior_days(db_ses
     task = get_async_task(snapshot["task_id"])
     assert task.ok_count == 2
     assert task.failed_count == 1
+    assert result["progress_pct"] == 80
+    assert task.processed == 4
+    assert task.total == 5
+    assert task.percent == 80
     app = FastAPI()
     app.include_router(scores.router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session

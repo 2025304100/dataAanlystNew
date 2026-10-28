@@ -1,0 +1,27 @@
+{
+  "parent": {
+    "pid": 28780,
+    "parent": 69588,
+    "query_ok": true,
+    "in_job": true,
+    "limits_ok": true,
+    "limits_error": null,
+    "flags": "0x2800",
+    "kill_on_close": true,
+    "breakaway_ok": true,
+    "silent_breakaway_ok": false
+  },
+  "child": {
+    "pid": 60700,
+    "parent": 28780,
+    "query_ok": true,
+    "in_job": true,
+    "limits_ok": true,
+    "limits_error": null,
+    "flags": "0x2000",
+    "kill_on_close": true,
+    "breakaway_ok": false,
+    "silent_breakaway_ok": false
+  },
+  "pid": 60700
+}

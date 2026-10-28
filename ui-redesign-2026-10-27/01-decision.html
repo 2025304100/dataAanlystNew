@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>今日决策 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== 侧栏 ===================== -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item is-active" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <!-- ===================== 主区 ===================== -->
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">今日决策</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ===================== 页面内容 ===================== -->
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">今日决策 · TODAY DECISION</p>
+          <h1 class="page-title">今日暂不建仓：3 只候选均未回踩确认</h1>
+          <p class="page-sub">数据截止 2026-10-27 收盘 · 组合「稳健成长一号」· 上次决策日 2026-10-24</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8"/><path d="M13.6 2.4v3.2h-3.2"/></svg>
+            重新扫描
+          </button>
+          <button class="btn btn--primary" type="button">开始模拟交易</button>
+        </div>
+      </div>
+
+      <!-- ① 组合状态横幅 -->
+      <div class="alert alert--warn mb-16">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.4 14.4 13.2H1.6L8 2.4Z"/><path d="M8 6.6v3"/><path d="M8 11.6h.01"/></svg>
+        <div class="flex-1">
+          <p class="alert-title">组合状态：需要人工确认</p>
+          <p class="alert-body">HG1 综合预检通过，但 HG2 时间窗未到（20:00 后开放），自动推演暂不可用。</p>
+          <div class="row wrap gap-8 mt-8">
+            <span class="pill pill--pass">新买单 允许</span>
+            <span class="pill pill--pass">风险退出 允许</span>
+            <span class="pill pill--blocked">自动恢复 禁止</span>
+            <span class="pill pill--warn">人工确认 需要</span>
+          </div>
+        </div>
+        <div class="row gap-12">
+          <div>
+            <div class="muted">上次决策日 2026-10-24</div>
+            <div class="muted">上次对账 2026-10-27</div>
+          </div>
+          <button class="btn btn--secondary btn--sm" type="button">前往治理诊断 →</button>
+        </div>
+      </div>
+
+      <!-- ② 三硬门禁预检卡 -->
+      <section class="card mb-16">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">开始模拟交易</h2>
+            <span class="card-sub">三硬门禁 · fail-closed</span>
+          </div>
+          <span class="pill pill--pending">未预检</span>
+        </div>
+        <div class="card-body">
+          <div class="grid">
+            <div class="col-4">
+              <div class="row between gap-8">
+                <span class="card-title">HG1 组合就绪</span>
+                <span class="pill pill--pass">通过</span>
+              </div>
+              <div class="card-sub mt-4">持仓与现金台账一致，可用资金 41.4%，无未成交挂单。</div>
+            </div>
+            <div class="col-4">
+              <div class="row between gap-8">
+                <span class="card-title">HG2 20:00 时间窗</span>
+                <span class="pill pill--warn">未到</span>
+              </div>
+              <div class="card-sub mt-4">当前 17:42，窗口 20:00 开放，自动推演需等待窗口开启。</div>
+            </div>
+            <div class="col-4">
+              <div class="row between gap-8">
+                <span class="card-title">HG3 对账连续性</span>
+                <span class="pill pill--pass">通过</span>
+              </div>
+              <div class="card-sub mt-4">最近对账 2026-10-27，连续 12 个交易日无缺口。</div>
+            </div>
+          </div>
+          <div class="row gap-12 mt-16">
+            <button class="btn btn--primary" type="button" disabled>开始模拟交易</button>
+            <span class="muted">未通过 HG2 时间窗，按钮按 fail-closed 规则禁用</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ③ KPI 行 -->
+      <section class="card card--flush mb-16">
+        <div class="card-body">
+          <div class="kpi-row">
+            <div class="kpi">
+              <p class="kpi-label">今日候选</p>
+              <div class="kpi-value">3<span class="kpi-unit">只</span></div>
+              <div class="kpi-delta is-up">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.4 10.2 9.4H1.8L6 2.4Z" fill="currentColor"/></svg>
+                +1
+              </div>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">目标仓位</p>
+              <div class="kpi-value">65<span class="kpi-unit">%</span></div>
+              <div class="kpi-delta is-flat">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 5.4h7.2v1.2H2.4z" fill="currentColor"/></svg>
+                上限 80%
+              </div>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">组合评分</p>
+              <div class="kpi-value">72.4</div>
+              <div class="kpi-delta is-down">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 9.6 1.8 2.6h8.4L6 9.6Z" fill="currentColor"/></svg>
+                -1.8
+              </div>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">风险等级</p>
+              <div class="kpi-value">中性</div>
+              <div class="kpi-delta is-flat">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 5.4h7.2v1.2H2.4z" fill="currentColor"/></svg>
+                较上次未变
+              </div>
+            </div>
+            <div class="kpi">
+              <p class="kpi-label">距上次决策</p>
+              <div class="kpi-value">3<span class="kpi-unit">天</span></div>
+              <div class="kpi-delta is-flat">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 5.4h7.2v1.2H2.4z" fill="currentColor"/></svg>
+                跨 1 个交易日
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ④ 候选决策表 -->
+      <section class="card card--flush mb-16">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">今日候选</h2>
+            <span class="card-sub">3 只待处理 · 9 只观察中</span>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button">全部候选 →</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th class="col-sticky">代码</th>
+                <th>名称</th>
+                <th class="num">综合评分</th>
+                <th>评级</th>
+                <th>阶段</th>
+                <th>建议动作</th>
+                <th class="num">现价</th>
+                <th class="num">涨跌幅</th>
+                <th class="num">新闻乘数</th>
+                <th class="num">建议仓位</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="is-selected">
+                <td class="col-sticky mono">600519</td>
+                <td>贵州茅台</td>
+                <td class="num">78.6</td>
+                <td><span class="pill pill--pass">A 级</span></td>
+                <td>第二阶 / 观察</td>
+                <td>观察</td>
+                <td class="num">1,642.00</td>
+                <td class="num val-down">-1.24%</td>
+                <td class="num">1.08x</td>
+                <td class="num">12%</td>
+                <td><button class="btn btn--secondary btn--sm" type="button">评分明细</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">000858</td>
+                <td>五粮液</td>
+                <td class="num">74.2</td>
+                <td><span class="pill pill--pass">A 级</span></td>
+                <td>第一阶 / 回踩</td>
+                <td class="cell-strong">买入</td>
+                <td class="num">138.60</td>
+                <td class="num val-up">+0.86%</td>
+                <td class="num">1.02x</td>
+                <td class="num">8%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">300750</td>
+                <td>宁德时代</td>
+                <td class="num">69.5</td>
+                <td><span class="pill pill--pending">B 级</span></td>
+                <td>第三阶 / 突破</td>
+                <td>观察</td>
+                <td class="num">196.80</td>
+                <td class="num val-up">+3.12%</td>
+                <td class="num">0.94x</td>
+                <td class="num">6%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">601318</td>
+                <td>中国平安</td>
+                <td class="num">66.8</td>
+                <td><span class="pill pill--pending">B 级</span></td>
+                <td>第一阶 / 等待</td>
+                <td class="muted">不动</td>
+                <td class="num">46.20</td>
+                <td class="num val-flat">0.00%</td>
+                <td class="num">1.00x</td>
+                <td class="num">0%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">002594</td>
+                <td>比亚迪</td>
+                <td class="num">64.3</td>
+                <td><span class="pill pill--pending">B 级</span></td>
+                <td>第二阶 / 观察</td>
+                <td>观察</td>
+                <td class="num">248.30</td>
+                <td class="num val-down">-3.05%</td>
+                <td class="num">0.88x</td>
+                <td class="num">4%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">600036</td>
+                <td>招商银行</td>
+                <td class="num">62.7</td>
+                <td><span class="pill pill--pending">B 级</span></td>
+                <td>第一阶 / 回踩</td>
+                <td>观察</td>
+                <td class="num">38.94</td>
+                <td class="num val-up">+0.42%</td>
+                <td class="num">1.05x</td>
+                <td class="num">5%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">601899</td>
+                <td>紫金矿业</td>
+                <td class="num">61.9</td>
+                <td><span class="pill pill--pending">B 级</span></td>
+                <td>第三阶 / 突破</td>
+                <td>观察</td>
+                <td class="num">18.72</td>
+                <td class="num val-up">+2.18%</td>
+                <td class="num">1.12x</td>
+                <td class="num">4%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">002415</td>
+                <td>海康威视</td>
+                <td class="num">58.4</td>
+                <td><span class="pill pill--warn">C 级</span></td>
+                <td>第一阶 / 等待</td>
+                <td class="muted">不动</td>
+                <td class="num">31.56</td>
+                <td class="num val-down">-0.94%</td>
+                <td class="num">0.96x</td>
+                <td class="num">0%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">600276</td>
+                <td>恒瑞医药</td>
+                <td class="num">57.1</td>
+                <td><span class="pill pill--warn">C 级</span></td>
+                <td>第二阶 / 观察</td>
+                <td class="cell-strong">减仓</td>
+                <td class="num">45.80</td>
+                <td class="num val-down">-1.62%</td>
+                <td class="num">0.92x</td>
+                <td class="num">3%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">688981</td>
+                <td>中芯国际</td>
+                <td class="num">55.6</td>
+                <td><span class="pill pill--warn">C 级</span></td>
+                <td>第三阶 / 突破</td>
+                <td>观察</td>
+                <td class="num">86.40</td>
+                <td class="num val-up">+1.36%</td>
+                <td class="num">1.04x</td>
+                <td class="num">2%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">000651</td>
+                <td>格力电器</td>
+                <td class="num">53.2</td>
+                <td><span class="pill pill--warn">C 级</span></td>
+                <td>第一阶 / 等待</td>
+                <td class="muted">不动</td>
+                <td class="num">42.18</td>
+                <td class="num val-down">-0.38%</td>
+                <td class="num">0.98x</td>
+                <td class="num">0%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">000001</td>
+                <td>平安银行</td>
+                <td class="num">51.8</td>
+                <td><span class="pill pill--warn">C 级</span></td>
+                <td>第一阶 / 等待</td>
+                <td class="muted">不动</td>
+                <td class="num">11.64</td>
+                <td class="num val-up">+0.17%</td>
+                <td class="num">1.00x</td>
+                <td class="num">0%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky cell-strong">合计</td>
+                <td class="muted">当前仓位 58.6% · 可用额度 6.4%</td>
+                <td colspan="7" class="muted">上表为各标的建议上限，实际执行受 HG2 时间窗与额度约束</td>
+                <td class="num cell-strong">44%</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ⑤ 评分解释 + 评分构成 -->
+      <div class="grid mb-16">
+
+        <section class="card col-8">
+          <div class="card-head">
+            <div class="row gap-8">
+              <h2 class="card-title">评分解释 · 600519 贵州茅台</h2>
+              <span class="card-sub">最终评分 78.6 · 基础 72.8 × 新闻 1.08</span>
+            </div>
+            <span class="pill pill--pass">A 级</span>
+          </div>
+          <div class="card-body">
+            <div class="card-sub mb-8">评分链路 · 由基础评分 × 新闻乘数得出</div>
+            <table class="table">
+              <tbody>
+                <tr>
+                  <td class="cell-strong">最终评分</td>
+                  <td class="num cell-strong">78.6</td>
+                </tr>
+                <tr>
+                  <td>基础评分</td>
+                  <td class="num">72.8</td>
+                </tr>
+                <tr>
+                  <td>新闻乘数</td>
+                  <td class="num">1.08x</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <hr class="hr">
+
+            <div class="card-sub mb-8">分项因子 · 输入项，满分 100</div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>因子</th>
+                  <th class="num">值</th>
+                  <th>强度</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>质量</td>
+                  <td class="num">80.1</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="质量强度 80.1"><rect class="c-bar-neutral" x="0" y="0" width="96.1" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>择时</td>
+                  <td class="num">68.4</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="择时强度 68.4"><rect class="c-bar-neutral" x="0" y="0" width="82.1" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>趋势</td>
+                  <td class="num">82.6</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="趋势强度 82.6"><rect class="c-bar-neutral" x="0" y="0" width="99.1" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>动量</td>
+                  <td class="num">76.3</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="动量强度 76.3"><rect class="c-bar-neutral" x="0" y="0" width="91.6" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>波动</td>
+                  <td class="num">64.8</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="波动强度 64.8"><rect class="c-bar-neutral" x="0" y="0" width="77.8" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>流动性</td>
+                  <td class="num">91.2</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="流动性强度 91.2"><rect class="c-bar-neutral" x="0" y="0" width="109.4" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>广度</td>
+                  <td class="num">55.7</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="广度强度 55.7"><rect class="c-bar-neutral-soft" x="0" y="0" width="66.8" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>事件</td>
+                  <td class="num">70.0</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="事件强度 70.0"><rect class="c-bar-neutral" x="0" y="0" width="84" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>消息评分</td>
+                  <td class="num">62.0</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="消息评分强度 62.0"><rect class="c-bar-neutral" x="0" y="0" width="74.4" height="8"/></svg></td>
+                </tr>
+                <tr>
+                  <td>置信度</td>
+                  <td class="num">0.74（74%）</td>
+                  <td><svg viewBox="0 0 120 8" width="120" height="8" role="img" aria-label="置信度 74%"><rect class="c-bar-neutral" x="0" y="0" width="88.8" height="8"/></svg></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <hr class="hr">
+
+            <div class="card-sub mb-8">执行计划 · 结论</div>
+            <table class="table">
+              <tbody>
+                <tr>
+                  <td>计划</td>
+                  <td class="num">第二阶 / 观察</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="chart chart--320 col-4">
+          <div class="chart-head">
+            <div>
+              <h3 class="chart-title">评分构成</h3>
+              <p class="chart-sub">满分 100 · 浅色条为低于 60 的短板项</p>
+            </div>
+            <div class="chart-legend">
+              <span>条形 = 分项强度 · 浅色 = 低于 60 的短板</span>
+            </div>
+          </div>
+          <div class="chart-body">
+            <svg viewBox="0 0 360 800" role="img" aria-label="600519 贵州茅台 10 项分项因子强度横向条形图">
+              <line class="c-grid" x1="122" y1="20" x2="122" y2="770"/>
+              <line class="c-grid" x1="172" y1="20" x2="172" y2="770"/>
+              <line class="c-grid" x1="222" y1="20" x2="222" y2="770"/>
+              <line class="c-grid" x1="272" y1="20" x2="272" y2="770"/>
+              <line class="c-axis" x1="72" y1="20" x2="72" y2="770"/>
+
+              <text class="c-label" x="0" y="59">质量</text>
+              <rect class="c-bar-neutral" x="72" y="47" width="160.2" height="16"/>
+              <text class="c-label-strong" x="352" y="59" text-anchor="end">80.1</text>
+
+              <text class="c-label" x="0" y="135">择时</text>
+              <rect class="c-bar-neutral" x="72" y="123" width="136.8" height="16"/>
+              <text class="c-label-strong" x="352" y="135" text-anchor="end">68.4</text>
+
+              <text class="c-label" x="0" y="211">趋势</text>
+              <rect class="c-bar-neutral" x="72" y="199" width="165.2" height="16"/>
+              <text class="c-label-strong" x="352" y="211" text-anchor="end">82.6</text>
+
+              <text class="c-label" x="0" y="287">动量</text>
+              <rect class="c-bar-neutral" x="72" y="275" width="152.6" height="16"/>
+              <text class="c-label-strong" x="352" y="287" text-anchor="end">76.3</text>
+
+              <text class="c-label" x="0" y="363">波动</text>
+              <rect class="c-bar-neutral" x="72" y="351" width="129.6" height="16"/>
+              <text class="c-label-strong" x="352" y="363" text-anchor="end">64.8</text>
+
+              <text class="c-label" x="0" y="439">流动性</text>
+              <rect class="c-bar-neutral" x="72" y="427" width="182.4" height="16"/>
+              <text class="c-label-strong" x="352" y="439" text-anchor="end">91.2</text>
+
+              <text class="c-label" x="0" y="515">广度</text>
+              <rect class="c-bar-neutral-soft" x="72" y="503" width="111.4" height="16"/>
+              <text class="c-label-strong" x="352" y="515" text-anchor="end">55.7</text>
+
+              <text class="c-label" x="0" y="591">事件</text>
+              <rect class="c-bar-neutral" x="72" y="579" width="140" height="16"/>
+              <text class="c-label-strong" x="352" y="591" text-anchor="end">70.0</text>
+
+              <text class="c-label" x="0" y="667">消息评分</text>
+              <rect class="c-bar-neutral" x="72" y="655" width="124" height="16"/>
+              <text class="c-label-strong" x="352" y="667" text-anchor="end">62.0</text>
+
+              <text class="c-label" x="0" y="743">置信度</text>
+              <rect class="c-bar-neutral" x="72" y="731" width="148" height="16"/>
+              <text class="c-label-strong" x="352" y="743" text-anchor="end">74%</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑥ 风险提示 -->
+      <div class="alert alert--danger">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.4 14.4 13.2H1.6L8 2.4Z"/><path d="M8 6.6v3"/><path d="M8 11.6h.01"/></svg>
+        <div class="flex-1">
+          <p class="alert-title">2 只持仓触及单票仓位上限</p>
+          <p class="alert-body">300750 宁德时代 20.4%、601318 中国平安 20.1%（占持仓市值），均超过 20% 上限，下次调仓需减仓。</p>
+        </div>
+        <button class="btn btn--secondary btn--sm" type="button">查看调仓建议 →</button>
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

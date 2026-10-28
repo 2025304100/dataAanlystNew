@@ -1,0 +1,168 @@
+{
+  "generated_at": "2026-10-27T08:02:12.415288+00:00",
+  "state": "validated_waiting_for_natural_completion",
+  "tests_passed": 204,
+  "business_deployment_executed": false,
+  "files": [
+    {
+      "path": "baseline-coverage-test-failure.log",
+      "bytes": 944,
+      "sha256": "f28f457cf79fbaf47689398f2e050d8a8d5aca2dacab1efaa8535a55e327164f"
+    },
+    {
+      "path": "baseline-replay.json",
+      "bytes": 3594,
+      "sha256": "7d2216cd12bbedd56252f3fba2f7f3db4b06694da9b28a2fcacae35d9d7a1b0b"
+    },
+    {
+      "path": "baseline-source-hashes.json",
+      "bytes": 776,
+      "sha256": "0ee227457d6074578e6d9d02d381cfe049b002e6df7616ee4e4012289fbaa40e"
+    },
+    {
+      "path": "business-readonly-after.json",
+      "bytes": 1997,
+      "sha256": "782f5317b041ec2e1bf962c7b52aab931db5af6ecdf7231c1b809f14ef85a3ea"
+    },
+    {
+      "path": "candidate/app/services/capital_flow_data.py",
+      "bytes": 25238,
+      "sha256": "8100a4c7a700b65ebc6645e1c3d35a69bbe48f3926ecc3842e0682c2fb049916"
+    },
+    {
+      "path": "candidate/app/services/capital_flow_history_provider.py",
+      "bytes": 9240,
+      "sha256": "fd8efbd6d47468f6970513768fdc630369062c865081944d363236dd7babdb68"
+    },
+    {
+      "path": "candidate/app/services/external_data_sync_task.py",
+      "bytes": 117832,
+      "sha256": "4ab53fdc1c3008505b6fcb47bd49630e12914f2dbfd75da01c63e0e39aef8065"
+    },
+    {
+      "path": "candidate/scripts/replay_capital_flow_resilience.py",
+      "bytes": 4338,
+      "sha256": "4781ef5311d9d535b5626bd1cdcbb8e1dba03dee006f46c898747a5bf266ef04"
+    },
+    {
+      "path": "candidate/scripts/verify_capital_flow_resilience.py",
+      "bytes": 5034,
+      "sha256": "794fed232a50a3b5699cbc32fa4837584a80feb3cb7491e3d97517d936c45228"
+    },
+    {
+      "path": "candidate/tests/test_capital_flow_resilience_mysql57.py",
+      "bytes": 10272,
+      "sha256": "cbbaff27d3d32b53ec7331bc6b1cf0a092a73a5649719d59529619c011c15083"
+    },
+    {
+      "path": "candidate/tests/test_capital_flow_retry_contract.py",
+      "bytes": 7599,
+      "sha256": "2f97431b0578a89caa7c293aa62c6c9ad0a944385e551b67fcf44a97984a1526"
+    },
+    {
+      "path": "candidate/tests/test_sync_io_optimization.py",
+      "bytes": 22747,
+      "sha256": "743f184c68b1b15d3ce652709f207879daa17621d4b1470e3f8f205d9e7e658a"
+    },
+    {
+      "path": "candidate-replay.json",
+      "bytes": 3703,
+      "sha256": "5b66c6ad957e60063f85667febd3ab822f6297814b668aa4cee656d6bea62ebe"
+    },
+    {
+      "path": "candidate.patch",
+      "bytes": 43519,
+      "sha256": "8115fc654bbf9e04df24ac3cab3ed7f18ea52cada9b394b203bea902c38150f7"
+    },
+    {
+      "path": "combined-rollback-red.log",
+      "bytes": 10628,
+      "sha256": "4b1a97f82069b25445aea0dc1784d5772c50fcd8aa39cf274c55e12c5eae9bf3"
+    },
+    {
+      "path": "deployment-ready.json",
+      "bytes": 4659,
+      "sha256": "ce4c0fb9a39040a4b18c7c1bbfa0c2c58fb39c2b67889bbd2c907201901b0bbf"
+    },
+    {
+      "path": "disable-during-cooldown-red.log",
+      "bytes": 681,
+      "sha256": "b72294337e806554db63f74ff194eac6c8a251b7d2bb452b170c4b065e32e9e3"
+    },
+    {
+      "path": "elapsed-timeout-red.log",
+      "bytes": 742,
+      "sha256": "a1f7a0269279b0fb2be120058a63e815f6b350c3a1fbc2c71934d8cf31f57986"
+    },
+    {
+      "path": "mysql57-result.json",
+      "bytes": 1664,
+      "sha256": "73e41c00198b95510f52943d3f46ff2f071d8881264ef87918017f9661992d12"
+    },
+    {
+      "path": "mysql57.log",
+      "bytes": 111,
+      "sha256": "ad145b9e05ed5dc4b47f06d21c85a393404746837b799ea1dfae1db6143a40ab"
+    },
+    {
+      "path": "mysql57.xml",
+      "bytes": 2685,
+      "sha256": "070c4bbfd9923502a852d5236dbac448afc46718e6a91d6fb399e3f750712863"
+    },
+    {
+      "path": "regression.log",
+      "bytes": 1158,
+      "sha256": "212fd3b7e50275bc0d98d02a38bf8db6c41415e775432cc046e868d88e25b63e"
+    },
+    {
+      "path": "regression.xml",
+      "bytes": 40273,
+      "sha256": "d2fbe240e7e3a8615a5b55cb3233ca2de256d3fd17c05d58d4b91c722ee2c5a4"
+    },
+    {
+      "path": "replay-comparison.json",
+      "bytes": 1614,
+      "sha256": "af6fd77b305bbb131c13f0fbf946ed9b1e3ce1ebb5cbe93fc52c1cbbb56a441c"
+    },
+    {
+      "path": "retry-original-red.log",
+      "bytes": 1194,
+      "sha256": "7b8ed391744448f0985146a2c9b3f0da5511647028d88e08a3db16959ba2e775"
+    },
+    {
+      "path": "rollback-red.log",
+      "bytes": 4886,
+      "sha256": "8a6c67f01567a7a6ae0203faf70946ba44ea360bbc0bf81e3738efa33891d3c9"
+    },
+    {
+      "path": "standalone-contract.log",
+      "bytes": 101,
+      "sha256": "d22c32a5881af2f2788e74aa76b3744fece097b9c056ae9c1c2009a8a9b3268b"
+    },
+    {
+      "path": "standalone-contract.xml",
+      "bytes": 2668,
+      "sha256": "dd11889bdeccfb15b8530fa2ae46ca482ac85bebf9e8b88cfd13364bd6fdf9a7"
+    },
+    {
+      "path": "transaction-original-red.log",
+      "bytes": 1747,
+      "sha256": "10c3dd46577a54afb35f781a89fd70c3fb9428479378b02280a80cf42e0df0a1"
+    },
+    {
+      "path": "transaction-original-red.xml",
+      "bytes": 1199,
+      "sha256": "9aec4854772a1cdbe7e5983d45362036e1b82f4bd9bd99f6949a85a859f9a0c5"
+    },
+    {
+      "path": "verification-result.json",
+      "bytes": 1664,
+      "sha256": "73e41c00198b95510f52943d3f46ff2f071d8881264ef87918017f9661992d12"
+    }
+  ],
+  "report": {
+    "path": "docs/验证报告-资金流事务恢复与重试退避-2026-10-27.md",
+    "sha256": "5e697559bc099996f8b49ff75f11efc019306707ea3cc7b1d74d1c5920eaa68d"
+  },
+  "provenance": "Runtime sources and MySQL tests match full-suite proof; the HTTP fixture-only bootstrap change was independently reverified by the same 17 tests, without increasing total case count."
+}

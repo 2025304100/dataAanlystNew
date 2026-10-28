@@ -76,6 +76,7 @@ plotly>=5,<6
 # fresh environment would have broken it silently. Declared explicitly.
 scipy>=1.13
 scikit-learn>=1.5,<2
+pypdf>=6.21.0,<7        # bounded text extraction from public company/policy PDFs
 
 # --- Universe file import (mining wizard step 1, mode A) ---
 openpyxl>=3.1           # read .xlsx

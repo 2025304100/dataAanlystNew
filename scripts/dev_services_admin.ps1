@@ -79,6 +79,16 @@ Write-Host "Running service $Action with administrator permission..." -Foregroun
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 Write-AdminLog "=== [$timestamp] elevated $Action ==="
 
+# Explicit stop/restart must stop the protected recovery host first; otherwise
+# killing only its children would make the host correctly bring them back.
+$hostRequest = Join-Path $root 'tmp\validation-service-host\task-request.json'
+if (Test-Path -LiteralPath $hostRequest) {
+    & 'C:\Python312\python.exe' (Join-Path $root 'scripts\validation_service_host.py') stop-if-managed
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Protected host refused stop; preserve services and running work'
+    }
+}
+
 function Test-LocalPortOpen {
     param([Parameter(Mandatory = $true)][int]$Port)
     $client = New-Object System.Net.Sockets.TcpClient

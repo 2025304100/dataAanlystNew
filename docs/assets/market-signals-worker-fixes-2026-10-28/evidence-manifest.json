@@ -1,0 +1,396 @@
+{
+  "passed": true,
+  "created_at_utc": "2026-10-28T05:06:24.056479+00:00",
+  "unique_pytest_cases": 315,
+  "applied_recheck_cases": 94,
+  "stages": [
+    {
+      "junit": "main-regression-final.xml",
+      "passed": 93
+    },
+    {
+      "junit": "mysql-final.xml",
+      "passed": 16
+    },
+    {
+      "junit": "legacy-regression.xml",
+      "passed": 206
+    }
+  ],
+  "source_files": [
+    {
+      "path": "app/api/routes/notifications.py",
+      "baseline_sha256": "a680784a94c4f4a5419bc889ea999f630dab0cf939857c5bfef4738c37c355ac",
+      "candidate_sha256": "5633660c16bd3750751d1fff38467eb63a24b009eb39d65ebc77bda4e20ea5f9"
+    },
+    {
+      "path": "app/services/notifications/outbox.py",
+      "baseline_sha256": "91be8e3f66ae948de0f80c1222885450e97f27cbb9d599c0919c21af5a39b37f",
+      "candidate_sha256": "42fc7dbe75cba9b0f4d1b994d973fa2c046c7d1177c2c113c660ebc6da466456"
+    },
+    {
+      "path": "app/services/notifications/dispatcher.py",
+      "baseline_sha256": "28f7ac10647bec98e804cac54eb2077352babbf086acdc4dd27b58c9cc2ad2e9",
+      "candidate_sha256": "06ffabfbeefb31acb70a3c5422188b7c43382169ea4e44e5079ced4a8852f1eb"
+    },
+    {
+      "path": "app/services/market_signal_delivery.py",
+      "baseline_sha256": "a3fe64891eddf13f1cc4d59d7475528fa7b7349d02a5c3f6195a88efa833a043",
+      "candidate_sha256": "94e4099e63eb77b365462546f2d1d42dd0669c28d34dc9f046fcf7306767ccf9"
+    },
+    {
+      "path": "app/services/notifications/delivery_state.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "d3935738deeb4dbabc287b2248eb80d1d6aa66e9246288cf8dfae8a8cdf8551f"
+    },
+    {
+      "path": "tests/test_notification_worker_regressions.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "214b0d196b182615adfaf219ba7cfbe87e39a0af661b3e75baf003a462862a9b"
+    },
+    {
+      "path": "tests/test_notification_worker_mysql57.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "a28f5f9272e28e70c6c9fb573aa337ff8bdc8d2cbc2938dcd43f4738b1578568"
+    },
+    {
+      "path": "tests/offline_notification_regression_worker.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "ca4091055b5763eb76f9ad7af04f60f40ce1ba4b4e9bc273d8ac765980e9411f"
+    }
+  ],
+  "reports": [
+    {
+      "path": "docs/验证报告-行情异动多worker中断与重复推送修复-2026-10-28.md",
+      "sha256": "e48a556cecb5da76acd626585c7f89ab87946a3802062ac159c9259da6c41805"
+    },
+    {
+      "path": "docs/变更记录-行情消息P0-2026-10-25.md",
+      "sha256": "d831e88909c32268ef20079c51cceb868f37c5a4498eabdabe5c1defbfe6915e"
+    },
+    {
+      "path": "docs/使用说明-行情异动提醒-2026-10-27.md",
+      "sha256": "a902f1511302e46aa801c38915e4934652766f77263336d00777c1cbe1f0beb6"
+    },
+    {
+      "path": "docs/验证报告-后端受控重启与行情异动页面验收-2026-10-27.md",
+      "sha256": "6ea82e3b254af915cc0e1df699fb80e560603b847baede922ce411255791ef0e"
+    },
+    {
+      "path": "docs/交付与验证报告-行情异动提醒完整功能-2026-10-27.md",
+      "sha256": "bfa385da579ca3c949bbdd0c7daecbf048255a16000e201d29f0bed66380cdf2"
+    }
+  ],
+  "files": [
+    {
+      "path": "applied-regression.log",
+      "bytes": 937,
+      "sha256": "ff90b11d6f7ae2920cafb44cf912cd9aacba8f0da6893dc2589494fa0e896aae"
+    },
+    {
+      "path": "applied-regression.xml",
+      "bytes": 13703,
+      "sha256": "7bc76fa75f189103cdedc5a6e761c2f9b1ff90255f394ddd74895a5624a7c801"
+    },
+    {
+      "path": "applied-sources/app/api/routes/notifications.py",
+      "bytes": 47778,
+      "sha256": "5633660c16bd3750751d1fff38467eb63a24b009eb39d65ebc77bda4e20ea5f9"
+    },
+    {
+      "path": "applied-sources/app/services/market_signal_delivery.py",
+      "bytes": 18045,
+      "sha256": "94e4099e63eb77b365462546f2d1d42dd0669c28d34dc9f046fcf7306767ccf9"
+    },
+    {
+      "path": "applied-sources/app/services/notifications/delivery_state.py",
+      "bytes": 3403,
+      "sha256": "d3935738deeb4dbabc287b2248eb80d1d6aa66e9246288cf8dfae8a8cdf8551f"
+    },
+    {
+      "path": "applied-sources/app/services/notifications/dispatcher.py",
+      "bytes": 10956,
+      "sha256": "06ffabfbeefb31acb70a3c5422188b7c43382169ea4e44e5079ced4a8852f1eb"
+    },
+    {
+      "path": "applied-sources/app/services/notifications/outbox.py",
+      "bytes": 13004,
+      "sha256": "42fc7dbe75cba9b0f4d1b994d973fa2c046c7d1177c2c113c660ebc6da466456"
+    },
+    {
+      "path": "applied-sources/tests/offline_notification_regression_worker.py",
+      "bytes": 2154,
+      "sha256": "ca4091055b5763eb76f9ad7af04f60f40ce1ba4b4e9bc273d8ac765980e9411f"
+    },
+    {
+      "path": "applied-sources/tests/test_notification_worker_mysql57.py",
+      "bytes": 3626,
+      "sha256": "a28f5f9272e28e70c6c9fb573aa337ff8bdc8d2cbc2938dcd43f4738b1578568"
+    },
+    {
+      "path": "applied-sources/tests/test_notification_worker_regressions.py",
+      "bytes": 24434,
+      "sha256": "214b0d196b182615adfaf219ba7cfbe87e39a0af661b3e75baf003a462862a9b"
+    },
+    {
+      "path": "applied.json",
+      "bytes": 2277,
+      "sha256": "ef22bdaaee3a31d8af37c82bf2ca2c079f16da3527fd823b50905041aee57d52"
+    },
+    {
+      "path": "applied.patch",
+      "bytes": 57144,
+      "sha256": "c24ecf50e3e6cbd8bf962ed8c33cb86625297edf1a13ece316da199ea0f9e263"
+    },
+    {
+      "path": "apply_verified.py",
+      "bytes": 2777,
+      "sha256": "cb8ae4748312a188e898b83ca4e41484ac1d83ad23aa7edef10e1082e8d6dbe9"
+    },
+    {
+      "path": "archive.py",
+      "bytes": 6728,
+      "sha256": "6bc9fc3095341421b694a5f6031f3dfa98887cb47fb27f97d0f6d4e0da083b94"
+    },
+    {
+      "path": "baseline-red.log",
+      "bytes": 6690,
+      "sha256": "976fc0e9dcb27bd8fa0e64d50cb95f693dda86debdd5f3e349b3f6a304e3806f"
+    },
+    {
+      "path": "baseline-red.xml",
+      "bytes": 7172,
+      "sha256": "ca387725f07d9c0f36a2107718264c1bd1c6f29ad8417387983e2996156829d3"
+    },
+    {
+      "path": "business-before.json",
+      "bytes": 5077,
+      "sha256": "154f2c8d48f61aa00614abb3d9a58dc517b14912732a2773f714ce9c4e5b8bf0"
+    },
+    {
+      "path": "business-final.json",
+      "bytes": 6827,
+      "sha256": "a341b8f5f60441138dddbb13eb3bbad3844b995cd539e292dbedcb24a7e0bb4b"
+    },
+    {
+      "path": "closing-check.json",
+      "bytes": 417,
+      "sha256": "0bc6577d5a0634721d965d000b10cc35355254cbb8b5c7c9c21694c94557a571"
+    },
+    {
+      "path": "completion-green.log",
+      "bytes": 610,
+      "sha256": "7bb31f57ad29eb42dd64d7798b22577cbb1d774cdac830d9188f25f1505849da"
+    },
+    {
+      "path": "completion-green.xml",
+      "bytes": 855,
+      "sha256": "64dee0c3841b021e63a1617366f1cfde586b1cde6523821715baa968012f9610"
+    },
+    {
+      "path": "completion-red.log",
+      "bytes": 1721,
+      "sha256": "1b4a3c8dde823eabf00e489e3643f5dbc6ef2af4860917d2f2727f5fd4be1820"
+    },
+    {
+      "path": "completion-red.xml",
+      "bytes": 1426,
+      "sha256": "e9cba644095239031b67190658fca8e8244a7e37d4e8b600ca129280c7699dad"
+    },
+    {
+      "path": "deployment-ready.json",
+      "bytes": 2220,
+      "sha256": "5cdf7db00a6d03f5a77a2fae1f70bca90862e383bb5c688e4d7a031c3ac44abe"
+    },
+    {
+      "path": "final_check.py",
+      "bytes": 2738,
+      "sha256": "832b76bff3db55d70bad73f1710cfdd4bedb94bee2a601ba058a76232f69d532"
+    },
+    {
+      "path": "legacy-regression.log",
+      "bytes": 2012,
+      "sha256": "8bc494810e272cde7bbf3a298058eb49fd7231eeedb0ff8f02a8841b79ac0796"
+    },
+    {
+      "path": "legacy-regression.xml",
+      "bytes": 27741,
+      "sha256": "831619b568e9c4e2023f0b781c27ee17ed8b6e724541cb938ee8a990766aab5e"
+    },
+    {
+      "path": "live-code-backup/app/api/routes/notifications.py",
+      "bytes": 47745,
+      "sha256": "a680784a94c4f4a5419bc889ea999f630dab0cf939857c5bfef4738c37c355ac"
+    },
+    {
+      "path": "live-code-backup/app/services/market_signal_delivery.py",
+      "bytes": 15838,
+      "sha256": "a3fe64891eddf13f1cc4d59d7475528fa7b7349d02a5c3f6195a88efa833a043"
+    },
+    {
+      "path": "live-code-backup/app/services/notifications/dispatcher.py",
+      "bytes": 10917,
+      "sha256": "28f7ac10647bec98e804cac54eb2077352babbf086acdc4dd27b58c9cc2ad2e9"
+    },
+    {
+      "path": "live-code-backup/app/services/notifications/outbox.py",
+      "bytes": 10838,
+      "sha256": "91be8e3f66ae948de0f80c1222885450e97f27cbb9d599c0919c21af5a39b37f"
+    },
+    {
+      "path": "main-regression-final.log",
+      "bytes": 910,
+      "sha256": "2ab6b6d98d92519b2e48a89cc2caa9ac85b7fb593778012919eff0483be45e81"
+    },
+    {
+      "path": "main-regression-final.xml",
+      "bytes": 13569,
+      "sha256": "4967a434c5700ae0b26266431efaba2520a75a4b1232aa731e03c675d56599ca"
+    },
+    {
+      "path": "main-regression.log",
+      "bytes": 2110,
+      "sha256": "237213871829cfe32ab01e0ec1b6b5518ab40c5f38555de9fca335b546553112"
+    },
+    {
+      "path": "main-regression.xml",
+      "bytes": 14535,
+      "sha256": "7152eb28c1e1b8316332f8b58a0e24d7a7c2c37834ca4bc0f10f0c061b00cffc"
+    },
+    {
+      "path": "mysql-final.log",
+      "bytes": 1831,
+      "sha256": "404258f258f5021195f04759d8df1352ab844f518b37e3a6d814efe4cd3ad038"
+    },
+    {
+      "path": "mysql-final.xml",
+      "bytes": 6159,
+      "sha256": "421375008f740ef27e7e50bfa15f6d6a5679c235b6ae7ea179b11a6f5368926e"
+    },
+    {
+      "path": "mysql.log",
+      "bytes": 4806,
+      "sha256": "8f6cb97258e113bdba09fd253c0e17b94e856426374a99e8847eb885979dbb13"
+    },
+    {
+      "path": "mysql.xml",
+      "bytes": 8098,
+      "sha256": "cc72eae74b577fc79534ac9a2f72864f711dfc5b73d943d76fdf0e834e5f2b6f"
+    },
+    {
+      "path": "prepare.py",
+      "bytes": 1748,
+      "sha256": "80b135ce8580cb88a04987a5395ac8173f80261852413eda3fb873c56af5ebe6"
+    },
+    {
+      "path": "prior-reports/交付与验证报告-行情异动提醒完整功能-2026-10-27.md",
+      "bytes": 15378,
+      "sha256": "02346b26087dc2a83ebc17b977d252812f5bf70ec6fb0cd1c6c61d706670d20f"
+    },
+    {
+      "path": "prior-reports/使用说明-行情异动提醒-2026-10-27.md",
+      "bytes": 11993,
+      "sha256": "f03e05a8a7ccfe36769ca31608f03419de735d228af115e758ced3c892e72c8b"
+    },
+    {
+      "path": "prior-reports/变更记录-行情消息P0-2026-10-25.md",
+      "bytes": 15514,
+      "sha256": "364655eefa88976c1a546857dd21b19318428dbfff9ef96e97b535cb3969c2fc"
+    },
+    {
+      "path": "prior-reports/验证报告-后端受控重启与行情异动页面验收-2026-10-27.md",
+      "bytes": 8916,
+      "sha256": "a76107b76fc062b04a2fa3fdf2f025aa6d1acccbe1b2d802bda3d1cc67c6a800"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1287,
+      "sha256": "dd82fd44f8fa46d9bcefffafa8875624752704fa50130599426a29528a50bca4"
+    },
+    {
+      "path": "readonly-ui/backend-rules.png",
+      "bytes": 235861,
+      "sha256": "0b7368062c92103d935b4cc424309e82a492033f067b67a4f054cb4d35f1ea3c"
+    },
+    {
+      "path": "readonly-ui/backend-trace.zip",
+      "bytes": 4366567,
+      "sha256": "b93351f685dc63bd360f52e3dedfab2492e648711ef360ac52a26fb900b09d14"
+    },
+    {
+      "path": "readonly-ui/frontend-rules.png",
+      "bytes": 236057,
+      "sha256": "f1825f35cbfe60f477051c8d78386ac1c2aae60c0e7f7ef50e7d09ac847f5d95"
+    },
+    {
+      "path": "readonly-ui/frontend-trace.zip",
+      "bytes": 3253930,
+      "sha256": "2903bd93d9da146d026da46f510b4b226087b7a39558fc0f5e2b49335e072c47"
+    },
+    {
+      "path": "readonly-ui/result.json",
+      "bytes": 9844,
+      "sha256": "33c7d963c31fedf2a38b19631ef2306aa4148a5241dd9fbd33156cfda9406757"
+    },
+    {
+      "path": "run_mysql.py",
+      "bytes": 1302,
+      "sha256": "eaee9546a5db25299619827aeb88a6e7a11809b545bc9ce35eb3f2863d22fc0e"
+    },
+    {
+      "path": "runtime-restore/after-invariants.json",
+      "bytes": 5077,
+      "sha256": "154f2c8d48f61aa00614abb3d9a58dc517b14912732a2773f714ce9c4e5b8bf0"
+    },
+    {
+      "path": "runtime-restore/before-invariants.json",
+      "bytes": 5077,
+      "sha256": "154f2c8d48f61aa00614abb3d9a58dc517b14912732a2773f714ce9c4e5b8bf0"
+    },
+    {
+      "path": "runtime-restore/restore.json",
+      "bytes": 1059,
+      "sha256": "b3e58f55858c4c0a3a80cdf49ef799883e3ddd92119d17efa89fe3c0fd8fa2eb"
+    },
+    {
+      "path": "source-baseline.json",
+      "bytes": 142570,
+      "sha256": "cda5c62a7cf34f789bc0be84a561ee23e83b06c511c1be90ed7a92e9ac699a6e"
+    },
+    {
+      "path": "verify_readonly_ui.py",
+      "bytes": 4102,
+      "sha256": "0a820a776ac9b24e6f7ea8784347da0cf30b3515fd7254afff37c6b1a24f2101"
+    },
+    {
+      "path": "worker-green.log",
+      "bytes": 3508,
+      "sha256": "af2d46c7212c007b09e277ff2f4396b8d8e5f4b0d2083e466e5909e382be6c1e"
+    },
+    {
+      "path": "worker-green.xml",
+      "bytes": 3772,
+      "sha256": "ba977d477bcc98081567c39acab16c96d9fc52ab81cc6fce689cb23163da2ca2"
+    },
+    {
+      "path": "wr01-green.log",
+      "bytes": 604,
+      "sha256": "62881b1f507fb580be04e10e87b6b669efa044f84f5b2259e0cddb766d211c24"
+    },
+    {
+      "path": "wr01-green.xml",
+      "bytes": 586,
+      "sha256": "1837e1f536972a97c98e93bdbb0f8a4c30117fa5a95fb654ccbdf995458e2314"
+    },
+    {
+      "path": "wr02-green.log",
+      "bytes": 603,
+      "sha256": "72c11c30e515732f941e47e3ed2533a94c80c1d75f2cd57f2bf4280793e22201"
+    },
+    {
+      "path": "wr02-green.xml",
+      "bytes": 1161,
+      "sha256": "734eae9ffcc68aa5894d8535f3c45cb9deff6e1024f632da7ea8500cc0939b81"
+    }
+  ]
+}

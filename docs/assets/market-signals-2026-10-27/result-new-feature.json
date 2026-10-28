@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "name": "signals-mysql57",
+      "exit_code": 0,
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": true
+    },
+    {
+      "name": "signals-browser",
+      "exit_code": 0,
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": true
+    }
+  ],
+  "schemas_retained": {
+    "mysql": "codex_market_sig271006_mysql",
+    "e2e": "codex_market_sig271006_e2e"
+  },
+  "configured_business_database_selected": false,
+  "third_party_recipients": false
+}

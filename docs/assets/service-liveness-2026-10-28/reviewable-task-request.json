@@ -1,0 +1,7 @@
+{
+  "task_name": "ValidationServices-862a64183494",
+  "description": "dataAanlystNew protected validation host v1 | D:\\ai_project\\dataAanlystNew",
+  "executable": "C:\\Python312\\pythonw.exe",
+  "arguments": "D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py host",
+  "xml": "<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\" version=\"1.4\"><RegistrationInfo><Description>dataAanlystNew protected validation host v1 | D:\\ai_project\\dataAanlystNew</Description></RegistrationInfo><Triggers /><Principals><Principal id=\"Owner\"><UserId>CURRENT_USER</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><StartWhenAvailable>false</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>true</Hidden><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><RestartOnFailure><Interval>PT1M</Interval><Count>3</Count></RestartOnFailure></Settings><Actions Context=\"Owner\"><Exec><Command>C:\\Python312\\pythonw.exe</Command><Arguments>D:\\ai_project\\dataAanlystNew\\scripts\\validation_service_host.py host</Arguments><WorkingDirectory>D:\\ai_project\\dataAanlystNew</WorkingDirectory></Exec></Actions></Task>"
+}

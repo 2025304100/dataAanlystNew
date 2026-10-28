@@ -1,0 +1,41 @@
+{
+  "record": {
+    "name": "frontend",
+    "pid": 48592,
+    "port": 5173,
+    "mode": "vite",
+    "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+    "command": [
+      "node",
+      "./node_modules/vite/bin/vite.js",
+      "--config",
+      "vite.codex.config.ts",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "5173"
+    ],
+    "started_at": "2026-10-27 20:01:37",
+    "stdout_log": "D:\\ai_project\\dataAanlystNew\\tmp\\dev-services\\frontend.out.log",
+    "stderr_log": "D:\\ai_project\\dataAanlystNew\\tmp\\dev-services\\frontend.err.log"
+  },
+  "listeners": [
+    {
+      "pid": 48592,
+      "created": 1793102496.4641805,
+      "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+      "exe": "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+      "command": [
+        "node",
+        "./node_modules/vite/bin/vite.js",
+        "--config",
+        "vite.codex.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5173"
+      ]
+    }
+  ],
+  "observed_at_utc": "2026-10-27T12:14:04.344330+00:00"
+}

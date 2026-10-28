@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="6.228" timestamp="2026-10-27T20:09:46.447045+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.test_capital_flow_guard_integration" name="test_supplier_cooldown_rejects_history_before_io_and_preserves_recovery" time="1.227"><failure message="app.services.capital_flow_data.FundFlowProviderError: 600000: SupplierCoolingDown: supplier stock_individual_fund_flow cooling down, retry after 240s">app\services\capital_flow_data.py:105: in _fetch_individual_fund_flow_history
+    df = call_akshare_with_retry(fetch_capital_flow_history, stock=code, market=market, api_key="stock_individual_fund_flow", db=db, max_attempts=1)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\akshare_utils.py:288: in call_akshare_with_retry
+    ensure_available(api_key)
+app\services\akshare_guard.py:198: in ensure_available
+    raise SupplierCoolingDown(api_key, state.open_until - now)
+E   app.services.akshare_guard.SupplierCoolingDown: supplier stock_individual_fund_flow cooling down, retry after 240s
+
+The above exception was the direct cause of the following exception:
+tests\test_capital_flow_guard_integration.py:33: in test_supplier_cooldown_rejects_history_before_io_and_preserves_recovery
+    sync_symbol_capital_flow_range(db_session, symbol, start_date=date(2026, 10, 26),
+app\services\capital_flow_data.py:274: in sync_symbol_capital_flow_range
+    rows = _fetch_individual_fund_flow_history(
+app\services\capital_flow_data.py:135: in _fetch_individual_fund_flow_history
+    raise FundFlowProviderError(
+E   app.services.capital_flow_data.FundFlowProviderError: 600000: SupplierCoolingDown: supplier stock_individual_fund_flow cooling down, retry after 240s</failure></testcase></testsuite></testsuites>

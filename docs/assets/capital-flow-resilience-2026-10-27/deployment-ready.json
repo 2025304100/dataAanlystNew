@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "passed": true,
+  "state": "validated_waiting_for_natural_completion",
+  "validated_at_utc": "2026-10-27T08:00:54.088350+00:00",
+  "business_task_id": "aa250d8c3fb7419bad5492bd78b46079",
+  "deployment_executed": false,
+  "model_calls": 0,
+  "notification_sends": 0,
+  "tests": {
+    "regression": {
+      "stage": "regression",
+      "exit_code": 0,
+      "passed": true,
+      "tests": 198,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "mysql57": {
+      "stage": "mysql",
+      "exit_code": 0,
+      "passed": true,
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "total_passed": 204,
+    "external_supplier_probes_excluded": 3,
+    "supplemental_contract": {
+      "tests": 17,
+      "passed": true,
+      "counted_again": false,
+      "reason": "Make the HTTP fixture initialize requests hardening before transport replacement; reverified the same 17 assertions independently"
+    }
+  },
+  "files": [
+    {
+      "path": "app/services/capital_flow_history_provider.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/app/services/capital_flow_history_provider.py",
+      "baseline_sha256": "49ff9b593c776af6f520f13f5c79e6960d777f37d810c99dc647950e0a34c216",
+      "candidate_sha256": "fd8efbd6d47468f6970513768fdc630369062c865081944d363236dd7babdb68"
+    },
+    {
+      "path": "app/services/capital_flow_data.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/app/services/capital_flow_data.py",
+      "baseline_sha256": "2cebf51406e166649250a9112594b9b1586795b0608fe9062f43c9888629cf6e",
+      "candidate_sha256": "8100a4c7a700b65ebc6645e1c3d35a69bbe48f3926ecc3842e0682c2fb049916"
+    },
+    {
+      "path": "app/services/external_data_sync_task.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/app/services/external_data_sync_task.py",
+      "baseline_sha256": "0ffb9ce37c8a20e0eb5ff842b512700acc8fcb538645e2ebb45509429a649a4b",
+      "candidate_sha256": "4ab53fdc1c3008505b6fcb47bd49630e12914f2dbfd75da01c63e0e39aef8065"
+    },
+    {
+      "path": "tests/test_capital_flow_retry_contract.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/tests/test_capital_flow_retry_contract.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "2f97431b0578a89caa7c293aa62c6c9ad0a944385e551b67fcf44a97984a1526"
+    },
+    {
+      "path": "tests/test_capital_flow_resilience_mysql57.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/tests/test_capital_flow_resilience_mysql57.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "cbbaff27d3d32b53ec7331bc6b1cf0a092a73a5649719d59529619c011c15083"
+    },
+    {
+      "path": "tests/test_sync_io_optimization.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/tests/test_sync_io_optimization.py",
+      "baseline_sha256": "28b721fb79ae3cf771ab4ba28f4465477a0eca07c9f9afb7c7a751c80ac969d3",
+      "candidate_sha256": "743f184c68b1b15d3ce652709f207879daa17621d4b1470e3f8f205d9e7e658a"
+    },
+    {
+      "path": "scripts/replay_capital_flow_resilience.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/scripts/replay_capital_flow_resilience.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "4781ef5311d9d535b5626bd1cdcbb8e1dba03dee006f46c898747a5bf266ef04"
+    },
+    {
+      "path": "scripts/verify_capital_flow_resilience.py",
+      "candidate_path": "docs/assets/capital-flow-resilience-2026-10-27/candidate/scripts/verify_capital_flow_resilience.py",
+      "baseline_sha256": null,
+      "candidate_sha256": "794fed232a50a3b5699cbc32fa4837584a80feb3cb7491e3d97517d936c45228"
+    }
+  ],
+  "dependency_baselines": {
+    "app/services/akshare_utils.py": "5bb9a4915d0514a7b0e3e8edc356809f05074a3cce5c58f4a1f7f8b18acccb71",
+    "app/services/akshare_registry.py": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d"
+  },
+  "required_conditions": [
+    "Original sync task naturally terminal; no cancel or kill while running",
+    "No active_async, active_discovery or sending notification",
+    "All live baseline and candidate hashes match; merge and reverify any conflict",
+    "Apply only listed files; run related regression before restarting",
+    "Restart verified project backend in APP_VALIDATION_MODE=1; retain DB0092/data",
+    "Do not retry business failed partitions, invoke models or send notifications automatically"
+  ]
+}

@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>持仓成员 · 量化工作台</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<script src="assets/proto.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== 侧栏 ===================== -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <span class="side-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11.5 6 6l3 3.2L14 4"/><path d="M14 4h-3.2M14 4v3.2"/></svg>
+      </span>
+      <span class="side-brand-text">
+        <span class="side-brand-title">量化工作台</span>
+        <span class="side-brand-sub">QUANT WORKBENCH</span>
+      </span>
+    </div>
+
+    <nav class="side-nav" aria-label="主导航">
+      <a class="side-item" href="01-decision.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="side-label">今日决策</span>
+      </a>
+      <a class="side-item is-active" href="02-portfolio-overview.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="5" width="12.4" height="8.2" rx="1.4"/><path d="M5.8 5V3.8c0-.6.5-1.1 1.1-1.1h2.2c.6 0 1.1.5 1.1 1.1V5"/><path d="M1.8 8.6h12.4"/></svg>
+        <span class="side-label">组合交易</span>
+      </a>
+      <a class="side-item" href="07-opportunity.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.5 3.6 8.9h3.4l-.8 5.6 5.2-7.4H8l.8-5.6Z"/></svg>
+        <span class="side-label">机会中心</span>
+      </a>
+      <a class="side-item" href="09-macro.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 13.4h11.6"/><path d="M4.6 13.4V8.6"/><path d="M8 13.4V4.2"/><path d="M11.4 13.4v-3.2"/></svg>
+        <span class="side-label">宏观数据</span>
+      </a>
+      <a class="side-item" href="10-news.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 8.8h2.4l1.6-4.6 2.6 8 1.6-4.2h2.4"/></svg>
+        <span class="side-label">行情消息</span>
+      </a>
+      <a class="side-item" href="11-settings.html">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h5.2"/><path d="M11.2 5H14"/><circle cx="9.2" cy="5" r="1.6"/><path d="M2 11h2.8"/><path d="M8.8 11H14"/><circle cx="6.8" cy="11" r="1.6"/></svg>
+        <span class="side-label">设置</span>
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="side-foot-dot" aria-hidden="true"></span>
+      <span class="side-foot-text">v0.1 · 本地环境</span>
+    </div>
+  </aside>
+
+  <!-- ===================== 主区 ===================== -->
+  <div class="main">
+
+    <header class="topbar">
+      <nav class="crumb" aria-label="面包屑">
+        <a href="01-decision.html">量化工作台</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <a href="02-portfolio-overview.html">组合交易</a>
+        <span class="crumb-sep" aria-hidden="true">›</span>
+        <span class="crumb-current">持仓成员</span>
+      </nav>
+
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="搜索">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        </button>
+        <button class="icon-btn" type="button" aria-label="通知">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.6a3.8 3.8 0 0 1 7.6 0c0 3 1.2 4.2 1.2 4.2H3s1.2-1.2 1.2-4.2Z"/><path d="M6.6 12.6a1.6 1.6 0 0 0 2.8 0"/></svg>
+          <span class="icon-dot" aria-hidden="true"></span>
+        </button>
+        <button class="icon-btn" type="button" aria-label="帮助">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.4 6.2a1.7 1.7 0 1 1 2.2 1.9c-.4.2-.6.5-.6.9v.3"/><path d="M8 11.8h.01"/></svg>
+        </button>
+        <span class="divider-v" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn--ai" type="button" aria-label="AI 助手">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 9.4 6 13.2 7.4 9.4 8.8 8 12.6 6.6 8.8 2.8 7.4 6.6 6 8 2.2Z"/></svg>
+          <span class="ai-badge">AI</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 页头 -->
+      <div class="page-head">
+        <div>
+          <p class="page-kicker">组合交易 · PORTFOLIO</p>
+          <h1 class="page-title">持仓成员</h1>
+          <p class="page-sub">7 只持仓 · 持仓市值 ¥929,295 · 3 只偏离目标超过 3 个百分点</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn--secondary" type="button">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v7.2"/><path d="M4.8 6.6 8 9.8l3.2-3.2"/><path d="M2.6 12.4h10.8"/></svg>
+            导出
+          </button>
+          <button class="btn btn--primary" type="button">新增成员</button>
+        </div>
+      </div>
+
+      <!-- 二级 Tab -->
+      <nav class="tabs2" aria-label="组合交易二级导航">
+        <a class="tab2" href="02-portfolio-overview.html">总览</a>
+        <a class="tab2 is-active" href="03-portfolio-members.html">持仓成员</a>
+        <a class="tab2" href="04-portfolio-strategy.html">策略规则</a>
+        <a class="tab2" href="05-portfolio-backtest.html">回测中心</a>
+        <a class="tab2" href="06-portfolio-governance.html">检查与对账</a>
+      </nav>
+
+      <!-- ① 提示 -->
+      <div class="alert alert--warn mb-16">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6 14.4 13.4H1.6L8 2.6Z"/><path d="M8 6.6v3.2"/><path d="M8 11.8h.01"/></svg>
+        <div class="flex-1">
+          <p class="alert-title">3 只标的偏离目标超过 3 个百分点</p>
+          <p class="alert-body">宁德时代超配 3.9%，招商银行低配 3.2%，紫金矿业低配 3.3%，建议再平衡。</p>
+        </div>
+        <button class="btn btn--secondary btn--sm" type="button">一键生成调仓建议</button>
+      </div>
+
+      <!-- ② 筛选条 -->
+      <div class="filter-bar">
+        <div class="field filter-grow">
+          <label for="f-keyword">搜索</label>
+          <input class="input" id="f-keyword" type="text" placeholder="搜索代码或名称">
+        </div>
+        <div class="field">
+          <label for="f-status">状态</label>
+          <div class="select-wrap">
+            <select class="input select" id="f-status">
+              <option>全部状态</option>
+              <option>盈利</option>
+              <option>亏损</option>
+              <option>超配</option>
+              <option>低配</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-sort">排序</label>
+          <div class="select-wrap">
+            <select class="input select" id="f-sort">
+              <option>按市值降序</option>
+              <option>按盈亏降序</option>
+              <option>按占比降序</option>
+            </select>
+            <svg class="select-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5 8 10.5l4-4"/></svg>
+          </div>
+        </div>
+        <div class="filter-end">
+          <button class="btn btn--ghost btn--sm" type="button">重置</button>
+        </div>
+      </div>
+
+      <!-- ③ 持仓表 -->
+      <section class="card card--flush mb-16">
+        <div class="card-head">
+          <div class="row gap-8">
+            <h2 class="card-title">持仓明细</h2>
+            <span class="card-sub">7 只持仓 · 含 3 条清仓记录</span>
+          </div>
+          <span class="muted">最后同步 2026-10-27 15:02</span>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th class="col-sticky">代码</th>
+                <th>名称</th>
+                <th class="num">现价</th>
+                <th class="num">成本价</th>
+                <th class="num">持仓量</th>
+                <th class="num">市值</th>
+                <th class="num">实际占比</th>
+                <th class="num">目标占比</th>
+                <th class="num">偏离</th>
+                <th class="num">浮动盈亏</th>
+                <th class="num">盈亏比例</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-sticky mono">600519</td>
+                <td>贵州茅台</td>
+                <td class="num">1,685.00</td>
+                <td class="num">1,520.40</td>
+                <td class="num">200</td>
+                <td class="num">337,000</td>
+                <td class="num">26.2%</td>
+                <td class="num">25.0%</td>
+                <td class="num val-up">+1.2</td>
+                <td class="num val-up">+32,920</td>
+                <td class="num val-up">+10.83%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr class="is-selected">
+                <td class="col-sticky mono">300750</td>
+                <td>宁德时代</td>
+                <td class="num">238.50</td>
+                <td class="num">196.80</td>
+                <td class="num">750</td>
+                <td class="num">178,875</td>
+                <td class="num">13.9%</td>
+                <td class="num">10.0%</td>
+                <td class="num val-up">+3.9</td>
+                <td class="num val-up">+31,275</td>
+                <td class="num val-up">+21.19%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">601318</td>
+                <td>中国平安</td>
+                <td class="num">52.30</td>
+                <td class="num">48.60</td>
+                <td class="num">3,400</td>
+                <td class="num">177,820</td>
+                <td class="num">13.8%</td>
+                <td class="num">15.0%</td>
+                <td class="num val-down">-1.2</td>
+                <td class="num val-up">+12,580</td>
+                <td class="num val-up">+7.61%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">600036</td>
+                <td>招商银行</td>
+                <td class="num">38.75</td>
+                <td class="num">41.20</td>
+                <td class="num">2,600</td>
+                <td class="num">100,750</td>
+                <td class="num">7.8%</td>
+                <td class="num">11.0%</td>
+                <td class="num val-down">-3.2</td>
+                <td class="num val-down">-6,370</td>
+                <td class="num val-down">-5.95%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">601899</td>
+                <td>紫金矿业</td>
+                <td class="num">18.42</td>
+                <td class="num">15.30</td>
+                <td class="num">4,000</td>
+                <td class="num">73,680</td>
+                <td class="num">5.7%</td>
+                <td class="num">9.0%</td>
+                <td class="num val-down">-3.3</td>
+                <td class="num val-up">+12,480</td>
+                <td class="num val-up">+20.39%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">002415</td>
+                <td>海康威视</td>
+                <td class="num">31.60</td>
+                <td class="num">34.85</td>
+                <td class="num">1,500</td>
+                <td class="num">47,400</td>
+                <td class="num">3.7%</td>
+                <td class="num">5.0%</td>
+                <td class="num val-down">-1.3</td>
+                <td class="num val-down">-4,875</td>
+                <td class="num val-down">-9.33%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">600276</td>
+                <td>恒瑞医药</td>
+                <td class="num">45.90</td>
+                <td class="num">45.90</td>
+                <td class="num">300</td>
+                <td class="num">13,770</td>
+                <td class="num">1.1%</td>
+                <td class="num">0.0%</td>
+                <td class="num val-up">+1.1</td>
+                <td class="num val-flat">0</td>
+                <td class="num val-flat">0.00%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">详情</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">000858</td>
+                <td>五粮液 <span class="pill pill--blocked">已清仓</span></td>
+                <td class="num">128.60</td>
+                <td class="num">132.60</td>
+                <td class="num">0</td>
+                <td class="num">0</td>
+                <td class="num">0.0%</td>
+                <td class="num">0.0%</td>
+                <td class="num val-flat">0.0</td>
+                <td class="num val-flat">0</td>
+                <td class="num val-flat">0.00%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">重新买入</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">002594</td>
+                <td>比亚迪 <span class="pill pill--blocked">已清仓</span></td>
+                <td class="num">248.30</td>
+                <td class="num">256.10</td>
+                <td class="num">0</td>
+                <td class="num">0</td>
+                <td class="num">0.0%</td>
+                <td class="num">0.0%</td>
+                <td class="num val-flat">0.0</td>
+                <td class="num val-flat">0</td>
+                <td class="num val-flat">0.00%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">重新买入</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky mono">000651</td>
+                <td>格力电器 <span class="pill pill--blocked">已清仓</span></td>
+                <td class="num">42.15</td>
+                <td class="num">39.80</td>
+                <td class="num">0</td>
+                <td class="num">0</td>
+                <td class="num">0.0%</td>
+                <td class="num">0.0%</td>
+                <td class="num val-flat">0.0</td>
+                <td class="num val-flat">0</td>
+                <td class="num val-flat">0.00%</td>
+                <td><button class="btn btn--ghost btn--sm" type="button">重新买入</button></td>
+              </tr>
+              <tr>
+                <td class="col-sticky cell-strong">合计</td>
+                <td class="cell-strong">7 只持仓</td>
+                <td class="num"></td>
+                <td class="num"></td>
+                <td class="num"></td>
+                <td class="num cell-strong">929,295</td>
+                <td class="num cell-strong">72.3%</td>
+                <td class="num cell-strong">75.0%</td>
+                <td class="num cell-strong val-down">-2.7</td>
+                <td class="num cell-strong val-up">+78,010</td>
+                <td class="num cell-strong val-up">+9.16%</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ④ 底部两列 -->
+      <div class="grid">
+
+        <section class="card col-6">
+          <div class="card-head">
+            <div class="row gap-8">
+              <h2 class="card-title">仓位集中度</h2>
+              <span class="card-sub">占净值比 · 虚线为规则上限</span>
+            </div>
+          </div>
+          <div class="card-body">
+
+            <div class="row between mb-8">
+              <span class="muted">单票最大 · 600519 贵州茅台</span>
+              <span class="row gap-8">
+                <span class="muted">上限 35%</span>
+                <span class="num mono">26.2%</span>
+              </span>
+            </div>
+            <div class="chart-body mb-16">
+              <svg viewBox="0 0 400 16" role="img" aria-label="单票集中度 26.2%，规则上限 35%">
+                <rect class="c-area-1" x="0" y="2" width="400" height="12"/>
+                <rect class="c-bar-neutral" x="0" y="2" width="105" height="12"/>
+                <line class="c-axis" x1="140" y1="0" x2="140" y2="16" stroke-dasharray="3 3"/>
+              </svg>
+            </div>
+
+            <div class="row between mb-8">
+              <span class="muted">行业最大 · 食品饮料</span>
+              <span class="row gap-8">
+                <span class="muted">上限 40%</span>
+                <span class="num mono">26.2%</span>
+              </span>
+            </div>
+            <div class="chart-body mb-16">
+              <svg viewBox="0 0 400 16" role="img" aria-label="行业集中度 26.2%，规则上限 40%">
+                <rect class="c-area-1" x="0" y="2" width="400" height="12"/>
+                <rect class="c-bar-neutral" x="0" y="2" width="105" height="12"/>
+                <line class="c-axis" x1="160" y1="0" x2="160" y2="16" stroke-dasharray="3 3"/>
+              </svg>
+            </div>
+
+            <div class="row between mb-8">
+              <span class="muted">前五大合计</span>
+              <span class="row gap-8">
+                <span class="muted">—</span>
+                <span class="num mono">67.4%</span>
+              </span>
+            </div>
+            <div class="chart-body">
+              <svg viewBox="0 0 400 16" role="img" aria-label="前五大持仓合计 67.4%">
+                <rect class="c-area-1" x="0" y="2" width="400" height="12"/>
+                <rect class="c-bar-neutral" x="0" y="2" width="270" height="12"/>
+              </svg>
+            </div>
+
+            <p class="muted mt-16">灰色进度条为当前占净值比，虚线为规则上限；触及任一上限将暂停自动推演。</p>
+          </div>
+        </section>
+
+        <section class="card col-6">
+          <div class="card-head">
+            <h2 class="card-title">再平衡建议</h2>
+            <span class="card-sub">按目标占比测算</span>
+          </div>
+          <div class="card-body">
+            <div class="row between">
+              <span><span class="mono">300750</span> 宁德时代</span>
+              <span class="mono">减仓 3.9% ≈ 50,100 元</span>
+            </div>
+            <hr class="hr">
+            <div class="row between">
+              <span><span class="mono">600036</span> 招商银行</span>
+              <span class="mono">加仓 3.2% ≈ 41,100 元</span>
+            </div>
+            <hr class="hr">
+            <div class="row between">
+              <span><span class="mono">601899</span> 紫金矿业</span>
+              <span class="mono">加仓 3.3% ≈ 42,400 元</span>
+            </div>
+            <hr class="hr">
+            <div class="row between">
+              <span class="text-2">调仓后可用现金</span>
+              <span class="mono">322,000 元</span>
+            </div>
+            <p class="muted mt-16">按 2026-10-27 收盘价测算，未计入佣金与印花税；单笔委托不超过 50 万元。</p>
+            <div class="mt-16">
+              <button class="btn btn--primary" type="button">生成调仓单</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+    </div><!-- /.content -->
+  </div><!-- /.main -->
+</div><!-- /.app -->
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "actual_delivery_day_False": {
+    "expected_day": "2026-10-27",
+    "stored_budget_day": "2026-10-27",
+    "second_created": 0,
+    "second_preflight": null,
+    "actual_transport_calls": 0
+  },
+  "actual_delivery_day_True": {
+    "expected_day": "2026-10-28",
+    "stored_budget_day": "2026-10-28",
+    "second_created": 0,
+    "second_preflight": null,
+    "actual_transport_calls": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "outcomes": [
+    {
+      "name": "mysql57-migration",
+      "exit_code": 0,
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": true
+    }
+  ],
+  "schemas_retained": {
+    "migration": "codex_market_sigold271004_migration",
+    "compensation": "codex_market_sigold271004_compensation",
+    "fresh": "codex_market_sigold271004_fresh"
+  }
+}

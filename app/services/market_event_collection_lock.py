@@ -20,12 +20,13 @@ class MarketEventCollectionBusy(RuntimeError):
 
 
 @contextmanager
-def market_event_write_lock(db):
+def market_event_write_lock(db, *, namespace="market-events"):
     bind = db.get_bind()
     engine = getattr(bind, "engine", bind)
     dialect = engine.dialect.name
     if dialect == "mysql":
-        name = "market-events:" + hashlib.sha256((engine.url.database or "").encode()).hexdigest()[:48]
+        # MySQL 5.7 limits user lock names to 64 characters, including namespace.
+        name = namespace + ":" + hashlib.sha256((engine.url.database or "").encode()).hexdigest()[:min(48, 63-len(namespace))]
         # Keep ownership separate from Session.commit(), which can return its
         # own connection to the pool before the lock is released.
         with engine.connect() as connection:
@@ -48,10 +49,10 @@ def market_event_write_lock(db):
 
     database = engine.url.database
     if database and database != ":memory:":
-        lock_path = Path(str(Path(database).resolve()) + ".market-events.lock")
+        lock_path = Path(str(Path(database).resolve()) + f".{namespace}.lock")
     else:
         # Independent in-memory engines cannot share data across processes.
-        lock_path = Path(tempfile.gettempdir()) / f"market-events-{os.getpid()}-{id(engine)}.lock"
+        lock_path = Path(tempfile.gettempdir()) / f"{namespace}-{os.getpid()}-{id(engine)}.lock"
     with lock_path.open("a+b") as handle:
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:

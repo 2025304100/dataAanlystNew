@@ -14,7 +14,6 @@ project_memory 硬约束：
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import time
@@ -38,8 +37,10 @@ from app.services.notifications.outbox import (
     mark_failed,
     mark_sending,
     mark_sent,
+    hold_for_review,
 )
 from app.services.notifications.registry import get_adapter
+from app.services.notifications.delivery_state import freeze_for_transport
 from app.utils.secret_mask import decrypt_config
 
 
@@ -124,13 +125,34 @@ class Dispatcher:
         if marked is None:
             return False
         outbox = marked
+        claimed_id, generation, source_type = outbox.id, outbox.attempt_count, outbox.source_type
+
+        def fail(**values):
+            return mark_failed(db, outbox_id=claimed_id, expected_attempt_count=generation, **values)
+
+        if outbox.source_type == "market_signal":
+            from app.services.market_signal_delivery import prepare_notification, suppress_outbox
+            from app.services.market_event_collection_lock import MarketEventCollectionBusy
+            try:
+                allowed = prepare_notification(db, outbox)
+            except MarketEventCollectionBusy:
+                fail(error_code="rate_limited",
+                    error_message="行情提醒正在检查额度，请稍后重试")
+                return True
+            except Exception:
+                db.rollback()
+                logger.exception("行情提醒发送前检查失败，尚未调用运输适配器")
+                fail(error_code="rate_limited",
+                    error_message="发送前校验暂不可用，尚未发送，将重试")
+                return True
+            if not allowed:
+                suppress_outbox(db, outbox, expected_attempt_count=generation)
+                return True
 
         # 2. 获取渠道
         channel = db.get(NotificationChannel, outbox.channel_id)
         if channel is None:
-            mark_failed(
-                db,
-                outbox_id=outbox.id,
+            fail(
                 error_code="channel_not_found",
                 error_message=f"渠道 ID={outbox.channel_id} 不存在",
             )
@@ -138,9 +160,7 @@ class Dispatcher:
 
         # 3. 检查渠道是否启用
         if not channel.enabled or channel.status in ("disabled", "unconfigured"):
-            mark_failed(
-                db,
-                outbox_id=outbox.id,
+            fail(
                 error_code="channel_disabled",
                 error_message=f"渠道 {channel.name} 未启用",
             )
@@ -149,9 +169,7 @@ class Dispatcher:
         # 4. 获取适配器
         adapter = get_adapter(channel.channel_type)
         if adapter is None:
-            mark_failed(
-                db,
-                outbox_id=outbox.id,
+            fail(
                 error_code="adapter_not_found",
                 error_message=f"无 {channel.channel_type} 适配器",
             )
@@ -167,29 +185,18 @@ class Dispatcher:
         except Exception:
             config = {}
 
-        # 6. 解析 payload（容错：解析失败用空字典）
-        try:
-            payload = (
-                json.loads(outbox.payload_json) if outbox.payload_json else {}
-            )
-        except Exception:
-            payload = {}
+        # Persist exact transport content before the first possible side effect.
+        payload = freeze_for_transport(db, outbox_id=claimed_id,
+            expected_attempt_count=generation, channel_type=channel.channel_type)
+        if payload is None:
+            return True
 
         title = payload.get("title", "")
         body = payload.get("body", "")
         body_text = payload.get("body_text")
 
-        if channel.channel_type == "webhook":
-            # Stable across adapter retries, dispatcher restarts and manual
-            # retry of this Outbox. New rows/channels get different identities.
-            # Hash the namespace/event data so headers expose no business key.
-            identity = [db.get_bind().engine.url.database, outbox.id, outbox.channel_id,
-                        outbox.event_key, outbox.created_at.isoformat()]
-            digest = hashlib.sha256(json.dumps(identity, ensure_ascii=True,
-                separators=(",", ":")).encode("utf-8")).hexdigest()
-            payload = {**payload, "_notification_idempotency_key": f"notify-v1-{digest}"}
-
-        # 7. 发送
+        # Only transport exceptions may enter transport retry. A successful
+        # response followed by any storage error must remain owned for review.
         start_time = time.time()
         try:
             result = adapter.send_message(
@@ -201,12 +208,19 @@ class Dispatcher:
             )
             duration_ms = int((time.time() - start_time) * 1000)
 
-            if result.success:
-                # 8. 成功：记录 delivery + 标记 sent
+        except Exception as exc:
+            duration_ms = int((time.time() - start_time) * 1000)
+            error_code, error_message = adapter.normalize_error(exc)
+            fail(error_code=error_code, error_message=error_message, duration_ms=duration_ms, transport_started=True)
+            logger.exception(f"Outbox id={claimed_id} 适配器异常")
+            return True
+
+        if result.success:
+            try:
                 delivery = NotificationDelivery(
-                    outbox_id=outbox.id,
+                    outbox_id=claimed_id,
                     channel_id=outbox.channel_id,
-                    attempt_number=outbox.attempt_count + 1,
+                    attempt_number=generation + 1,
                     status="success",
                     status_code=result.status_code,
                     response_summary=(
@@ -220,14 +234,34 @@ class Dispatcher:
                     sent_at=_now_utc_naive(),
                     created_at=_now_utc_naive(),
                 )
-                mark_sent(db, outbox_id=outbox.id, delivery=delivery)
-                logger.debug(f"Outbox id={outbox.id} 发送成功")
-            else:
+                completed = mark_sent(db, outbox_id=claimed_id, delivery=delivery)
+            except Exception:
+                db.rollback()
+                logger.exception("通知已返回成功，回执记账异常；禁止自动重发")
+                try:
+                    hold_for_review(db, outbox_id=claimed_id, expected_attempt_count=generation,
+                        error_code="delivery_receipt_review_required",
+                        error_message="发送返回成功，回执记账待核对，禁止自动重发")
+                except Exception:
+                    db.rollback()
+                    logger.exception("回执核对标记暂不可写；保留sending，不自动重发")
+                return True
+            if completed:
+                if source_type == "market_signal":
+                    # Notification success is final even if its analytics
+                    # callback fails. Never resend after an analytics failure.
+                    try:
+                        from app.services.market_signal_delivery import record_delivery
+                        record_delivery(db, outbox)
+                    except Exception:
+                        db.rollback()
+                        logger.exception("行情提醒已发送，结果记录将在下轮对账恢复")
+                logger.debug(f"Outbox id={claimed_id} 发送成功")
+        else:
                 # 9. 失败：判断错误类型（鉴权失败 / 临时错误）
                 is_auth = _is_auth_error(result.error_code, result.status_code)
-                mark_failed(
-                    db,
-                    outbox_id=outbox.id,
+                fail(
+                    transport_started=True,
                     error_code=result.error_code,
                     error_message=result.error_message,
                     status_code=result.status_code,
@@ -236,21 +270,9 @@ class Dispatcher:
                     is_auth_fail=is_auth,
                 )
                 logger.warning(
-                    f"Outbox id={outbox.id} 发送失败："
+                    f"Outbox id={claimed_id} 发送失败："
                     f"{sanitize_message(result.error_message or '')}"
                 )
-        except Exception as exc:
-            # 适配器异常：归一化错误并标记失败
-            duration_ms = int((time.time() - start_time) * 1000)
-            error_code, error_message = adapter.normalize_error(exc)
-            mark_failed(
-                db,
-                outbox_id=outbox.id,
-                error_code=error_code,
-                error_message=error_message,
-                duration_ms=duration_ms,
-            )
-            logger.exception(f"Outbox id={outbox.id} 适配器异常")
         return True
 
 

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from sqlalchemy import and_, desc, distinct, func, or_, select, text, update
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.models.async_task import AsyncTaskRecord
@@ -71,6 +72,8 @@ _MARKET_PRIORITY_TASK_TYPES = (
 )
 _MARKET_PRIORITY_WAIT_SECONDS = 5.0
 _CREATION_LOCKS = {dataset: threading.Lock() for dataset in EXTERNAL_DATASETS}
+# MySQL TEXT holds 65,535 bytes; keep a margin so multi-byte JSON stays readable.
+_MAX_TASK_PAYLOAD_BYTES = 60_000
 
 
 @contextmanager
@@ -1486,7 +1489,9 @@ def _run_symbol_sync(
                     if str(symbol.id) in selected:
                         allowed &= {_as_date(day) for day in selected[str(symbol.id)]}
                     count = sync_symbol_capital_flow_range(db, symbol,
-                        start_date=min(allowed), end_date=max(allowed), allowed_dates=allowed, **write_options)
+                        start_date=min(allowed), end_date=max(allowed), allowed_dates=allowed,
+                        recover_connection=True, **write_options)
+                    result["database_recoveries"] = result.get("database_recoveries", 0) + getattr(count, "db_recoveries", 0)
                     actual_dates.update(getattr(count, "sync_written_dates", ()))
                 else:
                     item = sync_symbol_capital_flow(db, symbol, range_end)
@@ -1516,7 +1521,17 @@ def _run_symbol_sync(
                 _set_partition_status(db, partition, "skipped")
             db.commit()
         except Exception as exc:
-            db.rollback()
+            try:
+                db.rollback()
+            except SQLAlchemyError:
+                # Complete the failed logical rollback on the same Session.
+                # Closing/replacing it would detach the loop's still-expired
+                # symbols and partitions, aborting all subsequent stocks.
+                logger.warning(
+                    "DB rollback failed while recording %s failure; completing logical rollback",
+                    symbol.symbol, exc_info=True,
+                )
+                db.rollback()
             result["failed"] += 1
             if partition is not None:
                 partition = db.get(DataSyncPartition, partition.id)
@@ -2076,6 +2091,26 @@ def _await_market_preflight(db: Session, dataset: ExternalDataset) -> None:
         )
 
 
+def _persisted_payload_json(payload: dict[str, Any]) -> str:
+    """Serialize task payload within the TEXT column limit.
+
+    An all-market backfill freezes one range list per symbol; at 5,000+ symbols
+    the JSON exceeds MySQL TEXT (65,535 bytes) and is silently truncated, which
+    makes retry/resume unable to parse the task it owns. The per-symbol ranges
+    already live in DataSyncPartition and are recomputed from source evidence
+    when absent, so drop the bulky caches instead of writing a corrupt payload.
+    """
+    serialized = json.dumps(payload, ensure_ascii=False, default=str)
+    if len(serialized.encode("utf-8")) <= _MAX_TASK_PAYLOAD_BYTES:
+        return serialized
+    reduced = {
+        key: value for key, value in payload.items()
+        if key not in {"_policy_ranges", "_selected_gap_dates"}
+    }
+    reduced["_ranges_omitted"] = True
+    return json.dumps(reduced, ensure_ascii=False, default=str)
+
+
 def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) -> AsyncTaskRead:
     if dataset == "tail_proxy":
         reject_tail_proxy()
@@ -2133,7 +2168,7 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
                 stage="queued",
                 percent=0,
                 message="External-data sync task created",
-                payload_json=json.dumps(task_payload, ensure_ascii=False, default=str),
+                payload_json=_persisted_payload_json(task_payload),
                 batch_recovery_json=json.dumps({"plan": plan, "processed": 0}, ensure_ascii=False),
             )
             db.add(task)
@@ -2148,7 +2183,7 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
                 partition_specs=partition_specs,
             )
             task_payload["sync_plan_id"] = persisted_plan.id
-            task.payload_json = json.dumps(task_payload, ensure_ascii=False, default=str)
+            task.payload_json = _persisted_payload_json(task_payload)
             task.batch_recovery_json = json.dumps(
                 {"plan": plan, "sync_plan_id": persisted_plan.id, "processed": 0},
                 ensure_ascii=False,

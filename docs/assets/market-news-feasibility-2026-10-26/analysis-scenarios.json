@@ -1,0 +1,121 @@
+{
+  "scope": "Verified baseline tests and arithmetic scenarios only; no market accuracy or trading returns were measured.",
+  "baseline_regression": {
+    "tests": 205,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 205,
+    "time_seconds": 121.125
+  },
+  "wilson_iid_examples": [
+    {
+      "hits": 75,
+      "samples": 100,
+      "point_rate": 0.75,
+      "lower_95_two_sided": 0.656955364519384,
+      "upper_95_two_sided": 0.8245478863771232
+    },
+    {
+      "hits": 80,
+      "samples": 100,
+      "point_rate": 0.8,
+      "lower_95_two_sided": 0.7111708344068411,
+      "upper_95_two_sided": 0.8666330666689676
+    },
+    {
+      "hits": 160,
+      "samples": 200,
+      "point_rate": 0.8,
+      "lower_95_two_sided": 0.7391448134346212,
+      "upper_95_two_sided": 0.8495479907390189
+    },
+    {
+      "hits": 165,
+      "samples": 200,
+      "point_rate": 0.825,
+      "lower_95_two_sided": 0.7663556885175099,
+      "upper_95_two_sided": 0.8713948493372666
+    }
+  ],
+  "sample_accumulation_scenarios": [
+    {
+      "independent_events_per_trading_day_assumed": 1,
+      "trading_days_per_month_assumed": 22,
+      "target_events": 200,
+      "months_before_outcome_maturity": 9.090909090909092
+    },
+    {
+      "independent_events_per_trading_day_assumed": 2,
+      "trading_days_per_month_assumed": 22,
+      "target_events": 200,
+      "months_before_outcome_maturity": 4.545454545454546
+    },
+    {
+      "independent_events_per_trading_day_assumed": 3,
+      "trading_days_per_month_assumed": 22,
+      "target_events": 200,
+      "months_before_outcome_maturity": 3.0303030303030303
+    }
+  ],
+  "roi_scenarios": [
+    {
+      "users": 1,
+      "saved_minutes_per_trading_day": 15,
+      "trading_days_per_month_assumed": 22,
+      "hour_value_rmb_assumed": 100,
+      "initial_cost_rmb_assumed": 15000,
+      "monthly_cost_rmb_assumed": 300,
+      "monthly_time_value_rmb": 550.0,
+      "monthly_net_time_value_rmb": 250.0,
+      "simple_payback_months": 60.0,
+      "roi_12_months_total_cost_basis": -0.6451612903225806
+    },
+    {
+      "users": 1,
+      "saved_minutes_per_trading_day": 30,
+      "trading_days_per_month_assumed": 22,
+      "hour_value_rmb_assumed": 100,
+      "initial_cost_rmb_assumed": 15000,
+      "monthly_cost_rmb_assumed": 300,
+      "monthly_time_value_rmb": 1100.0,
+      "monthly_net_time_value_rmb": 800.0,
+      "simple_payback_months": 18.75,
+      "roi_12_months_total_cost_basis": -0.2903225806451613
+    },
+    {
+      "users": 1,
+      "saved_minutes_per_trading_day": 45,
+      "trading_days_per_month_assumed": 22,
+      "hour_value_rmb_assumed": 100,
+      "initial_cost_rmb_assumed": 15000,
+      "monthly_cost_rmb_assumed": 300,
+      "monthly_time_value_rmb": 1650.0,
+      "monthly_net_time_value_rmb": 1350.0,
+      "simple_payback_months": 11.11111111111111,
+      "roi_12_months_total_cost_basis": 0.06451612903225806
+    },
+    {
+      "users": 5,
+      "saved_minutes_per_trading_day": 15,
+      "trading_days_per_month_assumed": 22,
+      "hour_value_rmb_assumed": 100,
+      "initial_cost_rmb_assumed": 15000,
+      "monthly_cost_rmb_assumed": 500,
+      "monthly_time_value_rmb": 2750.0,
+      "monthly_net_time_value_rmb": 2250.0,
+      "simple_payback_months": 6.666666666666667,
+      "roi_12_months_total_cost_basis": 0.5714285714285714
+    }
+  ],
+  "token_budget_assumptions": {
+    "deduplicated_candidates_per_calendar_day": 60,
+    "calendar_days_per_month": 30,
+    "input_tokens_per_candidate": 3000,
+    "output_tokens_per_candidate": 600,
+    "retry_factor": 1.2,
+    "monthly_input_million_tokens": 6.48,
+    "monthly_output_million_tokens": 1.296,
+    "cost_formula_rmb": "6.48 * input_price_per_million + 1.296 * output_price_per_million; prices not supplied or measured."
+  }
+}

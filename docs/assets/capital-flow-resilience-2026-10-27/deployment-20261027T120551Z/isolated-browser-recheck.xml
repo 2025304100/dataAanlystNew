@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="26.230" timestamp="2026-10-27T20:07:31.475099+08:00" hostname="LAPTOP-BFGDV5RO"><testcase classname="tests.e2e.test_validation_runtime_acceptance" name="test_validation_mode_deployed_ui_saves_independent_paused_rules" time="21.430"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py&quot;, line 169, in &lt;module&gt;&#10;      raise SystemExit(main())&#10;                       ^^^^^^&#10;    File &quot;D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py&quot;, line 50, in main&#10;      with sync_playwright() as runtime:&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py&quot;, line 77, in __enter__&#10;      dispatcher_fiber.switch()&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py&quot;, line 56, in greenlet_main&#10;      self._loop.run_until_complete(self._connection.run_as_sync())&#10;    File &quot;C:\Python312\Lib\asyncio\base_events.py&quot;, line 685, in run_until_complete&#10;      return future.result()&#10;             ^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py&quot;, line 303, in run_as_sync&#10;      await self.run()&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py&quot;, line 312, in run&#10;      await self._transport.connect()&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py&quot;, line 133, in connect&#10;      raise exc&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py&quot;, line 120, in connect&#10;      self._proc = await asyncio.create_subprocess_exec(&#10;                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\subprocess.py&quot;, line 224, in create_subprocess_exec&#10;      transport, protocol = await loop.subprocess_exec(&#10;                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\base_events.py&quot;, line 1742, in subprocess_exec&#10;      transport = await self._make_subprocess_transport(&#10;                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\windows_events.py&quot;, line 399, in _make_subprocess_transport&#10;      transp = _WindowsSubprocessTransport(self, protocol, args, shell,&#10;               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\base_subprocess.py&quot;, line 36, in __init__&#10;      self._start(args=args, shell=shell, stdin=stdin, stdout=stdout,&#10;    File &quot;C:\Python312\Lib\asyncio\windows_events.py&quot;, line 873, in _start&#10;      self._proc = windows_utils.Popen(&#10;                   ^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\windows_utils.py&quot;, line 136, in __init__&#10;      stdin_rh, stdin_wh = pipe(overlapped=(False, True), duplex=True)&#10;                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\windows_utils.py&quot;, line 63, in pipe&#10;      h2 = _winapi.CreateFile(&#10;           ^^^^^^^^^^^^^^^^^^^&#10;  PermissionError: [WinError 5] 拒绝访问。&#10;  Future exception was never retrieved&#10;  future: &lt;Future finished exception=PermissionError(13, '拒绝访问。', None, 5, None)&gt;&#10;  Traceback (most recent call last):&#10;    File &quot;D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py&quot;, line 169, in &lt;module&gt;&#10;      raise SystemExit(main())&#10;                       ^^^^^^&#10;    File &quot;D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py&quot;, line 50, in main&#10;      with sync_playwright() as runtime:&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py&quot;, line 77, in __enter__&#10;      dispatcher_fiber.switch()&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py&quot;, line 56, in greenlet_main&#10;      self._loop.run_until_complete(self._connection.run_as_sync())&#10;    File &quot;C:\Python312\Lib\asyncio\base_events.py&quot;, line 685, in run_until_complete&#10;      return future.result()&#10;             ^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py&quot;, line 303, in run_as_sync&#10;      await self.run()&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py&quot;, line 312, in run&#10;      await self._transport.connect()&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py&quot;, line 133, in connect&#10;      raise exc&#10;    File &quot;C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py&quot;, line 120, in connect&#10;      self._proc = await asyncio.create_subprocess_exec(&#10;                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\subprocess.py&quot;, line 224, in create_subprocess_exec&#10;      transport, protocol = await loop.subprocess_exec(&#10;                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\base_events.py&quot;, line 1742, in subprocess_exec&#10;      transport = await self._make_subprocess_transport(&#10;                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\windows_events.py&quot;, line 399, in _make_subprocess_transport&#10;      transp = _WindowsSubprocessTransport(self, protocol, args, shell,&#10;               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\base_subprocess.py&quot;, line 36, in __init__&#10;      self._start(args=args, shell=shell, stdin=stdin, stdout=stdout,&#10;    File &quot;C:\Python312\Lib\asyncio\windows_events.py&quot;, line 873, in _start&#10;      self._proc = windows_utils.Popen(&#10;                   ^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\windows_utils.py&quot;, line 136, in __init__&#10;      stdin_rh, stdin_wh = pipe(overlapped=(False, True), duplex=True)&#10;                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Python312\Lib\asyncio\windows_utils.py&quot;, line 63, in pipe&#10;      h2 = _winapi.CreateFile(&#10;           ^^^^^^^^^^^^^^^^^^^&#10;  PermissionError: [WinError 5] 拒绝访问。&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['C:\\Python312\\python.exe', 'scripts/verify_market_signals_runtime_ui.py', '--origin', 'http:/..., line 63, in pipe\n    h2 = _winapi.CreateFile(\n         ^^^^^^^^^^^^^^^^^^^\nPermissionError: [WinError 5] 拒绝访问。\n').returncode">tests\e2e\test_validation_runtime_acceptance.py:68: in test_validation_mode_deployed_ui_saves_independent_paused_rules
+    assert result.returncode==0, result.stdout
+E   AssertionError: Traceback (most recent call last):
+E       File "D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py", line 169, in &lt;module&gt;
+E         raise SystemExit(main())
+E                          ^^^^^^
+E       File "D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py", line 50, in main
+E         with sync_playwright() as runtime:
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py", line 77, in __enter__
+E         dispatcher_fiber.switch()
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py", line 56, in greenlet_main
+E         self._loop.run_until_complete(self._connection.run_as_sync())
+E       File "C:\Python312\Lib\asyncio\base_events.py", line 685, in run_until_complete
+E         return future.result()
+E                ^^^^^^^^^^^^^^^
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py", line 303, in run_as_sync
+E         await self.run()
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py", line 312, in run
+E         await self._transport.connect()
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py", line 133, in connect
+E         raise exc
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py", line 120, in connect
+E         self._proc = await asyncio.create_subprocess_exec(
+E                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+E         transport, protocol = await loop.subprocess_exec(
+E                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\base_events.py", line 1742, in subprocess_exec
+E         transport = await self._make_subprocess_transport(
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\windows_events.py", line 399, in _make_subprocess_transport
+E         transp = _WindowsSubprocessTransport(self, protocol, args, shell,
+E                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\base_subprocess.py", line 36, in __init__
+E         self._start(args=args, shell=shell, stdin=stdin, stdout=stdout,
+E       File "C:\Python312\Lib\asyncio\windows_events.py", line 873, in _start
+E         self._proc = windows_utils.Popen(
+E                      ^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\windows_utils.py", line 136, in __init__
+E         stdin_rh, stdin_wh = pipe(overlapped=(False, True), duplex=True)
+E                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\windows_utils.py", line 63, in pipe
+E         h2 = _winapi.CreateFile(
+E              ^^^^^^^^^^^^^^^^^^^
+E     PermissionError: [WinError 5] 拒绝访问。
+E     Future exception was never retrieved
+E     future: &lt;Future finished exception=PermissionError(13, '拒绝访问。', None, 5, None)&gt;
+E     Traceback (most recent call last):
+E       File "D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py", line 169, in &lt;module&gt;
+E         raise SystemExit(main())
+E                          ^^^^^^
+E       File "D:\ai_project\dataAanlystNew\tmp\capital-flow-resilience-20261027\approved-deploy-20261027T120551Z\workspace\scripts\verify_market_signals_runtime_ui.py", line 50, in main
+E         with sync_playwright() as runtime:
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py", line 77, in __enter__
+E         dispatcher_fiber.switch()
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\sync_api\_context_manager.py", line 56, in greenlet_main
+E         self._loop.run_until_complete(self._connection.run_as_sync())
+E       File "C:\Python312\Lib\asyncio\base_events.py", line 685, in run_until_complete
+E         return future.result()
+E                ^^^^^^^^^^^^^^^
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py", line 303, in run_as_sync
+E         await self.run()
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_connection.py", line 312, in run
+E         await self._transport.connect()
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py", line 133, in connect
+E         raise exc
+E       File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\playwright\_impl\_transport.py", line 120, in connect
+E         self._proc = await asyncio.create_subprocess_exec(
+E                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+E         transport, protocol = await loop.subprocess_exec(
+E                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\base_events.py", line 1742, in subprocess_exec
+E         transport = await self._make_subprocess_transport(
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\windows_events.py", line 399, in _make_subprocess_transport
+E         transp = _WindowsSubprocessTransport(self, protocol, args, shell,
+E                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\base_subprocess.py", line 36, in __init__
+E         self._start(args=args, shell=shell, stdin=stdin, stdout=stdout,
+E       File "C:\Python312\Lib\asyncio\windows_events.py", line 873, in _start
+E         self._proc = windows_utils.Popen(
+E                      ^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\windows_utils.py", line 136, in __init__
+E         stdin_rh, stdin_wh = pipe(overlapped=(False, True), duplex=True)
+E                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Python312\Lib\asyncio\windows_utils.py", line 63, in pipe
+E         h2 = _winapi.CreateFile(
+E              ^^^^^^^^^^^^^^^^^^^
+E     PermissionError: [WinError 5] 拒绝访问。
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['C:\\Python312\\python.exe', 'scripts/verify_market_signals_runtime_ui.py', '--origin', 'http:/..., line 63, in pipe\n    h2 = _winapi.CreateFile(\n         ^^^^^^^^^^^^^^^^^^^\nPermissionError: [WinError 5] 拒绝访问。\n').returncode</failure></testcase></testsuite></testsuites>

@@ -64,6 +64,33 @@ beforeEach(() => {
 // 而"僵尸执行中"的真正病灶就是列表页从不自己再拉一次，所以直接盯 setInterval 的注册。
 // 不做通用 helper：setInterval 的重载元组 arity 一旦塞进自定义类型就要跟 TS 打太极。
 describe("TaskCenter 活动任务轮询", () => {
+  it.each([
+    { status: "partial", processed: 5, total: 10, percent: 50 },
+    { status: "failed", processed: 0, total: 1, percent: 0 },
+    { status: "cancelled", processed: 0, total: 0, percent: 0 },
+    { status: "running", processed: 1, total: 8, percent: 13 },
+    { status: "done", processed: 10, total: 10, percent: 100 },
+  ])("matches the task detail bar to $processed/$total for $status", async ({ status, processed, total, percent }) => {
+    seed([]);
+    mockApi.getTaskHistory.mockResolvedValue({ tasks: [{ ...task(status), percent: 100, processed, total, ok_count: processed, failed_count: 0 }] });
+    const { container } = render(<TaskCenter />);
+    fireEvent.click(await screen.findByText(`taskStatus_${status}`));
+    await waitFor(() => expect(container.querySelector(".task-detail-panel")).not.toBeNull());
+    expect(screen.getByText(`${processed} / ${total}`)).toBeVisible();
+    expect(container.querySelector(".task-detail-panel .ant-progress-bg")).toHaveStyle({ width: `${percent}%` });
+  });
+
+  it.each(["cancelled", "failed"])("keeps failed counters visible with the correct %s visual state", async status => {
+    seed([]);
+    mockApi.getTaskHistory.mockResolvedValue({ tasks: [{ ...task(status), processed: 0, total: 1, ok_count: 0, failed_count: 1 }] });
+    const { container } = render(<TaskCenter />);
+    fireEvent.click(await screen.findByText(`taskStatus_${status}`));
+    await waitFor(() => expect(container.querySelector(".task-detail-panel")).not.toBeNull());
+    const counter = screen.getByText("taskFailed: 1").closest(".ant-tag");
+    expect(counter).toHaveClass(status === "cancelled" ? "ant-tag-orange" : "ant-tag-red");
+    if (status === "cancelled") expect(counter).not.toHaveClass("ant-tag-red");
+  });
+
   it("distinguishes valuation, financial reports, institutions and capital flow in task rows", async () => {
     seed([]);
     mockApi.getTaskHistory.mockResolvedValue({ tasks: [

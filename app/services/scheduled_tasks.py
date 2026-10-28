@@ -157,6 +157,11 @@ TASK_DEFINITIONS: dict[str, dict] = {
         "description": "删除已过期且发布时间超出保留窗口（至少365天）的自动采集消息；保护主题催化剂引用与手工录入",
         "default_payload": {"keep_days": MARKET_EVENT_KEEP_DAYS_DEFAULT},
     },
+    "market_signals_monitor": {
+        "name": "行情异动提醒监控",
+        "description": "分析关注对象的新事件，处理定时汇总并结算到期行情；仅在异动提醒总开关启用后运行",
+        "default_payload": {},
+    },
 }
 
 DEFAULT_SCHEDULES = (
@@ -590,7 +595,7 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         if not 1 <= buy_candidate_limit <= 50:
             raise ValueError("buy_candidate_limit must be between 1 and 50")
         return {"dry_run": dry_run, "buy_candidate_limit": buy_candidate_limit}
-    if task_type == "alert_evaluation":
+    if task_type in ("alert_evaluation", "market_signals_monitor"):
         # 评估对象就是"所有启用的规则"，没有可配范围：配了反而会和告警中心的
         # 「立即评估」走出两种结果，所以拒绝任何 payload。
         if payload:
@@ -849,6 +854,17 @@ def _dispatch_task(item: ScheduledTask):
             "status": "done",
             "message": f"告警评估完成：本轮命中 {len(events)} 条告警",
         }
+    if item.task_type == "market_signals_monitor":
+        from app.services.market_signal_operations import monitor
+        validate_task_payload(item.task_type, payload)
+        session = _fresh_service_session()
+        try:
+            result = monitor(session)
+        finally:
+            session.close()
+        return "market_events", {"id": f"market-signals-{int(_now().timestamp())}",
+            "status": "partial" if result.get("partial") else "done",
+            "message": f"异动监控完成：新增{result['created']}，结算{result['settled']}"}
     if item.task_type == "market_events_collect":
         # 行情消息 P0-2：同步执行（scheduler_loop 在 to_thread 里跑，akshare 的
         # 秒级耗时不会阻塞事件循环）；自己开会话自己提交，与 alert_evaluation 同一模式。

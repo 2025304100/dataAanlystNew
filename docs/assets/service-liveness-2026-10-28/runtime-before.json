@@ -1,0 +1,101 @@
+{
+  "checked_at_utc": "2026-10-28T05:44:51.357313+00:00",
+  "boot_time": 1793149476.2522647,
+  "job_policy": {
+    "query_ok": true,
+    "error": null,
+    "size": 144,
+    "flags": "0x2800",
+    "breakaway_ok": true,
+    "silent_breakaway_ok": false,
+    "kill_on_close": true,
+    "launcher_requests_breakaway": true
+  },
+  "processes": [
+    {
+      "pid": 37072,
+      "created": 1793166290.1033025,
+      "parent": 70188,
+      "exe": "C:\\Python312\\python.exe",
+      "cwd": "D:\\ai_project\\dataAanlystNew",
+      "command": [
+        "C:\\Python312\\python.exe",
+        "tmp/service-liveness-20261028/collect.py"
+      ],
+      "job_query_ok": true,
+      "in_job": true
+    },
+    {
+      "pid": 70188,
+      "created": 1793166289.823634,
+      "parent": 28392,
+      "exe": "C:\\Users\\demo\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe",
+      "cwd": "D:\\ai_project\\dataAanlystNew",
+      "command": [
+        "C:\\Users\\demo\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe",
+        "-Command",
+        "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\nC:/Python312/python.exe tmp/service-liveness-20261028/collect.py; $start = [datetime]'2026-10-28T09:00:00'; Get-WinEvent -FilterHashtable @{LogName='System';Id=1074,6005,6006,6008,41;StartTime=$start} -ErrorAction SilentlyContinue | Select-Object -First 12 TimeCreated,Id,ProviderName | ConvertTo-Json -Compress"
+      ],
+      "job_query_ok": true,
+      "in_job": true
+    },
+    {
+      "pid": 69992,
+      "created": 1793163714.1988528,
+      "parent": 51872,
+      "exe": "C:\\Python312\\python.exe",
+      "cwd": "D:\\ai_project\\dataAanlystNew",
+      "command": [
+        "C:\\Python312\\python.exe",
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "job_query_ok": true,
+      "in_job": true
+    },
+    {
+      "pid": 69712,
+      "created": 1793163724.7768407,
+      "parent": 51872,
+      "exe": "C:\\Users\\demo\\AppData\\Roaming\\nvm\\v24.21.0\\node.exe",
+      "cwd": "D:\\ai_project\\dataAanlystNew\\frontend",
+      "command": [
+        "node",
+        "./node_modules/vite/bin/vite.js",
+        "--config",
+        "vite.codex.config.ts",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5173"
+      ],
+      "job_query_ok": true,
+      "in_job": true
+    },
+    {
+      "pid": 18212,
+      "error": "NoSuchProcess"
+    },
+    {
+      "pid": 56128,
+      "error": "NoSuchProcess"
+    }
+  ],
+  "http": [
+    {
+      "url": "http://127.0.0.1:8000/health",
+      "status": 200,
+      "validation_mode": "1"
+    },
+    {
+      "url": "http://127.0.0.1:5173/api/v1/market-signals/settings",
+      "status": 200,
+      "validation_mode": "1"
+    }
+  ]
+}

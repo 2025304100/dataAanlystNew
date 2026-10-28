@@ -1,0 +1,361 @@
+{
+  "generated_at_utc": "2026-10-27T14:50:57.501037+00:00",
+  "status": "completed_validation_mode",
+  "passed": true,
+  "original_task_naturally_completed": false,
+  "subsequent_user_authorization": true,
+  "backend_pid": 53856,
+  "validation_mode": true,
+  "tests_passed_unique": 241,
+  "models_called": 0,
+  "notifications_sent": 0,
+  "business_sync_retried": false,
+  "automation_deleted": true,
+  "source_hashes": {
+    "app/services/capital_flow_history_provider.py": "fd8efbd6d47468f6970513768fdc630369062c865081944d363236dd7babdb68",
+    "app/services/capital_flow_data.py": "8100a4c7a700b65ebc6645e1c3d35a69bbe48f3926ecc3842e0682c2fb049916",
+    "app/services/external_data_sync_task.py": "4ab53fdc1c3008505b6fcb47bd49630e12914f2dbfd75da01c63e0e39aef8065",
+    "tests/test_capital_flow_retry_contract.py": "2f97431b0578a89caa7c293aa62c6c9ad0a944385e551b67fcf44a97984a1526",
+    "tests/test_capital_flow_resilience_mysql57.py": "cbbaff27d3d32b53ec7331bc6b1cf0a092a73a5649719d59529619c011c15083",
+    "tests/test_sync_io_optimization.py": "743f184c68b1b15d3ce652709f207879daa17621d4b1470e3f8f205d9e7e658a",
+    "scripts/replay_capital_flow_resilience.py": "4781ef5311d9d535b5626bd1cdcbb8e1dba03dee006f46c898747a5bf266ef04",
+    "scripts/verify_capital_flow_resilience.py": "794fed232a50a3b5699cbc32fa4837584a80feb3cb7491e3d97517d936c45228",
+    "tests/test_capital_flow_guard_integration.py": "a48f20822fdb0cc4c64f8307be5a226b512eb0798ab7c75fbf46db2720b9ca72",
+    "tests/e2e/test_validation_runtime_acceptance.py": "d37fdc1bf2ecb858d3924c5c0eb668a731d0b302923d0ee96c1b3c9f26445820",
+    "app/services/akshare_utils.py": "6d63fc4a074ea6109668664d595dda023139db6577df7593c6c9300556609bd3",
+    "app/services/akshare_guard.py": "d1bf6abb82195d0a467cbdda9e58e202f8a578fa84a330321d01775f834f0874",
+    "app/services/akshare_registry.py": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d",
+    "app/main.py": "7361405a9c0d547af530513b9dc0ab36d8b586a4b63ac123a2f6c5d991cf46a9",
+    "app/core/config.py": "4656bf834888291256f12f6a8493884a29d185b41c6670e7fc600656da7ad6d3",
+    "scripts/restart_backend_validation.py": "f8d34e2cb4016cc02ea794190c4b5453df74dd3872b5983db831db5071a3f592",
+    "scripts/verify_market_signals_runtime_ui.py": "267d0326c1bfa3de54fc1f987fe567fb0276b3c99d8eba49f34907ead3478e89",
+    "app/api/routes/market_signals.py": "9f038e63ab1446a8d625edf0d7515c674cecc54f8956bcbfef28b5d600be2eae",
+    "frontend/src/components/MarketSignalCenter.tsx": "130e65fbc9b4d96e2a00f4d5a618318c299930f852610a01245916fcca13904e",
+    "app/web/dist/index.html": "77c0625ab449a45a8b4ec85f9aca33940725a9b97e23d3750b42571817ef3f6a"
+  },
+  "report_hashes": {
+    "docs/部署记录-资金流修复与行情异动受控验收-2026-10-27.md": "c871a1b850c3492e6b38c9ef62292c9e78bde6ad919224b09d2731f24a296486",
+    "docs/验证报告-资金流事务恢复与重试退避-2026-10-27.md": "10200f2aacf3b32f0affd1b12c93f619a06e39cca25b22a71b2aec7b28dc9589",
+    "docs/验证报告-后端受控重启与行情异动页面验收-2026-10-27.md": "f36b15e00ae659048955a8a0b30958a7803fde8132c2c87a9cae00330e0df82d",
+    "docs/交付与验证报告-行情异动提醒完整功能-2026-10-27.md": "02346b26087dc2a83ebc17b977d252812f5bf70ec6fb0cd1c6c61d706670d20f",
+    "docs/使用说明-行情异动提醒-2026-10-27.md": "0c3349142fa5a4e7648912172a105b5b295858314454ce8fcd283b48c4045b19",
+    "docs/变更记录-行情消息P0-2026-10-25.md": "746e4acbacda35eed25111092fc5dea946a35376f0d3bbd10e68d1ca6ef57cdb"
+  },
+  "files": [
+    {
+      "path": "applied-record.json",
+      "bytes": 4070,
+      "sha256": "b7d1c2ea128b7e560c259db16cc9ab6d841ee0fa88265069908ca4beaf9e53b8"
+    },
+    {
+      "path": "applied-runtime.log",
+      "bytes": 102,
+      "sha256": "9e6674fb739bfa91445e22efdbe7e4c53e3b6e146d25a66bd925edca2920f20b"
+    },
+    {
+      "path": "applied-runtime.xml",
+      "bytes": 5398,
+      "sha256": "8d1ab127c22b5b731d4d379c1cbdf594a33cad2e505fe3dbcf785484630b2559"
+    },
+    {
+      "path": "applied-sources/app/services/capital_flow_data.py",
+      "bytes": 25238,
+      "sha256": "8100a4c7a700b65ebc6645e1c3d35a69bbe48f3926ecc3842e0682c2fb049916"
+    },
+    {
+      "path": "applied-sources/app/services/capital_flow_history_provider.py",
+      "bytes": 9240,
+      "sha256": "fd8efbd6d47468f6970513768fdc630369062c865081944d363236dd7babdb68"
+    },
+    {
+      "path": "applied-sources/app/services/external_data_sync_task.py",
+      "bytes": 117832,
+      "sha256": "4ab53fdc1c3008505b6fcb47bd49630e12914f2dbfd75da01c63e0e39aef8065"
+    },
+    {
+      "path": "applied-sources/scripts/replay_capital_flow_resilience.py",
+      "bytes": 4338,
+      "sha256": "4781ef5311d9d535b5626bd1cdcbb8e1dba03dee006f46c898747a5bf266ef04"
+    },
+    {
+      "path": "applied-sources/scripts/verify_capital_flow_resilience.py",
+      "bytes": 5034,
+      "sha256": "794fed232a50a3b5699cbc32fa4837584a80feb3cb7491e3d97517d936c45228"
+    },
+    {
+      "path": "applied-sources/tests/e2e/test_validation_runtime_acceptance.py",
+      "bytes": 3595,
+      "sha256": "d37fdc1bf2ecb858d3924c5c0eb668a731d0b302923d0ee96c1b3c9f26445820"
+    },
+    {
+      "path": "applied-sources/tests/test_capital_flow_guard_integration.py",
+      "bytes": 2480,
+      "sha256": "a48f20822fdb0cc4c64f8307be5a226b512eb0798ab7c75fbf46db2720b9ca72"
+    },
+    {
+      "path": "applied-sources/tests/test_capital_flow_resilience_mysql57.py",
+      "bytes": 10272,
+      "sha256": "cbbaff27d3d32b53ec7331bc6b1cf0a092a73a5649719d59529619c011c15083"
+    },
+    {
+      "path": "applied-sources/tests/test_capital_flow_retry_contract.py",
+      "bytes": 7599,
+      "sha256": "2f97431b0578a89caa7c293aa62c6c9ad0a944385e551b67fcf44a97984a1526"
+    },
+    {
+      "path": "applied-sources/tests/test_sync_io_optimization.py",
+      "bytes": 22747,
+      "sha256": "743f184c68b1b15d3ce652709f207879daa17621d4b1470e3f8f205d9e7e658a"
+    },
+    {
+      "path": "applied.patch",
+      "bytes": 47048,
+      "sha256": "9aa746fa184832d7f25faf829278f6e196a929a540bbe45a17a69833daa7137d"
+    },
+    {
+      "path": "approved-deployment-ready.json",
+      "bytes": 3958,
+      "sha256": "a558722ec8e7ac265dec2dba28ca52ddb230183d53374b831372c4a0d0b002e5"
+    },
+    {
+      "path": "automation-completion.json",
+      "bytes": 247,
+      "sha256": "6ee4fc471b1938fe31ad990598bd638382eaf8268b08bd3b5fb6d3e0671081af"
+    },
+    {
+      "path": "before-controlled-restart.json",
+      "bytes": 2821,
+      "sha256": "639726e133b64a147295931d9f4f95a93f671d71624bfa6c9bb53e886ea9bd1d"
+    },
+    {
+      "path": "business-after-acceptance.json",
+      "bytes": 3642,
+      "sha256": "be5739dd91058adc5ee3e9afbd0daa35d7edbe0e093137183dbaa1841fc2b21a"
+    },
+    {
+      "path": "business-preparation.json",
+      "bytes": 3718,
+      "sha256": "9a900b15aea12626516ed0b78d7c2a2b9c09031152f7c8e42ef1f386f9c16dcf"
+    },
+    {
+      "path": "deployment-result.json",
+      "bytes": 763,
+      "sha256": "0bf16bc59710aad9d996166867b62fdbf0f68f176b80d4afb90f601a58216800"
+    },
+    {
+      "path": "final-process-preflight.json",
+      "bytes": 1877,
+      "sha256": "3c471a87ba149531c91ce956f65713156eef4fb7329689bd48a79698e854282b"
+    },
+    {
+      "path": "final-readonly-state.json",
+      "bytes": 1689,
+      "sha256": "7415aa64cb44332f3d3f703285960712c395b562632ef5fed1e2b7901a3f00ca"
+    },
+    {
+      "path": "frontend-before.json",
+      "bytes": 1095,
+      "sha256": "6ec2f0e65c323bea9883a5e6a89e880f3a47bf44e9d371fb96c47bd700b5cadf"
+    },
+    {
+      "path": "guard-integration-final.log",
+      "bytes": 100,
+      "sha256": "8df97626ecfb205bfde3770fde6a2a9fa173f555b9e60be24331910fb63b632a"
+    },
+    {
+      "path": "guard-integration-final.xml",
+      "bytes": 409,
+      "sha256": "6f33543a34a44809ba3fb89666c01b9197a8e6fbce49b2981875d583f8e19995"
+    },
+    {
+      "path": "guard-integration.log",
+      "bytes": 2857,
+      "sha256": "58e027a0d50ca1f9c60ed29894ba2f246001a86e7f578d874d90e4eaee41eb79"
+    },
+    {
+      "path": "guard-integration.xml",
+      "bytes": 1983,
+      "sha256": "b4ea3a9017dfec90458dc5dd5720292c01192eea49e595fc36ca2b0c9c6263d8"
+    },
+    {
+      "path": "integration-baselines.json",
+      "bytes": 157854,
+      "sha256": "5f6bd183816d565cb3ac7019f168ccb75294f40690dea3f498e35dc3992e2b8b"
+    },
+    {
+      "path": "integration-verification/mysql.log",
+      "bytes": 111,
+      "sha256": "40e061e6002f4dfe57612ac3c826eb48a05915d03d3b50dbc2b644800c007a17"
+    },
+    {
+      "path": "integration-verification/mysql.xml",
+      "bytes": 2685,
+      "sha256": "41cf006530ea5f260735f5364cd38d9e3cbf56dffa3d4cc144ebdc1dade9ca8d"
+    },
+    {
+      "path": "integration-verification/regression.log",
+      "bytes": 1192,
+      "sha256": "fc3dcdcbfff5acc8483cde6b14eb0f4b23d99b5f181e0f5abfe7141723547eba"
+    },
+    {
+      "path": "integration-verification/regression.xml",
+      "bytes": 40274,
+      "sha256": "61d17fc7cdeed507dbb96e6ab2ed891fb4ce62f67d981383e558345549ce8c5f"
+    },
+    {
+      "path": "integration-verification/replay.json",
+      "bytes": 3703,
+      "sha256": "5b66c6ad957e60063f85667febd3ab822f6297814b668aa4cee656d6bea62ebe"
+    },
+    {
+      "path": "integration-verification/replay.log",
+      "bytes": 1186,
+      "sha256": "b3fbb281b69e3616de6a6864f4b038ef54b9c3a201fe7c2127c4ed8666cf6346"
+    },
+    {
+      "path": "integration-verification/result.json",
+      "bytes": 1664,
+      "sha256": "75f99f8c83df48ea9868b6621a0d1f5d008908b0308d2a8407d29f2400cd2182"
+    },
+    {
+      "path": "isolated-browser-final.log",
+      "bytes": 101,
+      "sha256": "64c9becf92c209e8272dbf66a1d44de3445ddafe523fd542909d37522a1597ab"
+    },
+    {
+      "path": "isolated-browser-final.xml",
+      "bytes": 406,
+      "sha256": "87a56738e2d41465e8f455269f9d07336863bc827845602cb05c0d69673a9658"
+    },
+    {
+      "path": "isolated-browser-recheck.log",
+      "bytes": 7630,
+      "sha256": "3b6a0bcbc5e1f4e01fe98f71de2dfbccb39684b73a2df2323deba537f0b1e554"
+    },
+    {
+      "path": "isolated-browser-recheck.xml",
+      "bytes": 14865,
+      "sha256": "af347e53f6a2d28991249c4c03224d70d8258a85f532267694197407b31b2aae"
+    },
+    {
+      "path": "isolated-browser.log",
+      "bytes": 916,
+      "sha256": "22cf119ad5f23497bbe9003b412c373fc0b74083df01715c60938fba05d414bc"
+    },
+    {
+      "path": "isolated-browser.xml",
+      "bytes": 1113,
+      "sha256": "6f0a283dbf5dfb09d24a5b1fbc20d828048936c49d9bd8fcfecac13b8bd13d64"
+    },
+    {
+      "path": "live-backup/app/services/capital_flow_data.py",
+      "bytes": 23948,
+      "sha256": "2cebf51406e166649250a9112594b9b1586795b0608fe9062f43c9888629cf6e"
+    },
+    {
+      "path": "live-backup/app/services/capital_flow_history_provider.py",
+      "bytes": 6740,
+      "sha256": "49ff9b593c776af6f520f13f5c79e6960d777f37d810c99dc647950e0a34c216"
+    },
+    {
+      "path": "live-backup/app/services/external_data_sync_task.py",
+      "bytes": 117679,
+      "sha256": "0ffb9ce37c8a20e0eb5ff842b512700acc8fcb538645e2ebb45509429a649a4b"
+    },
+    {
+      "path": "live-backup/tests/e2e/test_validation_runtime_acceptance.py",
+      "bytes": 3508,
+      "sha256": "7eef5c027bcf0fc38da9e3903cc8ecf2050aa56c0097579499f5ef6efa20c895"
+    },
+    {
+      "path": "live-backup/tests/test_sync_io_optimization.py",
+      "bytes": 22541,
+      "sha256": "28b721fb79ae3cf771ab4ba28f4465477a0eca07c9f9afb7c7a751c80ac969d3"
+    },
+    {
+      "path": "preserved-dependencies/app/services/akshare_guard.py",
+      "bytes": 11854,
+      "sha256": "d1bf6abb82195d0a467cbdda9e58e202f8a578fa84a330321d01775f834f0874"
+    },
+    {
+      "path": "preserved-dependencies/app/services/akshare_registry.py",
+      "bytes": 29437,
+      "sha256": "b160408b19c0607d478a9370f59681c177465651b8924d902609291f49928d5d"
+    },
+    {
+      "path": "preserved-dependencies/app/services/akshare_utils.py",
+      "bytes": 15938,
+      "sha256": "6d63fc4a074ea6109668664d595dda023139db6577df7593c6c9300556609bd3"
+    },
+    {
+      "path": "prior-reports/交付与验证报告-行情异动提醒完整功能-2026-10-27.md",
+      "bytes": 15481,
+      "sha256": "b7b329a5c45cb952807369fd7c7c717ae80cd416b38fad39857c21e78abbba5e"
+    },
+    {
+      "path": "prior-reports/使用说明-行情异动提醒-2026-10-27.md",
+      "bytes": 9908,
+      "sha256": "80067e97e68f2fcb8af160d3a6d2d3712722f7c4b77ca857a3623d74c7e6fc93"
+    },
+    {
+      "path": "prior-reports/变更记录-行情消息P0-2026-10-25.md",
+      "bytes": 12723,
+      "sha256": "a48148cc56fc0d71d2239d69279a4d300510462fd0f98e6bb2e334e7b298d9e2"
+    },
+    {
+      "path": "prior-reports/验证报告-后端受控重启与行情异动页面验收-2026-10-27.md",
+      "bytes": 9185,
+      "sha256": "d10c91608815edbd900337bb7727480238d96f68d7064502db9ab3fa8751b502"
+    },
+    {
+      "path": "prior-reports/验证报告-资金流事务恢复与重试退避-2026-10-27.md",
+      "bytes": 13286,
+      "sha256": "5e697559bc099996f8b49ff75f11efc019306707ea3cc7b1d74d1c5920eaa68d"
+    },
+    {
+      "path": "runtime-regression.log",
+      "bytes": 102,
+      "sha256": "913819b48c8b1975dfa36a0096669067c402cc79d1462da767b4bbb0519f8005"
+    },
+    {
+      "path": "runtime-regression.xml",
+      "bytes": 5240,
+      "sha256": "307a7c88c806b94c7270ff6e0a05ddc613541f434396f4012288582001faf854"
+    },
+    {
+      "path": "workspace-verification/mysql.log",
+      "bytes": 111,
+      "sha256": "9b5c2fbd09bee4fa783ae57840df86e9e06750667cffaaa3888e2e9fda89f015"
+    },
+    {
+      "path": "workspace-verification/mysql.xml",
+      "bytes": 2685,
+      "sha256": "43e8f348e7dc5dad8a67385dba5c487f40154d9e4d51f064249b9b58ea7a0d8b"
+    },
+    {
+      "path": "workspace-verification/regression.log",
+      "bytes": 1111,
+      "sha256": "c979a0412dc388a4aee66e707477d0b248c24eef788012338397c33a3640b4ba"
+    },
+    {
+      "path": "workspace-verification/regression.xml",
+      "bytes": 40273,
+      "sha256": "92b28bf9e5374ed20443fafd0be7df11600b27b1d156917858c506872c3e0abc"
+    },
+    {
+      "path": "workspace-verification/replay.json",
+      "bytes": 3703,
+      "sha256": "5b66c6ad957e60063f85667febd3ab822f6297814b668aa4cee656d6bea62ebe"
+    },
+    {
+      "path": "workspace-verification/replay.log",
+      "bytes": 1186,
+      "sha256": "b3fbb281b69e3616de6a6864f4b038ef54b9c3a201fe7c2127c4ed8666cf6346"
+    },
+    {
+      "path": "workspace-verification/result.json",
+      "bytes": 1664,
+      "sha256": "422a15953b47cc0c2b3462154fd8bd5d46316de045e8be48b9085ab78f44dc4d"
+    }
+  ]
+}

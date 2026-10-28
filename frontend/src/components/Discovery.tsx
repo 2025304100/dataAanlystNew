@@ -55,6 +55,10 @@ const NUMBER_OPERATORS: IndicatorOperator[] = ["gt", "gte", "lt", "lte", "eq", "
 const BOOLEAN_OPERATORS: IndicatorOperator[] = ["eq", "neq"];
 const POOL_TABS: PoolTab[] = ["all", "highQuality", "highTiming", "actionable", "overheatRisk", "lowCredibility"];
 
+function scoringCaliberKey(presetKey: string | null | undefined, version: number | null | undefined): string {
+  return version == null ? "unknown" : JSON.stringify([presetKey ?? null, version]);
+}
+
 function pascalCaseKey(value: string): string {
   return value
     .split("_")
@@ -114,6 +118,14 @@ function scopeLabel(scope: string): string {
   }
 }
 
+const ABNORMAL_STEP_CLASS: Record<string, string> = {
+  failed: "error",
+  cancelled: "interrupted",
+  expired: "interrupted",
+  paused: "interrupted",
+  partial: "warning",
+};
+
 function stepClassName(task: { status: string; stage: string } | null, step: string): string {
   if (!task) return "";
   if (task.status === "done") return "done";
@@ -121,7 +133,7 @@ function stepClassName(task: { status: string; stage: string } | null, step: str
   const stepIdx = STEP_ORDER.indexOf(step as (typeof STEP_ORDER)[number]);
   if (stageIdx < 0) return "";
   if (stepIdx < stageIdx) return "done";
-  if (stepIdx === stageIdx) return "active";
+  if (stepIdx === stageIdx) return ABNORMAL_STEP_CLASS[task.status] ?? "active";
   return "";
 }
 
@@ -387,6 +399,16 @@ export default function Discovery({
   // 挖掘结果独立加载：不依赖 workbench.candidates（executable 过滤），
   // 直接查 /discovery/latest-candidates 获取全量候选（含 hold/reduce），让用户看到全貌
   const [discoveryCandidates, setDiscoveryCandidates] = useState<WorkbenchCandidate[]>([]);
+  const [onlyCurrentCaliber, setOnlyCurrentCaliber] = useState(false);
+  const caliberKeys = useMemo(
+    () => new Set(discoveryCandidates.map((c) => scoringCaliberKey(c.scoring_preset_key, c.scoring_config_version))),
+    [discoveryCandidates],
+  );
+  const hasMixedCaliber = caliberKeys.size >= 2;
+  const activeCaliberKey = activePreset?.asset_type === (scope.endsWith("etf") ? "etf" : "stock")
+    ? scoringCaliberKey(activePreset.preset_key, activePreset.version)
+    : null;
+  const filterToActiveCaliber = hasMixedCaliber && onlyCurrentCaliber && activeCaliberKey !== null;
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [candidatesReadError, setCandidatesReadError] = useState<string | null>(null);
   const candidateRequestRef = useRef(0);
@@ -394,6 +416,8 @@ export default function Discovery({
   candidateTargetRef.current = `${scope}|${minScore}`;
   // 卡死检测：任务 running 但 updated_at 长时间未变化时提示用户
   const [staleWarning, setStaleWarning] = useState(false);
+
+  useEffect(() => { setOnlyCurrentCaliber(false); }, [scope]);
 
   // 高级配置持久化：任一配置变化时保存到 localStorage
   useEffect(() => {
@@ -540,6 +564,8 @@ export default function Discovery({
 
   const sortedResults = useMemo(() => {
     return discoveryCandidates
+      .filter((item) => !filterToActiveCaliber
+        || scoringCaliberKey(item.scoring_preset_key, item.scoring_config_version) === activeCaliberKey)
       .map((item) => withFinalOpportunityScore(item, ctx.newsSnapshot))
       .sort((a, b) => {
         const aFrozen = a.is_frozen ? 1 : 0;
@@ -550,7 +576,7 @@ export default function Discovery({
         if (bScore !== aScore) return bScore - aScore;
         return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
       });
-  }, [discoveryCandidates, ctx.newsSnapshot]);
+  }, [discoveryCandidates, ctx.newsSnapshot, filterToActiveCaliber, activeCaliberKey]);
 
   const candidatePools = useMemo(() => {
     const all = sortedResults;
@@ -1038,9 +1064,12 @@ export default function Discovery({
     }
   }, [ctx]);
 
-  const percentValue = task?.percent ?? 0;
+  const isAbnormalTerminal = !!task && ["cancelled", "failed", "expired", "partial", "paused"].includes(task.status);
+  const barPercent = task && task.total > 0
+    ? Math.max(0, Math.min(100, Math.round((task.processed * 100) / task.total)))
+    : 0;
   const progressTitle = task?.message || t("discoveryIdle");
-  const progressPct = `${percentValue}%${DOT}${template("totalProgress", {
+  const progressPct = `${barPercent}%${DOT}${template("totalProgress", {
     total: task?.total ?? 0,
     processed: task?.processed ?? 0,
   })}`;
@@ -1078,6 +1107,17 @@ export default function Discovery({
                   {t("candidatePromoted")}
                 </Tag>
               )}
+              <span
+                className="caliber-chip"
+                data-unknown={item.scoring_config_version == null ? "1" : "0"}
+                title={
+                  item.scoring_config_version == null
+                    ? t("caliberUnknownTip")
+                    : `${item.scoring_preset_name ?? "-"} · v${item.scoring_config_version}`
+                }
+              >
+                {item.scoring_config_version == null ? t("caliberUnknown") : `v${item.scoring_config_version}`}
+              </span>
               <span className="symbol-name">{item.name}</span>
             </div>
             <div className="item-subline">{joinParts([regionLongLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
@@ -1543,7 +1583,7 @@ export default function Discovery({
               </div>
               {taskActions}
             </div>
-            <div className="progress-track"><div className="progress-fill" style={{ width: percentValue + "%" }} /></div>
+            <div className="progress-track" data-state={isAbnormalTerminal ? "abnormal" : "normal"}><div className="progress-fill" style={{ width: barPercent + "%" }} /></div>
             <div className="discovery-steps">
               {STEP_ORDER.map((step) => (
                 <span key={step} data-discovery-step={step} className={stepClassName(task, step)}>{t(STEP_LABEL_KEYS[step])}</span>
@@ -1586,6 +1626,20 @@ export default function Discovery({
             </div>
             <p className="panel-meta">{resultMeta}</p>
           </div>
+
+          {!candidatesReadUnavailable && hasMixedCaliber && (
+            <div className="caliber-mixed-hint" role="note" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 12, color: "var(--muted)" }}>
+              <span>{ctx.locale === "en-US"
+                ? `These results contain ${caliberKeys.size} scoring configurations. Cross-configuration ranking is for reference only.`
+                : `当前结果含 ${caliberKeys.size} 个评分口径，跨口径排序仅供参考`}</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Switch size="small" checked={filterToActiveCaliber} onChange={setOnlyCurrentCaliber}
+                  disabled={activeCaliberKey === null}
+                  aria-label={ctx.locale === "en-US" ? "Current caliber only" : "仅看当前口径"} />
+                <span>{ctx.locale === "en-US" ? "Current caliber only" : "仅看当前口径"}</span>
+              </label>
+            </div>
+          )}
 
           {coverageHint && <div className="coverage-hint">{coverageHint}</div>}
 

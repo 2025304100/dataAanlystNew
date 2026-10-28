@@ -12,6 +12,7 @@ from datetime import date
 
 import pandas as pd
 from app.services.market_history_contract import resolve_cn_prefixed_symbol, tencent_quantity_to_shares_multiplier
+from app.services.data_source_contracts import normalize_units
 
 
 def attach_cn_stock_history_contract(frame: pd.DataFrame, provider: str) -> pd.DataFrame:
@@ -78,16 +79,14 @@ def normalize_cn_em_history(frame: pd.DataFrame) -> pd.DataFrame:
 def normalize_cn_stock_em_history(frame: pd.DataFrame) -> pd.DataFrame:
     """A-share EM quantity is lots: convert to shares; ETF keeps its own path."""
     normalized = normalize_cn_em_history(frame).copy()
-    if not normalized.empty:
-        normalized["volume"] = normalized["volume"] * 100.0
+    normalized = normalize_units(normalized, "stock_zh_a_hist")
     return attach_cn_stock_history_contract(normalized, "eastmoney")
 
 
 def normalize_cn_etf_em_history(frame: pd.DataFrame) -> pd.DataFrame:
     """EM ETF K-line quantity is lots of 100 fund units; cash stays in CNY."""
     normalized = normalize_cn_em_history(frame).copy()
-    if not normalized.empty:
-        normalized['volume'] = normalized['volume'] * 100.
+    normalized = normalize_units(normalized, "fund_etf_hist_em")
     normalized.attrs['history_contract'] = {
         'provider': 'eastmoney_etf', 'endpoint': 'fund_etf_hist_em',
         'version': 'cn-etf-shares-v1', 'volume_unit': 'share',
@@ -141,10 +140,7 @@ def normalize_cn_stock_sina_history(frame: pd.DataFrame, start_date: date, end_d
     ]
     # Sina computes volume / outstanding_share (0.02 means 2%); Eastmoney's
     # 换手率 already uses percentage points. Never infer units from magnitude.
-    if "turnover_rate" in normalized:
-        normalized["turnover_rate"] = pd.to_numeric(
-            normalized["turnover_rate"], errors="coerce"
-        ) * 100.0
+    normalized = normalize_units(normalized, "stock_zh_a_daily")
     return attach_cn_stock_history_contract(standard_history_frame(normalized), "sina")
 
 

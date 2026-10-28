@@ -195,6 +195,13 @@ export default function App() {
             <NotificationDropdown
               forceClose={helpOpen}
               onNavigate={(target) => {
+                if (target.tab === "news" && target.subtab === "signals") {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("tab", "news");
+                  url.searchParams.set("marketSignals", "1");
+                  window.history.replaceState(null, "", url);
+                  window.dispatchEvent(new Event("market-signals:open"));
+                }
                 ctx.setActiveTab(target.tab as typeof ctx.activeTab);
                 if (target.section) {
                   setSettingsNavRequest({
