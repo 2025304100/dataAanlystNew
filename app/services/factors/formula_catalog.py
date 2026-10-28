@@ -377,43 +377,41 @@ def _query_cross_section_coverage(
         source_join = f"""LEFT JOIN LATERAL (
             SELECT reports.symbol, reports.{field}
             FROM raw_financial_reports AS reports
-            WHERE reports.symbol = bars.symbol
-              AND reports.announcement_date <= calendar.trade_date
+            WHERE reports.symbol = universe_days.symbol
+              AND reports.announcement_date <= universe_days.trade_date
             ORDER BY reports.announcement_date DESC, reports.report_period DESC
             LIMIT 1
         ) AS source ON TRUE"""
     else:
         source_join = f"""LEFT JOIN {table} AS source
-            ON source.symbol = bars.symbol
-            AND source.trade_date = calendar.trade_date"""
+            ON source.symbol = universe_days.symbol
+            AND source.trade_date = universe_days.trade_date"""
     try:
         if not _calendar_ready:
             _prepare_coverage_calendar(conn)
         rows = conn.execute(
             f"""
-            WITH stock_bars AS (
-                SELECT DISTINCT bars.symbol, bars.trade_date
+            WITH calendar AS (
+                SELECT DISTINCT bars.trade_date
                 FROM raw_daily_bars AS bars
-                JOIN raw_asset_universe AS universe
-                  ON universe.symbol = bars.symbol
+                WHERE {_open_cn_day_sql('bars.trade_date')}
+                ORDER BY bars.trade_date DESC
+                LIMIT 260
+            ),
+            universe_days AS (
+                SELECT universe.symbol, calendar.trade_date
+                FROM calendar
+                JOIN raw_asset_universe AS universe ON TRUE
                 WHERE LOWER(universe.asset_type) = '{asset_type}'
                   AND LOWER(universe.region) = 'cn'
                   AND universe.is_active = TRUE
-                  AND {_open_cn_day_sql('bars.trade_date')}
-            ),
-            calendar AS (
-                SELECT DISTINCT trade_date
-                FROM stock_bars
-                ORDER BY trade_date DESC
-                LIMIT 260
             ),
             observations AS (
-                SELECT bars.symbol, calendar.trade_date,
+                SELECT universe_days.symbol, universe_days.trade_date,
                     BOOL_OR(source.{field} IS NOT NULL) AS covered
-                FROM calendar
-                JOIN stock_bars AS bars ON bars.trade_date = calendar.trade_date
+                FROM universe_days
                 {source_join}
-                GROUP BY bars.symbol, calendar.trade_date
+                GROUP BY universe_days.symbol, universe_days.trade_date
             ),
             gap_islands AS (
                 SELECT *, SUM(CASE WHEN covered THEN 1 ELSE 0 END) OVER (
@@ -631,20 +629,23 @@ def _query_field_stats(warehouse: Any, *, field_keys: set[str] | None = None) ->
 
 
 def _prepare_stock_coverage(conn: Any) -> None:
-    """Build the identical 260-session denominator once per catalog read."""
+    """Build the identical 260-session denominator once per catalog read.
+
+    Every active CN stock is expected on every session in the window. Deriving
+    the denominator from existing bars would let a partially mirrored session
+    shrink the universe and report a fake 100% coverage.
+    """
     conn.execute(f"""CREATE OR REPLACE TEMP TABLE coverage_cn_stock_bars AS
         WITH eligible AS (
             SELECT symbol FROM raw_asset_universe
             WHERE LOWER(asset_type)='stock' AND LOWER(region)='cn' AND is_active=TRUE
         ), calendar AS (
             SELECT DISTINCT bars.trade_date FROM raw_daily_bars bars
-            JOIN eligible ON eligible.symbol=bars.symbol
             WHERE {_open_cn_day_sql('bars.trade_date')}
             ORDER BY bars.trade_date DESC LIMIT 260
         )
-        SELECT DISTINCT bars.symbol, bars.trade_date FROM raw_daily_bars bars
-        JOIN calendar ON calendar.trade_date=bars.trade_date
-        JOIN eligible ON eligible.symbol=bars.symbol
+        SELECT eligible.symbol, calendar.trade_date FROM eligible
+        CROSS JOIN calendar
     """)
 
 

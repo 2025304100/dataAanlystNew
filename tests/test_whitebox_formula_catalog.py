@@ -182,6 +182,74 @@ def test_catalog_cache_ttl_starts_after_a_slow_query_finishes(monkeypatch):
         catalog.invalidate_formula_catalog_cache()
 
 
+def _coverage_fixture_conn():
+    """Four active stocks; the last session only mirrored bars for two of them.
+
+    The last session is only partially synced: bars and capital-flow rows are
+    missing together for symbols 3 and 4. The denominator must still be the
+    full active universe (4), otherwise the shrunk universe reports a fake
+    100% coverage and defeats the consecutive-gap threshold.
+    """
+    duckdb = pytest.importorskip("duckdb")
+    conn = duckdb.connect()
+    conn.execute("CREATE TEMP TABLE coverage_cn_closed_days (trade_date DATE)")
+    conn.execute("CREATE TABLE raw_asset_universe (symbol VARCHAR, asset_type VARCHAR, region VARCHAR, is_active BOOLEAN)")
+    conn.executemany("INSERT INTO raw_asset_universe VALUES (?, 'stock', 'CN', TRUE)",
+                     [(str(i),) for i in (1, 2, 3, 4)])
+    conn.execute("CREATE TABLE raw_daily_bars (symbol VARCHAR, trade_date DATE)")
+    conn.executemany("INSERT INTO raw_daily_bars VALUES (?, ?)",
+                     [(str(s), d) for d in ("2026-08-03", "2026-08-04") for s in (1, 2, 3, 4)]
+                     + [(s, "2026-08-05") for s in (1, 2)])
+    conn.execute("CREATE TABLE raw_capital_flow (symbol VARCHAR, trade_date DATE, main_net_inflow DOUBLE)")
+    conn.executemany("INSERT INTO raw_capital_flow VALUES (?, ?, ?)",
+                     [(str(s), d, 1.0) for d in ("2026-08-03", "2026-08-04") for s in (1, 2, 3, 4)]
+                     + [(s, "2026-08-05", 1.0) for s in (1, 2)])
+    return conn
+
+
+@pytest.mark.whitebox
+def test_sparse_session_does_not_shrink_the_stock_coverage_denominator():
+    from app.services.factors.formula_catalog import _prepare_stock_coverage, _query_coverage_counts
+
+    conn = _coverage_fixture_conn()
+    try:
+        _prepare_stock_coverage(conn)
+        counts = _query_coverage_counts(conn, table="raw_capital_flow", fields=["main_net_inflow"])
+    finally:
+        conn.close()
+
+    daily, longest_gap = counts["main_net_inflow"]
+    assert [(str(day), universe, covered) for day, universe, covered in daily] == [
+        ("2026-08-05", 4, 2),
+        ("2026-08-04", 4, 4),
+        ("2026-08-03", 4, 4),
+    ]
+    assert longest_gap == 1
+
+
+@pytest.mark.whitebox
+def test_cross_section_fallback_keeps_the_full_universe_on_sparse_sessions():
+    from app.services.factors.formula_catalog import _query_cross_section_coverage
+
+    conn = _coverage_fixture_conn()
+    try:
+        summary = _query_cross_section_coverage(
+            conn,
+            table="raw_capital_flow",
+            field="main_net_inflow",
+            minimum_coverage=0.70,
+            _calendar_ready=True,
+        )
+    finally:
+        conn.close()
+
+    assert summary["latest_daily_coverage"] == 0.5
+    assert summary["expected_rows"] == 12
+    assert summary["covered_rows"] == 10
+    assert summary["trailing_coverage_days"] == 0
+    assert summary["max_consecutive_gap_days"] == 1
+
+
 def test_dataset_quality_catalog_has_separate_cache_from_full_catalog(monkeypatch):
     from app.services.factors import formula_catalog as catalog
     calls=[]
