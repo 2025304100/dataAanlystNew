@@ -680,6 +680,53 @@ class TestExecuteAutoMode:
         assert result["executed_orders"][0]["status"] == "filled"
         assert result["executed_orders"][0]["order_id"] is not None
 
+    def test_auto_mode_batch_keeps_buying_after_first_order_commit(self, db_session, monkeypatch):
+        """A multi-buy batch must not block itself after each order commit."""
+        from sqlalchemy import delete
+
+        import app.services.portfolio_reconciliation_activation as activation
+        from app.models.portfolio_inspection_workflow import ReconciliationSourceEvent
+
+        monkeypatch.setattr(activation, "assert_execution_within_active_coverage", lambda *a, **k: None)
+        monkeypatch.setattr(
+            activation, "_active", lambda *a, **k: {"cursor_id": "batch-cursor", "generation": 1},
+        )
+        p = _make_portfolio(db_session, name="QA-Exec-AutoBatch")
+        first = _make_symbol(db_session, symbol="600062")
+        second = _make_symbol(db_session, symbol="600063")
+        for sym in (first, second):
+            _make_daily_bar(db_session, sym.id, close=10.0)
+            _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
+            _make_score(db_session, sym.id, action="open")
+            _make_member(
+                db_session,
+                portfolio_id=p.id,
+                symbol_id=sym.id,
+                execution_mode=EXECUTION_AUTO,
+                entry_rule_version_id=1003,
+            )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": first.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 1003},
+            {"symbol_id": second.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 1003},
+        ])
+        db_session.execute(
+            delete(ReconciliationSourceEvent).where(
+                ReconciliationSourceEvent.portfolio_id == p.id,
+            )
+        )
+        db_session.commit()
+
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
+
+        assert len(result["buy_decisions"]) == 2
+        assert len(result["executed_orders"]) == 2
+        assert result["errors"] == []
+        assert db_session.query(SimOrder).filter_by(
+            portfolio_id=p.id, side="buy", status="filled",
+        ).count() == 2
+
     def test_auto_mode_attribution_fields_populated(self, db_session):
         """【WP6.2/C 簇】auto 下单后 SimOrder 按新契约归因（追溯走 evidence/plan）。"""
         p = _make_portfolio(db_session, name="QA-Exec-AutoAttr")

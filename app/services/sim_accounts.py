@@ -187,6 +187,7 @@ def place_sim_order(
     cost_config: dict | None = None,
     fee_override: float | None = None,
     execution_price_is_final: bool = False,
+    skip_source_pending_gate: bool = False,
 ) -> tuple[SimOrder, SimTrade]:
     """下模拟订单。
 
@@ -211,6 +212,8 @@ def place_sim_order(
         fee_override: 统一撮合器已计算的费用；传入后跳过本地费用重算。
         execution_price_is_final: ``price`` 已由统一撮合器确定；跳过本地
             tick 取整和滑点，保留跨入口的精确成交价。
+        skip_source_pending_gate: 仅限同一自动执行批次。批次开始时已校验
+            账户来源，批次内逐单提交产生的收据不得反过来阻断后续买入。
 
     Returns:
         (SimOrder, SimTrade)
@@ -243,8 +246,9 @@ def place_sim_order(
         from app.services.portfolio_reconciliation_activation import CoverageError, assert_execution_within_active_coverage
         try:
             assert_execution_within_active_coverage(db, portfolio.id, datetime.now(ZoneInfo("Asia/Shanghai")).date())
-            from app.services.portfolio_reconciliation_events import assert_account_sources_checked_for_buy
-            assert_account_sources_checked_for_buy(db, portfolio.id)
+            if not skip_source_pending_gate:
+                from app.services.portfolio_reconciliation_events import assert_account_sources_checked_for_buy
+                assert_account_sources_checked_for_buy(db, portfolio.id)
         except CoverageError as exc:
             raise HTTPException(exc.status_code, detail={"error_code": exc.code, "message": str(exc)}) from exc
     ensure_sim_account_seed(db, portfolio)

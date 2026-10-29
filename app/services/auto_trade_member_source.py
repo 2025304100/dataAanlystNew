@@ -1530,6 +1530,25 @@ def _execute_snapshot_order_plans(
             plans_to_process.append(plan)
             seen_plan_ids.add(str(plan.order_plan_id))
 
+    # The account-source gate is run-scoped, not order-scoped.  This loop
+    # commits after every order, so the first fill's receipts would otherwise
+    # block every later BUY in the same allocated batch.  Prove the account is
+    # clean before the batch, then keep the same proof for its own writes.
+    source_checked_for_batch = False
+    if not dry_run and db is not None and any(
+        str(plan.action).upper() == "BUY" and str(plan.order_plan_id) not in pending_retry_orders
+        for plan in plans_to_process
+    ):
+        from app.services.portfolio_reconciliation_coverage import CoverageError
+        from app.services.portfolio_reconciliation_events import assert_account_sources_checked_for_buy
+        try:
+            assert_account_sources_checked_for_buy(db, portfolio_id)
+            source_checked_for_batch = True
+        except CoverageError:
+            # Pre-existing undchecked sources still block every new BUY; the
+            # per-order gate below records the rejection as before.
+            logger.info("自动模拟批次开始前仍有账户来源待核对 portfolio_id=%s", portfolio_id)
+
     for plan in plans_to_process:
         if task_cancelled():
             result["skipped_due_to_cancel"] = True
@@ -2011,6 +2030,7 @@ def _execute_snapshot_order_plans(
                         apply_fees=False,
                         fee_override=float(match_result.total_cost),
                         execution_price_is_final=True,
+                        skip_source_pending_gate=source_checked_for_batch,
                     )
                 _date_new_fill(order, _trade, execution_at)
                 order.quantity = requested_quantity
@@ -2106,6 +2126,7 @@ def _execute_snapshot_order_plans(
                     apply_fees=False,
                     fee_override=float(match_result.total_cost),
                     execution_price_is_final=True,
+                    skip_source_pending_gate=source_checked_for_batch,
                 )
             _date_new_fill(order, _trade, execution_at)
             order.client_order_key = str(plan.order_plan_id)
