@@ -106,6 +106,35 @@ def test_only_admitted_inflight_transport_reserves_the_new_day(signals_client,db
         assert not prepare_notification(db_session,box)
 
 
+def test_abandoned_inflight_transport_must_not_consume_later_days(signals_client,db_session,monkeypatch):
+    """A claim left in 'sending' after a restart/hold must not reserve the quota forever."""
+    from app.services import market_signal_sources as sources
+    from app.services.notifications import outbox
+    now=[datetime(2026,10,27,15,59,50)]
+    monkeypatch.setattr(sources,'utcnow',lambda:now[0])
+    monkeypatch.setattr(outbox,'_now_utc',lambda:now[0])
+    seed_signal_prices(db_session)
+    enable_without_starting_scheduler(db_session)
+    rule,evidence=make_rule_and_evidence(signals_client,mode='trial',window_days=1,max_daily=1,
+        cooldown_hours=0,max_age_hours=168)
+    seed_assessment(db_session,rule['id'],evidence['id'],'abandoned-first')
+    assert run(signals_client)['created']==1
+    box_id=db_session.scalar(select(NotificationOutbox.id))
+    box=outbox.mark_sending(db_session,outbox_id=box_id)
+    assert box is not None
+    assert prepare_notification(db_session,box)
+    # The transport never returned (process restart) or was held for review.
+    # Either way the row stays 'sending' far beyond the adapter timeout.
+    now[0]=datetime(2026,10,28,16,0,5)  # China 2026-10-29 00:00:05.
+    db_session.expire_all()
+    assert db_session.get(NotificationOutbox,box_id).status=='sending'
+    fresh=add_event(signals_client,now[0],'abandoned-next')
+    seed_assessment(db_session,rule['id'],fresh['id'],'abandoned-next')
+    generated=run(signals_client)['created']
+    observe('abandoned_inflight',{'generated':generated,'stale_status':'sending','actual_transport_calls':0})
+    assert generated==1, 'A stale sending claim permanently consumed the daily reminder quota'
+
+
 def test_receipt_reconciliation_keeps_earliest_delivery_and_is_idempotent(signals_client,db_session,monkeypatch):
     from app.services import market_signal_sources as sources
     from app.services.notifications import outbox
