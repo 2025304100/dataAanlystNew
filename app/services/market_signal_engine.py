@@ -47,11 +47,19 @@ def _eligibility(db, assessment, rule, config, now):
     return None
 
 
+_INFLIGHT_CLAIM_WINDOW = timedelta(minutes=10)
+
+
 def inflight_prediction_ids(db):
     from app.models.notification import NotificationOutbox
     ids = set()
+    # A claim abandoned by a restart or a manual hold stays in "sending" forever.
+    # Only a recently admitted transport can still own the quota reservation;
+    # anything older is stale and must not reserve quota on later days.
+    claimed_after = sources.utcnow()-_INFLIGHT_CLAIM_WINDOW
     for box in db.scalars(select(NotificationOutbox).where(
-            NotificationOutbox.source_type == "market_signal", NotificationOutbox.status == "sending")):
+            NotificationOutbox.source_type == "market_signal", NotificationOutbox.status == "sending",
+            NotificationOutbox.updated_at >= claimed_after)):
         candidates = json.loads(box.payload_json or "{}").get("prediction_ids", [])
         for row in db.scalars(select(MarketSignalPrediction).where(MarketSignalPrediction.id.in_(candidates))):
             preparation = json.loads(row.snapshot_json).get("preparations", {}).get(str(box.id), {})
