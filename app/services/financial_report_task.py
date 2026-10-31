@@ -19,6 +19,7 @@ from app.services.financial_data import (
     sync_financial_announcements,
 )
 from app.services.sync_progress import CancellationProbe, ProgressCheckpoint
+from app.services.data_source_execution import source_worker
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ def create_financial_report_task(
     return task
 
 
+@source_worker
 def _run_financial_report_task(task_id: str) -> None:
     SessionLocal = get_session_local()
     db = SessionLocal()

@@ -32,6 +32,7 @@ from app.models.universe import UniverseSymbol
 from app.schemas.async_task import AsyncTaskRead
 from app.services.async_tasks import _task_to_read, cancel_async_task, get_async_task
 from app.services.feature_policy import reject_tail_proxy
+from app.services.data_source_execution import source_worker, submit_with_context
 from app.services.external_sync_policy import resolve_policy_ranges, requested_days, sync_policy, subtract_ranges
 
 logger = logging.getLogger(__name__)
@@ -1295,7 +1296,7 @@ def _run_symbol_sync(
                     return None
                 batch = symbols[batch_start : batch_start + max_workers]
                 futures = {
-                    executor.submit(
+                    submit_with_context(executor,
                         _backfill_worker,
                         symbol.id,
                         partitions_by_symbol.get(symbol.id).start_date
@@ -1911,6 +1912,7 @@ def finalize_legacy_external_sync(db, task_id, dataset, records, dates, *, skip_
     return {"warehouse_mirror": mirror, "quality_snapshot": quality}
 
 
+@source_worker
 def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dict[str, Any]) -> None:
     db = SessionLocal()
     try:

@@ -31,6 +31,8 @@ from app.services.regions import markets_for_region
 from app.services.scans import run_scan
 from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
+from app.services.data_source_execution import source_worker
+from app.services.data_source_execution import submit_with_context
 
 
 logger = logging.getLogger(__name__)
@@ -1168,7 +1170,7 @@ def _sync_one_symbol_with_timeout(
 
     logger.info("sync_one %s start (timeout=%ds)", symbol.symbol, SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_run)
+        future = submit_with_context(executor, _run)
         return future.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
 
 
@@ -1231,7 +1233,7 @@ def _refresh_universe_with_timeout(db: Session, payload: DiscoveryTaskCreate) ->
 
     logger.info("refresh universe start (timeout=%ds)", UNIVERSE_REFRESH_TIMEOUT_SECONDS)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_refresh_discovery_universe, db, payload)
+        future = submit_with_context(executor, _refresh_discovery_universe, db, payload)
         try:
             result = future.result(timeout=UNIVERSE_REFRESH_TIMEOUT_SECONDS)
             logger.info("refresh universe done: %s", result)
@@ -1244,6 +1246,7 @@ def _refresh_universe_with_timeout(db: Session, payload: DiscoveryTaskCreate) ->
             return None
 
 
+@source_worker
 def _run_discovery_task(task_id: str, generation: str | None = None) -> None:
     db = SessionLocal()
     # 启动 watchdog 心跳线程，防止长时间同步任务被 _expire_stale_tasks 误判
@@ -1360,7 +1363,7 @@ def _run_discovery_task(task_id: str, generation: str | None = None) -> None:
                     batch = stale_syncable[batch_start:batch_start + P3_BATCH_SIZE]
                     with ThreadPoolExecutor(max_workers=P3_MAX_WORKERS, thread_name_prefix="p3-fill") as executor:
                         futures = {
-                            executor.submit(_sync_one_concurrent, us.id, DEFAULT_HISTORY_DAYS): (us, sym)
+                            submit_with_context(executor, _sync_one_concurrent, us.id, DEFAULT_HISTORY_DAYS): (us, sym)
                             for us, sym in batch
                         }
                         for future in as_completed(futures):

@@ -12,6 +12,7 @@ import pandas as pd
 import requests
 
 from app.services.akshare_utils import _DEFAULT_TIMEOUT
+from app.services.data_source_execution import source_boundary
 from app.services.market_data_sources.sources.sina_history_evidence import parse_sina_history_bundle
 
 
@@ -39,6 +40,7 @@ def _read_response(url: str) -> bytes:
         response.close()
 
 
+@source_boundary('stock_zh_a_daily')
 def fetch_sina_history_raw(*, symbol: str, start_date: str, end_date: str, adjust: str) -> pd.DataFrame:
     """Return strict standard columns for RAW or qfq; hfq fails before I/O.
 

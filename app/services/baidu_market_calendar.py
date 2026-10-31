@@ -8,10 +8,12 @@ import re
 
 import pandas as pd
 import requests
+from app.services.data_source_execution import source_boundary
 
 CALENDAR_URL = "https://finance.pae.baidu.com/sapi/v1/financecalendar"
 
 
+@source_boundary('CAL:baidu')
 def fetch_baidu_calendar(*, date: str, category: str) -> pd.DataFrame:
     day = datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d")
     if category not in ("economic_data", "report_time"):
@@ -25,6 +27,14 @@ def fetch_baidu_calendar(*, date: str, category: str) -> pd.DataFrame:
         data = response.json()
     except ValueError as exc:
         raise RuntimeError("Baidu calendar returned non-JSON data") from exc
+    return parse_baidu_calendar(data, date=date, category=category)
+
+
+def parse_baidu_calendar(data, *, date: str, category: str) -> pd.DataFrame:
+    """Parse retained vendor bytes without granting this excluded source I/O."""
+    day = datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d")
+    if category not in ("economic_data", "report_time"):
+        raise ValueError("Unsupported Baidu calendar category")
     if not isinstance(data, dict) or str(data.get("ResultCode")) != "0":
         raise RuntimeError("Baidu calendar rejected the request")
     result = data.get("Result")

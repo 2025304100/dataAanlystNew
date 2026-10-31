@@ -125,7 +125,8 @@ def write_composed_history(*, dataset_id, references, symbols, plan_id, plan_sha
             'composition': {'policy': POLICY, 'parents': sorted(references, key=lambda r: r['dataset_id'])},
             'created_at': datetime.now(timezone.utc).isoformat()}
         (stage/'manifest.json').write_bytes(_encode(manifest))
-        stage.rename(destination)
+        from app.services.market_history_evidence import _commit_staged_directory
+        _commit_staged_directory(stage, destination)
     finally:
         if stage.exists():
             assert stage.parent == root and stage.name.startswith('.composition-')

@@ -642,7 +642,9 @@ def _start_worker(task_id: str, worker_func) -> None:
             )
             return
         try:
-            worker_func(task_id)
+            from app.services.data_source_execution import business_task_context
+            with business_task_context(task_id):
+                worker_func(task_id)
         except Exception as exc:
             cid = _gen_correlation_id()
             logger.exception("Worker crashed for task %s [cid=%s]", task_id, cid)

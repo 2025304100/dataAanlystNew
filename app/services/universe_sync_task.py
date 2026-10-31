@@ -20,6 +20,7 @@ from app.db.session import SessionLocal, get_session_local
 from app.models.async_task import AsyncTaskRecord
 from app.schemas.async_task import AsyncTaskRead
 from app.services import universe_sync
+from app.services.data_source_execution import source_worker
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,7 @@ def cancel_universe_sync_task(task_id: str) -> AsyncTaskRead | None:
 
 # ── worker 主函数 ─────────────────────────────────────────
 
+@source_worker
 def _run_universe_sync_init(
     task_id: str,
     max_workers: int,
@@ -722,6 +724,7 @@ def cancel_universe_incremental_task(task_id: str) -> AsyncTaskRead | None:
         db.close()
 
 
+@source_worker
 def _run_universe_incremental_sync(
     task_id: str,
     max_workers: int,
@@ -965,6 +968,7 @@ def cancel_universe_industry_backfill_task(task_id: str) -> AsyncTaskRead | None
         db.close()
 
 
+@source_worker
 def _run_universe_industry_backfill(task_id: str) -> None:
     SessionFactory = get_session_local()
     result: dict[str, Any] = {}
@@ -1141,6 +1145,7 @@ def cancel_universe_smart_task(task_id: str) -> AsyncTaskRead | None:
         db.close()
 
 
+@source_worker
 def _run_universe_smart_sync(
     task_id: str,
     max_workers: int,
@@ -1494,6 +1499,7 @@ def cancel_universe_range_repair_task(task_id: str) -> AsyncTaskRead | None:
 
 
 
+@source_worker
 def _run_universe_range_repair(
     task_id: str,
     max_workers: int,
@@ -1729,6 +1735,7 @@ def cancel_universe_backfill_task(task_id: str) -> AsyncTaskRead | None:
         db.close()
 
 
+@source_worker
 def _run_universe_backfill(
     task_id: str,
     max_workers: int,

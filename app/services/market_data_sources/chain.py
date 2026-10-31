@@ -19,6 +19,7 @@ from datetime import date
 import pandas as pd
 
 from app.services.akshare_utils import quiet_akshare_output
+from app.services.data_source_execution import source_task
 from app.services.market_data_sources.sources.base import HistorySource, SourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -163,9 +164,18 @@ class SourceChain:
         """
         return self.fetch_with_lineage(symbol, start_date, end_date, adjust).frame
 
+    @source_task(lane='backfill')
     def fetch_with_lineage(
         self, symbol, start_date: date, end_date: date, adjust: str
     ) -> SourceFetchResult:
+        from app.services.data_source_control import current_controller
+        controller = current_controller()
+        if controller is not None:
+            with controller.selection():
+                return self._fetch_with_lineage(symbol, start_date, end_date, adjust, observer=controller.observe_source)
+        return self._fetch_with_lineage(symbol, start_date, end_date, adjust)
+
+    def _fetch_with_lineage(self, symbol, start_date, end_date, adjust, observer=None):
         """Fetch data and retain the concrete source that supplied it.
 
         A source that is unavailable or raises ``SourceUnavailable`` is part
@@ -185,29 +195,70 @@ class SourceChain:
             for source in self.sources:
                 source_name = getattr(source, "name", "unknown")
                 considered.append(str(source_name))
+                if observer:
+                    observer("considered", str(source_name))
+
+                from app.services.data_source_control import RequestController, PolicyDenied, _declaration_scopes, current_controller
+                endpoint = getattr(source, 'endpoint', None)
+                if not isinstance(endpoint, str):
+                    endpoint = str(source_name) if str(source_name) in _declaration_scopes() else None
+                if endpoint:
+                    RequestController._assert_endpoint_allowed(endpoint, enabled=True)
+                import os
+                if os.environ.get('DATA_SOURCE_EXECUTION_MODE') == 'production':
+                    if not endpoint:
+                        raise PolicyDenied('ENDPOINT_REQUIRED')
+                    controller = current_controller()
+                    if controller is None:
+                        raise PolicyDenied('PRODUCTION_CONTROL_REQUIRED')
+                    controller.checkpoint(endpoints=(endpoint,))
 
                 # 跳过不可用的源(如 TDX 路径未配置)
                 try:
-                    if not source.available():
-                        logger.debug("source %s not available, skipping", source_name)
-                        unavailable.append(str(source_name))
-                        continue
+                    available = source.available()
                 except Exception as exc:
-                    logger.warning("source %s.available() raised %s, skipping", source_name, exc, exc_info=True)
+                    if observer:
+                        from app.services.data_source_control import PolicyDenied
+                        from app.services.data_contract_errors import DataContractError
+                        if isinstance(exc, (PolicyDenied, DataContractError)):
+                            raise
+                        logger.warning("source %s eligibility error: %s", source_name, type(exc).__name__)
+                    else:
+                        logger.warning("source %s.available() raised %s, skipping", source_name, exc, exc_info=True)
+                    continue
+                if not available:
+                    logger.debug("source %s not available, skipping", source_name)
+                    unavailable.append(str(source_name))
+                    if observer:
+                        observer("unavailable", str(source_name))
                     continue
 
                 # 跳过不支持的标的(如 TDX 不支持 ETF)
                 try:
-                    if not source.supports(symbol):
-                        logger.debug("source %s does not support %s, skipping", source_name, symbol.symbol)
-                        continue
+                    supported = source.supports(symbol)
                 except Exception as exc:
-                    logger.warning("source %s.supports() raised %s, skipping", source_name, exc, exc_info=True)
+                    if observer:
+                        from app.services.data_source_control import PolicyDenied
+                        from app.services.data_contract_errors import DataContractError
+                        if isinstance(exc, (PolicyDenied, DataContractError)):
+                            raise
+                        logger.warning("source %s eligibility error: %s", source_name, type(exc).__name__)
+                    else:
+                        logger.warning("source %s.supports() raised %s, skipping", source_name, exc, exc_info=True)
+                    continue
+                if not supported:
+                    if observer:
+                        observer("unsupported", str(source_name))
+                    logger.debug("source %s does not support %s, skipping", source_name, symbol.symbol)
                     continue
 
                 tried.append(source_name)
+                if observer:
+                    observer("attempted", str(source_name))
                 try:
                     frame = source.fetch(symbol, start_date, end_date, adjust)
+                    if observer:
+                        observer("selected", str(source_name))
                     # 成功,短路返回(空 DataFrame 也是有效结果)
                     logger.info("source %s succeeded for %s (%d rows)", source_name, symbol.symbol, len(frame))
                     if failed or unavailable:
@@ -229,9 +280,14 @@ class SourceChain:
                         considered_sources=tuple(considered),
                     )
                 except SourceUnavailable as exc:
-                    logger.info("source %s unavailable for %s: %s, trying next", source_name, symbol.symbol, exc)
+                    if observer:
+                        logger.info("source %s unavailable for %s, trying next", source_name, symbol.symbol)
+                    else:
+                        logger.info("source %s unavailable for %s: %s, trying next", source_name, symbol.symbol, exc)
                     last_error = exc
                     failed.append(str(source_name))
+                    if observer:
+                        observer("failed", str(source_name))
                     continue
                 # 非 SourceUnavailable 异常(如 KeyError/ValueError)直接向上抛,可能是 bug
 

@@ -19,6 +19,7 @@ from app.models.symbol import Symbol
 from app.models.watchlist import WatchlistItem
 from app.schemas.news import NewsEventRead, NewsMacroSummary, NewsSymbolSummary, NewsUpdateRequest
 from app.services.akshare_utils import quiet_akshare_output
+from app.services.data_source_execution import source_task
 
 
 POSITIVE_KEYWORDS = {
@@ -562,6 +563,7 @@ def get_latest_news(
     }
 
 
+@source_task(lane='incremental')
 def update_news(db: Session, payload: NewsUpdateRequest) -> dict:
     symbols = _resolve_symbols(db, payload)
     failed: list[dict] = []

@@ -24,6 +24,7 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.index_data import sync_index_daily
+from app.services.data_source_execution import source_worker
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ def create_index_daily_sync_task(*, symbol: str = "000300", lookback_days: int =
     return task
 
 
+@source_worker
 def _run_index_sync_task(task_id: str) -> None:
     """worker：执行指数日线同步，带进度跟踪与终态保护。"""
     SessionLocal = get_session_local()

@@ -18,6 +18,7 @@ import pandas as pd
 import requests
 
 from app.services.market_history_contract import cn_history_instrument, resolve_cn_prefixed_symbol
+from app.services.data_source_execution import source_boundary
 
 
 TENCENT_ETF_URL = 'https://proxy.finance.qq.com/cgi/cgi-bin/stockinfoquery/kline/app/get'
@@ -110,6 +111,7 @@ def _download(directory: Path, *, prefixed: str, start: date, end: date,
                               adjustment=adjustment), receipt
 
 
+@source_boundary('fund_etf_hist_tx')
 def fetch_tencent_etf_history(*, symbol, start_date: date, end_date: date,
                              adjust: str) -> pd.DataFrame:
     if (adjust != 'qfq' or type(start_date) is not date or type(end_date) is not date

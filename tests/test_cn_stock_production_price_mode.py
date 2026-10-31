@@ -1,4 +1,4 @@
-"""CN single-version production mode guards; real isolated SQL/DuckDB writes."""
+"""Legacy qfq compatibility until cutover; candidate raw facts use their own receipts."""
 from datetime import date, datetime
 import json
 from pathlib import Path
@@ -131,8 +131,15 @@ def test_real_frozen_sina_qfq_writes_mode_tag_and_mirrors_without_relabeling(db_
     db_session.commit()
     bar = db_session.scalar(select(DailyBar).where(DailyBar.symbol_id == symbol.id))
     assert bar.source == "akshare:sina:cn-stock:v1:qfq" and bar.close == 7.03
+    # M05.5 retired the business overlay. Exercise the retained universe mirror
+    # with the same normalized fixture values and explicit legacy qfq tag.
+    universe = UniverseSymbol(symbol="000425", name="isolated", market="sz", region="cn", asset_type="stock")
+    db_session.add(universe); db_session.flush()
+    db_session.add(UniverseDailyBar(universe_symbol_id=universe.id,trade_date=DAY,
+        **{name:getattr(bar,name) for name in ("open","high","low","close","volume","amount","turnover_rate","source")}))
+    db_session.commit()
     warehouse = FactorWarehouse(tmp_path / "qfq-mode.duckdb")
-    result = mirror_daily_bars(db_session, warehouse=warehouse, include_universe=False, start_date=DAY, end_date=DAY)
+    result = mirror_daily_bars(db_session, warehouse=warehouse, include_business=False, start_date=DAY, end_date=DAY)
     with warehouse.connection(read_only=True) as con:
         stored = con.execute("SELECT close,adjust,source FROM raw_daily_bars WHERE symbol='000425'").fetchone()
     assert stored == (7.03, "qfq", "akshare:sina:cn-stock:v1:qfq")
@@ -153,6 +160,12 @@ def test_mirror_rejects_explicit_raw_hfq_but_preserves_unknown_legacy(db_session
                        else UniverseDailyBar(universe_symbol_id=universe.id,**values))
     db_session.commit()
     warehouse = FactorWarehouse(tmp_path / (origin+"-modes.duckdb"))
+    if origin=="business":
+        with pytest.raises(ValueError,match="LEGACY_BUSINESS_MIRROR_RETIRED"):
+            mirror_daily_bars(db_session,warehouse=warehouse,include_business=True,include_universe=False)
+        assert warehouse.health().raw_daily_bars==0
+        assert len(db_session.scalars(select(DailyBar)).all())==3
+        return
     result = mirror_daily_bars(db_session,warehouse=warehouse,include_business=origin=="business",
                               include_universe=origin=="universe")
     with warehouse.connection(read_only=True) as con:

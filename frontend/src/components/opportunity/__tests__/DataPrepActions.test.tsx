@@ -30,7 +30,7 @@ import { DataPrepActions } from "../DataPrepActions";
 
 describe("DataPrepActions", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     localStorage.clear();
     mockContext.syncTask = null;
     mockContext.syncPolling = false;
@@ -221,7 +221,7 @@ describe("DataPrepActions", () => {
   });
 
   it("父任务仍在运行时继续轮询到扫描终态，只通知一次刷新", async () => {
-    mockApi.getAsyncTask.mockResolvedValueOnce({ id: "task-123", status: "running", percent: 92,
+    mockApi.getAsyncTask.mockResolvedValueOnce({ id: "task-123", status: "running", percent: 92, processed: 92, total: 100,
       message: "Task created", current_step_description: "scanning" })
       .mockResolvedValueOnce({ id: "task-123", status: "done", percent: 100, result: { fast_scan: { status: "ok" } } });
     const onPrepared = vi.fn();

@@ -54,7 +54,9 @@ const NO_DECISION_RESP = {
 const panelText = (): string => screen.getByTestId("reconcile-panel").textContent ?? "";
 
 const openReconcileTab = () => {
-  fireEvent.click(screen.getByRole("button", { name: "每日对账" }));
+  // 每日核对入口统一在「对账连续性」分段：切段后走空态兜底入口
+  fireEvent.click(screen.getByRole("tab", { name: "对账连续性" }));
+  fireEvent.click(screen.getByRole("button", { name: "打开对账" }));
 };
 
 describe("对账守恒子 Tab", () => {

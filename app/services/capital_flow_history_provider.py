@@ -13,6 +13,7 @@ from datetime import timezone
 
 import pandas as pd
 import requests
+from app.services.data_source_execution import source_boundary
 
 URL = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
 # 2026-10-26 实测：部分网络会直接 reset 该主机的 TLS 连接（RemoteDisconnected），
@@ -102,6 +103,7 @@ def _record_success() -> None:
     _backoff_seconds = 0.0
 
 
+@source_boundary('stock_individual_fund_flow')
 def fetch_capital_flow_history(*, stock: str, market: str) -> pd.DataFrame:
     global _https_available
     if not re.fullmatch(r"[0-9]{6}", stock) or market not in {"sh", "sz", "bj"}:
@@ -116,6 +118,12 @@ def fetch_capital_flow_history(*, stock: str, market: str) -> pd.DataFrame:
         attempts = min(5, max(1, int(os.getenv("CAPITAL_FLOW_MAX_ATTEMPTS", "3"))))
     except ValueError:
         attempts = 3
+    from app.services.data_source_control import current_controller
+    shared = current_controller() is not None
+    if shared:
+        # execute owns the only logical retry loop; each HTTP request still
+        # consumes shared permits. No second legacy retry/backoff in this path.
+        attempts = 1
 
     def _request(session, url):
         from app.services.akshare_utils import assert_akshare_api_enabled
@@ -133,7 +141,8 @@ def fetch_capital_flow_history(*, stock: str, market: str) -> pd.DataFrame:
     for attempt in range(attempts):
         from app.services.akshare_utils import assert_akshare_api_enabled
         assert_akshare_api_enabled("stock_individual_fund_flow")
-        _wait_turn(deadline)
+        if not shared:
+            _wait_turn(deadline)
         try:
             with requests.Session() as session:
                 session.trust_env = False

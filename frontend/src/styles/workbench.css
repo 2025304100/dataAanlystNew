@@ -5416,334 +5416,797 @@ td .symbol-name {
 }
 
 
+/* ==========================================================================
+ * 宏观数据页 · 改版样式
+ * 规格来源：ui-redesign-2026-10-27/09-macro.html（设计原型）
+ *
+ * 作用域约定：所有规则都挂在 .macro-page 之下，只影响宏观模块，
+ * 不改变其它页面。局部设计令牌定义在 .macro-page 上，避免污染全局 :root。
+ *
+ * 配色约定（A 股）：涨 = 红 #d92d20，跌 = 绿 #087f45，且只用于数值列，
+ * 不承担状态语义；状态一律用带底色的小标签表达。
+ * ========================================================================== */
+
 .macro-page {
+  /* 表面与描边 */
+  --mc-surface: #ffffff;
+  --mc-sunken: #eff1f4;
+  --mc-line-hairline: #e8ebef;
+  --mc-line-base: #dde1e7;
+  --mc-line-strong: #c3c9d2;
+  /* 文本 */
+  --mc-text-1: #14181f;
+  --mc-text-2: #5a6474;
+  --mc-text-3: #6b7484;
+  --mc-text-disabled: #a8b0bc;
+  /* 主色（只做交互，不进入数据语境） */
+  --mc-brand: #0f766e;
+  --mc-brand-hover: #0d6862;
+  --mc-brand-soft: #e6f2f0;
+  /* 数据语义 */
+  --mc-up: #d92d20;
+  --mc-down: #087f45;
+  --mc-flat: #6b7484;
+  --mc-chart-neutral: #64748b;
+  /* 状态色（刻意避开红绿轴） */
+  --mc-warn: #a16207;
+  --mc-warn-soft: #fbf3e2;
+  --mc-danger: #c2410c;
+  --mc-danger-soft: #fcede6;
+  --mc-info: #475569;
+  --mc-info-soft: #f1f4f8;
+  --mc-success: #1d4ed8;
+  --mc-success-soft: #eaf0fe;
+  /* 深色数据带 */
+  --mc-band-bg: #0f172a;
+  --mc-band-grid: #22304a;
+  --mc-band-axis: #3b4a63;
+  --mc-band-text: #c7d2e0;
+  --mc-band-text-strong: #f5f8fc;
+  --mc-band-muted: #8494ab;
+  --mc-band-series-1: #56b4e9;
+  --mc-band-series-2: #e69f00;
+  /* 圆角 */
+  --mc-radius: 6px;
+  --mc-radius-sm: 4px;
+
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
   min-width: 0;
-  overflow-x: auto;
+  color: var(--mc-text-1);
+  font-variant-numeric: tabular-nums;
 }
 
-.macro-hero {
+/* ------------------------------ 页头 ------------------------------ */
+.macro-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
-  background: #ffffff;
-  border: 1px solid rgba(31, 41, 55, 0.09);
-  border-radius: 8px;
+  flex-wrap: wrap;
 }
 
-.macro-hero h1 {
+.macro-head-copy {
+  min-width: 0;
+}
+
+.macro-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--mc-text-3);
+}
+
+.macro-title {
   margin: 0;
-  font-size: 24px;
-  line-height: 1.2;
-  color: #111827;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--mc-text-1);
 }
 
-.macro-hero p {
+.macro-sub {
   margin: 6px 0 0;
-  color: #64748b;
-}
-
-.macro-alert {
-  border-radius: 8px;
-}
-
-.macro-empty,
-.macro-card,
-.macro-score-row .ant-card {
-  border-radius: 8px;
-  border-color: rgba(31, 41, 55, 0.09);
-}
-
-.macro-score-row .ant-card-body {
-  min-height: 116px;
-}
-
-.macro-main-row {
-  align-items: stretch;
-}
-
-.macro-main-row .macro-card {
-  height: 100%;
-}
-
-.macro-brief {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.macro-brief .ant-typography {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 3px solid #0f766e;
-  background: #f8fafc;
-  border-radius: 6px;
-  color: #334155;
-}
-
-@media (max-width: 768px) {
-  .macro-hero {
-    flex-direction: column;
-  }
-
-  .macro-hero .ant-space {
-    width: 100%;
-  }
-}
-
-
-.macro-clickable-row {
-  cursor: pointer;
-}
-
-.macro-clickable-row:hover td {
-  background: #f0fdfa !important;
-}
-
-.macro-link-button {
-  padding: 0;
-  height: auto;
-  font-weight: 600;
-  color: #0f766e;
-}
-
-.macro-history-card {
-  margin-bottom: 12px;
-  border-radius: 8px;
-}
-
-/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
-   瀹忚鏁版嵁 - 鎸囨爣 Tooltip
-   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
-.macro__indicator-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: help;
-  font-weight: 600;
-  color: #1f2937;
-  border-bottom: 1px dashed rgba(15, 118, 110, 0.35);
-  transition: border-color 0.15s ease;
-}
-
-.macro__indicator-name:hover {
-  border-bottom-color: rgba(15, 118, 110, 0.8);
-}
-
-.macro__info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
-  font-size: 10px;
-  font-weight: 800;
-  font-style: normal;
-  flex-shrink: 0;
-}
-
-.macro-tip-overlay .ant-tooltip-inner {
-  max-width: 400px !important;
-  padding: 0 !important;
-  background: #1f2933 !important;
-  border-radius: 10px !important;
-}
-
-.macro-tip-overlay .ant-tooltip-arrow::before,
-.macro-tip-overlay .ant-tooltip-arrow-content {
-  background: #1f2933 !important;
-}
-
-.macro__tip-content {
-  padding: 14px 16px;
-}
-
-.macro__tip-title {
   font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 6px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  line-height: 20px;
+  color: var(--mc-text-2);
 }
 
-.macro__tip-body {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.82);
-  line-height: 1.65;
-}
-
-.macro__tip-bench {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+.macro-actions {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ------------------------------ 按钮 ------------------------------ */
+.macro-btn {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--mc-radius-sm);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  color: var(--mc-text-1);
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-.macro__bench-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: rgba(251, 191, 36, 0.9);
-  background: rgba(251, 191, 36, 0.12);
-  padding: 2px 7px;
-  border-radius: 4px;
+.macro-btn svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
 }
 
-.macro__bench-value {
+.macro-btn--primary {
+  background: var(--mc-brand);
+  color: #ffffff;
+}
+
+.macro-btn--primary:hover:not(:disabled) {
+  background: var(--mc-brand-hover);
+}
+
+.macro-btn--secondary {
+  background: var(--mc-surface);
+  border-color: var(--mc-line-base);
+  color: var(--mc-text-1);
+}
+
+.macro-btn--secondary:hover:not(:disabled) {
+  background: var(--mc-sunken);
+}
+
+.macro-btn--ghost {
+  color: var(--mc-text-2);
+}
+
+.macro-btn--ghost:hover:not(:disabled) {
+  background: var(--mc-sunken);
+}
+
+.macro-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.macro-btn:focus-visible {
+  outline: 2px solid var(--mc-brand);
+  outline-offset: 2px;
+}
+
+/* ------------------------------ 卡片 ------------------------------ */
+.macro-card {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-line-hairline);
+  border-radius: var(--mc-radius);
+}
+
+.macro-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--mc-line-hairline);
+}
+
+.macro-card-head-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.macro-card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--mc-text-1);
+}
+
+.macro-card-sub {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--mc-text-3);
+}
+
+.macro-card-body {
+  padding: 20px;
+}
+
+/* --------------------------- 分段控件 --------------------------- */
+.macro-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--mc-sunken);
+  border-radius: var(--mc-radius-sm);
+}
+
+.macro-seg-item {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--mc-radius-sm);
+  background: transparent;
+  color: var(--mc-text-2);
   font-size: 12px;
-  font-weight: 700;
-  color: #fbbf24;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
-   瀹忚鏁版嵁 - 甯傚満鑴夋悘鎽樿
-   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
-.macro-pulse-card {
-  border-radius: 10px;
+.macro-seg-item:hover {
+  color: var(--mc-text-1);
+}
+
+.macro-seg-item.is-active {
+  background: var(--mc-surface);
+  color: var(--mc-text-1);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+.macro-seg-item:focus-visible {
+  outline: 2px solid var(--mc-brand);
+  outline-offset: 1px;
+}
+
+/* ------------------------- 市场脉搏 KPI 行 ------------------------- */
+.macro-kpi-row {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.macro-kpi {
+  flex: 1 1 0;
+  min-width: 148px;
+  padding: 0 20px;
+  border-left: 1px solid var(--mc-line-hairline);
+}
+
+.macro-kpi:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.macro-kpi-label {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--mc-text-3);
+}
+
+.macro-kpi-value {
+  margin: 4px 0 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  color: var(--mc-text-1);
+}
+
+.macro-kpi--composite .macro-kpi-value {
+  color: var(--mc-brand);
+}
+
+.macro-kpi-unit {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--mc-text-3);
+}
+
+.macro-bar {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--mc-sunken);
   overflow: hidden;
 }
 
-.macro__pulse-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+.macro-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--mc-chart-neutral);
+  transition: width 0.2s ease;
 }
 
-.macro__pulse-item {
+.macro-kpi-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--mc-text-3);
+}
+
+/* ------------------------------ 提示条 ------------------------------ */
+.macro-alert {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  padding: 12px 16px;
+  border-radius: var(--mc-radius);
+  border: 1px solid var(--mc-line-hairline);
+  background: var(--mc-surface);
 }
 
-.macro__pulse-item:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(31, 41, 51, 0.08);
+.macro-alert > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 2px;
 }
 
-.macro__pulse--good {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.06), rgba(15, 118, 110, 0.02));
-  border-color: rgba(15, 118, 110, 0.18);
-}
-
-.macro__pulse--neutral {
-  background: linear-gradient(135deg, rgba(217, 119, 6, 0.05), rgba(217, 119, 6, 0.01));
-  border-color: rgba(217, 119, 6, 0.18);
-}
-
-.macro__pulse--bad {
-  background: linear-gradient(135deg, rgba(180, 35, 24, 0.05), rgba(180, 35, 24, 0.01));
-  border-color: rgba(180, 35, 24, 0.18);
-}
-
-.macro__pulse-icon {
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.macro__pulse-info {
-  display: grid;
-  gap: 5px;
+.macro-alert-copy {
   min-width: 0;
   flex: 1;
 }
 
-.macro__pulse-info strong {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink);
+.macro-alert-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--mc-text-1);
 }
 
-.macro__pulse-bar {
+.macro-alert-body {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--mc-text-2);
+}
+
+.macro-alert--info {
+  background: var(--mc-info-soft);
+  border-color: rgba(71, 85, 105, 0.16);
+  color: var(--mc-info);
+}
+
+.macro-alert--success {
+  background: var(--mc-success-soft);
+  border-color: rgba(29, 78, 216, 0.16);
+  color: var(--mc-success);
+}
+
+.macro-alert--warning {
+  background: var(--mc-warn-soft);
+  border-color: rgba(161, 98, 7, 0.18);
+  color: var(--mc-warn);
+}
+
+.macro-alert--error {
+  background: var(--mc-danger-soft);
+  border-color: rgba(194, 65, 12, 0.18);
+  color: var(--mc-danger);
+}
+
+.macro-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* 任务进度条 */
+.macro-progress {
+  margin-top: 8px;
   height: 6px;
   border-radius: 3px;
-  background: rgba(31, 41, 51, 0.08);
+  background: rgba(71, 85, 105, 0.16);
   overflow: hidden;
 }
 
-.macro__pulse-fill {
+.macro-progress-fill {
   height: 100%;
   border-radius: 3px;
-  transition: width 0.6s ease;
+  background: var(--mc-info);
+  transition: width 0.3s ease;
 }
 
-.macro__pulse--good .macro__pulse-fill { background: linear-gradient(90deg, #0f766e, #34d399); }
-.macro__pulse--neutral .macro__pulse-fill { background: linear-gradient(90deg, #d97706, #fbbf24); }
-.macro__pulse--bad .macro__pulse-fill { background: linear-gradient(90deg, #b42318, #f87171); }
-
-.macro__pulse-score {
-  font-size: 13px;
-  font-weight: 800;
-  text-align: right;
+/* --------------------------- 指标卡片网格 --------------------------- */
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
 }
 
-.macro__pulse--good .macro__pulse-score { color: #0f766e; }
-.macro__pulse--neutral .macro__pulse-score { color: #d97706; }
-.macro__pulse--bad .macro__pulse-score { color: #b42318; }
-
-/* 甯傚満妯″紡妯箙 */
-.macro__stance-banner {
-  margin-top: 14px;
-  padding: 12px 16px;
-  border-radius: 8px;
+.macro-ind-card {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0;
+  padding: 20px;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-line-hairline);
+  border-radius: var(--mc-radius);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.macro-ind-card:hover {
+  border-color: var(--mc-line-strong);
+  background: #fcfcfd;
+}
+
+.macro-ind-card.is-active {
+  border-color: var(--mc-brand);
+  box-shadow: inset 0 0 0 1px var(--mc-brand);
+}
+
+.macro-ind-card:focus-visible {
+  outline: 2px solid var(--mc-brand);
+  outline-offset: 2px;
+}
+
+.macro-ind-head {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  animation: pulseFadeIn 0.4s ease;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
-@keyframes pulseFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.macro__stance--risk_on {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(52, 211, 153, 0.04));
-  border: 1px solid rgba(15, 118, 110, 0.2);
-}
-
-.macro__stance--cautious {
-  background: linear-gradient(135deg, rgba(217, 119, 6, 0.08), rgba(251, 191, 36, 0.04));
-  border: 1px solid rgba(217, 119, 6, 0.2);
-}
-
-.macro__stance--defensive {
-  background: linear-gradient(135deg, rgba(180, 35, 24, 0.07), rgba(248, 113, 113, 0.03));
-  border: 1px solid rgba(180, 35, 24, 0.18);
-}
-
-.macro__stance-label {
-  font-size: 13px;
-  font-weight: 700;
+.macro-ind-label {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--mc-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.macro__stance--risk_on .macro__stance-label { color: #0f766e; }
-.macro__stance--cautious .macro__stance-label { color: #d97706; }
-.macro__stance--defensive .macro__stance-label { color: #b42318; }
-
-.macro__stance-hint {
-  font-size: 11.5px;
-  color: var(--muted);
+.macro-ind-tag {
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--mc-radius-sm);
+  background: var(--mc-sunken);
+  color: var(--mc-text-3);
+  font-size: 10px;
+  line-height: 18px;
+  font-weight: 500;
 }
 
+.macro-ind-value {
+  margin: 4px 0 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  color: var(--mc-text-1);
+}
+
+.macro-ind-unit {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--mc-text-3);
+}
+
+.macro-ind-delta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.macro-ind-delta svg {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+}
+
+.macro-ind-delta.is-up {
+  color: var(--mc-up);
+}
+
+.macro-ind-delta.is-down {
+  color: var(--mc-down);
+}
+
+.macro-ind-delta.is-flat {
+  color: var(--mc-flat);
+}
+
+.macro-ind-spark {
+  margin-top: 12px;
+  height: 40px;
+}
+
+.macro-ind-spark svg {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+.macro-ind-span {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--mc-text-3);
+}
+
+.macro-ind-empty {
+  margin: 12px 0 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--mc-text-disabled);
+}
+
+/* --------------------------- 历史曲线（深色数据带） --------------------------- */
+.macro-chart {
+  background: var(--mc-band-bg);
+  border: 1px solid var(--mc-line-hairline);
+  border-radius: var(--mc-radius);
+  padding: 16px;
+  min-height: 320px;
+}
+
+.macro-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.macro-chart-title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--mc-band-text-strong);
+}
+
+.macro-chart-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--mc-band-muted);
+}
+
+.macro-chart-tools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.macro-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--mc-band-text);
+}
+
+.macro-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.macro-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: 0 0 8px;
+  background: var(--mc-band-series-1);
+}
+
+.macro-legend-dot--series {
+  background: var(--mc-band-series-1);
+}
+
+.macro-legend-dot--ref {
+  background: var(--mc-band-series-2);
+}
+
+.macro-chart .macro-seg {
+  background: #172033;
+}
+
+.macro-chart .macro-seg-item {
+  color: var(--mc-band-muted);
+}
+
+.macro-chart .macro-seg-item:hover {
+  color: var(--mc-band-text-strong);
+}
+
+.macro-chart .macro-seg-item.is-active {
+  background: #22304a;
+  color: var(--mc-band-text-strong);
+}
+
+.macro-chart-body svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.macro-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  font-size: 12px;
+  color: var(--mc-band-muted);
+}
+
+.macro-chart-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 260px;
+  font-size: 12px;
+  color: var(--mc-band-muted);
+}
+
+.macro-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(132, 148, 171, 0.35);
+  border-top-color: var(--mc-band-text);
+  border-radius: 50%;
+  animation: macro-spin 0.8s linear infinite;
+}
+
+@keyframes macro-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* SVG 内元素 */
+.macro-svg-grid {
+  stroke: var(--mc-band-grid);
+  stroke-width: 1;
+}
+
+.macro-svg-axis {
+  stroke: var(--mc-band-axis);
+  stroke-width: 1;
+}
+
+.macro-svg-line {
+  fill: none;
+  stroke: var(--mc-band-series-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.macro-svg-area {
+  fill: var(--mc-band-series-1);
+  opacity: 0.12;
+  stroke: none;
+}
+
+.macro-svg-ref {
+  stroke: var(--mc-band-series-2);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.macro-svg-dot {
+  fill: var(--mc-band-series-1);
+  stroke: var(--mc-band-bg);
+  stroke-width: 2;
+}
+
+.macro-svg-label {
+  fill: var(--mc-band-muted);
+  font-size: 11px;
+}
+
+.macro-svg-label-strong {
+  fill: var(--mc-band-text-strong);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-svg-spark {
+  fill: none;
+  stroke: var(--mc-chart-neutral);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.macro-svg-spark-area {
+  fill: var(--mc-chart-neutral);
+  opacity: 0.08;
+  stroke: none;
+}
+
+/* ------------------------------ 空态 ------------------------------ */
+.macro-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 56px 20px;
+  text-align: center;
+}
+
+.macro-empty-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--mc-text-disabled);
+}
+
+.macro-empty-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--mc-text-1);
+}
+
+.macro-empty-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--mc-text-3);
+  max-width: 420px;
+}
+
+/* --------------------------- 窄屏适配 --------------------------- */
+@media (max-width: 720px) {
+  .macro-title {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .macro-kpi {
+    flex: 1 1 46%;
+    padding: 0 12px;
+  }
+
+  .macro-kpi:nth-child(odd) {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .macro-card-body,
+  .macro-ind-card {
+    padding: 16px;
+  }
+
+  .macro-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 .decision-page {
   display: flex;
@@ -9986,6 +10449,24 @@ td .symbol-name {
 .pt-evidence-summary,
 .pt-evidence-footer {
   max-width: 100%;
+}
+
+/* 页头在 721–900 这段中间宽度会被挤出竖排文字（组合名被压成两行）：
+   720 断点以下的规则此时还没生效，而运行状态胶囊 + 动作按钮已经放不下。
+   这里不新增断点，只把换行权限交还给布局本身：放不下就整块换行，选择器不参与收缩。 */
+.pt-theme-scope.pt-portfolio-workbench .pt-portfolio-header {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.pt-theme-scope.pt-portfolio-workbench .pt-portfolio-header-primary {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  min-width: 0;
+}
+
+.pt-theme-scope.pt-portfolio-workbench .pt-portfolio-selector {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 720px) {

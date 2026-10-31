@@ -34,6 +34,7 @@ import enum
 import hashlib
 import json
 import logging
+import os
 import random
 import threading
 import time
@@ -582,6 +583,7 @@ class _SingleFlight:
             entry = self._entries.get(key)
             if entry is None:
                 entry = _InflightEntry()
+                entry.future.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
                 self._entries[key] = entry
                 is_leader = True
             else:
@@ -592,10 +594,10 @@ class _SingleFlight:
                 result = await coro_factory()
                 entry.future.set_result(result)
                 return result
-            except Exception as exc:
+            except BaseException as exc:
                 entry.future.set_exception(exc)
                 # leader 失败后立即重试一次（自身），避免瞬时抖动
-                if allow_one_retry:
+                if allow_one_retry and isinstance(exc, Exception):
                     try:
                         result = await coro_factory()
                         # 重试成功：用新结果覆盖 future（已 set_exception 的 future 不能再 set）
@@ -614,7 +616,7 @@ class _SingleFlight:
         else:
             # follower：等待 leader 完成
             try:
-                return await entry.future
+                return await asyncio.shield(entry.future)
             except Exception:
                 if not allow_one_retry:
                     raise
@@ -1117,6 +1119,26 @@ async def fetch(
 
     async def _do_l4_fetch() -> tuple[Any, str, datetime | None]:
         """实际执行 L4 拉取（含熔断检查 + 限流 + 退避）。"""
+        if shared_control:
+            from app.services.data_source_execution import data_task
+            from app.services.data_source_control import PolicyDenied
+            stop = threading.Event()
+            lane = 'backfill' if any(word in str(task_type or '') for word in ('backfill','history','repair')) else 'incremental'
+            with data_task(task_id=task_ctx.get('task_id'),lane=lane,cancelled=stop.is_set) as controller:
+                remaining = controller.checkpoint(inspect_operations=False) - controller.clock()
+                try:
+                    async with asyncio.timeout(remaining):
+                        # Keep application concurrency caps; supplier pacing,
+                        # attempts and health belong solely to the controller.
+                        async with _acquire_rate_limit_slots(interface_key, host, task_type):
+                            data, source_detail = await asyncio.to_thread(l4_fetcher, request_params)
+                    return data, source_detail, _utcnow_naive()
+                except (TimeoutError, asyncio.CancelledError) as exc:
+                    stop.set()
+                    if isinstance(exc, TimeoutError):
+                        controller.reconcile_expired()
+                        raise PolicyDenied('DEADLINE') from exc
+                    raise
         # 熔断检查
         breaker_state = await _breaker.acquire(interface_key, host)
         try:
@@ -1145,10 +1167,12 @@ async def fetch(
             )
             raise
 
+    from app.services.data_source_control import current_controller
+    shared_control = bool(os.environ.get('DATA_SOURCE_CONTROL_DB')) or os.environ.get('DATA_SOURCE_EXECUTION_MODE', 'controlled') != 'controlled' or current_controller() is not None
     try:
         # 单飞：相同 cache_key 的并发调用共享结果
         data, source_detail, cutoff = await _single_flight.execute(
-            cache_key, _do_l4_fetch, allow_one_retry=True,
+            cache_key, _do_l4_fetch, allow_one_retry=not shared_control,
         )
         _l1_cache.set(cache_key, data, cutoff)
         return GatewayResponse(
@@ -1168,6 +1192,9 @@ async def fetch(
             reason="circuit_breaker_open",
         )
     except Exception as exc:
+        if shared_control:
+            from app.services.data_source_execution import raise_if_control_error
+            raise_if_control_error(exc)
         # L4 失败：尝试降级到本地数据
         logger.warning(
             "Gateway L4 final failure: interface=%s correlation_id=%s err=%s, degrading",

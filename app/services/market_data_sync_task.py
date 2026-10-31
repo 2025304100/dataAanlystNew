@@ -39,6 +39,7 @@ from app.services.external_data_gateway import (
     record_failed_batch,
     trigger_auto_recovery,
 )
+from app.services.data_source_execution import source_worker
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,7 @@ def create_market_data_sync_task(payload: MarketDataSyncCreate) -> dict:
     return task_read.model_dump()
 
 
+@source_worker
 def _run_market_data_sync(task_id: str) -> None:
     """后台线程执行的市场数据同步逻辑。"""
     SessionLocal = get_session_local()

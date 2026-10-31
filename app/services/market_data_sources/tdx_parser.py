@@ -34,6 +34,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
+from app.services.data_source_execution import source_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ RECORD_SIZE = struct.calcsize(RECORD_FORMAT)  # = 32 字节
 COLUMNS = ["trade_date", "open", "high", "low", "close", "amount", "volume"]
 
 
+@source_boundary('TDX:day')
 def parse_day_file(
     filepath: Path,
     start: date | None = None,
@@ -75,7 +77,12 @@ def parse_day_file(
 
     records: list[dict] = []
     with open(filepath, "rb") as f:
+        read_count = 0
         while True:
+            if read_count % 64 == 0:
+                from app.services.data_source_control import request_checkpoint
+                request_checkpoint()
+            read_count += 1
             chunk = f.read(RECORD_SIZE)
             if not chunk:
                 break

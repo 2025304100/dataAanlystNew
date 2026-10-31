@@ -615,6 +615,21 @@ def get_runtime_config(api_key: str) -> dict[str, Any]:
 
     若缓存未加载或该接口未注册，返回默认 standard 档位。
     """
+    from app.services.data_source_management import declarations
+    declaration = declarations().get(api_key)
+    if declaration is not None and (not declaration["in_current_release"] or declaration['implementation_status'] != 'implemented'):
+        return {"enabled": False, "strategy": "blocked", "delay_min_ms": 0, "delay_max_ms": 0,
+                "max_retries": 1, "reason": "OUT_OF_RELEASE" if not declaration['in_current_release'] else 'IMPLEMENTATION_NOT_READY'}
+    from app.services.data_source_control import current_controller
+    controller = current_controller()
+    if controller is not None:
+        shared = controller.configuration(api_key)
+        ep, provider = shared["endpoint"], shared["provider"]
+        interval_ms = max(ep["policy"]["min_interval_s"], provider["policy"]["min_interval_s"]) * 1000
+        return {"enabled": ep["policy"]["enabled"] and provider["policy"]["enabled"],
+                "strategy": "shared", "delay_min_ms": interval_ms, "delay_max_ms": interval_ms,
+                "max_retries": min(ep["policy"]["max_attempts"], provider["policy"]["max_attempts"]),
+                "config_version": {"endpoint": ep["version"], "provider": provider["version"]}}
     if not _config_cache_loaded:
         # 缓存未加载，返回安全默认值
         s = ANTI_RISK_STRATEGIES[DEFAULT_STRATEGY]
@@ -640,6 +655,10 @@ def apply_delay(api_key: str) -> None:
 
     若接口被禁用，调用方应自行判断是否跳过（本函数不抛异常，仅记录日志）。
     """
+    from app.services.data_source_control import current_controller
+    if current_controller() is not None:
+        # Admission and pacing happen atomically at execute/Session.send.
+        return
     cfg = get_runtime_config(api_key)
     dmin = cfg["delay_min_ms"]
     dmax = cfg["delay_max_ms"]

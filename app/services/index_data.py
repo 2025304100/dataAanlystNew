@@ -41,6 +41,8 @@ from app.services.akshare_utils import (
     quiet_akshare_output,
 )
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_selection
+from app.services.data_source_execution import source_task
 
 
 logger = logging.getLogger(__name__)
@@ -236,6 +238,7 @@ def _fetch_from_tencent(
     return _normalize_tencent_frame(frame, start_date, end_date)
 
 
+@source_selection
 def _fetch_index_daily(
     db: Session, symbol: str, start_date: date, end_date: date
 ) -> tuple[pd.DataFrame, str]:
@@ -263,6 +266,8 @@ def _fetch_index_daily(
             return frame, _SOURCE_EASTMONEY
         logger.info("Index %s: eastmoney returned empty, trying fallback", symbol)
     except Exception as exc:
+        from app.services.data_source_execution import raise_if_control_error
+        raise_if_control_error(exc)
         logger.warning("Index %s: eastmoney failed: %s, trying fallback", symbol, exc)
 
     # 数据源 2：新浪
@@ -273,6 +278,8 @@ def _fetch_index_daily(
             return frame, _SOURCE_SINA
         logger.info("Index %s: sina returned empty, trying fallback", symbol)
     except Exception as exc:
+        from app.services.data_source_execution import raise_if_control_error
+        raise_if_control_error(exc)
         logger.warning("Index %s: sina failed: %s, trying fallback", symbol, exc)
 
     # 数据源 3：腾讯
@@ -283,12 +290,15 @@ def _fetch_index_daily(
             return frame, _SOURCE_TENCENT
         logger.info("Index %s: tencent returned empty", symbol)
     except Exception as exc:
+        from app.services.data_source_execution import raise_if_control_error
+        raise_if_control_error(exc)
         logger.warning("Index %s: tencent failed: %s", symbol, exc)
 
     logger.warning("Index %s: all sources failed for %s ~ %s", symbol, start_date, end_date)
     return _empty_frame(), _SOURCE_EASTMONEY
 
 
+@source_task(lane='incremental')
 def sync_index_daily(
     db: Session,
     symbol: str,

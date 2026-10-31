@@ -13,8 +13,6 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.models.daily_bar import DailyBar
-from app.models.symbol import Symbol
 from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.factors.batch_audit import begin_batch, finalize_batch
 from app.services.factors.store import FactorWarehouse
@@ -35,6 +33,7 @@ T = TypeVar("T")
 @dataclass
 class BarMirrorResult:
     batch_id: str
+    business_mirror_retired: bool = True
     business_rows: int = 0
     universe_rows: int = 0
     business_watermark: int = 0
@@ -168,37 +167,6 @@ def _watermark_key(
     )
 
 
-def _business_record(
-    bar: DailyBar,
-    symbol: Symbol,
-    *,
-    batch_id: str,
-    adjust: str,
-    ingested_at: datetime,
-) -> dict[str, Any]:
-    _require_compatible_price_mode(bar.source, adjust)
-    return {
-        "symbol": _normalized_symbol(symbol.symbol),
-        "trade_date": bar.trade_date,
-        "adjust": adjust,
-        "business_symbol_id": symbol.id,
-        "universe_symbol_id": None,
-        "open": bar.open,
-        "high": bar.high,
-        "low": bar.low,
-        "close": bar.close,
-        "volume": bar.volume,
-        "amount": bar.amount,
-        "turnover_rate": bar.turnover_rate,
-        "source": bar.source or "unknown",
-        "source_origin": "daily_bars",
-        "source_row_id": bar.id,
-        "source_updated_at": bar.created_at,
-        "ingested_at": ingested_at,
-        "batch_id": batch_id,
-    }
-
-
 def _universe_record(
     bar: UniverseDailyBar,
     symbol: UniverseSymbol,
@@ -252,85 +220,6 @@ def _price_mode_records(rows, builder, result: BarMirrorResult, *, adjust: str, 
             result.price_mode_unknown_rows += 1
         records.append(record)
     return records
-
-
-def _mirror_business_bars(
-    db: Session,
-    warehouse: FactorWarehouse,
-    result: BarMirrorResult,
-    *,
-    start_date: date | None,
-    end_date: date | None,
-    batch_size: int,
-    adjust: str,
-    full_refresh: bool,
-    should_cancel: CancelCheck | None,
-    progress_callback: ProgressCallback | None = None,
-) -> None:
-    if _cancelled(should_cancel):
-        return
-    source_key = _watermark_key(BUSINESS_SOURCE_KEY, start_date, end_date)
-    # Bounded universe passes replay old IDs to pick up source corrections.
-    # Replay the business overlay too: otherwise that baseline overwrites
-    # earlier business values while their persisted ID watermark skips them.
-    # Replaying from zero also restores the overlay after a cancelled pass.
-    bounded_range = start_date is not None or end_date is not None
-    cursor = 0 if full_refresh or bounded_range else warehouse.get_watermark(source_key)
-    # 一次性 COUNT 总行数（基于 cursor 过滤），用于进度计算
-    total_rows = int(
-        _read_scalar(db,
-            select(func.count(DailyBar.id))
-            .join(Symbol, Symbol.id == DailyBar.symbol_id)
-            .where(
-                DailyBar.id > cursor,
-                Symbol.asset_type == "stock",
-                Symbol.market.in_(("sh", "sz", "bj", "cn")),
-                *_date_filters(DailyBar.trade_date, start_date, end_date),
-            )
-        )
-        or 0
-    )
-    if progress_callback is not None:
-        progress_callback(
-            "business_bars", 0, total_rows,
-            f"Mirroring business bars: 0/{total_rows}",
-        )
-    while True:
-        if _cancelled(should_cancel):
-            break
-        stmt = (
-            select(DailyBar, Symbol)
-            .join(Symbol, Symbol.id == DailyBar.symbol_id)
-            .where(
-                DailyBar.id > cursor,
-                Symbol.asset_type == "stock",
-                Symbol.market.in_(("sh", "sz", "bj", "cn")),
-                *_date_filters(DailyBar.trade_date, start_date, end_date),
-            )
-            .order_by(DailyBar.id)
-            .limit(batch_size)
-        )
-        rows = _read_all(db, stmt)
-        if not rows:
-            break
-        if _cancelled(should_cancel):
-            break
-        ingested_at = _utcnow_naive()
-        records = _price_mode_records(rows, _business_record, result, adjust=adjust, ingested_at=ingested_at)
-        cursor = int(rows[-1][0].id)
-        result.business_rows += warehouse.upsert_daily_bars(
-            records,
-            source_key=source_key,
-            watermark=cursor,
-        )
-        if progress_callback is not None:
-            progress_callback(
-                "business_bars",
-                result.business_rows,
-                total_rows,
-                f"Mirroring business bars: {result.business_rows}/{total_rows}",
-            )
-    result.business_watermark = cursor
 
 
 def _mirror_universe_bars(
@@ -645,6 +534,8 @@ def mirror_daily_bars(
         raise ValueError("at least one source must be enabled")
     if start_date and end_date and start_date > end_date:
         raise ValueError("start_date must not be after end_date")
+    if include_business and not include_universe:
+        raise ValueError("LEGACY_BUSINESS_MIRROR_RETIRED: 请使用全市场行情镜像")
 
     result = BarMirrorResult(batch_id=f"bars-{uuid4().hex}")
     if _cancelled(should_cancel):
@@ -681,9 +572,8 @@ def mirror_daily_bars(
 
     mirror_exc: Exception | None = None
     try:
-        # Universe data is the full-market baseline. Business bars are mirrored
-        # second so their business_symbol_id and any promoted-symbol corrections
-        # remain visible on duplicate symbol/date keys.
+        # The business mirror is retired. Legacy universe rows are retained
+        # only as compatibility inputs; new authority uses versioned facts.
         if include_universe:
             _mirror_universe_metadata(
                 db,
@@ -697,19 +587,6 @@ def mirror_daily_bars(
             if _cancelled(should_cancel):
                 return result
             _mirror_universe_bars(
-                db,
-                target,
-                result,
-                start_date=start_date,
-                end_date=end_date,
-                batch_size=batch_size,
-                adjust=adjust,
-                full_refresh=full_refresh,
-                should_cancel=should_cancel,
-                progress_callback=progress_callback,
-            )
-        if include_business and not _cancelled(should_cancel):
-            _mirror_business_bars(
                 db,
                 target,
                 result,

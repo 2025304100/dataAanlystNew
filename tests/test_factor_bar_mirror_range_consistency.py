@@ -1,4 +1,4 @@
-"""Public bounded bar mirroring preserves business precedence on every pass."""
+"""Public bounded bar mirroring preserves universe values after business mirror retirement."""
 from datetime import date
 
 import pytest
@@ -13,7 +13,7 @@ pytestmark = pytest.mark.whitebox
 
 
 @pytest.mark.parametrize("subsequent_request", ["repeat", "in_place_correction", "cancel_and_resume"])
-def test_bounded_mirror_keeps_business_values_after_repeat_correction_or_resume(
+def test_bounded_mirror_rejects_business_overlay_after_repeat_correction_or_resume(
     db_session, tmp_path, subsequent_request,
 ):
     business = Symbol(symbol="600001", name="Temporary overlap", asset_type="stock", market="sh")
@@ -46,10 +46,10 @@ def test_bounded_mirror_keeps_business_values_after_repeat_correction_or_resume(
                 WHERE symbol='600001' ORDER BY trade_date""").fetchall()
 
     first = mirror_daily_bars(db_session, **options)
-    assert first.universe_rows == first.business_rows == 3
+    assert first.universe_rows == 3 and first.business_rows == 0
     expected = content()
     assert [row[0] for row in expected] == days
-    assert all(row[4] == 11 and row[7:10] == (9, "daily_bars", "isolated.business") for row in expected)
+    assert all(row[4] == 10 and row[7:10] == (2, "universe_daily_bars", "isolated.universe") for row in expected)
 
     if subsequent_request == "in_place_correction":
         corrected = business_bars[1]
@@ -59,28 +59,34 @@ def test_bounded_mirror_keeps_business_values_after_repeat_correction_or_resume(
         corrected.source = "isolated.corrected"
         db_session.commit()
         assert corrected.id == previous_id
-        expected[1] = (days[1], 12, 12.4, 11.6, 12, 3000, 36000, 12,
-                       "daily_bars", "isolated.corrected", business.id, universe.id)
+        # Business corrections no longer enter the warehouse.
     elif subsequent_request == "cancel_and_resume":
         cancelled = False
 
-        def stop_after_first_business_batch(phase, processed, _total, _message):
+        def stop_after_first_universe_batch(phase, processed, _total, _message):
             nonlocal cancelled
-            if phase == "business_bars" and processed >= 1:
+            if phase == "universe_bars" and processed >= 1:
                 cancelled = True
 
         interrupted = mirror_daily_bars(
             db_session, **options, should_cancel=lambda: cancelled,
-            progress_callback=stop_after_first_business_batch,
+            progress_callback=stop_after_first_universe_batch,
         )
         assert cancelled is True
-        assert interrupted.business_rows == 1
+        # The bounded universe mirror commits one complete symbol per batch.
+        assert interrupted.universe_rows == 3 and interrupted.business_rows == 0
         assert warehouse.health().available is True
 
     repeated = mirror_daily_bars(db_session, **options)
-    # Bounded passes deliberately replay both inputs, including the business
-    # overlay, because universe corrections may already have replaced them.
+    # Bounded passes replay universe corrections, never the retired overlay.
     assert content() == expected
-    assert repeated.universe_rows == repeated.business_rows == 3
+    # A cancelled pass has already committed this symbol; its resume only
+    # clears the checkpoint. The following fresh pass replays the full range.
+    assert repeated.universe_rows == (0 if subsequent_request == "cancel_and_resume" else 3)
+    assert repeated.business_rows == 0
+    if subsequent_request == "cancel_and_resume":
+        fresh = mirror_daily_bars(db_session, **options)
+        assert fresh.universe_rows == 3 and fresh.business_rows == 0
+        assert content() == expected
     assert warehouse.health().raw_daily_bars == 3
 

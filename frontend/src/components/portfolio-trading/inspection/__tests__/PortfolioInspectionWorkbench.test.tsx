@@ -7,16 +7,16 @@ import {installInspectionSubmissionRuntime} from "../../../../test/inspectionSub
 import {repairTaskId,sendRepairSubmission,readRepairSubmission} from "../repairSubmissionJournal";
 import {INSPECTION_CHANGE_KEY} from "../../../../utils/inspectionFreshness";
 
-const { mockApi, toast } = vi.hoisted(() => ({ mockApi: {
+const { mockApi, toast, appState } = vi.hoisted(() => ({ mockApi: {
   getPortfolioMaterialInvestigations: vi.fn(), recordPortfolioMaterialInvestigation: vi.fn(), getPortfolioEvidenceSupplements: vi.fn(),
   getPortfolioActionItems: vi.fn(), getPortfolioStatus: vi.fn(), getPortfolioInspectionRuntime: vi.fn(),
   getPortfolioInspectionDiagnostics: vi.fn(), getPortfolioModelBindingReview: vi.fn(), previewPortfolioReconciliation: vi.fn(),
   getPortfolioInspectionHistory: vi.fn(), getPortfolioInspectionHistorySecurities: vi.fn(),
   submitPortfolioInspectionRepair: vi.fn(), getPortfolioInspectionRepairTask: vi.fn(), retryPortfolioInspectionRepair: vi.fn(),
   confirmPortfolioReconciliation: vi.fn(), confirmPortfolioInspectionGuide: vi.fn(), transitionPortfolioState: vi.fn(), createAISession: vi.fn(), analysePortfolioInspection: vi.fn(), getPortfolioInspectionRepairTasks: vi.fn(), cancelPortfolioInspectionRepair: vi.fn(), getPortfolioInspectionJob: vi.fn(), getPortfolioInspectionQueue: vi.fn(),
-}, toast: vi.fn() }));
+}, toast: vi.fn(), appState: { portfolios: [{ id: 1, name: "隔离组合" }] as Array<{ id: number; name: string }> | undefined } }));
 vi.mock("../../../../api/client", () => ({ api: mockApi }));
-vi.mock("../../../../context/AppContext", () => ({ useApp: () => ({ showToast: toast, portfolios:[{id:1,name:"隔离组合"}], setActiveTab: vi.fn(),setActiveSubTab:vi.fn() }) }));
+vi.mock("../../../../context/AppContext", () => ({ useApp: () => ({ showToast: toast, portfolios: appState.portfolios, setActiveTab: vi.fn(),setActiveSubTab:vi.fn() }) }));
 
 function evidence(id: number) { return { evidence_id: `${id}:daily_bar`, symbol_id: id, check_code: "DAILY_BAR", label: "日线行情", status: "MISSING", reason: "应到交易日的日线尚未到达", source_label: "真实行情表", depends_on: [] }; }
 function diagnostics(planId = "test-plan-1") {
@@ -39,6 +39,7 @@ const savedRepairTasks=new Map<string,any>();
 beforeEach(() => {
   stopSubmissionRuntime=installInspectionSubmissionRuntime();localStorage.clear();savedRepairTasks.clear();
   sessionStorage.clear();
+  appState.portfolios = [{ id: 1, name: "隔离组合" }];
   vi.resetAllMocks();
   vi.spyOn(window,"scrollTo").mockImplementation(()=>{});
   mockApi.getPortfolioMaterialInvestigations.mockImplementation((pid,date,material)=>Promise.resolve({portfolio_id:pid,trade_date:date,material,items:[],has_more:false,read_only:true}));
@@ -57,6 +58,15 @@ beforeEach(() => {
 });
 afterEach(()=>{cleanup();stopSubmissionRuntime();});
 function openPage() { return render(<PortfolioInspectionWorkbench portfolioId={1} renderDualRun={() => <p>实际双跑能力</p>} />); }
+/** 每日核对入口已统一到「对账连续性」：先切分段；有逐日行就点第一行（目标日），无行则走空态兜底入口。 */
+function openReconcilePanel(){
+  const tab=screen.queryByRole("tab",{name:"对账连续性"});
+  if(tab)fireEvent.click(tab);
+  const fallback=screen.queryByRole("button",{name:"打开对账"});
+  if(fallback){fireEvent.click(fallback);return;}
+  const rows=screen.getAllByRole("button",{name:/每日对账$/});
+  fireEvent.click(rows[0]);
+}
 function otherTabChanged(pid=1){fireEvent(window,new StorageEvent("storage",{key:`${INSPECTION_CHANGE_KEY}${pid}`,newValue:JSON.stringify({version:1,id:crypto.randomUUID(),source:"other-tab",portfolioId:pid,at:Date.now()})}));}
 
 it("waits for a valid portfolio identity before mounting any backend observer",async()=>{
@@ -64,11 +74,23 @@ it("waits for a valid portfolio identity before mounting any backend observer",a
   expect(screen.getByRole("status")).toHaveTextContent("正在确定当前组合");expect(mockApi.getPortfolioInspectionRuntime).not.toHaveBeenCalled();expect(mockApi.previewPortfolioReconciliation).not.toHaveBeenCalled();
   view.rerender(<PortfolioInspectionWorkbench portfolioId={1} renderDualRun={()=>null}/>);await screen.findByText("新买入已暂停");expect(mockApi.getPortfolioInspectionRuntime).toHaveBeenCalledWith(1);
 });
+it("组合名拿不到时页头副标题退化为组合编号，不把 undefined 印到界面",async()=>{
+  appState.portfolios=undefined;
+  const {container}=openPage();
+  const sub=await waitFor(()=>{
+    const el=container.querySelector(".pi-page-sub") as HTMLElement|null;
+    if(!el)throw new Error("页头副标题尚未渲染");
+    return el;
+  });
+  expect(sub.textContent).toContain("组合「#1」");
+  expect(sub.textContent).toContain("最近对账");
+  expect(sub.textContent).not.toContain("undefined");
+});
 it("expires an already acknowledged report offline and requires rereading and new consent after reconnect",async()=>{
   let online=true;const spy=vi.spyOn(navigator,"onLine","get").mockImplementation(()=>online);
   try{
     mockApi.getPortfolioInspectionRuntime.mockResolvedValue(runtime(true));mockApi.previewPortfolioReconciliation.mockResolvedValue(report(true));
-    openPage();fireEvent.click(screen.getByRole("button",{name:"每日对账"}));fireEvent.click(await screen.findByRole("button",{name:"审核本次对账结果"}));
+    openPage();openReconcilePanel();fireEvent.click(await screen.findByRole("button",{name:"审核本次对账结果"}));
     const dialog=screen.getByRole("dialog");await waitFor(()=>expect(within(dialog).getByRole("textbox")).toBeVisible());
     fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:"保留本人已经核实但尚未提交的审核说明"}});fireEvent.click(within(dialog).getByRole("checkbox"));
     online=false;fireEvent(window,new Event("offline"));expect(await screen.findByTestId("inspection-stale-notice")).toBeVisible();
@@ -124,7 +146,7 @@ it("shows a direct original-request recovery entry on the inspection page withou
 
 it("revalidates server evidence before submitting an old review even without a live originating tab",async()=>{
   mockApi.getPortfolioInspectionRuntime.mockResolvedValue(runtime(true));mockApi.previewPortfolioReconciliation.mockResolvedValue(report(true));
-  openPage();fireEvent.click(screen.getByRole("button",{name:"每日对账"}));fireEvent.click(await screen.findByRole("button",{name:"审核本次对账结果"}));
+  openPage();openReconcilePanel();fireEvent.click(await screen.findByRole("button",{name:"审核本次对账结果"}));
   const dialog=screen.getByRole("dialog");await waitFor(()=>expect(within(dialog).getByRole("textbox")).toBeVisible());
   fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:"本人已核实当前日期的执行记录及资金持仓"}});fireEvent.click(within(dialog).getByRole("checkbox"));
   mockApi.previewPortfolioReconciliation.mockResolvedValue({...report(true),report_version:"task-finished-after-origin-closed"});
@@ -134,7 +156,7 @@ it("revalidates server evidence before submitting an old review even without a l
 
 it("invalidates an open review from another tab, preserves its date, and requires fresh consent",async()=>{
   mockApi.getPortfolioInspectionRuntime.mockResolvedValue(runtime(true));mockApi.previewPortfolioReconciliation.mockResolvedValue(report(true));
-  openPage();fireEvent.click(screen.getByRole("button",{name:"每日对账"}));
+  openPage();openReconcilePanel();
   fireEvent.click(await screen.findByRole("button",{name:"审核本次对账结果"}));
   const dialog=screen.getByRole("dialog");await waitFor(()=>expect(within(dialog).getByRole("textbox")).toBeVisible());
   fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:"保留本人已经填写但尚未提交的审核理由"}});fireEvent.click(within(dialog).getByRole("checkbox"));
@@ -194,7 +216,7 @@ it("restores the selected day after remount but fetches fresh evidence and never
   openPage();expect(await screen.findByTestId("recon-verdict")).toHaveTextContent("2026-09-30");
   expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledWith(1,"2026-09-30");
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();expect(mockApi.confirmPortfolioReconciliation).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button",{name:"Close"}));fireEvent.click(screen.getByRole("button",{name:"每日对账"}));
+  fireEvent.click(screen.getByRole("button",{name:"Close"}));openReconcilePanel();
   await waitFor(()=>expect(mockApi.previewPortfolioReconciliation).toHaveBeenLastCalledWith(1,"2026-09-30"));
 });
 
@@ -202,7 +224,7 @@ it("restores a closed workbench without inventing an active recovery guide",asyn
   writeInspectionBrowse(1,"workbench",{portfolioId:1,layers:[],panel:null,selectedTradeDate:"2026-09-30",step:3});
   mockApi.previewPortfolioReconciliation.mockImplementation(async(pid:number,date?:string)=>({...report(),portfolio_id:pid,trade_date:date??"2026-10-21"}));
   openPage();await screen.findByText("新买入已暂停");expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button",{name:"每日对账"}));await screen.findByTestId("recon-verdict");
+  openReconcilePanel();await screen.findByTestId("recon-verdict");
   expect(screen.queryByRole("button",{name:"返回状态审核并刷新"})).not.toBeInTheDocument();
 });
 
@@ -211,7 +233,7 @@ it("opens daily reconciliation immediately and closing during a read never reope
   openPage();await screen.findByText("新买入已暂停");
   let finish!:(value:ReturnType<typeof report>)=>void;
   mockApi.previewPortfolioReconciliation.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
-  fireEvent.click(screen.getByRole("button",{name:"每日对账"}));
+  openReconcilePanel();
   expect(await screen.findByText("正在读取本日核对材料…")).toBeVisible();
   fireEvent.click(screen.getByRole("button",{name:"Close"}));
   await act(async()=>finish({...report(),trade_date:"2026-10-19"}));
@@ -223,7 +245,7 @@ it("leaves a visible retry path when opening a date fails",async()=>{
   mockApi.getPortfolioActionItems.mockResolvedValue({items:[{id:"day",family:"reconciliation",code:"EVIDENCE_INCOMPLETE",trade_date:"2026-10-19",title:"核对待完成",severity:"blocker"}],summary:{}});
   openPage();await screen.findByText("新买入已暂停");
   mockApi.previewPortfolioReconciliation.mockRejectedValueOnce(new Error("本日来源读取失败"));
-  fireEvent.click(screen.getByRole("button",{name:"每日对账"}));
+  openReconcilePanel();
   expect(await screen.findByText("本日来源读取失败")).toBeVisible();
   expect(screen.getByRole("button",{name:"重新读取核对证据"})).toBeVisible();
   expect(screen.getByRole("combobox",{name:"核对交易日"}).closest(".ant-select")).toHaveTextContent("2026-10-19");
@@ -236,7 +258,7 @@ it("ignores an older date response after the user chooses a newer date",async()=
   openPage();await screen.findByText("新买入已暂停");
   let oldResponse!:(value:ReturnType<typeof report>)=>void;
   mockApi.previewPortfolioReconciliation.mockImplementation((_pid:number,date:string)=>date===dates[0]?new Promise(resolve=>{oldResponse=resolve;}):Promise.resolve({...report(),trade_date:date}));
-  fireEvent.click(screen.getByRole("button",{name:"每日对账"}));
+  openReconcilePanel();
   const select=await screen.findByRole("combobox",{name:"核对交易日"});
   fireEvent.mouseDown(select.closest('.ant-select-selector')!);
   fireEvent.click(await screen.findByText("2026-10-20 · 材料待核实"));
@@ -253,7 +275,7 @@ it("keeps the last report version during rapid A-B-C-A date changes, including s
   openPage();await screen.findByText("新买入已暂停");
   const pending:Array<{date:string;resolve:(value:any)=>void;reject:(error:Error)=>void}>=[];
   mockApi.previewPortfolioReconciliation.mockImplementation((_pid:number,date:string)=>new Promise((resolve,reject)=>pending.push({date,resolve,reject})));
-  fireEvent.click(screen.getByRole("button",{name:"每日对账"}));await waitFor(()=>expect(pending).toHaveLength(1));
+  openReconcilePanel();await waitFor(()=>expect(pending).toHaveLength(1));
   for(const date of [dates[1],dates[2],dates[0]]){fireEvent.mouseDown(screen.getByRole("combobox",{name:"核对交易日"}).closest('.ant-select-selector')!);fireEvent.click(await screen.findByText(`${date} · 材料待核实`));}
   await waitFor(()=>expect(pending).toHaveLength(4));
   await act(async()=>pending[3].resolve({...report(),trade_date:dates[0],report_id:"newest-report",report_version:"v4"}));
@@ -355,7 +377,7 @@ it("explains a reused historical task without turning dispatch completion into e
         stale_terminal_task_reused:true,original_scoped_result:{portfolio_results:[{portfolio_id:1,error:"原任务行情过期"}]}}]},
     {evidence_id:"ledger",source_code:"cash_ledger",source_label:"现金流水账",query_status:"READ_ERROR",count:null,reason:"读取失败不能视为无活动",source_record_refs:[],records:[]},
   ]});
-  openPage();fireEvent.click(await screen.findByRole("button",{name:"每日对账"}));
+  openPage();await waitFor(()=>openReconcilePanel());
   expect(await screen.findByText("历史执行资料不完整")).toBeVisible();
   expect(screen.queryByText("当天的自动运行记录与决策明细")).not.toBeInTheDocument();
   expect(screen.queryByText("当天生效的自动接管与调度配置")).not.toBeInTheDocument();
@@ -380,7 +402,7 @@ it("explains a reused historical task without turning dispatch completion into e
 
 it("consolidates three missing sources in one history-gap drawer without individual registration and returns from history and empty supplements", async () => {
   mockApi.previewPortfolioReconciliation.mockResolvedValue({...report(),trade_date:"2026-09-29",execution_expected_evidence:[{status:"UNKNOWN"}],checks:[{check_code:"POSITIONS",status:"NOT_CHECKED"}]});
-  openPage(); fireEvent.click(await screen.findByRole("button",{name:"每日对账"}));
+  openPage(); await waitFor(()=>openReconcilePanel());
   expect(screen.queryByRole("list",{name:"系统发现的历史缺口"})).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button",{name:"查看并处理历史缺口"}));
   const gap=await screen.findByRole("region",{name:"历史缺口详情"});
@@ -408,7 +430,7 @@ it("consolidates three missing sources in one history-gap drawer without individ
 });
 
 it("refreshes actual history-gap sources and locates existing history using the refreshed report without creating notes",async()=>{
-  openPage();fireEvent.click(await screen.findByRole("button",{name:"每日对账"}));
+  openPage();await waitFor(()=>openReconcilePanel());
   fireEvent.click(screen.getByRole("button",{name:"查看并处理历史缺口"}));
   mockApi.previewPortfolioReconciliation.mockResolvedValue({...report(),report_version:"refreshed-evidence"});
   fireEvent.click(screen.getByRole("button",{name:"重新读取现有来源"}));
@@ -438,7 +460,7 @@ it("restores a legacy per-material return trail as the consolidated gap drawer w
 
 it("keeps not-yet-arrived execution results in normal waiting without presenting a historical-gap task",async()=>{
   mockApi.previewPortfolioReconciliation.mockResolvedValue({...report(),verdict:"WAITING_EXECUTION",work_state:"waiting_execution",execution_expected_evidence:[{status:"UNKNOWN"}],checks:[{check_code:"POSITIONS",status:"NOT_CHECKED"}]});
-  openPage();fireEvent.click(await screen.findByRole("button",{name:"每日对账"}));
+  openPage();await waitFor(()=>openReconcilePanel());
   expect(await screen.findByText("等待当天执行结果")).toBeVisible();
   expect(screen.queryByRole("button",{name:"查看并处理历史缺口"})).not.toBeInTheDocument();
   expect(screen.queryByRole("list",{name:"系统发现的历史缺口"})).not.toBeInTheDocument();
@@ -478,7 +500,11 @@ it("keeps engine admission and restricted symbols out of daily portfolio blocker
 
 it("opens the actual trade date from a separate historical reconciliation task", async () => {
   mockApi.getPortfolioActionItems.mockResolvedValue({items:[{id:"day-a",source:"reconciliation",family:"recon:1:baseline:1:2026-10-19",code:"EVIDENCE_INCOMPLETE",trade_date:"2026-10-19",title:"旧日证据待核实",impact:"核对原交易日",severity:"blocker"}],summary:{}});
-  openPage(); fireEvent.click(await screen.findByRole("button",{name:"每日对账"}));
+  // 入口按「行动项里的交易日」定位：先让首批数据落到状态里，再进对账
+  openPage();
+  await act(async()=>{ await Promise.resolve(); });
+  await waitFor(()=>expect(mockApi.getPortfolioActionItems).toHaveBeenCalled());
+  await waitFor(()=>openReconcilePanel());
   await waitFor(()=>expect(mockApi.previewPortfolioReconciliation).toHaveBeenCalledWith(1,"2026-10-19"));
 });
 
@@ -619,7 +645,7 @@ it("shows unknown when runtime cannot be read and keeps recovery disabled", asyn
 
 it("requires an explicit human reason and submits the report version actually reviewed", async () => {
   mockApi.getPortfolioInspectionRuntime.mockResolvedValue(runtime(true)); mockApi.previewPortfolioReconciliation.mockResolvedValue(report(true));
-  openPage(); fireEvent.click(screen.getByRole("button", { name: "每日对账" }));
+  openPage(); openReconcilePanel();
   fireEvent.click(await screen.findByRole("button", { name: "审核本次对账结果" }));
   const dialog = screen.getByRole("dialog");
   await waitFor(() => expect(within(dialog).getByText("审核并确认当前对账结果")).toBeVisible());
@@ -701,7 +727,7 @@ it("combines multiple dates into one task and keeps the selected date when openi
   mockApi.previewPortfolioReconciliation.mockImplementation((_pid:number,day?:string)=>Promise.resolve({...report(),trade_date:day??dates[0]}));
   mockApi.getPortfolioInspectionJob.mockResolvedValue({portfolio_id:1,enabled:true,reason:"按日核对",queue:{portfolio_id:1,days:dates.map(trade_date=>({trade_date,status:"EVIDENCE_INCOMPLETE",reason:"核查真实来源"})),limitations:[]}});
   openPage();expect(await screen.findByText("2 个交易日待核对")).toBeVisible();
-  expect(screen.getAllByRole("button",{name:"每日对账"})).toHaveLength(1);
+  expect(screen.queryByRole("button",{name:"进入当日核对"})).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"查看作业"}));
   fireEvent.click(screen.getByText("逐日核对记录",{exact:true}));
   const row=(await screen.findByRole("cell",{name:dates[1]})).closest("tr") as HTMLElement;
@@ -714,7 +740,7 @@ it("combines multiple dates into one task and keeps the selected date when openi
 it("opens a separate same-day quick check over the job and returns without reusing the underlying reconciliation drawer",async()=>{
   const queue={portfolio_id:1,days:[{trade_date:"2026-10-21",status:"EVIDENCE_INCOMPLETE",reason:"缺少当天材料"}],limitations:[]};
   mockApi.getPortfolioInspectionJob.mockResolvedValue({portfolio_id:1,enabled:true,reason:"按日核对",queue});mockApi.getPortfolioInspectionQueue.mockResolvedValue(queue);
-  openPage();fireEvent.click(await screen.findByRole("button",{name:"每日对账"}));
+  openPage();await waitFor(()=>openReconcilePanel());
   fireEvent.click(screen.getByRole("button",{name:"自动核对作业"}));
   const job=screen.getByRole("heading",{name:"自动对账作业与逐日记录"}).closest('[role="dialog"]') as HTMLElement;
   const trigger=await within(job).findByRole("button",{name:"核查 2026-10-21"});

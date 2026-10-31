@@ -198,6 +198,11 @@ export interface InspectionReconciliationDay {
   reason: string;
   report_id?: string | null;
   report_version?: string | null;
+  /** 作业侧痕迹：队列接口会带出逐日工作状态与下次检查时刻（旧后端可能缺省） */
+  work_state?: string;
+  next_check_at?: string | null;
+  persistent_report_id?: string | null;
+  persistent_report_version?: string | number | null;
 }
 
 export interface InspectionReconciliationQueue {

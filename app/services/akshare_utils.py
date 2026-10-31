@@ -195,6 +195,37 @@ def _harden_requests_session() -> None:
 
         requests.Session.request = _patched_request  # type: ignore[assignment]
 
+        # Session.send is the physical request boundary (including SDK pages).
+        # Outside an admitted scope this preserves the legacy transport.
+        _orig_send = requests.Session.send
+
+        def _patched_send(self, request, **kwargs):
+            from app.services.data_source_control import controlled_send
+            return controlled_send(self, request, kwargs, _orig_send)
+
+        requests.Session.send = _patched_send  # type: ignore[assignment]
+
+        # SDKs using urllib/httpx/raw sockets inside a source operation cannot
+        # silently bypass Session.send's accounting. Supported wire dispatches
+        # hold an explicit context token; unrelated application I/O is intact.
+        import socket
+        original_connect, original_dns = socket.socket.connect, socket.getaddrinfo
+        def guarded_connect(sock, address):
+            from app.services.data_source_control import guard_socket_entry
+            guard_socket_entry()
+            return original_connect(sock, address)
+        def guarded_dns(*args, **kwargs):
+            from app.services.data_source_control import guard_socket_entry
+            guard_socket_entry()
+            return original_dns(*args, **kwargs)
+        socket.socket.connect, socket.getaddrinfo = guarded_connect, guarded_dns
+        original_pair = socket.socketpair
+        def local_pair(*args, **kwargs):
+            from app.services.data_source_control import process_local_io
+            with process_local_io():
+                return original_pair(*args, **kwargs)
+        socket.socketpair = local_pair
+
         _http_hardened = True
         logger.info(
             "requests.Session hardened (UA + Connection: close + timeout=%s, no global Referer)",
@@ -212,6 +243,14 @@ def _harden_requests_session() -> None:
 
 # 模块导入时即加固，确保后续所有 akshare 调用都走加固后的 session
 _harden_requests_session()
+
+
+def ensure_controlled_http() -> None:
+    """A controlled call must not proceed if its wire boundary was not installed."""
+    _harden_requests_session()
+    if not _http_hardened:
+        from app.services.data_source_control import PolicyDenied
+        raise PolicyDenied("CONTROL_TRANSPORT_UNAVAILABLE")
 
 
 # ----------------------------------------------------------------------------
@@ -241,6 +280,10 @@ def assert_akshare_api_enabled(api_key: str | None) -> None:
         from app.services.akshare_registry import is_api_enabled
 
         if not is_api_enabled(api_key):
+            from app.services.data_source_control import current_controller
+            controller = current_controller()
+            if controller is not None:
+                controller.reject(api_key, 'DISABLED')
             raise AkshareApiDisabledError(f"Akshare API {api_key} is disabled by configuration")
 
 
@@ -262,9 +305,9 @@ def call_akshare_with_retry(
         func: akshare 函数对象（如 ak.stock_zh_a_spot_em）
         *args: 透传给 func 的位置参数
         api_key: 接口标识（与 akshare_registry 中的 key 一致）。
-            传入后会：1) 调用前 apply_delay 规避风控；2) 用 registry 配置覆盖 max_attempts；
+            传入后会：1) 调用前 apply_delay 规避风控；2) registry 配置限定最大尝试预算；
             3) 记录运行时状态到 DB（若 db 不为 None）。
-        max_attempts: 最大尝试次数（含首次）。若为 None 且 api_key 已知，从 registry 读取；否则默认 3。
+        max_attempts: 最大尝试次数（含首次）。显式值只能降低 registry 上限；无 api_key 时默认 3。
         base_delay: 首次重试退避基数（秒），后续按 2^n 退避，默认 1.0（→ 1s, 2s, 4s）
         db: 可选的 SQLAlchemy Session，用于记录调用结果到 akshare_api_config 表
         **kwargs: 透传给 func 的关键字参数
@@ -275,6 +318,21 @@ def call_akshare_with_retry(
     Raises:
         最后一次重试仍失败时抛出原始异常
     """
+    from app.services.data_source_control import current_controller, PolicyDenied
+    controller = current_controller()
+    mode = os.environ.get('DATA_SOURCE_EXECUTION_MODE', 'controlled')
+    if mode not in {'controlled', 'production'}:
+        raise PolicyDenied('EXECUTION_MODE_INVALID')
+    if controller is None and mode == 'production':
+        raise PolicyDenied('PRODUCTION_CONTROL_REQUIRED')
+    if controller is not None:
+        if not api_key:
+            raise PolicyDenied("ENDPOINT_REQUIRED")
+        # No second process-local pacer/breaker/retry loop in the shared path.
+        from app.services.data_source_execution import execute_source
+        return execute_source(controller, api_key, func, *args, max_attempts=max_attempts,
+                              base_delay=base_delay, **kwargs)
+
     def assert_enabled() -> None:
         assert_akshare_api_enabled(api_key)
 
@@ -283,7 +341,8 @@ def call_akshare_with_retry(
     assert_enabled()
     # 熔断检查同样必须在任何等待/网络动作之前：冷却期内的调用应当"立即失败"，
     # 既不排队也不发请求，否则整批任务会被一个已知不可用的源拖住。
-    # 解析重试次数：显式参数 > api_key 配置 > 默认 3
+    # 解析尝试预算：有接口配置时取调用预算与管理上限的较小值。
+    explicit_budget = max_attempts is not None
     if max_attempts is None:
         if api_key:
             try:
@@ -301,8 +360,12 @@ def call_akshare_with_retry(
             max_attempts = 3
 
     last_exc: Exception | None = None
-    if not isinstance(max_attempts, int) or max_attempts < 1:
+    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
         raise ValueError("max_attempts must be a positive integer")
+    if api_key and explicit_budget:
+        from app.services.akshare_registry import get_max_retries
+        # A caller can reduce its budget, never override management's ceiling.
+        max_attempts = min(max_attempts, get_max_retries(api_key))
     permit = None
     if api_key:
         from app.services import akshare_guard as guard
@@ -334,6 +397,13 @@ def call_akshare_with_retry(
                     if permit:
                         guard.release_probe(api_key, permit=permit)
                     raise
+        # Configuration may change while the request is queued by the pacer.
+        try:
+            assert_enabled()
+        except BaseException:
+            if api_key and permit:
+                guard.release_probe(api_key, permit=permit)
+            raise
         try:
             result = func(*args, **kwargs)
             if api_key:
@@ -353,6 +423,11 @@ def call_akshare_with_retry(
             return result
         except Exception as exc:
             last_exc = exc
+            from app.services.data_contract_errors import DataContractError
+            if isinstance(exc, (PolicyDenied, DataContractError)):
+                if api_key and permit:
+                    guard.release_probe(api_key, permit=permit)
+                raise
             # 判断是否为可重试的网络瞬时错误
             exc_name = type(exc).__name__
             exc_msg = str(exc).lower()

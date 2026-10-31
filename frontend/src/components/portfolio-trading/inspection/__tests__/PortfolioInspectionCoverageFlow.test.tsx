@@ -63,7 +63,10 @@ afterEach(cleanup);
 
 async function acceptBaseline() {
   render(<PortfolioInspectionWorkbench portfolioId={1} renderDualRun={() => null} />);
-  fireEvent.click(await screen.findByRole("button", { name: "每日对账" }));
+  fireEvent.click(screen.getByRole("tab", { name: "对账连续性" }));
+  // 等首批核对材料落地再进面板，否则打开的是"正在读取"占位
+  await screen.findByRole("button", { name: "打开对账" });
+  fireEvent.click(screen.getByRole("button", { name: "打开对账" }));
   fireEvent.click(screen.getByRole("button",{name:"查看并处理历史缺口"}));
   fireEvent.click(screen.getByText("资料确实无法恢复时"));
   fireEvent.click(screen.getByRole("button", { name: "查看历史缺口处置条件" }));

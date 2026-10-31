@@ -47,6 +47,7 @@ from app.services.market_data_sources.sources.sina_history_http import fetch_sin
 from app.services.market_history_contract import (
     is_cn_stock_history, is_cn_etf_history, mark_cn_stock_production_mode, production_history_source_tag, require_cn_stock_qfq,
 )
+from app.services.data_source_execution import source_selection, source_task, source_worker
 
 
 @contextmanager
@@ -241,6 +242,7 @@ def _normalize_cn_etf_sina_history(frame: pd.DataFrame, start_date: date, end_da
     return _standard_history_frame(normalized)
 
 
+@source_selection
 def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str) -> pd.DataFrame:
     require_cn_stock_qfq(symbol, adjust)
     start = start_date.strftime("%Y%m%d")
@@ -266,7 +268,9 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                         if (symbol.market or "").lower() == "bj" or _is_bj_stock_code(symbol.symbol):
                             try:
                                 return _safe_stock_zh_a_daily(_cn_prefixed_symbol(symbol), start, end, adjust)
-                            except Exception:
+                            except Exception as control_error:
+                                from app.services.data_source_execution import raise_if_control_error
+                                raise_if_control_error(control_error)
                                 logger.info("AKShare sina source failed for BJ %s, trying tx fallback", symbol.symbol, exc_info=True)
                                 return _normalize_cn_stock_tx_history(
                                     call_akshare_with_retry(
@@ -295,11 +299,15 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                     max_attempts=2,
                                 )
                             )
-                        except Exception:
+                        except Exception as control_error:
+                            from app.services.data_source_execution import raise_if_control_error
+                            raise_if_control_error(control_error)
                             logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             try:
                                 return _safe_stock_zh_a_daily(_cn_prefixed_symbol(symbol), start, end, adjust)
-                            except Exception:
+                            except Exception as control_error:
+                                from app.services.data_source_execution import raise_if_control_error
+                                raise_if_control_error(control_error)
                                 logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                                 return _normalize_cn_stock_tx_history(
                                     call_akshare_with_retry(
@@ -332,6 +340,8 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                 raise ValueError('eastmoney_etf_history_empty')
                             return frame
                         except Exception as exc:
+                            from app.services.data_source_execution import raise_if_control_error
+                            raise_if_control_error(exc)
                             if adjust == 'qfq':
                                 logger.info('ETF primary source failed for %s; checking Tencent qfq backup',
                                             symbol.symbol, exc_info=True)
@@ -343,6 +353,8 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                     frame.attrs['history_response']['attempted_sources'] = ['eastmoney_etf', 'tencent_etf']
                                     return frame
                                 except Exception as backup_error:
+                                    from app.services.data_source_execution import raise_if_control_error
+                                    raise_if_control_error(backup_error)
                                     raise etf_qfq_source_error(backup_error, backup_attempted=True) from backup_error
                             if adjust != '':
                                 raise etf_qfq_source_error(exc) from exc
@@ -368,6 +380,8 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                         )
                         return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
         except Exception as exc:
+            from app.services.data_source_execution import raise_if_control_error
+            raise_if_control_error(exc)
             last_error = exc
             logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
             continue
@@ -550,6 +564,7 @@ def import_verified_etf_history(db: Session, symbol: Symbol, dataset_id: str) ->
             'trusted_history_dataset': dataset.identity, 'universe': universe_result}
 
 
+@source_task(lane='backfill')
 def sync_symbol_daily_bars(
     db: Session,
     symbol: Symbol,
@@ -608,6 +623,7 @@ def sync_symbol_daily_bars(
     }
 
 
+@source_task(lane='backfill')
 def sync_market_data(
     db: Session,
     scope: str,
@@ -1434,6 +1450,7 @@ def _fail_history_task(task_id: str, message: str) -> dict:
     return _mutate_history_task(task_id, _apply)
 
 
+@source_worker
 def run_history_initialization_task(task_id: str) -> None:
     snapshot = get_history_initialization_status()
     if snapshot.get("task_id") != task_id:

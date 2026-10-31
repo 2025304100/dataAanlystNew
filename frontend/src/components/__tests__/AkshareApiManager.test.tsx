@@ -143,6 +143,15 @@ describe("AkshareApiManager 组件渲染测试", () => {
     expect(screen.getByText("apiMgmtSectionDesc")).toBeInTheDocument();
   });
 
+  it("does not present an unverified unit contract as a successful probe", async () => {
+    const { container } = render(<AkshareApiManager />);
+    await screen.findByText("深交所股票列表");
+    const expand = container.querySelector(".ant-table-row-expand-icon");
+    expect(expand).not.toBeNull();
+    fireEvent.click(expand!);
+    expect(screen.getByText("字段与单位契约尚未核验；连通性测试不代表数据口径通过。")).toBeInTheDocument();
+  });
+
   it("should render refresh and probe-all buttons in card extra", async () => {
     render(<AkshareApiManager />);
     await waitFor(() => {
@@ -173,7 +182,7 @@ describe("AkshareApiManager 组件渲染测试", () => {
     await waitFor(() => {
       expect(screen.getByText("discovery")).toBeInTheDocument();
       expect(screen.getByText("realtime")).toBeInTheDocument();
-      expect(screen.getByText("etf")).toBeInTheDocument();
+      expect(screen.getByText("ETF")).toBeInTheDocument();
     });
   });
 

@@ -34,6 +34,7 @@ class TDXHistorySource:
     """
 
     name: str = "tdx"
+    endpoint = 'TDX:day'
     region: str = "cn"
     asset_types: list[str] = ["stock"]
 
@@ -98,4 +99,6 @@ class TDXHistorySource:
         except SourceUnavailable:
             raise
         except Exception as e:
+            from app.services.data_source_execution import raise_if_control_error
+            raise_if_control_error(e)
             raise SourceUnavailable(f"TDX parse failed for {symbol.symbol}: {e}") from e

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.models.macro_data import MacroIndicatorValue, MacroSnapshot
 from app.schemas.macro import MacroIndicatorRead, MacroOverviewResponse, MacroSnapshotRead
 from app.services.akshare_utils import quiet_akshare_output
+from app.services.data_source_execution import source_selection, source_task
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +186,8 @@ def _extract_fred(spec: MacroSpec) -> tuple[dict, list[dict]]:
     if fallback is None:
         raise ValueError("no fred fallback configured")
     series = fallback["series"]
-    frame = pd.read_csv(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}")
+    from app.services.fred_source import fetch_fred_csv
+    frame = fetch_fred_csv(series)
     if frame is None or frame.empty:
         raise ValueError("empty fred dataframe")
     value_col = series
@@ -298,16 +300,20 @@ def _emit_progress(
     })
 
 
+@source_selection
 def _fetch_macro_payloads(spec: MacroSpec) -> tuple[dict, list[dict]]:
     try:
         return _extract_latest(spec)
     except Exception as ak_exc:
+        from app.services.data_source_execution import raise_if_control_error
+        raise_if_control_error(ak_exc)
         if spec.indicator_key not in FRED_FALLBACKS:
             raise
         logger.debug("AKShare failed for %s, trying FRED fallback", spec.indicator_key, exc_info=True)
         try:
             return _extract_fred(spec)
         except Exception as fred_exc:
+            raise_if_control_error(fred_exc)
             raise RuntimeError(f"AKShare failed: {ak_exc}; FRED failed: {fred_exc}") from fred_exc
 
 
@@ -485,6 +491,7 @@ def _latest_snapshot(db: Session, region: str) -> MacroSnapshot | None:
     )
 
 
+@source_task(lane='incremental')
 def update_macro_data(
     db: Session,
     region: str = "all",

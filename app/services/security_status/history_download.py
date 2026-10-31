@@ -20,6 +20,7 @@ from app.services import async_tasks
 from app.core.config import settings
 from app.db.session import get_session_local
 from app.services.security_status import baostock_source
+from app.services.data_source_execution import source_worker
 
 TASK_TYPE = "security_status_download"
 MAX_SYMBOLS = 20
@@ -269,6 +270,7 @@ def _build_report(directory, request, source_error):
         "message": "原始返回已保存；仍缺退市整理状态、每日限价和资料原始更新时间，尚不能用于正式回测。"}
 
 
+@source_worker
 def _download_worker(task_id):
     db = get_session_local()()
     try:

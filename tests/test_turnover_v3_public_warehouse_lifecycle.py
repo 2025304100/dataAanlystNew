@@ -37,7 +37,10 @@ def turnover_client(db_session, tmp_path, monkeypatch):
                    scoring_facade.router, scores.router):
         app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
-    monkeypatch.setattr(pipeline_task, "_start_worker", lambda task_id, runner: runner(task_id))
+    # This fixture runs the real pipeline inline so temporary input roots and
+    # SQL guards stay in this test process. Process supervision has its own suite.
+    monkeypatch.setattr(pipeline_task, "_start_worker",
+                        lambda task_id, _runner: pipeline_task._run_factor_pipeline(task_id))
     with TestClient(app) as client:
         yield client
 

@@ -7,6 +7,7 @@ import requests
 from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
 from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_task
 
 # Anonymous clients use the public visitor route. The legacy /api route can
 # disconnect before sending an HTTP response even when the quotes exist.
@@ -20,6 +21,7 @@ FIELD_MAP = {
 }
 
 
+@source_task(lane='incremental')
 def fetch_capital_flow_quotes(db, secids: list[str], *, should_cancel=None) -> dict[str, dict]:
     secids = list(dict.fromkeys(secids))
     if not secids:

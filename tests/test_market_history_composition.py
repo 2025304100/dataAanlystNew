@@ -24,7 +24,7 @@ def leaves(tmp_path, monkeypatch):
     for name,count in [('original-leaf',28),('recent-leaf',35)]:
         _,_,directory=_dataset(tmp_path/name,monkeypatch,day_count=count)
         destination=common/name
-        directory.rename(destination)
+        evidence._commit_staged_directory(directory, destination)
         quality=json.loads((destination/'quality.json').read_bytes());quality['dataset_id']=name
         (destination/'quality.json').write_text(json.dumps(quality),encoding='utf-8')
         manifest=json.loads((destination/'manifest.json').read_bytes());manifest.update(id=name,quality_sha256=_sha(destination/'quality.json'))
@@ -64,6 +64,36 @@ def test_updated_container_digest_cannot_bypass_leaf_or_selection_evidence(leave
     (directory/'manifest.json').write_text(json.dumps(manifest),encoding='utf-8')
     with pytest.raises(ValueError,match='composition_'):
         evidence.load_trusted_history_dataset('union')
+
+
+def test_composition_commit_retries_transient_access_denial(leaves, monkeypatch):
+    from pathlib import Path
+    original = Path.rename; calls = []
+    def rename(stage, destination):
+        if stage.name.startswith('.composition-'):
+            calls.append(stage)
+            if len(calls) < 3: raise PermissionError('synthetic Windows sharing denial')
+        return original(stage, destination)
+    monkeypatch.setattr(Path, 'rename', rename)
+    dataset = write_composed_history(dataset_id='union', references=leaves,
+        symbols=[f'{i+1:06d}' for i in range(24)], plan_id='a'*64, plan_sha256='b'*64)
+    assert len(calls) == 3 and len(dataset.bars) == 35*24
+    pd.testing.assert_frame_equal(evidence.load_trusted_history_dataset('union').bars, dataset.bars)
+
+
+def test_composition_commit_access_denial_cannot_overwrite_concurrent_publisher(leaves, monkeypatch):
+    from pathlib import Path
+    original = Path.rename; winner = b'synthetic concurrent publisher'
+    def rename(stage, destination):
+        if stage.name.startswith('.composition-'):
+            destination.mkdir(); (destination/'manifest.json').write_bytes(winner)
+            raise PermissionError('synthetic concurrent publish')
+        return original(stage, destination)
+    monkeypatch.setattr(Path, 'rename', rename)
+    with pytest.raises(ValueError, match='immutable_conflict'):
+        write_composed_history(dataset_id='union', references=leaves,
+            symbols=[f'{i+1:06d}' for i in range(24)], plan_id='a'*64, plan_sha256='b'*64)
+    assert (evidence.TRUSTED_HISTORY_DATASET_ROOT/'union/manifest.json').read_bytes() == winner
 
 
 def test_cycles_and_nested_composition_fail_before_recursive_loading(leaves):

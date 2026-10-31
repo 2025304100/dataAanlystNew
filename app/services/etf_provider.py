@@ -11,6 +11,7 @@ import requests
 from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
 from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_task
 
 URL = "https://push2.eastmoney.com/api/qt/ulist.np/get"
 FIELDS = "f12,f2,f38,f441,f402,f297,f124"
@@ -25,6 +26,7 @@ def _positive(value) -> float | None:
         return None
 
 
+@source_task(lane='incremental')
 def fetch_etf_quotes(db, codes: list[str], *, should_cancel: Callable[[], bool] | None = None) -> dict[str, dict]:
     codes = list(dict.fromkeys(codes))
     if not codes:

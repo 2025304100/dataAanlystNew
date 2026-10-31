@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from typing import Callable
+from app.services.data_source_execution import source_task
 
 
 class SourceDownloadError(RuntimeError):
@@ -22,12 +23,33 @@ class DownloadCancelled(RuntimeError):
 def _save(path, value):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    # On Windows the parent's progress read can briefly hold a handle without
+    # delete sharing. Keep the old complete receipt visible until replacement;
+    # a genuine permission failure still terminates within a bounded interval.
+    for attempt in range(21):
+        try:
+            temporary.replace(path)
+            break
+        except PermissionError:
+            if attempt == 20:
+                raise
+            time.sleep(.01)
 
 
+@source_task(lane='backfill')
 def capture_history(request: dict, directory: Path, progress: Callable[[int, str], None],
                     *, timeout_seconds: float = 120) -> None:
     """One isolated SDK session, bounded even when a remote socket never ends."""
+    from app.services.data_source_control import current_controller
+    controller = current_controller()
+    endpoints = ('BAO:query_trade_dates', 'BAO:query_stock_basic', 'BAO:query_history_k_data_plus')
+    child_env = {**os.environ, 'PYTHONIOENCODING': 'utf-8'}
+    if controller is not None:
+        controller.checkpoint(endpoints=endpoints)
+        if any(controller.configuration(key)['endpoint']['transport'] != 'sdk' for key in endpoints):
+            from app.services.data_source_control import PolicyDenied
+            raise PolicyDenied('SDK_TRANSPORT_REQUIRED')
+        child_env.update(DATA_SOURCE_CONTROL_DB=controller.path, DATA_SOURCE_CONTROL_TASK=controller.task_identity())
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     _save(directory / "source-request.json", request)
@@ -38,9 +60,11 @@ def capture_history(request: dict, directory: Path, progress: Callable[[int, str
             process = subprocess.Popen(
                 [sys.executable, "-B", "-m", "app.services.security_status.baostock_source", str(directory)],
                 cwd=Path(__file__).resolve().parents[3], stdout=log, stderr=subprocess.STDOUT,
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                env=child_env,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             while True:
+                if controller is not None:
+                    controller.checkpoint(endpoints=endpoints)
                 try:
                     capture = json.loads((directory / "capture.json").read_text(encoding="utf-8"))
                 except (OSError, ValueError):
@@ -67,6 +91,8 @@ def capture_history(request: dict, directory: Path, progress: Callable[[int, str
         if process is not None and process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+            if controller is not None:
+                controller.interrupt_task(controller.task_identity())
 
 
 def _install_proxy_tunnel() -> None:
@@ -132,9 +158,25 @@ def _capture_worker(directory: Path) -> int:
         _save(directory / "capture.json", capture)
         return 1
 
+    from app.services.data_source_control import current_controller
+    controller = current_controller()
+    logged_in = False
+
+    def ensure_login():
+        nonlocal logged_in
+        if logged_in:
+            return
+        login = bs.login()
+        capture['login_error_code'], capture['login_error_msg'] = login.error_code, login.error_msg
+        _save(directory / 'capture.json', capture)
+        if login.error_code != '0':
+            raise SourceDownloadError('历史资料来源暂时无法连接，请稍后重试。')
+        logged_in = True
+
     def collect(key, endpoint, parameters):
         raw = {"fields": [], "rows": [], "error_code": None, "error_msg": ""}
-        try:
+        def download():
+            ensure_login()
             response = getattr(bs, endpoint)(**parameters)
             raw["fields"] = response.fields
             while response.error_code == "0" and response.next():
@@ -142,7 +184,14 @@ def _capture_worker(directory: Path) -> int:
                 if len(raw["rows"]) > (3660 if request.get('history_kind') == 'etf_prices' else 366):
                     raise ValueError("source_row_budget_exceeded")
             raw.update(error_code=response.error_code, error_msg=response.error_msg)
+        try:
+            if controller is not None:
+                controller.execute('BAO:' + endpoint, download, max_attempts=1)
+            else:
+                download()
         except Exception as error:
+            from app.services.data_source_execution import raise_if_control_error
+            raise_if_control_error(error)
             raw.update(error_code="capture_error", error_msg="来源请求未完成", error_type=type(error).__name__)
         value = {"endpoint": endpoint, "parameters": parameters,
                  "fetched_at": datetime.now(timezone.utc).isoformat(), "source_updated_at": None, "raw": raw}
@@ -153,12 +202,8 @@ def _capture_worker(directory: Path) -> int:
         _save(directory / "capture.json", capture)
 
     try:
-        login = bs.login()
-        capture["login_error_code"] = login.error_code
-        capture["login_error_msg"] = login.error_msg
-        _save(directory / "capture.json", capture)
-        if login.error_code != "0":
-            raise SourceDownloadError("历史资料来源暂时无法连接，请稍后重试。")
+        if controller is None:
+            ensure_login()
         dates = {"start_date": request["start_date"], "end_date": request["end_date"]}
         collect("calendar", "query_trade_dates", dates)
         for symbol in request["symbols"]:
@@ -180,10 +225,31 @@ def _capture_worker(directory: Path) -> int:
         return 1
     finally:
         try:
-            bs.logout()
+            if controller is None:
+                bs.logout()
+            else:
+                import baostock.common.context as context
+                sock = getattr(context, 'default_socket', None)
+                if sock is not None:
+                    sock.close()
         except Exception:
             pass
 
 
+def _worker_entry(directory):
+    path = os.environ.get('DATA_SOURCE_CONTROL_DB')
+    if not path:
+        if os.environ.get('DATA_SOURCE_EXECUTION_MODE') == 'production':
+            raise SourceDownloadError('PRODUCTION_CONTROL_REQUIRED')
+        return _capture_worker(directory)
+    from app.services.data_source_control import RequestController, PolicyDenied, controlled_sdk_session
+    task_id = os.environ.get('DATA_SOURCE_CONTROL_TASK')
+    if not Path(path).is_file() or not task_id:
+        raise PolicyDenied('SDK_TASK_CONTEXT_REQUIRED')
+    controller = RequestController(path)
+    with controller.scope(task_id), controlled_sdk_session():
+        return _capture_worker(directory)
+
+
 if __name__ == "__main__":
-    raise SystemExit(_capture_worker(Path(sys.argv[1])))
+    raise SystemExit(_worker_entry(Path(sys.argv[1])))

@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
+from app.services.data_source_execution import source_task
+from app.services.data_source_execution import submit_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +338,7 @@ def _upsert_universe_symbol(
     return created
 
 
+@source_task(lane='incremental')
 def refresh_universe_symbols(scope: str, db: Session) -> dict:
     """拉取全市场标的写入 universe_symbols。
 
@@ -437,6 +440,7 @@ def refresh_universe_symbols(scope: str, db: Session) -> dict:
     return {"seen": seen, "created": created, "scope": scope, "skipped_suspended": skipped_suspended}
 
 
+@source_task(lane='backfill')
 def backfill_universe_stock_industries(
     *,
     progress_callback: Callable[[int, int, int, int], None] | None = None,
@@ -656,6 +660,7 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
     return inserted, updated
 
 
+@source_task(lane='incremental')
 def sync_one_universe_symbol(
     db: Session,
     universe_symbol: UniverseSymbol,
@@ -764,6 +769,7 @@ def _incremental_timed_result(
     return result
 
 
+@source_task(lane='incremental')
 def sync_one_universe_symbol_incremental(
     db: Session,
     universe_symbol: UniverseSymbol,
@@ -886,6 +892,7 @@ def _sync_one_incremental_concurrent(universe_symbol_id: int, target_date: date)
         sub_db.close()
 
 
+@source_task(lane='backfill')
 def sync_universe_bars_batch(
     scope: str,
     max_workers: int = 5,
@@ -993,7 +1000,7 @@ def sync_universe_bars_batch(
                     progress_callback(processed, total, ok_count, failed_count)
         else:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_sync_one_concurrent, uid, history_days): uid for uid in batch_ids}
+                futures = {submit_with_context(executor, _sync_one_concurrent, uid, history_days): uid for uid in batch_ids}
                 for future in as_completed(futures):
                     if is_cancelled and is_cancelled():
                         for f in futures:
@@ -1100,7 +1107,7 @@ def sync_universe_bars_batch(
                             progress_callback(processed, total, ok_count, failed_count)
                 else:
                     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        futures = {executor.submit(_sync_one_concurrent, uid, history_days): uid for uid in batch}
+                        futures = {submit_with_context(executor, _sync_one_concurrent, uid, history_days): uid for uid in batch}
                         for future in as_completed(futures):
                             if is_cancelled and is_cancelled():
                                 for f in futures:
@@ -1142,6 +1149,7 @@ def sync_universe_bars_batch(
 
 # ── 历史回补 ──────────────────────────────────────────────
 
+@source_task(lane='backfill')
 def backfill_one_universe_symbol(
     db: Session,
     universe_symbol: UniverseSymbol,
@@ -1270,6 +1278,7 @@ def _backfill_one_concurrent(universe_symbol_id: int, history_days: int) -> dict
         sub_db.close()
 
 
+@source_task(lane='backfill')
 def backfill_universe_bars_batch(
     scope: str,
     max_workers: int = 5,
@@ -1380,7 +1389,7 @@ def backfill_universe_bars_batch(
                     progress_callback(processed, total, ok_count, failed_count)
         else:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_backfill_one_concurrent, uid, history_days): uid for uid in batch_ids}
+                futures = {submit_with_context(executor, _backfill_one_concurrent, uid, history_days): uid for uid in batch_ids}
                 for future in as_completed(futures):
                     if is_cancelled and is_cancelled():
                         for f in futures:
@@ -1466,7 +1475,7 @@ def backfill_universe_bars_batch(
                             progress_callback(processed, total, ok_count, failed_count)
                 else:
                     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        futures = {executor.submit(_backfill_one_concurrent, uid, history_days): uid for uid in batch}
+                        futures = {submit_with_context(executor, _backfill_one_concurrent, uid, history_days): uid for uid in batch}
                         for future in as_completed(futures):
                             if is_cancelled and is_cancelled():
                                 for f in futures:
@@ -1518,6 +1527,7 @@ def _scope_config(scope: str) -> dict:
 # ── 健康度统计 ─────────────────────────────────────────────────────
 
 
+@source_task(lane='backfill')
 def repair_one_universe_symbol(
     db: Session,
     universe_symbol: UniverseSymbol,
@@ -1679,6 +1689,7 @@ def _repair_one_concurrent(
 
 
 
+@source_task(lane='backfill')
 def repair_universe_bars_batch(
     scope: str,
     max_workers: int = 5,
@@ -1813,7 +1824,7 @@ def repair_universe_bars_batch(
         else:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
-                    executor.submit(_repair_one_concurrent, uid, target_start, target_end, chunk_days, is_cancelled): uid
+                    submit_with_context(executor, _repair_one_concurrent, uid, target_start, target_end, chunk_days, is_cancelled): uid
                     for uid in batch_ids
                 }
                 for future in as_completed(futures):
@@ -1985,6 +1996,7 @@ def get_universe_stats(db: Session) -> dict:
 
 # ── P2：定时增量同步 ─────────────────────────────────────────────
 
+@source_task(lane='incremental')
 def incremental_sync(
     max_workers: int = 5,
     progress_callback: Callable[[int, int, int, int], None] | None = None,
@@ -2174,7 +2186,7 @@ def incremental_sync(
                 uid, target_date = next(pending_iter)
             except StopIteration:
                 return False
-            future = executor.submit(_sync_one_incremental_concurrent, uid, target_date)
+            future = submit_with_context(executor, _sync_one_incremental_concurrent, uid, target_date)
             future_to_uid[future] = uid
             return True
 
@@ -2258,7 +2270,7 @@ def incremental_sync(
             else:
                 with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="universe-incr-retry") as executor:
                     futures = {
-                        executor.submit(
+                        submit_with_context(executor,
                             _sync_one_incremental_concurrent,
                             uid,
                             target_date_by_id[uid],

@@ -138,6 +138,9 @@ def test_oversize_response_is_rejected_and_closed(monkeypatch, advertised):
 
 
 def test_transport_failure_uses_existing_retry_and_registry_delay(monkeypatch, configured):
+    # This case exercises two allowed rounds; the default fixture's ceiling
+    # of one must continue to prevent retries in all other cases.
+    akshare_registry._config_cache['stock_zh_a_daily']['max_retries'] = 2
     calls, responses = install_bundle(monkeypatch)
     get = sina_history_http.requests.get
     attempts, delays, sleeps = [], [], []
@@ -151,5 +154,5 @@ def test_transport_failure_uses_existing_retry_and_registry_delay(monkeypatch, c
     monkeypatch.setattr("app.services.akshare_utils.time.sleep", lambda delay: sleeps.append(delay))
     frame = market_data._safe_stock_zh_a_daily("sz000425", "20240102", "20240103", "qfq")
     assert len(frame) == 2 and len(attempts) == 4 and len(calls) == 3
-    assert delays == ["stock_zh_a_daily"] and sleeps == [1.0]
+    assert delays == ["stock_zh_a_daily", "stock_zh_a_daily"] and sleeps == [1.0]
     assert all(response.closed for response in responses)

@@ -843,6 +843,10 @@ class FactorWarehouse:
             {column: row.get(column) for column in _DAILY_BAR_COLUMNS}
             for row in rows
         ]
+        if self.path.resolve() == Path(settings.factor_warehouse_path).resolve() and any(
+            row.get("source_origin") != "universe_daily_bars" for row in records
+        ):
+            raise ValueError("NON_CANONICAL_LEGACY_MIRROR")
         self.initialize()
         with self._write_lock, self.connection() as conn:
             conn.execute("BEGIN TRANSACTION")

@@ -36,6 +36,18 @@ def trading_session(monkeypatch):
     # These task/locking tests exercise an open session, independent of the
     # machine date. Closed/missing-calendar behavior has public API tests in
     # test_valuation_sync_request_budget.py.
+    original_date = date
+    class OpenSessionDateType(type):
+        def __instancecheck__(cls, value):
+            return isinstance(value, original_date)
+    class OpenSessionDate(original_date, metaclass=OpenSessionDateType):
+        @classmethod
+        def today(cls):
+            return original_date(2026, 10, 30)
+    # Pin task planning and relative-date assertions to a weekday. Merely
+    # mocking is_cn_trading_day leaves requested_days' weekend filter active.
+    monkeypatch.setattr(service, "date", OpenSessionDate)
+    monkeypatch.setattr(sys.modules[__name__], "date", OpenSessionDate)
     monkeypatch.setattr("app.services.market_session.is_cn_trading_day", lambda db, day: True)
 
 

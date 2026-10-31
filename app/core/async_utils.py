@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+from contextvars import copy_context
 from typing import Any, Callable, TypeVar
 
 T = TypeVar("T")
@@ -11,4 +12,4 @@ T = TypeVar("T")
 async def run_sync(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """在默认执行器中运行同步函数，避免阻塞事件循环。"""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+    return await loop.run_in_executor(None, copy_context().run, functools.partial(func, *args, **kwargs))

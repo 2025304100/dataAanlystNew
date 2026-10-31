@@ -18,6 +18,7 @@ from app.services.factors.fundamental import (
     normalize_financial_analysis_frame,
 )
 from app.services.regions import region_from_market
+from app.services.data_source_execution import source_task
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ def _fetch_financial_analysis(
     )
 
 
+@source_task(lane='incremental')
 def sync_symbol_financial_reports(
     db: Session,
     symbol: Symbol,
@@ -207,6 +209,7 @@ class FinancialWriteCount(int):
         return value
 
 
+@source_task(lane='incremental')
 def sync_financial_announcements(db, symbols, start, end, *, should_cancel=None, on_result=None,
                                  fill_missing_only: bool = False):
     """Daily scope is fetched in code/date batches; unchanged reports are skipped."""

@@ -29,6 +29,7 @@ from app.services.sector_concepts import (
     KEYWORD_TO_SECTOR, build_index, event_sector_ids, map_sectors_on,
     map_to_sectors, map_to_sectors_db, parse_affected_sectors, resolve_concepts,
 )
+from app.services.data_source_execution import source_task
 
 logger = logging.getLogger(__name__)
 
@@ -585,6 +586,7 @@ def recent_collects_all_empty(db: Session, *, lookback: int = 2) -> bool:
                and run.errors_json in (None, "[]") for run in runs)
 
 
+@source_task(lane='incremental')
 def collect_market_events(
     db: Session, payload: MarketEventCollectRequest, *, trigger_source: str = "manual"
 ) -> MarketEventCollectResponse:

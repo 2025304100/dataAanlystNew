@@ -121,13 +121,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("组合主壳与治理子页的真实导航", () => {
-  it.each([
-    ["每日对账", "执行与对账"],
-    ["运行状态审核", "运行状态审核"],
-  ])("点击 %s 后渲染治理目标页", async (label, heading) => {
+  it("点击 运行状态审核 后渲染治理目标页", async () => {
     render(<PortfolioTradingShell />);
-    fireEvent.click(await screen.findByRole("button", { name: label }));
-    expect(await screen.findByRole("heading", { name: heading, level: 2 })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "运行状态审核" }));
+    expect(await screen.findByRole("heading", { name: "运行状态审核", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
+  });
+
+  it("从「对账连续性」进入执行与对账", async () => {
+    render(<PortfolioTradingShell />);
+    // 每日核对入口已统一到「对账连续性」：无逐日行时走空态兜底，有行时点第一行
+    fireEvent.click(await screen.findByRole("tab", { name: "对账连续性" }));
+    const fallback = screen.queryByRole("button", { name: "打开对账" });
+    fireEvent.click(fallback ?? screen.getAllByRole("button", { name: /每日对账$/ })[0]);
+    expect(await screen.findByRole("heading", { name: "执行与对账", level: 2 })).toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-overview")).not.toBeInTheDocument();
   });
 

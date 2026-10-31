@@ -9,6 +9,7 @@ import requests
 
 from app.services.market_history_evidence import HistoryRequest, _dates, _normalize_received, _parse_tencent_response
 from app.services.market_history_contract import tencent_quantity_input_contract
+from app.services.data_source_execution import source_boundary
 
 
 TENCENT_HISTORY_URL = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
@@ -16,6 +17,7 @@ TENCENT_HISTORY_TIMEOUT = (5, 15)
 TENCENT_HISTORY_MAX_CALENDAR_DAYS = 640
 
 
+@source_boundary('stock_zh_a_hist_tx')
 def fetch_tencent_history_raw(*, symbol: str, start_date: str, end_date: str, adjust: str) -> pd.DataFrame:
     """Return the existing six-column raw-lot schema, with a verified mode key.
 

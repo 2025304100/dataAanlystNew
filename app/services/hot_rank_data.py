@@ -20,6 +20,7 @@ from app.services.akshare_utils import (
 from app.services.factors.contracts import normalize_symbol
 from app.services.factors.sentiment import normalize_hot_rank_frame
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_task
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ def _fetch_hot_rank(
     ), _raw_payloads(frame)
 
 
+@source_task(lane='incremental')
 def sync_hot_rank_snapshot(
     db: Session, *, as_of: date | None = None, fill_missing_only: bool = False
 ) -> HotRankSyncResult:

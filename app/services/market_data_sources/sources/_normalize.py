@@ -12,7 +12,7 @@ from datetime import date
 
 import pandas as pd
 from app.services.market_history_contract import resolve_cn_prefixed_symbol, tencent_quantity_to_shares_multiplier
-from app.services.data_source_contracts import normalize_units
+from app.services.data_source_contracts import DataContractError, normalize_units
 
 
 def attach_cn_stock_history_contract(frame: pd.DataFrame, provider: str) -> pd.DataFrame:
@@ -151,7 +151,7 @@ def normalize_cn_stock_tx_history(frame: pd.DataFrame, start_date: date, end_dat
     # Reject structural changes before interpreting a field's numeric value.
     legacy_columns = {"date", "open", "close", "high", "low", "amount"}
     if not frame.columns.is_unique or not set(frame.columns).issubset(legacy_columns):
-        raise ValueError("unsupported Tencent history schema")
+        raise DataContractError("unsupported Tencent history schema")
     if frame.empty:
         return attach_cn_stock_history_contract(frame, "tencent")
     normalized = frame.rename(
@@ -172,9 +172,17 @@ def normalize_cn_stock_tx_history(frame: pd.DataFrame, start_date: date, end_dat
     # sh688 uses shares; verified main/ChiNext families use 100-share lots.
     # Never select a conversion by numeric magnitude or invent cash
     # turnover from quantity or price. Missing/invalid quantity remains unknown.
-    normalized["volume"] = pd.to_numeric(normalized.get("amount"), errors="coerce") * tencent_quantity_to_shares_multiplier(frame)
+    # Validate the symbol-bound wire evidence before choosing the shared rule.
+    # The registry owns the conversion; this adapter only resolves the alias.
+    try:
+        tencent_quantity_to_shares_multiplier(frame)
+    except ValueError as error:
+        raise DataContractError(str(error)) from error
+    normalized["volume"] = normalized.get("amount")
     normalized["amount"] = None
     normalized["turnover_rate"] = None
+    normalized = normalize_units(normalized, "stock_zh_a_hist_tx",
+                                 instrument_family=frame.attrs["tencent_quantity_contract"]["instrument_family"])
     return attach_cn_stock_history_contract(standard_history_frame(normalized), "tencent")
 
 

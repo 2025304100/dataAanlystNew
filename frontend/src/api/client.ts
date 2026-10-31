@@ -2740,6 +2740,11 @@ export const api = {
       `${API}/external-data/apis/${encodeURIComponent(apiKey)}?locale=${locale}`,
       { method: "PUT", body: JSON.stringify(payload) },
     ),
+  publishApiPolicy: (apiKey: string, payload: PolicyPublication, locale: string = "zh-CN") =>
+    requestJson<AkshareApiStatus>(`${API}/external-data/apis/${encodeURIComponent(apiKey)}/policy?locale=${locale}`,
+      { method: "PUT", body: JSON.stringify(payload) }),
+  getApiConfigurationHistory: (apiKey: string, scope: "endpoint" | "provider") =>
+    requestJson<PolicyHistory[]>(`${API}/external-data/apis/${encodeURIComponent(apiKey)}/configuration-history?scope=${scope}`),
 
   // AI 接口配置
   getAiConfig: () =>
@@ -3503,6 +3508,18 @@ export interface DecisionEvaluateResponse {
 // P2-E: Akshare API management types
 // ----------------------------------------------------------------------------
 export interface AkshareApiStatus {
+  governance?: SourceGovernance;
+  contract_status?: "declared" | "unverified";
+  data_contracts?: Array<{
+    endpoint: string;
+    provider: string;
+    dataset: string;
+    asset_type: string;
+    version: string;
+    instrument_family: string;
+    unavailable_fields: string[];
+    fields: Array<{ field: string; input_unit: string; output_unit: string; multiplier: number }>;
+  }>;
   // 元数据（只读）
   key: string;
   name: string;
@@ -3525,6 +3542,36 @@ export interface AkshareApiStatus {
   last_call_error: string | null;
   total_calls: number;
   total_failures: number;
+}
+
+export interface ExecutionPolicy {
+  enabled: boolean;
+  min_interval_s: number; max_attempts: number; timeout_s: number;
+  failure_threshold: number; cooldown_s: number; max_cooldown_s: number; probe_lease_s: number; window_s: number;
+  total_limit: number | null; incremental_limit: number | null; backfill_limit: number | null; probe_limit: number | null;
+}
+export interface PolicyPublication {
+  scope: "endpoint" | "provider";
+  expected_version: { endpoint: number; provider: number };
+  policy?: Partial<ExecutionPolicy>;
+  restore_version?: number;
+}
+export interface PolicyHistory {
+  version: number; changed_at: number; origin: string;
+  configuration: { policy: ExecutionPolicy; version: number };
+}
+export interface SourceGovernance {
+  access_status: string; in_current_release: boolean; implementation_status: string;
+  auth_required: boolean; auth_status: string; admission_status: string; production_request_allowed: boolean;
+  supplier_quota_status: string | null; supplier_quota_remaining: number | null; network_metrics_applicable: boolean;
+  contract_status: string; profile_ids: string[];
+  unit_fields: Array<{ wire_field: string | null; canonical_target: string | null; native_unit_claim: string | null; native_unit_verified: boolean }>;
+  control_mode: "shared" | "legacy_process_cache"; can_edit: boolean; can_probe: boolean;
+  config_version?: { endpoint: number; provider: number } | null;
+  control?: { provider_id: string; endpoint_policy: ExecutionPolicy; provider_policy: ExecutionPolicy; transport: string } | null;
+  statistics?: { by_kind: Record<"call" | "probe", Record<string, number>> };
+  legacy_statistics?: { available: boolean; total_calls: number | null; total_failures: number | null };
+  health_status: string; cooldown_remaining_s?: number; block_reasons: string[];
 }
 
 export interface AkshareStrategyInfo {

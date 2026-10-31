@@ -2,7 +2,7 @@ import usePortfolioAdmission, {refreshPortfolioAdmission} from "../../../hooks/u
 import {AcceptanceButton as Button,AcceptanceModal as Modal} from './AcceptanceControls';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Checkbox, Input } from "antd";
-import { ArrowRight, CheckCircle2, CircleHelp, ClipboardCheck, Clock3, Compass, FolderSearch, GitCompareArrows, History, Link2, ListChecks, RefreshCw, ShieldAlert, ShieldCheck, Sparkles, Workflow } from "lucide-react";
+import { CheckCircle2, CircleHelp, ClipboardCheck, Clock3, Compass, FolderSearch, GitCompareArrows, History, Link2, ListChecks, RefreshCw, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import { api } from "../../../api/client";
 import { useApp } from "../../../context/AppContext";
 import type { ActionItem, ActionItemsResponse, AIResponse, ModelBindingReviewResponse, PortfolioStatusResponse, ReconciliationResponse } from "../../../types";
@@ -31,6 +31,7 @@ import useInspectionEvidenceMonitor from "./useInspectionEvidenceMonitor";
 import {readRepairSubmission,submissionBlocksNew,subscribeRepairSubmission} from './repairSubmissionJournal';
 import {sendRecheckSubmission} from './recheckSubmissionJournal';
 import InspectionRecheckRequest from './InspectionRecheckRequest';
+import PortfolioValidationSection from './PortfolioValidationSection';
 import "./inspection.css";
 import {refreshAcceptanceMode} from '../../../utils/acceptanceMode';
 
@@ -76,7 +77,7 @@ export default function PortfolioInspectionWorkbench(props:Props) {
 }
 function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGovernanceChanged, renderDualRun, renderOperations }: Props) {
   useEffect(()=>{void refreshAcceptanceMode();},[portfolioId]);
-  const { showToast, setActiveTab } = useApp();
+  const { showToast, setActiveTab, portfolios } = useApp();
   const [confirmationReady, setConfirmationReady] = useState(false);
   const [browseReady,setBrowseReady]=useState(false);
   const handleDataConfirmation = useCallback((visible: boolean) => { if (visible) setConfirmationReady(false); setDataConfirm(visible); }, []);
@@ -293,6 +294,11 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
   const noReview = runtime?.recovery_summary.recommended_action === "NONE";
   const unknown = admission.view.kind === "unknown" || admission.view.kind === "checking";
   const title = admission.view.title;
+  // 页头副标题只复述已有事实：组合名、准入结论、最近对账日期、未通过的交易日数。
+  // portfolios 在部分单测里被 mock 成不含该字段的对象，必须可选链兜底。
+  const portfolioName = portfolios?.find(item => item.id === portfolioId)?.name ?? `#${portfolioId}`;
+  const headerOpenDays = queue ? queue.days.filter(day => day.status !== "PASSED").length : null;
+  const headerSub = `组合「${portfolioName}」· 当前 ${title} · 最近对账 ${status?.last_reconciled_trade_date ?? "—"} · ${headerOpenDays === null ? "待核对 —" : `待核对 ${headerOpenDays} 个交易日`}`;
   const open = (target: Panel, guided = false, asDetail=false) => { if(!panel)returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; clearDetailOverlay(); setWriteError(null); if (target === "ai" && !guided) { setAIScope(null); setAIStale(true); } if (target === "guide") { guideDraft.current = "guide"; setStep(firstStep()); } else if (!guided && panel!=="guide") guideDraft.current = null; if(asDetail&&target!==panel){setSeenPanels(previous=>previous.includes(target)?previous:[...previous,target]);setLayers(previous=>[...previous,target]);}else setPanel(target); };
   const close = (surface:Panel|null=panel) => {
     const trail=currentLayers.current;
@@ -490,9 +496,27 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
   return <div className="pi-workbench">
     {checkingEvidence&&!crossTabStale&&!panel&&<p role="status" className="pi-muted">正在核实后台最新依据…</p>}
     {crossTabStale&&!panel&&<InspectionStaleNotice loading={loading} onReload={()=>void load()}/>}
-    <header className="pi-page-head"><div><h2><Compass size={20}/>检查与对账</h2><p>修复当前数据、审核运行状态；执行对账与操作记录分别管理</p></div><div><Button type="text" icon={<CircleHelp size={15}/>} onClick={() => open("help")}>页面说明</Button><Button type="text" icon={<Sparkles size={15}/>} onClick={() => open("ai")}>AI 辅助</Button></div></header>
-    <section className={`pi-hero ${canBuy === true && !unknown ? "pi-hero-ok" : ""}`}><div>{canBuy === true && !unknown ? <ShieldCheck size={28}/> : <ShieldAlert size={28}/>}<div><h1>{title}</h1><p>{unknown ? "结果读取不完整，不能把未知显示成正常运行。" : blockers.length ? `${blockers.length} 类运行条件待处理。当前数据与状态在下方处理，执行历史在“执行与对账”中核实。` : "实际权限与所需材料由服务端判定，详情可查看完整依据。"}</p></div></div><div className="pi-hero-actions"><Button type="primary" disabled={loading && !runtime} icon={<ArrowRight size={15}/>} onClick={() => open(waiting && !blockers.length ? "job" : "guide")}>{canBuy === true ? "查看运行依据" : waiting && !blockers.length ? "查看等待进度" : "开始恢复引导"}</Button></div></section>
-    <div className="pi-capabilities">{([['allow_new_buys','新买入'],['allow_auto_recovery','自动恢复'],['allow_risk_exits','风险退出']] as const).map(([key,label]) => <span key={key} aria-label={label+"权限"}>{label}<b className={!admission.loading && !admission.error && admission.runtime?.permissions[key] === true ? "pi-ok-text" : "pi-warning-text"}>{admission.loading || admission.error ? "未知" : admission.runtime?.permissions[key] === true ? "允许" : admission.runtime?.permissions[key] === false ? "不允许" : "未知"}</b></span>)}<Button type="text" icon={<RefreshCw size={14}/>} loading={loading} onClick={() => void load()}>重新检测</Button></div>
+    <header className="pi-page-head"><div><p className="pi-page-kicker">组合交易 · PORTFOLIO</p><h2 className="pi-page-title"><Compass size={20}/>检查与对账</h2><p className="pi-page-sub">{headerSub}</p></div><div className="pi-page-actions"><Button type="text" icon={<CircleHelp size={15}/>} onClick={() => open("help")}>页面说明</Button><Button type="text" icon={<Sparkles size={15}/>} onClick={() => open("ai")}>AI 辅助</Button><Button icon={<RefreshCw size={15}/>} loading={loading} onClick={() => void load()}>重新检测</Button></div></header>
+    <PortfolioValidationSection portfolioId={portfolioId} title={title} kind={admission.view.kind} loading={loading}
+      description={unknown ? "结果读取不完整，不能把未知显示成正常运行。" : blockers.length ? `${blockers.length} 类运行条件待处理。当前数据与状态在下方处理，执行历史在“执行与对账”中核实。` : "实际权限与所需材料由服务端判定，详情可查看完整依据。"}
+      runtime={admission.runtime} status={status} primaryDisabled={loading && !runtime}
+      primaryLabel={canBuy === true ? "查看运行依据" : waiting && !blockers.length ? "查看等待进度" : "开始恢复引导"}
+      onPrimary={() => open(waiting && !blockers.length ? "job" : "guide")}
+      queue={queue} job={job} actionItems={items?.items ?? []} actionItemsGeneratedAt={items?.generated_at}
+      onOpenAction={item => {
+        const target = itemPanel(item);
+        // 对账类行动项自带交易日：直接进那一天，别沿用对账面板里上次选中的日期
+        if (target === "reconciliation" && item.trade_date) { void inspectDay(item.trade_date); return; }
+        open(target);
+      }}
+      onOpenHistory={() => { setHistoryOrigin(null); setHistoryContext(undefined); open("history"); }}
+      onInspectDay={date => void inspectDay(date)} onReloadQueue={() => void load()}
+      onOpenReconciliation={() => {
+        // 兜底入口保持与旧卡片按钮等价：能定位到某一天就走当日核对，否则只打开对账面板
+        // 只有"确实换了一天"才重跑当日核对；仅打开面板时不重拉、不清空已读到的报告
+        const date = selectedTradeDate ?? executionGroup?.items[0]?.trade_date;
+        if (date) void inspectDay(date); else open("reconciliation");
+      }}/>
     {errors.actions && <div className="pi-callout pi-error" role="alert"><strong>待办读取失败</strong><p>{errors.actions}</p><Button onClick={() => void load()}>重试读取</Button></div>}
     <section aria-label="数据修复与状态审核模块">
       {repairRecovery&&<div className="pi-callout pi-warning"><strong>有一笔原修复请求需要核查</strong><p>原请求标识已保留。先找回原任务或核实结果，不重复提交；不会恢复旧勾选。</p><Button onClick={()=>navigate('settings:data-center:inspection-repair')}>查看原请求与任务</Button></div>}
@@ -500,7 +524,7 @@ function PortfolioInspectionSession({ portfolioId, navigation, onNavigate, onGov
       <div className="pi-task-list">{currentBlockers.map((group,i) => <article className="pi-task-row" key={group.key}><span className="pi-task-number">{i+1}</span><div><h3>{group.title}</h3><p>{group.impact}</p><small>{group.panel === "data" ? "补齐缺口 → 逐对象重检 → 查看结果" : group.panel === "binding" ? "核实当前模型与策略绑定 → 本人审核" : group.details[0]}</small></div><div className="pi-task-actions"><Button onClick={() => {if(group.panel==="data")open("data");else{open("guide");setStep(group.panel==="binding"?2:firstStep());}}}>{group.panel === "data" ? "整合查看与批量处理" : group.panel === "binding" ? "审核策略绑定" : "查看处理依据"}</Button></div></article>)}</div>
       {!loading && !unknown && !errors.actions && !currentBlockers.length && <div className="pi-empty"><CheckCircle2 size={22}/><div><strong>{canBuy === true ? "当前没有需要处理的阻断" : "当前数据与绑定暂无修复待办"}</strong><p>运行审核仍需核实完整条件，执行对账结果在下方独立管理。</p></div></div>}
     </section>
-    <InspectionExecutionEntry pendingDays={pendingDays} earliestDate={report?.trade_date??executionGroup?.items[0]?.trade_date} verifiedThrough={queue?.verified_through} needsReview={check("reconciliation")?.passed!==true} error={jobError} onOpen={()=>{const date=selectedTradeDate??executionGroup?.items[0]?.trade_date;if(date)void inspectDay(date);else open("reconciliation");}} onJob={()=>open("job")}/>
+    <InspectionExecutionEntry pendingDays={pendingDays} earliestDate={queue?.target_trade_date ?? report?.trade_date ?? executionGroup?.items[0]?.trade_date} verifiedThrough={queue?.verified_through} needsReview={check("reconciliation")?.passed!==true} error={jobError} onJob={()=>open("job")}/>
     <footer className="pi-secondary"><span>操作记录</span><Button type="text" icon={<History size={16}/>} onClick={()=>{setHistoryOrigin(null);setHistoryContext(undefined);open("history");}}>审计记录</Button><small>按标的、交易日回看处理与审核</small></footer>
     <details className="pi-disclosure"><summary>引擎专项验收 · 切换引擎前使用</summary><p>独立核验旧、新引擎链的实际决策，日常数据修复与状态审核无需在这里操作。</p><div className="pi-module-actions"><Button icon={<GitCompareArrows size={16}/>} onClick={()=>open("dual")}>双跑验收</Button>{renderOperations && <Button onClick={()=>open("operations")}>引擎运行与切换</Button>}</div></details>
     {otherGroups.length > 0 && <details className="pi-disclosure"><summary>其他提醒与信息 · {otherGroups.length} 项</summary>{otherGroups.map(group => <div key={group.key}><h3>{group.title}</h3><p>{group.impact}</p><Button onClick={() => open(group.panel)}>查看依据与处理入口</Button></div>)}</details>}

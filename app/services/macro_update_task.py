@@ -19,6 +19,7 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.macro import SPECS, update_macro_data
+from app.services.data_source_execution import source_worker
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ def _update_task_progress(task_id: str, progress: dict[str, Any]) -> bool:
         db.close()
 
 
+@source_worker
 def _run_macro_update(task_id: str) -> None:
     SessionLocal = get_session_local()
     db = SessionLocal()

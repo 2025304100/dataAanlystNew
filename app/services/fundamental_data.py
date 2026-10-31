@@ -36,6 +36,7 @@ from app.services.factors.fundamental import normalize_stock_value_frame
 from app.services.factors.contracts import normalize_symbol
 from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
+from app.services.data_source_execution import source_task
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ def _fetch_spot_valuation(db: Session, symbol: Symbol) -> dict[str, Any]:
         return {}
 
 
+@source_task(lane='incremental')
 def sync_market_valuation_snapshot(
     db: Session,
     symbols: list[Symbol],
@@ -360,6 +362,7 @@ def _upsert_valuation_history_row(
     return existing
 
 
+@source_task(lane='backfill')
 def sync_symbol_valuation_range(
     db: Session,
     symbol: Symbol,
@@ -443,6 +446,7 @@ def calc_pe_score(
     return max(20.0, min(95.0, score))
 
 
+@source_task(lane='incremental')
 def sync_symbol_valuation(
     db: Session, symbol: Symbol, trade_date: date | None = None, *,
     skip_market_snapshot: bool = False,

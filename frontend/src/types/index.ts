@@ -2240,7 +2240,9 @@ export const PORTFOLIO_STATE_ALLOWANCE_MATRIX: Record<PortfolioStatus, Portfolio
   MODEL_INACTIVE: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: false },
   SCORE_STALE: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: true, requires_manual_ack: false },
   INTERRUPTED: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: true, requires_manual_ack: false },
-  ADMIN_PAUSED: { allow_new_buys: false, allow_risk_exits: false, allow_auto_recovery: false, requires_manual_ack: true },
+  // 风控强平不受暂停影响：与 app/services/portfolio_state_machine.py 的 RISK_SELL（任何状态允许）一致。
+  // 历史值曾误写为 false，会让「一键刹车后无法止损」看起来是既定口径。
+  ADMIN_PAUSED: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: true },
 };
 
 /** POST /portfolios/{pid}/reconcile → 对账守恒 10 字段明细（FR-P1-8a） */

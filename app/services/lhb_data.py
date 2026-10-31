@@ -24,6 +24,7 @@ from app.services.factors.capital_flow import (
 )
 from app.services.factors.contracts import normalize_symbol
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_task
 
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def _fetch_lhb_institution(
     return normalize_lhb_institution_frame(frame), _raw_payloads(frame)
 
 
+@source_task(lane='incremental')
 def sync_lhb_institution_trades(
     db: Session, *, start_date: date, end_date: date, fill_missing_only: bool = False
 ) -> LhbInstitutionSyncResult:

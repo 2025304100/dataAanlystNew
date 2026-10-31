@@ -24,6 +24,7 @@ from app.services.market_data import _proxy_bypass
 from app.services.factors.contracts import normalize_symbol
 from app.services.regions import region_from_market
 from app.services.etf_provider import BATCH_SIZE, fetch_etf_quotes
+from app.services.data_source_execution import source_task
 
 TRACKING_ERROR_UNAVAILABLE = "跟踪误差尚未接入对应基准及同日收益序列，当前同步不提供该指标。"
 
@@ -188,6 +189,7 @@ def calc_tracking_error(etf_returns: list[float], index_returns: list[float], wi
     return (var ** 0.5) * 100  # 转为百分比
 
 
+@source_task(lane='incremental')
 def sync_etf_snapshots(
     db: Session, symbols: list[Symbol], trade_date: date,
     *, should_cancel: Callable[[], bool] | None = None,
@@ -326,6 +328,7 @@ def _write_etf_snapshot(item, quote, nav, close, shares, size, premium, prior_so
         "tracking_error_status": "benchmark_history_unavailable"}, ensure_ascii=False, default=str)
 
 
+@source_task(lane='incremental')
 def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = None, *,
                        fill_missing_only: bool = False) -> EtfIndicator | None:
     """同步单个 ETF symbol 的指标数据。"""
@@ -481,6 +484,7 @@ def _fetch_etf_nav_history(
     return history
 
 
+@source_task(lane='backfill')
 def sync_etf_indicator_range(
     db: Session, symbol: Symbol, start_date: date, end_date: date, *,
     fill_missing_only: bool = False,

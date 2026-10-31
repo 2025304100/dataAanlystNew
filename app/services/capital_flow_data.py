@@ -30,6 +30,7 @@ from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_ou
 from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
 from app.services.capital_flow_history_provider import fetch_capital_flow_history
+from app.services.data_source_execution import source_task
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +251,7 @@ def _upsert_capital_flow(
     return existing
 
 
+@source_task(lane='backfill')
 def sync_symbol_capital_flow_range(
     db: Session,
     symbol: Symbol,
@@ -354,6 +356,7 @@ def _corroborate_trade_date(
     return None
 
 
+@source_task(lane='incremental')
 def sync_market_capital_flow_snapshot(
     db: Session,
     symbols: list[Symbol],
@@ -413,6 +416,7 @@ def sync_market_capital_flow_snapshot(
     return _SyncedSymbolIds(synced, trade_dates={requested_date} if synced else ())
 
 
+@source_task(lane='incremental')
 def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None, *,
                              fill_missing_only: bool = False) -> CapitalFlow | None:
     """Sync one requested day; history is available only through explicit backfill."""
@@ -525,6 +529,7 @@ def northbound_capability() -> dict[str, Any]:
     }
 
 
+@source_task(lane='incremental')
 def sync_northbound_flow(db: Session, days: int = 30, *, start_date: date | None = None,
                          end_date: date | None = None, fill_missing_only: bool = False) -> int:
     """同步近 N 日北向资金净流入。

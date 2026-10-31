@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.db.session import SessionLocal
 from app.models.app_setting import AppSetting
 from app.models.market_data import MarketCalendar
+from app.services.data_source_execution import source_task
 
 SOURCE_URL = "https://www.sse.com.cn/disclosure/dealinstruc/closed/"
 STATE_KEY = "market.cn_trade_calendar"
@@ -67,6 +68,21 @@ def parse_exchange_calendar(html: str) -> tuple[int, dict[date, bool]]:
     return year, calendar
 
 
+@source_task()
+def capture_cn_calendar_version(master_service) -> dict:
+    """Capture the existing SSE source into an explicitly supplied master store.
+
+    No legacy calendar projection or global read switch is changed. Historical
+    annual pages can also be imported through the master's public publisher.
+    """
+    from app.services.akshare_utils import call_akshare_with_retry
+    response=call_akshare_with_retry(requests.get,SOURCE_URL,timeout=(5,20),api_key='CAL:official')
+    response.raise_for_status()
+    version=master_service.publish_calendar(exchange='SSE',source_uri=SOURCE_URL,evidence=response.content)
+    return {'calendar_version':version,'exchange':'SSE','source_uri':SOURCE_URL}
+
+
+@source_task()
 def refresh_cn_trade_calendar(*, force: bool = False) -> dict:
     """One small download per day; a failure never removes cached dates."""
     if not _lock.acquire(blocking=False):
@@ -77,7 +93,8 @@ def refresh_cn_trade_calendar(*, force: bool = False) -> dict:
             state = db.get(AppSetting, STATE_KEY)
             if not force and state and state.updated_at > now - timedelta(days=1):
                 return {"status": "cached", **json.loads(state.value_json)}
-            response = requests.get(SOURCE_URL, timeout=(5, 20))
+            from app.services.akshare_utils import call_akshare_with_retry
+            response = call_akshare_with_retry(requests.get, SOURCE_URL, timeout=(5, 20), api_key='CAL:official')
             response.raise_for_status()
             year, calendar = parse_exchange_calendar(response.content.decode("utf-8"))
             current_year = (now + timedelta(hours=8)).year

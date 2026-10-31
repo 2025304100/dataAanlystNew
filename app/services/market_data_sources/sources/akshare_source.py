@@ -27,6 +27,8 @@ import akshare as ak
 import pandas as pd
 
 from app.services.akshare_utils import call_akshare_with_retry
+from app.services.data_source_contracts import DataContractError
+from app.services.data_source_execution import raise_if_control_error
 from app.services.market_data_sources.sources._normalize import (
     cn_prefixed_symbol,
     normalize_cn_etf_em_history,
@@ -51,6 +53,7 @@ class EMStockSource:
     """东财 A 股(stock_zh_a_hist)。"""
 
     name: str = "em_stock"
+    endpoint = 'stock_zh_a_hist'
     region: str = "cn"
     asset_types: list[str] = ["stock"]
 
@@ -73,7 +76,10 @@ class EMStockSource:
                 max_attempts=2,
             )
             return normalize_cn_stock_em_history(frame)
+        except DataContractError:
+            raise
         except Exception as e:
+            raise_if_control_error(e)
             raise SourceUnavailable(f"em_stock failed for {symbol.symbol}: {e}") from e
 
 
@@ -81,6 +87,7 @@ class EMETFSource:
     """东财 ETF(fund_etf_hist_em)。"""
 
     name: str = "em_etf"
+    endpoint = 'fund_etf_hist_em'
     region: str = "cn"
     asset_types: list[str] = ["etf"]
 
@@ -106,7 +113,10 @@ class EMETFSource:
             if normalized.empty:
                 raise SourceUnavailable('em_etf returned no usable daily bars')
             return normalized
+        except DataContractError:
+            raise
         except Exception as e:
+            raise_if_control_error(e)
             raise SourceUnavailable(f"em_etf failed for {symbol.symbol}: {e}") from e
 
 
@@ -118,6 +128,7 @@ class SinaStockSource:
     """
 
     name: str = "sina_stock"
+    endpoint = 'stock_zh_a_daily'
     region: str = "cn"
     asset_types: list[str] = ["stock"]
 
@@ -139,7 +150,10 @@ class SinaStockSource:
                 api_key="stock_zh_a_daily",
                 max_attempts=2,
             )
+        except DataContractError:
+            raise
         except Exception as e:
+            raise_if_control_error(e)
             raise SourceUnavailable(f"sina_stock failed for {symbol.symbol}: {e}") from e
 
 
@@ -147,6 +161,7 @@ class SinaETFSource:
     """新浪 ETF(fund_etf_hist_sina)。"""
 
     name: str = "sina_etf"
+    endpoint = 'fund_etf_hist_sina'
     region: str = "cn"
     asset_types: list[str] = ["etf"]
 
@@ -167,13 +182,17 @@ class SinaETFSource:
                 max_attempts=2,
             )
             return normalize_cn_etf_sina_history(frame, start_date=start_date, end_date=end_date)
+        except DataContractError:
+            raise
         except Exception as e:
+            raise_if_control_error(e)
             raise SourceUnavailable(f"sina_etf failed for {symbol.symbol}: {e}") from e
 
 
 class TxETFSource:
     """Tencent named ETF endpoint; verifies returned qfq and raw quantity pair."""
     name = 'tx_etf'
+    endpoint = 'fund_etf_hist_tx'
     region = 'cn'
     asset_types = ['etf']
 
@@ -189,6 +208,7 @@ class TxETFSource:
                 start_date=start_date, end_date=end_date, adjust=adjust,
                 api_key='fund_etf_hist_tx', max_attempts=1)
         except Exception as error:
+            raise_if_control_error(error)
             raise SourceUnavailable(f'tx_etf qfq unavailable for {symbol.symbol}') from error
 
 
@@ -201,6 +221,7 @@ class TxStockSource:
     """
 
     name: str = "tx_stock"
+    endpoint = 'stock_zh_a_hist_tx'
     region: str = "cn"
     asset_types: list[str] = ["stock"]
 
@@ -229,7 +250,10 @@ class TxStockSource:
                 max_attempts=2,
             )
             return normalize_cn_stock_tx_history(frame, start_date=start_date, end_date=end_date)
+        except DataContractError:
+            raise
         except Exception as e:
+            raise_if_control_error(e)
             raise SourceUnavailable(f"tx_stock failed for {symbol.symbol}: {e}") from e
 
 
@@ -237,6 +261,7 @@ class USStockSource:
     """东财美股(stock_us_daily)。"""
 
     name: str = "us_em"
+    endpoint = 'stock_us_daily'
     region: str = "us"
     asset_types: list[str] = ["stock"]
 
@@ -258,5 +283,8 @@ class USStockSource:
                 max_attempts=2,
             )
             return normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
+        except DataContractError:
+            raise
         except Exception as e:
+            raise_if_control_error(e)
             raise SourceUnavailable(f"us stock failed for {symbol.symbol}: {e}") from e

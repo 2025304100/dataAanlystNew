@@ -7,12 +7,14 @@ import requests
 from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
 from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_task
 
 URL = "https://datacenter.eastmoney.com/securities/api/data/get"
 COLUMNS = "SECUCODE,REPORT_DATE,NOTICE_DATE,ROEJQ,PARENTNETPROFIT,TOTALOPERATEREVE,PARENTNETPROFITTZ,TOTALOPERATEREVETZ"
 BATCH_SIZE = 100
 
 
+@source_task(lane='incremental')
 def fetch_financial_rows(db, code: str | list[str], start: date, end: date, *, should_cancel=None) -> list[dict]:
     codes = list(dict.fromkeys([code] if isinstance(code, str) else code))
     if not codes:

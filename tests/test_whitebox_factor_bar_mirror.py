@@ -18,7 +18,7 @@ from app.services.factors.store import FactorWarehouse
 pytestmark = pytest.mark.whitebox
 
 
-def test_mirror_combines_business_and_universe_ids_idempotently(
+def test_mirror_keeps_universe_and_retires_business_overwrite_idempotently(
     db_session, tmp_path
 ):
     business_symbol = Symbol(
@@ -70,7 +70,7 @@ def test_mirror_combines_business_and_universe_ids_idempotently(
     first = mirror_daily_bars(db_session, warehouse=warehouse, batch_size=1)
     second = mirror_daily_bars(db_session, warehouse=warehouse, batch_size=1)
 
-    assert first.rows_written == 2
+    assert first.rows_written == 1
     assert first.metadata_rows == 1
     assert second.rows_written == 0
     assert second.metadata_rows == 0
@@ -82,10 +82,10 @@ def test_mirror_combines_business_and_universe_ids_idempotently(
             "source_origin FROM raw_daily_bars WHERE symbol = '600519'"
         ).fetchone()
 
-    assert row[0] == business_symbol.id
+    assert row[0] is None
     assert row[1] == universe_symbol.id
-    assert row[2] == 1411
-    assert row[3] == "daily_bars"
+    assert row[2] == 1410
+    assert row[3] == "universe_daily_bars"
     with warehouse.connection(read_only=True) as conn:
         metadata = conn.execute(
             "SELECT asset_type, market, region FROM raw_asset_universe "
@@ -178,18 +178,19 @@ def test_mirror_excludes_non_cn_stock_assets(db_session, tmp_path):
 def test_date_range_watermark_does_not_skip_full_incremental_sync(
     db_session, tmp_path
 ):
-    symbol = Symbol(
+    symbol = UniverseSymbol(
         symbol="000001",
         name="平安银行",
         asset_type="stock",
         market="sz",
+        region="cn",
     )
     db_session.add(symbol)
     db_session.flush()
     db_session.add_all(
         [
-            DailyBar(
-                symbol_id=symbol.id,
+            UniverseDailyBar(
+                universe_symbol_id=symbol.id,
                 trade_date=date(2026, 7, 9),
                 open=10,
                 high=11,
@@ -197,8 +198,8 @@ def test_date_range_watermark_does_not_skip_full_incremental_sync(
                 close=10,
                 source="test",
             ),
-            DailyBar(
-                symbol_id=symbol.id,
+            UniverseDailyBar(
+                universe_symbol_id=symbol.id,
                 trade_date=date(2026, 7, 10),
                 open=11,
                 high=12,
@@ -216,12 +217,12 @@ def test_date_range_watermark_does_not_skip_full_incremental_sync(
         warehouse=warehouse,
         start_date=date(2026, 7, 10),
         end_date=date(2026, 7, 10),
-        include_universe=False,
+        include_business=False,
     )
     full = mirror_daily_bars(
         db_session,
         warehouse=warehouse,
-        include_universe=False,
+        include_business=False,
     )
 
     assert ranged.rows_written == 1
@@ -232,18 +233,19 @@ def test_date_range_watermark_does_not_skip_full_incremental_sync(
 def test_mirror_cancel_stops_between_batches_and_releases_duckdb(
     db_session, tmp_path, monkeypatch
 ):
-    symbol = Symbol(
+    symbol = UniverseSymbol(
         symbol="000001",
         name="平安银行",
         asset_type="stock",
         market="sz",
+        region="cn",
     )
     db_session.add(symbol)
     db_session.flush()
     db_session.add_all(
         [
-            DailyBar(
-                symbol_id=symbol.id,
+            UniverseDailyBar(
+                universe_symbol_id=symbol.id,
                 trade_date=date(2026, 7, day),
                 open=10 + day,
                 high=11 + day,
@@ -273,11 +275,11 @@ def test_mirror_cancel_stops_between_batches_and_releases_duckdb(
         db_session,
         warehouse=warehouse,
         batch_size=1,
-        include_universe=False,
+        include_business=False,
         should_cancel=lambda: cancelled,
     )
 
-    assert result.business_rows == 1
+    assert result.universe_rows == 1
     assert warehouse.health().available is True
     with warehouse.connection(read_only=True) as conn:
         assert conn.execute(
@@ -292,7 +294,7 @@ def test_mirror_pre_cancel_does_not_open_warehouse(db_session, tmp_path):
     result = mirror_daily_bars(
         db_session,
         warehouse=warehouse,
-        include_universe=False,
+        include_business=False,
         should_cancel=lambda: True,
     )
 

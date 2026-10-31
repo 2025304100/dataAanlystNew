@@ -6,6 +6,7 @@ import akshare as ak
 
 from app.models.symbol import Symbol
 from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
+from app.services.data_source_execution import source_task, raise_if_control_error
 
 
 def _is_placeholder_name(symbol: str, name: str | None) -> bool:
@@ -48,6 +49,7 @@ def _fund_name_map() -> dict[str, str]:
     }
 
 
+@source_task()
 def resolve_symbol_name(symbol_code: str, asset_type: str, market: str, current_name: str | None = None) -> str | None:
     symbol = symbol_code.strip().upper()
     market_lower = (market or "").lower()
@@ -60,7 +62,8 @@ def resolve_symbol_name(symbol_code: str, asset_type: str, market: str, current_
     for lookup in lookups:
         try:
             resolved = lookup().get(symbol)
-        except Exception:
+        except Exception as exc:
+            raise_if_control_error(exc)
             resolved = None
         if _should_use_official_cn_name(symbol, current_name, resolved):
             return resolved

@@ -21,17 +21,20 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from contextvars import copy_context
 import threading
 import time
 from concurrent.futures import TimeoutError as FutureTimeout, ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import akshare as ak
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, StrictInt
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db, get_session_local
@@ -88,6 +91,7 @@ class ApiStatus(BaseModel):
     total_failures: int = 0
     data_contracts: list[dict[str, Any]] = Field(default_factory=list)
     contract_status: str = "unverified"
+    governance: dict[str, Any] | None = None
 
 
 class StrategyInfo(BaseModel):
@@ -101,6 +105,7 @@ class StrategyInfo(BaseModel):
 
 class ApiConfigUpdate(BaseModel):
     """接口配置更新 payload（全部可选，仅这几个字段可改）。"""
+    model_config = ConfigDict(extra="forbid")
     enabled: bool | None = None
     anti_risk_strategy: str | None = Field(None, description="fast/standard/conservative/extreme/custom")
     delay_min_ms: int | None = Field(None, ge=0, le=60000, description="自定义延时下限（ms），仅 custom 生效")
@@ -114,15 +119,31 @@ class ProbeResult(BaseModel):
     error: str | None = None
 
 
+class ConfigVersion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint: StrictInt = Field(ge=1)
+    provider: StrictInt = Field(ge=1)
+
+
+class PolicyPublication(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: Literal["endpoint", "provider"] = "endpoint"
+    expected_version: ConfigVersion
+    policy: dict[str, Any] | None = None
+    restore_version: StrictInt | None = Field(None, ge=1)
+
+
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
 
-def _to_status(entry: dict[str, Any], cfg: AkshareApiConfig | None, locale: str = "zh-CN") -> ApiStatus:
+def _to_status(entry: dict[str, Any], cfg: AkshareApiConfig | None, locale: str = "zh-CN", *, snapshot=None) -> ApiStatus:
     from app.services.data_source_contracts import endpoint_contracts
+    from app.services.data_source_management import metadata, project_status
     contracts = endpoint_contracts(entry["key"])
+    governance = metadata(entry["key"], registered=get_registry_entry(entry["key"]) is not None, snapshot=snapshot)
     is_zh = locale == "zh-CN"
-    return ApiStatus(
+    result = ApiStatus(
         key=entry["key"],
         name=entry["name_zh"] if is_zh else entry["name_en"],
         category=entry["category_zh"] if is_zh else entry["category_en"],
@@ -131,7 +152,8 @@ def _to_status(entry: dict[str, Any], cfg: AkshareApiConfig | None, locale: str 
         default_strategy=entry["default_strategy"],
         data_contracts=contracts,
         contract_status="declared" if contracts else "unverified",
-        enabled=bool(cfg.enabled) if cfg else True,
+        governance=governance,
+        enabled=(bool(cfg.enabled) if cfg else True) if governance["in_current_release"] and governance["implementation_status"] == "implemented" else False,
         anti_risk_strategy=cfg.anti_risk_strategy if cfg else entry["default_strategy"],
         delay_min_ms=cfg.delay_min_ms if cfg else 300,
         delay_max_ms=cfg.delay_max_ms if cfg else 800,
@@ -145,6 +167,7 @@ def _to_status(entry: dict[str, Any], cfg: AkshareApiConfig | None, locale: str 
         total_calls=cfg.total_calls if cfg else 0,
         total_failures=cfg.total_failures if cfg else 0,
     )
+    return project_status(result, cfg)
 
 
 def _get_cfg_row(db: Session, api_key: str) -> AkshareApiConfig | None:
@@ -203,8 +226,25 @@ def _ensure_cfg_row(db: Session, api_key: str) -> AkshareApiConfig:
 @router.get("/external-data/apis", response_model=list[ApiStatus])
 def list_apis(locale: str = "zh-CN", db: Session = Depends(get_db)):
     """列出所有第三方接口的元数据 + 配置 + 运行时状态。"""
-    rows = {r.api_key: r for r in db.execute(select(AkshareApiConfig)).scalars().all()}
-    return [_to_status(entry, rows.get(entry["key"]), locale) for entry in AKSHARE_API_REGISTRY]
+    from app.services.data_source_management import declarations, catalog_entry, context
+    from app.services.data_source_control import PolicyDenied
+    try:
+        snapshot = context()
+    except PolicyDenied as exc:
+        raise HTTPException(status_code=503, detail="CONTROL_STORE_UNAVAILABLE") from exc
+    try:
+        rows = {r.api_key: r for r in db.execute(select(AkshareApiConfig)).scalars().all()}
+        if snapshot is None:
+            from app.services.akshare_registry import load_config_cache
+            load_config_cache(db)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        if snapshot is None:
+            raise HTTPException(status_code=503, detail="LEGACY_CONFIGURATION_UNAVAILABLE") from exc
+        rows = {}
+    entries = {entry["key"]: entry for entry in AKSHARE_API_REGISTRY}
+    entries.update({key: catalog_entry(item) for key, item in declarations().items() if key not in entries})
+    return [_to_status(entry, rows.get(entry["key"]), locale, snapshot=snapshot) for entry in entries.values()]
 
 
 @router.get("/external-data/apis/strategies", response_model=list[StrategyInfo])
@@ -222,6 +262,48 @@ def list_strategies(locale: str = "zh-CN"):
         )
         for s in ANTI_RISK_STRATEGIES.values()
     ]
+
+
+def _management_controller():
+    from app.services.data_source_control import RequestController
+    from app.services.data_source_management import context
+    if context() is None:
+        raise HTTPException(status_code=409, detail="SHARED_CONTROL_NOT_CONFIGURED")
+    return RequestController(os.environ["DATA_SOURCE_CONTROL_DB"])
+
+
+def _management_error(exc):
+    from app.services.data_source_control import PolicyDenied
+    if isinstance(exc, PolicyDenied):
+        code = str(exc)
+        status = 503 if code.startswith("CONTROL_STORE") else 403 if code in {"ENDPOINT_OUT_OF_RELEASE", "IMPLEMENTATION_NOT_READY", "UPSTREAM_OUT_OF_RELEASE"} else 409
+        return HTTPException(status_code=status, detail=code)
+    return HTTPException(status_code=400, detail="INVALID_POLICY")
+
+
+@router.put("/external-data/apis/{api_key}/policy", response_model=ApiStatus)
+def publish_api_policy(api_key: str, payload: PolicyPublication, locale: str = "zh-CN"):
+    from app.services.data_source_management import declarations, catalog_entry
+    from app.services.data_source_control import PolicyDenied
+    item = declarations().get(api_key)
+    if item is None:
+        raise HTTPException(status_code=404, detail="UNKNOWN_ENDPOINT")
+    try:
+        controller = _management_controller()
+        controller.patch_policy(api_key, scope=payload.scope, expected_endpoint_version=payload.expected_version.endpoint,
+            expected_provider_version=payload.expected_version.provider, patch=payload.policy, restore_version=payload.restore_version)
+        return _to_status(get_registry_entry(api_key) or catalog_entry(item), None, locale, snapshot=controller.management_snapshot())
+    except (PolicyDenied, ValueError, TypeError) as exc:
+        raise _management_error(exc) from exc
+
+
+@router.get("/external-data/apis/{api_key}/configuration-history")
+def get_configuration_history(api_key: str, scope: Literal["endpoint", "provider"] = "endpoint"):
+    from app.services.data_source_control import PolicyDenied
+    try:
+        return _management_controller().configuration_history(api_key, scope=scope)
+    except (PolicyDenied, ValueError) as exc:
+        raise _management_error(exc) from exc
 
 
 # ── 探测任务化（PT-DEF-18）─────────────────────────────────────────────────
@@ -324,7 +406,15 @@ def _run_probe(func: Any, probe_args: dict[str, Any], api_key: str) -> Any:
     遇到网络瞬时错误（RemoteDisconnected/ConnectionError/Timeout）重试 1 次，
     退避 3 秒给 WAF 冷却窗口，能区分"瞬时风控"和"持续不可用"。
     """
+    from app.services.data_source_control import current_controller
+    controller = current_controller()
+    if controller is not None:
+        with _proxy_bypass(), quiet_akshare_output():
+            return controller.probe(api_key, func, max_attempts=2,
+                                    base_delay=_PROBE_RETRY_BACKOFF_SECONDS, **probe_args)
     from app.services.akshare_registry import apply_delay
+    from app.services.akshare_utils import assert_akshare_api_enabled
+    assert_akshare_api_enabled(api_key)
 
     # 探测前应用防风控延时，降低 WAF 触发概率
     try:
@@ -335,6 +425,7 @@ def _run_probe(func: Any, probe_args: dict[str, Any], api_key: str) -> Any:
     max_attempts = 2  # 首次 + 重试 1 次
     for attempt in range(max_attempts):
         try:
+            assert_akshare_api_enabled(api_key)
             with _proxy_bypass(), quiet_akshare_output():
                 return func(**probe_args)
         except Exception as exc:
@@ -391,6 +482,7 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
     `_PROBE_HARD_LIMIT_SECONDS` 才判 timeout（安全网，不是 UX 时限）。
     """
     db = get_session_local()()
+    controller = None
     try:
         entry = get_registry_entry(api_key)
         func = getattr(ak, api_key, None)
@@ -414,11 +506,25 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
         )
 
         executor = _probe_executor()
-        future = executor.submit(_run_probe, func, probe_args, api_key)
+        if os.environ.get("DATA_SOURCE_CONTROL_DB"):
+            from app.services.data_source_control import RequestController, PolicyDenied
+            controller = RequestController(os.environ["DATA_SOURCE_CONTROL_DB"])
+            try:
+                controller.start_task(task_id, lane="probe", max_requests=2, timeout_s=_PROBE_HARD_LIMIT_SECONDS)
+            except PolicyDenied as exc:
+                if str(exc) != "TASK_ALREADY_EXISTS":
+                    raise
+            with controller.scope(task_id):
+                context = copy_context()
+                future = executor.submit(context.run, _run_probe, func, probe_args, api_key)
+        else:
+            future = executor.submit(_run_probe, func, probe_args, api_key)
         while True:
             if is_worker_stop_requested(task_id):
                 # 优雅停机：宁可留一条 cancelled，也不要静默消失让界面永远转圈
                 future.cancel()
+                if controller is not None:
+                    controller.interrupt_task(task_id)
                 _set_task(db, task_id, status="cancelled", stage="cancelled", percent=100,
                           message="探测被停机中断", finished_at=_probe_now())
                 _forget_active_probe(api_key, task_id)
@@ -432,8 +538,12 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
                     future.cancel()
                     latency_ms = int(waited * 1000)
                     err = f"probe exceeded hard limit {int(_PROBE_HARD_LIMIT_SECONDS)}s"
-                    record_probe_result(db, api_key, False, latency_ms, err)
-                    db.commit()
+                    if controller is not None:
+                        controller.interrupt_task(task_id)
+                        controller.reconcile_expired()
+                    else:
+                        record_probe_result(db, api_key, False, latency_ms, err)
+                        db.commit()
                     logger.warning("probe %s HARD LIMIT after %ds", api_key, int(waited))
                     _set_task(
                         db, task_id,
@@ -449,10 +559,16 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
                           message=f"waiting upstream {int(waited)}s")
             except Exception as exc:
                 latency_ms = int((time.time() - started) * 1000)
-                err = f"{type(exc).__name__}: {exc}"
-                record_probe_result(db, api_key, False, latency_ms, err)
-                db.commit()
-                logger.warning("probe %s EXC: %s", api_key, exc, exc_info=True)
+                if controller is not None:
+                    from app.services.data_source_statistics import error_details
+                    _, details = error_details(exc)
+                    err = details["error_code"]
+                    logger.warning("controlled probe %s: %s", api_key, err)
+                else:
+                    err = f"{type(exc).__name__}: {exc}"
+                    record_probe_result(db, api_key, False, latency_ms, err)
+                    db.commit()
+                    logger.warning("probe %s EXC: %s", api_key, exc, exc_info=True)
                 _set_task(
                     db, task_id,
                     status="failed", stage="failed", percent=100, message=err,
@@ -465,13 +581,17 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
 
         latency_ms = int((time.time() - started) * 1000)
         success = True
-        if hasattr(result, "empty"):
+        if controller is not None:
+            from app.services.data_source_control import result_is_empty
+            success = not result_is_empty(result)
+        elif hasattr(result, "empty"):
             success = not result.empty
         elif isinstance(result, (list, tuple)):
             success = len(result) > 0
         error = None if success else "Empty result"
-        record_probe_result(db, api_key, success, latency_ms, error)
-        db.commit()
+        if controller is None:
+            record_probe_result(db, api_key, success, latency_ms, error)
+            db.commit()
         logger.info("probe %s done: success=%s latency=%dms", api_key, success, latency_ms)
         _set_task(
             db, task_id,
@@ -510,6 +630,10 @@ def submit_probe(api_key: str):
     以 `heartbeat_at` / `heartbeat_stale` 判断进度，而不是猜一个 HTTP 超时秒数。
     同一接口正在探测时复用同一任务（`reused=true`），不重复打上游。
     """
+    from app.services.data_source_management import declarations
+    declaration = declarations().get(api_key)
+    if declaration and not declaration["in_current_release"]:
+        raise HTTPException(status_code=403, detail="ENDPOINT_OUT_OF_RELEASE")
     if get_registry_entry(api_key) is None:
         raise HTTPException(status_code=404, detail=f"Unknown api_key: {api_key}")
 
@@ -597,6 +721,12 @@ def update_api_config(api_key: str, payload: ApiConfigUpdate, locale: str = "zh-
 
     元数据（名称/分类/默认档位）不可修改。
     """
+    from app.services.data_source_management import declarations
+    declaration = declarations().get(api_key)
+    if declaration and not declaration["in_current_release"]:
+        raise HTTPException(status_code=403, detail="ENDPOINT_OUT_OF_RELEASE")
+    if os.environ.get("DATA_SOURCE_CONTROL_DB"):
+        raise HTTPException(status_code=409, detail="USE_VERSIONED_POLICY_PUBLICATION")
     entry = get_registry_entry(api_key)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Unknown api_key: {api_key}")
@@ -605,9 +735,10 @@ def update_api_config(api_key: str, payload: ApiConfigUpdate, locale: str = "zh-
         raise HTTPException(status_code=400, detail=f"Invalid strategy: {payload.anti_risk_strategy}")
 
     # custom 模式下校验 delay_min <= delay_max
-    new_strategy = payload.anti_risk_strategy
+    current_row = _get_cfg_row(db, api_key)
+    new_strategy = payload.anti_risk_strategy or (current_row.anti_risk_strategy if current_row else entry["default_strategy"])
     if new_strategy == "custom":
-        row = _get_cfg_row(db, api_key)
+        row = current_row
         cur_min = row.delay_min_ms if row else 300
         cur_max = row.delay_max_ms if row else 800
         new_min = payload.delay_min_ms if payload.delay_min_ms is not None else cur_min

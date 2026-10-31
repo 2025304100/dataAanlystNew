@@ -9,12 +9,14 @@ import requests
 from app.services.akshare_utils import assert_akshare_api_enabled, call_akshare_with_retry
 from app.services.request_coalescing import coalesced_read, request_key
 from app.services.market_data import _proxy_bypass
+from app.services.data_source_execution import source_task
 
 URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
 COLUMNS = "SECURITY_CODE,TRADE_DATE,PE_TTM,PB_MRQ,TOTAL_MARKET_CAP,NOTLIMITED_MARKETCAP_A"
 DAILY_BATCH_SIZE = 200
 
 
+@source_task(lane='incremental')
 def fetch_valuation_rows(db, codes: list[str], start: date, end: date,
                          *, should_cancel: Callable[[], bool] | None = None) -> list[dict]:
     """Every page carries server-side date filters; never fetch an unbounded history."""
