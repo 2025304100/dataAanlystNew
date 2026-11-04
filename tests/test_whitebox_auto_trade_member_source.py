@@ -680,6 +680,48 @@ class TestExecuteAutoMode:
         assert result["executed_orders"][0]["status"] == "filled"
         assert result["executed_orders"][0]["order_id"] is not None
 
+    def test_auto_mode_executes_multiple_buys_in_one_batch(self, db_session):
+        """【回归】同一自动批次内的第二笔买入不应被自身成交收据阻断。"""
+        from sqlalchemy import delete
+
+        from app.models.portfolio_inspection_workflow import ReconciliationSourceEvent
+        from app.services import portfolio_reconciliation_activation as activation
+
+        p = _make_portfolio(db_session, name="QA-Exec-AutoMultiBuy")
+        symbols = []
+        for offset, code in enumerate(("600070", "600071")):
+            sym = _make_symbol(db_session, symbol=code)
+            _make_daily_bar(db_session, sym.id, close=10.0)
+            _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
+            _make_score(db_session, sym.id, action="open")
+            _make_member(
+                db_session,
+                portfolio_id=p.id,
+                symbol_id=sym.id,
+                execution_mode=EXECUTION_AUTO,
+                entry_rule_version_id=2000 + offset,
+            )
+            symbols.append(sym)
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 2000 + offset}
+            for offset, sym in enumerate(symbols)
+        ])
+        # 清理建仓/建表阶段遗留的账户来源收据，保证批次开始前账户干净。
+        db_session.execute(delete(ReconciliationSourceEvent))
+        db_session.commit()
+
+        active = {"cursor_id": "cursor-multibuy", "generation": 1}
+        with patch.object(activation, "_active", lambda *a, **k: active), patch.object(
+            activation, "assert_execution_within_active_coverage", lambda *a, **k: None
+        ):
+            result = execute_member_source(
+                db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+            )
+
+        filled = [o for o in result["executed_orders"] if o["status"] == "filled"]
+        assert len(filled) == 2
+        assert db_session.query(SimOrder).filter_by(portfolio_id=p.id).count() == 2
+
     def test_auto_mode_attribution_fields_populated(self, db_session):
         """【WP6.2/C 簇】auto 下单后 SimOrder 按新契约归因（追溯走 evidence/plan）。"""
         p = _make_portfolio(db_session, name="QA-Exec-AutoAttr")

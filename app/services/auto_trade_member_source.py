@@ -1530,6 +1530,27 @@ def _execute_snapshot_order_plans(
             plans_to_process.append(plan)
             seen_plan_ids.add(str(plan.order_plan_id))
 
+    # The account-source gate is batch-scoped, not order-scoped. This loop
+    # commits after every fill, which clears the connection-local "own
+    # receipt" marker; the next BUY would then treat this batch's own fills as
+    # unreconciled external changes and be rejected. Prove the account is
+    # clean once before the batch and keep that proof for its own writes.
+    # Per-order coverage/activation checks still run in place_sim_order.
+    batch_sources_checked = False
+    if not dry_run and db is not None and any(
+        str(plan.action).upper() == "BUY" and str(plan.order_plan_id) not in pending_retry_orders
+        for plan in plans_to_process
+    ):
+        from app.services.portfolio_reconciliation_coverage import CoverageError
+        from app.services.portfolio_reconciliation_events import assert_account_sources_checked_for_buy
+        try:
+            assert_account_sources_checked_for_buy(db, portfolio_id)
+            batch_sources_checked = True
+        except CoverageError:
+            # Pre-existing unreconciled sources still reject every new BUY via
+            # the per-order gate below, which records the rejection as before.
+            logger.info("自动模拟批次开始前仍有账户来源待核对 portfolio_id=%s", portfolio_id)
+
     for plan in plans_to_process:
         if task_cancelled():
             result["skipped_due_to_cancel"] = True
@@ -2011,6 +2032,7 @@ def _execute_snapshot_order_plans(
                         apply_fees=False,
                         fee_override=float(match_result.total_cost),
                         execution_price_is_final=True,
+                        skip_source_pending_gate=batch_sources_checked,
                     )
                 _date_new_fill(order, _trade, execution_at)
                 order.quantity = requested_quantity
@@ -2106,6 +2128,7 @@ def _execute_snapshot_order_plans(
                     apply_fees=False,
                     fee_override=float(match_result.total_cost),
                     execution_price_is_final=True,
+                    skip_source_pending_gate=batch_sources_checked,
                 )
             _date_new_fill(order, _trade, execution_at)
             order.client_order_key = str(plan.order_plan_id)
