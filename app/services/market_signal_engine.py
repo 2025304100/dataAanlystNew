@@ -47,11 +47,20 @@ def _eligibility(db, assessment, rule, config, now):
     return None
 
 
+# Only a claim that may still be in transport owns the quota reservation. The
+# longest adapter timeout is far below this window; a "sending" row older than
+# this was left behind by a restart or held for review (state never rolls back
+# to pending) and must not reserve quota on later days.
+_INFLIGHT_CLAIM_WINDOW = timedelta(minutes=10)
+
+
 def inflight_prediction_ids(db):
     from app.models.notification import NotificationOutbox
     ids = set()
+    claimed_after = sources.utcnow()-_INFLIGHT_CLAIM_WINDOW
     for box in db.scalars(select(NotificationOutbox).where(
-            NotificationOutbox.source_type == "market_signal", NotificationOutbox.status == "sending")):
+            NotificationOutbox.source_type == "market_signal", NotificationOutbox.status == "sending",
+            NotificationOutbox.updated_at >= claimed_after)):
         candidates = json.loads(box.payload_json or "{}").get("prediction_ids", [])
         for row in db.scalars(select(MarketSignalPrediction).where(MarketSignalPrediction.id.in_(candidates))):
             preparation = json.loads(row.snapshot_json).get("preparations", {}).get(str(box.id), {})
