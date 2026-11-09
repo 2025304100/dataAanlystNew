@@ -47,11 +47,19 @@ def _eligibility(db, assessment, rule, config, now):
     return None
 
 
+# 适配器单次超时上限 60 秒。超过该窗口仍为 sending 的记录只可能是进程中断
+# 遗留的 claim，或已发送但回执核对失败后由 hold_for_review 保留的记录；它们
+# 不应永久占用后续日期的提醒额度。
+_INFLIGHT_CLAIM_WINDOW = timedelta(minutes=10)
+
+
 def inflight_prediction_ids(db):
     from app.models.notification import NotificationOutbox
     ids = set()
+    claimed_after = sources.utcnow()-_INFLIGHT_CLAIM_WINDOW
     for box in db.scalars(select(NotificationOutbox).where(
-            NotificationOutbox.source_type == "market_signal", NotificationOutbox.status == "sending")):
+            NotificationOutbox.source_type == "market_signal", NotificationOutbox.status == "sending",
+            NotificationOutbox.updated_at >= claimed_after)):
         candidates = json.loads(box.payload_json or "{}").get("prediction_ids", [])
         for row in db.scalars(select(MarketSignalPrediction).where(MarketSignalPrediction.id.in_(candidates))):
             preparation = json.loads(row.snapshot_json).get("preparations", {}).get(str(box.id), {})
