@@ -534,6 +534,46 @@ class TestRunPortfolioBacktestSuccess:
         run = db_session.get(BacktestRun, result["run_id"])
         assert run is not None
 
+    def test_enriched_metrics_use_request_initial_capital(
+        self, db_session, member_source_disabled, monkeypatch,
+    ):
+        """C-05：请求体 initial_capital 覆盖 portfolio.total_capital 必须贯穿综合指标。
+
+        换手率（turnover_rate）以初始资金为分母；若 enrich 仍取
+        portfolio.total_capital，用户显式指定资金后换手率会被静默缩放，
+        属于错误的数据口径。
+        """
+        import app.services.portfolio_backtest as portfolio_backtest_module
+
+        p = _make_portfolio(db_session, name="QA-InitialCapital", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="600012", name="资金口径")
+        _make_position(db_session, p.id, sym.id, quantity=100, avg_cost=10.0, latest_price=10.0)
+        for i, d in enumerate([date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7)]):
+            _make_daily_bar(db_session, sym.id, d, close=10.0 + i * 0.2)
+
+        captured: dict[str, float] = {}
+        real = portfolio_backtest_module._build_enriched_metrics_for_result
+
+        def spy(run, *, equity_curve, trades, initial_capital):
+            captured["initial_capital"] = initial_capital
+            return real(run, equity_curve=equity_curve, trades=trades,
+                        initial_capital=initial_capital)
+
+        monkeypatch.setattr(
+            portfolio_backtest_module, "_build_enriched_metrics_for_result", spy,
+        )
+
+        result = run_portfolio_backtest(
+            db_session, portfolio_id=p.id,
+            start_date=date(2026, 1, 5), end_date=date(2026, 1, 7),
+            initial_capital=50_000.0,
+        )
+
+        assert result["initial_capital"] == 50_000.0
+        assert captured["initial_capital"] == 50_000.0, (
+            "综合指标 enrich 未使用请求体 initial_capital，换手率分母仍退回组合默认资金"
+        )
+
     def test_run_name_custom(self, db_session, member_source_disabled):
         """自定义 run_name 被透传到 BacktestRun。
 

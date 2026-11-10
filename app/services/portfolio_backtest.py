@@ -1430,7 +1430,7 @@ def run_portfolio_backtest(
         run,
         equity_curve=result["equity_curve"],
         trades=result_trades,
-        initial_capital=float(portfolio.total_capital),
+        initial_capital=float(effective_capital),
     )
     # 当 benchmark 不完整时，将超额收益/跟踪误差/IR 置 null 并显示不可计算 (Q3.2)
     has_benchmark_incomplete = any(
