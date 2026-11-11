@@ -523,3 +523,33 @@ def test_atomic_claim_allows_only_one_worker_without_invoking_transport(signals_
         results=list(pool.map(claim,range(2)))
     observe('atomic_claim_control',{'claim_results':results,'actual_transport_calls':0})
     assert results.count(True)==1 and results.count(False)==1
+
+
+def test_suppressed_alert_retry_is_a_definite_non_delivery(signals_client,db_session,monkeypatch):
+    from app.services import market_signal_sources as sources
+    from app.services.notifications import outbox
+    from app.services.market_signal_delivery import suppress_outbox
+    from app.services.notifications.delivery_state import may_have_been_sent
+    now=datetime(2026,10,27,9,10)
+    monkeypatch.setattr(sources,'utcnow',lambda:now)
+    monkeypatch.setattr(outbox,'_now_utc',lambda:now)
+    seed_signal_prices(db_session)
+    enable_without_starting_scheduler(db_session)
+    rule,evidence=make_rule_and_evidence(signals_client,mode='trial',window_days=1,max_daily=10,cooldown_hours=0)
+    seed_assessment(db_session,rule['id'],evidence['id'],'retry-suppressed')
+    assert run(signals_client)['created']==1
+    box_id=db_session.scalar(select(NotificationOutbox.id))
+    box=outbox.mark_sending(db_session,outbox_id=box_id)
+    # Preflight suppression before any transport attempt: never sent.
+    suppress_outbox(db_session,box,expected_attempt_count=0)
+    box=db_session.get(NotificationOutbox,box_id,populate_existing=True)
+    assert (box.status,box.attempt_count)==('dead_letter',1)
+    assert not may_have_been_sent(box),'an unsent suppression must not look uncertain'
+    assert outbox.manual_retry(db_session,outbox_id=box_id) is not None
+    box=outbox.mark_sending(db_session,outbox_id=box_id)
+    assert box is not None
+    # The retried generation must resolve again instead of sticking in "sending".
+    suppress_outbox(db_session,box,expected_attempt_count=1)
+    box=db_session.get(NotificationOutbox,box_id,populate_existing=True)
+    assert (box.status,box.attempt_count)==('dead_letter',2)
+    assert outbox.manual_retry(db_session,outbox_id=box_id) is not None

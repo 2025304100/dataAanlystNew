@@ -266,10 +266,19 @@ def suppress_outbox(db, outbox, *, expected_attempt_count=None):
             error_message="曾尝试发送的消息已不满足当前条件，保留原内容待核对，不自动重发")
         return
     message = "规则已关闭、过期或行情验证条件不满足；已取消本次发送"
+    values = dict(status="dead_letter", last_error_code="market_signal_suppressed",
+        last_error_message=message, next_retry_at=None, attempt_count=generation+1)
+    if not state_of(outbox):
+        # No transport ran, so this generation is a definite non-delivery. Persist
+        # that fact: attempt_count>0 without a state would otherwise make
+        # may_have_been_sent() treat a later manual retry as an uncertain send and
+        # leave it stuck in "sending" forever.
+        payload = json.loads(outbox.payload_json or "{}")
+        payload[STATE_KEY] = {"v": 1, "frozen": False}
+        values["payload_json"] = _json(payload)
     result = db.execute(update(NotificationOutbox).where(NotificationOutbox.id == outbox.id,
         NotificationOutbox.status == "sending", NotificationOutbox.attempt_count == generation,
-    ).values(status="dead_letter", last_error_code="market_signal_suppressed", last_error_message=message,
-        next_retry_at=None, attempt_count=generation+1).execution_options(synchronize_session=False))
+    ).values(**values).execution_options(synchronize_session=False))
     if result.rowcount != 1:
         db.rollback()
         return
