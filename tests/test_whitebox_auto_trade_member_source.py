@@ -1140,3 +1140,51 @@ class TestRejectionDecisions:
         )
         # 组合级熔断：没有任何成交
         assert len(result["executed_orders"]) == 0
+
+
+def test_auto_mode_executes_multiple_buys_in_one_batch(db_session):
+    """【回归】同一自动批次内的后续买入不应被本批次自身成交收据阻断。
+
+    批次循环每成交一笔都会 commit，连接级“本批次自身收据”标记随之清空；
+    若逐单校验账户来源，第二笔 BUY 会把第一笔已提交的收据误判为外部未核对
+    变更而拒绝，导致每个批次仅第一笔买入能成交。
+    """
+    from sqlalchemy import delete
+
+    from app.models.portfolio_inspection_workflow import ReconciliationSourceEvent
+    from app.services import portfolio_reconciliation_activation as activation
+
+    p = _make_portfolio(db_session, name="QA-Exec-AutoMultiBuy")
+    symbols = []
+    for offset, code in enumerate(("600070", "600071")):
+        sym = _make_symbol(db_session, symbol=code)
+        _make_daily_bar(db_session, sym.id, close=10.0)
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
+        _make_score(db_session, sym.id, action="open")
+        _make_member(
+            db_session,
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            execution_mode=EXECUTION_AUTO,
+            entry_rule_version_id=2000 + offset,
+        )
+        symbols.append(sym)
+    _apply_member_snapshot(db_session, p, [
+        {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 2000 + offset}
+        for offset, sym in enumerate(symbols)
+    ])
+    # 清理建仓/建表阶段遗留的账户来源收据，保证批次开始前账户干净。
+    db_session.execute(delete(ReconciliationSourceEvent))
+    db_session.commit()
+
+    active = {"cursor_id": "cursor-multibuy", "generation": 1}
+    with patch.object(activation, "_active", lambda *a, **k: active), patch.object(
+        activation, "assert_execution_within_active_coverage", lambda *a, **k: None
+    ):
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
+
+    filled = [o for o in result["executed_orders"] if o["status"] == "filled"]
+    assert len(filled) == 2
+    assert db_session.query(SimOrder).filter_by(portfolio_id=p.id).count() == 2

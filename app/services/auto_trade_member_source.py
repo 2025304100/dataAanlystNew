@@ -1530,6 +1530,27 @@ def _execute_snapshot_order_plans(
             plans_to_process.append(plan)
             seen_plan_ids.add(str(plan.order_plan_id))
 
+    # 账户来源闸门是「批次」语义，而不是单笔订单语义。下面的循环每成交一笔
+    # 就 commit 一次，提交会清空连接级的“本批次自身收据”标记；下一笔 BUY
+    # 会把本批次自己刚成交产生的收据误判为外部未核对变更而被拒绝，导致
+    # 同一批次只有第一笔买入能成交。因此在批次开始前一次性证明来源已核对，
+    # 并在本批次内复用该结论；单笔的覆盖/启用校验仍由 place_sim_order 执行。
+    batch_sources_checked = False
+    if not dry_run and any(
+        plan.action == "BUY" and str(plan.order_plan_id) not in pending_retry_orders
+        for plan in plans_to_process
+    ):
+        from app.services.portfolio_reconciliation_coverage import CoverageError
+        from app.services.portfolio_reconciliation_events import assert_account_sources_checked_for_buy
+
+        try:
+            assert_account_sources_checked_for_buy(db, portfolio_id)
+            batch_sources_checked = True
+        except CoverageError:
+            # 批次开始前仍有待核对的账户来源：保留逐单闸门的原有拒绝语义，
+            # 由后续 place_sim_order 逐笔记录拒绝原因。
+            logger.info("自动模拟批次开始前账户来源仍需核对 portfolio_id=%s", portfolio_id)
+
     for plan in plans_to_process:
         if task_cancelled():
             result["skipped_due_to_cancel"] = True
@@ -2011,6 +2032,7 @@ def _execute_snapshot_order_plans(
                         apply_fees=False,
                         fee_override=float(match_result.total_cost),
                         execution_price_is_final=True,
+                        skip_source_pending_gate=batch_sources_checked,
                     )
                 _date_new_fill(order, _trade, execution_at)
                 order.quantity = requested_quantity
@@ -2106,6 +2128,7 @@ def _execute_snapshot_order_plans(
                     apply_fees=False,
                     fee_override=float(match_result.total_cost),
                     execution_price_is_final=True,
+                    skip_source_pending_gate=batch_sources_checked,
                 )
             _date_new_fill(order, _trade, execution_at)
             order.client_order_key = str(plan.order_plan_id)
